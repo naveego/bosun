@@ -1,0 +1,43 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+bin/
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+*.coverprofile
+*.coverage.json
+
+# Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
+.glide/
+
+# external packages folder
+vendor/
+vendor.orig/
+bin/
+node_modules/
+debug
+
+# JetBrains IDE stuff
+.idea/
+
+# folders created by running agent
+.packages
+.secrets
+.secrets.json
+
+# test coverage:
+**/*.coverprofile
+
+mage_output_file.go
+
+.DS_Store
+
+bosun
