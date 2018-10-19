@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/naveegoinc/devops/bosun/internal"
+	"github.com/naveego/bosun/internal"
 	"github.com/sirupsen/logrus"
 
 	"os"

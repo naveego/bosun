@@ -17,7 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/hashicorp/vault/api"
-	"github.com/naveegoinc/devops/bosun/internal"
+	"github.com/naveego/bosun/internal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"

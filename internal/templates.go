@@ -201,35 +201,46 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 				switch len(secret.Data) {
 				case 0:
 				case 1:
-					for _, v := range secret.Data {
-						secretValue, _ = v.(string)
-						break
+					// user didn't specify key, but there is only one
+					// value, so we'll use that
+					if key == "" {
+						for _, v := range secret.Data {
+							secretValue, _ = v.(string)
+							break
+						}
 					}
 				default:
 					secretValue, _ = secret.Data[key].(string)
 				}
 			}
 
-
+			// didn't find the value
 			if secretValue == "" {
 
 				data := make(map[string]interface{})
 				if secret != nil && secret.Data != nil {
+					// There was a secret, it just didn't have the key
+					// we're looking for. We'll keep the data so it doesn't get erased.
 					data = secret.Data
 				}
 
 				if defaultValue != "" {
+					// There was a default value, so we'll store that.
 					secretValue = defaultValue
 				} else if !terminal.IsTerminal(int(os.Stdout.Fd())) {
+					// No terminal attached, so we can't ask the user for values.
 					return "", errors.Errorf("no vault secret found at path %q", path)
 				} else {
+					// Prompt the user for the value.
 					secretValue = RequestStringFromUser("No value found in VaultClient at path %q; please provide the value", path)
 				}
 
+				// User didn't provide a key, so we'll set the value under "key"
 				if key == "" {
 					key = "key"
 				}
 
+				// Store the data in Vault so we'll have it next time.
 				data[key] = secretValue
 				_, err = client.Logical().Write(path, data)
 

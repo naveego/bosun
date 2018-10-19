@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
-	"github.com/naveegoinc/devops/bosun/internal"
+	"github.com/naveego/bosun/internal"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"

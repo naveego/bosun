@@ -19,7 +19,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/naveegoinc/devops/bosun/internal"
+	"github.com/naveego/bosun/internal"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
