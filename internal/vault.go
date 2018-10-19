@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -31,31 +34,83 @@ type VaultLayoutTemplateArgs struct {
 	Values  map[string]interface{}
 }
 
-func LoadVaultLayoutFromFile(path string, templateArgs VaultLayoutTemplateArgs, client *api.Client) (VaultLayout, error) {
-	var vl VaultLayout
+func LoadVaultLayoutFromFiles(globs []string, templateArgs VaultLayoutTemplateArgs, client *api.Client) (*VaultLayout, error) {
+	mergedLayout := new (VaultLayout)
+	var paths []string
+	for _, glob := range globs {
+		p, err := filepath.Glob(glob)
 
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return vl, err
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, p...)
 	}
 
-	yamlString, err := NewTemplateBuilder(path).
-		WithKubeFunctions().
-		WithVaultTemplateFunctions(client).
-		WithTemplate(string(b)).
-		BuildAndExecute(templateArgs)
-	if err != nil {
-		return vl, err
+	for _, path := range paths {
+		vl := new(VaultLayout)
+
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+
+		yamlString, err := NewTemplateBuilder(path).
+			WithKubeFunctions().
+			WithVaultTemplateFunctions(client).
+			WithTemplate(string(b)).
+			BuildAndExecute(templateArgs)
+		if err != nil {
+			return nil, err
+		}
+
+		err = yaml.Unmarshal([]byte(yamlString), vl)
+		if err != nil {
+			var badLine int
+			matches := lineExtractor.FindStringSubmatch(err.Error())
+			if len (matches) > 0 {
+				badLine, _ = strconv.Atoi(matches[1])
+			}
+			color.Red("Invalid yaml in %s:", path)
+			lines := strings.Split(yamlString, "\n")
+			for i, line := range lines {
+				if i == badLine {
+					color.Red(line + "\n")
+				} else {
+					fmt.Println(yamlString)
+				}
+			}
+
+			return nil, err
+		}
+
+		mergedLayout.merge(vl)
 	}
 
-	err = yaml.Unmarshal([]byte(yamlString), &vl)
-	if err != nil {
-		color.Red("Invalid yaml:")
-		fmt.Println(yamlString)
-		return vl, err
+	return mergedLayout, nil
+}
+
+var lineExtractor = regexp.MustCompile(`line (\d+):`)
+
+func (v *VaultLayout) merge(other *VaultLayout) {
+	v.Policies = mergeMaps(v.Policies, other.Policies)
+	v.Resources = mergeMaps(v.Resources, other.Resources)
+	v.Auth = mergeMaps(v.Auth, other.Auth)
+	v.Mounts = mergeMaps(v.Mounts, other.Mounts)
+}
+
+// mergeMaps merges two maps into a new map which is returned.
+func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[string]interface{}{
+
+	m := make(map[string]map[string]interface{})
+
+	for k, v := range left {
+		m[k] = v
+	}
+	for k,v := range right {
+		m[k] = v
 	}
 
-	return vl, nil
+	return m
 }
 
 func (v VaultLayout) Apply(client *api.Client) error {

@@ -28,19 +28,20 @@ import (
 
 // vaultCmd represents the vault command
 var vaultCmd = &cobra.Command{
-	Use:   "vault {vault-layout}",
-	Args: cobra.ExactArgs(1),
+	Use:   "vault {vault-layouts...}",
+	Args: cobra.MinimumNArgs(1),
 	Short: "Updates VaultClient using layout files. Supports --dry-run flag.",
 	Long: `This command has environmental pre-reqs:
 - You must be authenticated to vault (with VAULT_ADDR set and either VAULT_TOKEN set or a ~/.vault-token file created by logging in to vault).
 
-The {vault-layout} argument is the path to the vault layout.
+The {vault-layouts...} argument is one or more paths to a vault layout yaml, or a glob which will locate a set of files.
 
 The vault layout yaml file can use go template syntax for formatting.
 
 The .Domain and .Cluster values are populated from the flags to this command, or inferred from VAULT_ADDR.
 Any values provided using --values will be in {{ .Values.xxx }}
 `,
+	Example:"vault green-auth.yaml green-kube.yaml green-default.yaml",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -66,7 +67,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			templateArgs.Values[segs[0]] = segs[1]
 		}
 
-		vaultLayout, err := internal.LoadVaultLayoutFromFile(args[0], templateArgs, vaultClient)
+		vaultLayout, err := internal.LoadVaultLayoutFromFiles(args, templateArgs, vaultClient)
 		if err != nil {
 			return err
 		}
