@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/internal"
+	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -73,7 +73,7 @@ var scriptCmd = &cobra.Command{
 		}
 
 		for i, step := range script.Steps {
-			log := internal.Log.WithField("step", i).WithField("command", step.Command)
+			log := pkg.Log.WithField("step", i).WithField("command", step.Command)
 			log.Info("Executing step")
 
 			var stepArgs []string
@@ -93,7 +93,7 @@ var scriptCmd = &cobra.Command{
 				stepArgs = append(stepArgs, v)
 			}
 
-			err = internal.NewCommand(exe, stepArgs...).WithDir(rootDir).RunE()
+			err = pkg.NewCommand(exe, stepArgs...).WithDir(rootDir).RunE()
 			if err != nil {
 				log.WithField("flags", step.Flags).WithField("args", step.Args).Error("Step failed.")
 				return errors.New("script abended")

@@ -17,7 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/internal"
+	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,12 +45,12 @@ Any values provided using --values will be in {{ .Values.xxx }}
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		vaultClient, err := internal.NewVaultLowlevelClient("", "")
+		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
 		if err != nil {
 			return err
 		}
 
-		templateArgs := internal.VaultLayoutTemplateArgs{
+		templateArgs := pkg.VaultLayoutTemplateArgs{
 			Cluster:viper.GetString(ArgVaultCluster),
 			Domain:viper.GetString(ArgVaultDomain),
 			Values:map[string]interface{}{
@@ -67,7 +67,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			templateArgs.Values[segs[0]] = segs[1]
 		}
 
-		vaultLayout, err := internal.LoadVaultLayoutFromFiles(args, templateArgs, vaultClient)
+		vaultLayout, err := pkg.LoadVaultLayoutFromFiles(args, templateArgs, vaultClient)
 		if err != nil {
 			return err
 		}

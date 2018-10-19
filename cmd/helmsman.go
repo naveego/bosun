@@ -17,7 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/hashicorp/vault/api"
-	"github.com/naveego/bosun/internal"
+	"github.com/naveego/bosun/pkg"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"
@@ -34,7 +34,7 @@ var helmsmanCmd = &cobra.Command{
 - You must be authenticated to vault (with VAULT_ADDR set and either VAULT_TOKEN set or a ~/.vault-token file created by logging in to vault).
 - You must have kubectl installed and have a context defined for the cluster you want to deploy to.
 - You must have helm installed.
-- You must have helmsman installed. (https://github.com/Praqma/helmsman)
+- You must have helmsman installed. (https://pkg.com/Praqma/helmsman)
 
 The {domain} argument is the domain the services in the helmsman will be available under (e.g. n5o.green or n5.blue).
 The {helmsman-file} argument is the path of the helmsman file to helmsman.
@@ -52,7 +52,7 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 
 		var vaultClient *api.Client
 		if !noVault {
-			vaultClient, err = internal.NewVaultLowlevelClient("", "")
+			vaultClient, err = pkg.NewVaultLowlevelClient("", "")
 			if err != nil {
 				return err
 			}
@@ -68,7 +68,7 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 			return err
 		}
 
-		r := internal.HelmsmanCommand{
+		r := pkg.HelmsmanCommand{
 			VaultClient:      vaultClient,
 			Cluster:          args[0],
 			HelmsmanFilePath: helmsmanFile,

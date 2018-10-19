@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
-	"github.com/naveego/bosun/internal"
+	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -18,7 +18,7 @@ import (
 func checkExecutableDependency(exe string) {
 	path, err := exec.LookPath(exe)
 	check(err, "Could not find executable for %q", exe)
-	internal.Log.WithFields(logrus.Fields{"exe": exe, "path": path}).Debug("Found dependency.")
+	pkg.Log.WithFields(logrus.Fields{"exe": exe, "path": path}).Debug("Found dependency.")
 }
 
 func confirm(msg string, args ... string) bool {
@@ -26,7 +26,7 @@ func confirm(msg string, args ... string) bool {
 	label := fmt.Sprintf(msg, args)
 
 	if !terminal.IsTerminal(int(os.Stdout.Fd())) {
-		internal.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
+		pkg.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
 		return true
 	}
 
@@ -76,14 +76,14 @@ func getMarketingRelease() (string, error) {
 	var err error
 	marketingRelease := viper.GetString(ArgHelmsmanMarketingRelease)
 	if marketingRelease == "" {
-		marketingRelease, err = internal.NewCommand("git", "rev-parse", "--abbrev-ref", "HEAD").RunOut()
+		marketingRelease, err = pkg.NewCommand("git", "rev-parse", "--abbrev-ref", "HEAD").RunOut()
 		if err != nil {
 			return "", errors.WithMessage(err, "could not get current branch")
 		}
 	}
 
 	for !marketingReleaseFormat.MatchString(marketingRelease) {
-		marketingRelease = internal.RequestStringFromUser("%q is not a marketing release. Provide a release number like 2018.2.1", marketingRelease)
+		marketingRelease = pkg.RequestStringFromUser("%q is not a marketing release. Provide a release number like 2018.2.1", marketingRelease)
 	}
 
 	return marketingRelease, nil

@@ -16,10 +16,10 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg"
 	"io/ioutil"
 	"strings"
 
-	"github.com/naveego/bosun/internal"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -55,9 +55,9 @@ var tagImageCmd = &cobra.Command{
 
 		fmt.Printf("tagging image %q for release %q\n", src, marketingRelease)
 
-		new(internal.Command).WithExe("docker").WithArgs("pull", src).MustRun()
-		new(internal.Command).WithExe("docker").WithArgs("tag", src, dst).MustRun()
-		new(internal.Command).WithExe("docker").WithArgs("push", dst).MustRun()
+		new(pkg.Command).WithExe("docker").WithArgs("pull", src).MustRun()
+		new(pkg.Command).WithExe("docker").WithArgs("tag", src, dst).MustRun()
+		new(pkg.Command).WithExe("docker").WithArgs("push", dst).MustRun()
 
 		return nil
 
@@ -87,12 +87,12 @@ x/imageB:0.5.0 x/imageB:0.5.0-rc
 			}
 
 			src, dst := f[0], f[1]
-			internal.Log.WithField("@from", src).WithField("@to", dst).Infof("Retagging %d of %d.", i, len(lines))
-			new(internal.Command).WithExe("docker").WithArgs("pull", src).MustRun()
-			new(internal.Command).WithExe("docker").WithArgs("tag", src, dst).MustRun()
-			new(internal.Command).WithExe("docker").WithArgs("push", dst).MustRun()
-			//new(internal.Command).WithExe("docker").WithArgs("rmi", src, "--force").MustRun()
-			//new(internal.Command).WithExe("docker").WithArgs("rmi", dst, "--force").MustRun()
+			pkg.Log.WithField("@from", src).WithField("@to", dst).Infof("Retagging %d of %d.", i, len(lines))
+			new(pkg.Command).WithExe("docker").WithArgs("pull", src).MustRun()
+			new(pkg.Command).WithExe("docker").WithArgs("tag", src, dst).MustRun()
+			new(pkg.Command).WithExe("docker").WithArgs("push", dst).MustRun()
+			//new(Command).WithExe("docker").WithArgs("rmi", src, "--force").MustRun()
+			//new(Command).WithExe("docker").WithArgs("rmi", dst, "--force").MustRun()
 
 		}
 

@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/internal"
+	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
 
 	"os"
@@ -53,10 +53,10 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			ForceColors:   true,
 		})
 
-		internal.Log = logrus.NewEntry(logrus.StandardLogger())
+		pkg.Log = logrus.NewEntry(logrus.StandardLogger())
 
 		if step >= 0 {
-			internal.Log = internal.Log.WithField("@step", step).WithField("@command", cmd.Name())
+			pkg.Log = pkg.Log.WithField("@step", step).WithField("@command", cmd.Name())
 			cmd.SilenceUsage = true
 		}
 

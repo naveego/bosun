@@ -1,8 +1,16 @@
-package internal
+package pkg
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/fatih/color"
+	"github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/vault/api"
+	
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh/terminal"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -11,15 +19,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/fatih/color"
-	"github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault/api"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ssh/terminal"
-	"gopkg.in/yaml.v2"
 )
+
 
 type VaultLayout struct {
 	Auth      map[string]map[string]interface{}
@@ -35,7 +36,7 @@ type VaultLayoutTemplateArgs struct {
 }
 
 func LoadVaultLayoutFromFiles(globs []string, templateArgs VaultLayoutTemplateArgs, client *api.Client) (*VaultLayout, error) {
-	mergedLayout := new (VaultLayout)
+	mergedLayout := new(VaultLayout)
 	var paths []string
 	for _, glob := range globs {
 		p, err := filepath.Glob(glob)
@@ -67,7 +68,7 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs VaultLayoutTemplateAr
 		if err != nil {
 			var badLine int
 			matches := lineExtractor.FindStringSubmatch(err.Error())
-			if len (matches) > 0 {
+			if len(matches) > 0 {
 				badLine, _ = strconv.Atoi(matches[1])
 			}
 			color.Red("Invalid yaml in %s:", path)
@@ -99,14 +100,14 @@ func (v *VaultLayout) merge(other *VaultLayout) {
 }
 
 // mergeMaps merges two maps into a new map which is returned.
-func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[string]interface{}{
+func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[string]interface{} {
 
 	m := make(map[string]map[string]interface{})
 
 	for k, v := range left {
 		m[k] = v
 	}
-	for k,v := range right {
+	for k, v := range right {
 		m[k] = v
 	}
 
