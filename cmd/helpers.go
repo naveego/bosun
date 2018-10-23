@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"os/exec"
 	"regexp"
@@ -25,7 +24,7 @@ func confirm(msg string, args ... string) bool {
 
 	label := fmt.Sprintf(msg, args)
 
-	if !terminal.IsTerminal(int(os.Stdout.Fd())) {
+	if pkg.IsInteractive() {
 		pkg.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
 		return true
 	}

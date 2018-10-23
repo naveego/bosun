@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
+	"strings"
 
 	"os"
 
@@ -39,14 +40,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 
 		viper.RegisterAlias("debug", "verbose")
-		viper.BindPFlags(cmd.PersistentFlags())
-
-		verbose := viper.GetBool("verbose")
-		if verbose {
-			logrus.SetLevel(logrus.DebugLevel)
-		} else {
-			logrus.SetLevel(logrus.InfoLevel)
-		}
+		viper.BindPFlags(cmd.Flags())
 
 		logrus.SetFormatter(&logrus.TextFormatter{
 			FullTimestamp: true,
@@ -54,6 +48,15 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 		})
 
 		pkg.Log = logrus.NewEntry(logrus.StandardLogger())
+
+		verbose := viper.GetBool("verbose")
+		if verbose {
+			fmt.Println("verbose")
+			logrus.SetLevel(logrus.DebugLevel)
+			pkg.Log.Debug("Logging at debug level.")
+		} else {
+			logrus.SetLevel(logrus.InfoLevel)
+		}
 
 		if step >= 0 {
 			pkg.Log = pkg.Log.WithField("@step", step).WithField("@command", cmd.Name())
@@ -75,24 +78,36 @@ func Execute() {
 const (
 	ArgGlobalVerbose = "verbose"
 	ArgGlobalDryRun  = "dry-run"
+	ArgGlobalCluster ="cluster"
+	ArgGlobalDomain  ="domain"
+	ArgGlobalValues  = "values"
 )
 
 func init() {
-	// Find home directory.
-	// home, err := homedir.Dir()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	os.Exit(1)
-	// }
-
-	// configPath := filepath.Join(home, ".bosun/config")
-
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", configPath, "The config file for bosun.")
 	rootCmd.PersistentFlags().IntVar(&step, "step", -1, "The step we are on.")
 	rootCmd.PersistentFlags().MarkHidden("step")
 
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
+
+	defaultCluster := ""
+	defaultDomain := ""
+	vaultAddr, ok := os.LookupEnv("VAULT_ADDR")
+	if ok {
+		segs := strings.Split(vaultAddr, ".")
+		tld := segs[len(segs)-1]
+		defaultCluster = tld
+		defaultDomain = "n5o." + tld
+	}
+
+	rootCmd.PersistentFlags().String(ArgGlobalCluster, defaultCluster, "The cluster to use when getting kube config data, and as the .Cluster value in templates.")
+	rootCmd.PersistentFlags().String(ArgGlobalDomain, defaultDomain, "The domain to use when connecting, and as the .Domain value in templates.")
+	rootCmd.PersistentFlags().StringSlice(ArgGlobalValues, []string{}, "Any number of key=value values which will be available under the .Values token in templates.")
+
+
+	viper.RegisterAlias("debug", "verbose")
+	viper.BindPFlags(rootCmd.PersistentFlags())
 
 	viper.AutomaticEnv()
 

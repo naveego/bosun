@@ -6,7 +6,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/api"
-	
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
@@ -29,13 +28,26 @@ type VaultLayout struct {
 	Policies  map[string]map[string]interface{}
 }
 
-type VaultLayoutTemplateArgs struct {
+type TemplateValues struct {
 	Cluster string
 	Domain  string
 	Values  map[string]interface{}
 }
 
-func LoadVaultLayoutFromFiles(globs []string, templateArgs VaultLayoutTemplateArgs, client *api.Client) (*VaultLayout, error) {
+func NewTemplateValues(args ...string) (TemplateValues, error) {
+	t := TemplateValues{}
+	for _, kv := range args{
+		segs := strings.Split(kv, "=")
+		if len(segs) != 2 {
+			return t, errors.Errorf("invalid values flag value: %q (should be key=value)", kv)
+		}
+		t.Values[segs[0]] = segs[1]
+	}
+
+	return t, nil
+}
+
+func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, client *api.Client) (*VaultLayout, error) {
 	mergedLayout := new(VaultLayout)
 	var paths []string
 	for _, glob := range globs {
@@ -45,6 +57,10 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs VaultLayoutTemplateAr
 			return nil, err
 		}
 		paths = append(paths, p...)
+	}
+
+	if len(paths) == 0 {
+		return nil, errors.Errorf("no paths found from expanding %v", globs)
 	}
 
 	for _, path := range paths {

@@ -11,9 +11,14 @@ import (
 
 var Log *logrus.Entry
 
-func RequestStringFromUser(text string, args... interface{}) (string) {
+func RequestStringFromUser(text string, args ... interface{}) (string) {
+
+	if !IsInteractive() {
+		panic(fmt.Sprintf("Requested string from user but no terminal is attached: %q, %v", text, args))
+	}
+
 	prompt := promptui.Prompt{
-		Label:fmt.Sprintf(text, args...),
+		Label: fmt.Sprintf(text, args...),
 	}
 
 	value, err := prompt.Run()
@@ -25,10 +30,10 @@ func RequestStringFromUser(text string, args... interface{}) (string) {
 	return value
 }
 
-func RequestSecretFromUser(text string, args... interface{}) (string) {
+func RequestSecretFromUser(text string, args ... interface{}) (string) {
 	prompt := promptui.Prompt{
-		Label:fmt.Sprintf(text, args...),
-		Mask:'*',
+		Label: fmt.Sprintf(text, args...),
+		Mask:  '*',
 	}
 
 	value, err := prompt.Run()
@@ -40,12 +45,12 @@ func RequestSecretFromUser(text string, args... interface{}) (string) {
 	return value
 }
 
-func Must(err error, msgAndArgs... string) {
+func Must(err error, msgAndArgs ... string) {
 	if err == nil {
 		return
 	}
 	var msg string
-	switch len(msgAndArgs){
+	switch len(msgAndArgs) {
 	case 0:
 		msg = "Fatal error."
 	case 1:

@@ -5,18 +5,107 @@ import (
 	"fmt"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/Masterminds/sprig"
+	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
+	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh/terminal"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 )
+
+type TemplateHelper struct {
+	TemplateValues TemplateValues
+	VaultClient *vault.Client
+}
+
+
+
+func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) (error) {
+
+	var merged map[string]interface{}
+
+	var paths []string
+	for _, glob := range globs {
+		p, err := filepath.Glob(glob)
+
+		if err != nil {
+			return  err
+		}
+		paths = append(paths, p...)
+	}
+
+	if len(paths) == 0 {
+		return errors.Errorf("no paths found from expanding %v", globs)
+	}
+
+	for _, path := range paths {
+
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		builder := NewTemplateBuilder(path).
+			WithKubeFunctions().
+			WithTemplate(string(b))
+		if h.VaultClient != nil {
+			builder = builder.WithVaultTemplateFunctions(h.VaultClient)
+		} else {
+			builder = builder.WithDisabledVaultTemplateFunctions()
+		}
+
+		yamlString, err := builder.BuildAndExecute(h.TemplateValues)
+
+		if err != nil {
+			return err
+		}
+
+		var current map[string]interface{}
+
+		err = yaml.Unmarshal([]byte(yamlString), &current)
+		if err != nil {
+			var badLine int
+			matches := lineExtractor.FindStringSubmatch(err.Error())
+			if len(matches) > 0 {
+				badLine, _ = strconv.Atoi(matches[1])
+			}
+			color.Red("Invalid yaml in %s:", path)
+			lines := strings.Split(yamlString, "\n")
+			for i, line := range lines {
+				if i == badLine {
+					color.Red(line + "\n")
+				} else {
+					fmt.Println(yamlString)
+				}
+			}
+
+			return  err
+		}
+
+		if err = mergo.Merge(&merged, current); err != nil {
+			return err
+		}
+	}
+
+	mergedYaml, _ := yaml.Marshal(merged)
+
+	err := yaml.Unmarshal(mergedYaml, out)
+
+	return err
+}
 
 type TemplateBuilder struct {
 	t       *template.Template
 	content string
 }
+
+
 
 func NewTemplateBuilder(name string) *TemplateBuilder {
 	t := template.New(name).
@@ -197,20 +286,21 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 				return "", err
 			}
 
-			if secret != nil {
-				switch len(secret.Data) {
-				case 0:
-				case 1:
+			if secret != nil && secret.Data != nil{
+
+				if key == "" && len(secret.Data) == 1 {
 					// user didn't specify key, but there is only one
 					// value, so we'll use that
-					if key == "" {
-						for _, v := range secret.Data {
-							secretValue, _ = v.(string)
-							break
-						}
+					for _, v := range secret.Data {
+						secretValue, _ = v.(string)
+						break
 					}
-				default:
-					secretValue, _ = secret.Data[key].(string)
+				} else {
+					value, ok := secret.Data[key]
+					if ok {
+						// secret contained requested key
+						secretValue, _ = value.(string)
+					}
 				}
 			}
 
@@ -227,7 +317,7 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 				if defaultValue != "" {
 					// There was a default value, so we'll store that.
 					secretValue = defaultValue
-				} else if !terminal.IsTerminal(int(os.Stdout.Fd())) {
+				} else if !IsInteractive() {
 					// No terminal attached, so we can't ask the user for values.
 					return "", errors.Errorf("no vault secret found at path %q", path)
 				} else {
@@ -254,4 +344,8 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 	})
 
 	return t
+}
+
+func IsInteractive() bool {
+	return terminal.IsTerminal(int(os.Stdout.Fd()))
 }

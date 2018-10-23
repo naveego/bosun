@@ -30,6 +30,7 @@ require (
 	github.com/circonus-labs/circonusllhist v0.0.0-20180430145027-5eb751da55c6 // indirect
 	github.com/containerd/continuity v0.0.0-20181003075958-be9bd761db19 // indirect
 	github.com/denisenkom/go-mssqldb v0.0.0-20180901172138-1eb28afdf9b6 // indirect
+	github.com/dghubble/sling v1.1.0
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.3.3 // indirect
 	github.com/duosecurity/duo_api_golang v0.0.0-20180315112207-d0530c80e49a // indirect
@@ -65,7 +66,7 @@ require (
 	github.com/hashicorp/vault v0.11.2
 	github.com/hashicorp/vault-plugin-secrets-kv v0.0.0-20180825215324-5a464a61f7de // indirect
 	github.com/huandu/xstrings v1.2.0 // indirect
-	github.com/imdario/mergo v0.3.6 // indirect
+	github.com/imdario/mergo v0.3.6
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jefferai/jsonx v0.0.0-20160721235117-9cc31c3135ee // indirect
 	github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a // indirect

@@ -79,6 +79,12 @@ var scriptCmd = &cobra.Command{
 			var stepArgs []string
 			stepArgs = append(stepArgs, strings.Fields(step.Command)...)
 			stepArgs = append(stepArgs, "--step", fmt.Sprintf("%d", i))
+			if viper.GetBool(ArgGlobalVerbose) {
+				stepArgs = append(stepArgs, "--" + ArgGlobalVerbose)
+			}
+			if viper.GetBool(ArgGlobalDryRun) {
+				stepArgs = append(stepArgs, "--" + ArgGlobalDryRun)
+			}
 
 			for k, v := range step.Flags {
 				switch vt := v.(type) {
