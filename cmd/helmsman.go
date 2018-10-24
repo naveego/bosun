@@ -27,8 +27,8 @@ import (
 
 // helmsmanCmd represents the helmsman command
 var helmsmanCmd = &cobra.Command{
-	Use:   "helmsman {cluster} {helmsman-file}",
-	Args:  cobra.ExactArgs(2),
+	Use:   "helmsman {cluster} {helmsman-file} [additional-helmsman-files...}",
+	Args:  cobra.MinimumNArgs(2),
 	Short: "Deploys a helmsman to a cluster. Supports --dry-run flag.",
 	Long: `This command has environmental pre-reqs:
 - You must be authenticated to vault (with VAULT_ADDR set and either VAULT_TOKEN set or a ~/.vault-token file created by logging in to vault).
@@ -37,7 +37,7 @@ var helmsmanCmd = &cobra.Command{
 - You must have helmsman installed. (https://pkg.com/Praqma/helmsman)
 
 The {domain} argument is the domain the services in the helmsman will be available under (e.g. n5o.green or n5.blue).
-The {helmsman-file} argument is the path of the helmsman file to helmsman.
+The {helmsman-files} argument is the path of the helmsman files to pass to helmsman.
 
 You must set the --apply flag to actually run the helmsman (this is to prevent accidents).
 `,
@@ -71,14 +71,14 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 		r := pkg.HelmsmanCommand{
 			VaultClient:      vaultClient,
 			Cluster:          args[0],
-			HelmsmanFilePath: helmsmanFile,
+			HelmsmanFilePaths: args[1:],
 			Apply:            viper.GetBool(ArgHelmsmanApply),
 			NoConfirm:        viper.GetBool(ArgHelmsmanNoConfirm),
 			DryRun:           viper.GetBool(ArgGlobalDryRun),
 			NoVault:          viper.GetBool(ArgHelmsmanNoVault),
 			KeepRenderedFile: viper.GetBool(ArgHelmsmanKeepTempFiles),
 			Apps:             viper.GetStringSlice(ArgHelmsmanApps),
-			Values:           map[string]string{},
+			Values:           map[string]interface{}{},
 			Verbose:          viper.GetBool(ArgGlobalVerbose),
 		}
 

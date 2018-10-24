@@ -82,7 +82,7 @@ func (c *Command) prepare() {
 
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
-	Log.WithField("command", c.Command).WithField("env", c.Env).Debug("Command prepared.")
+	Log.WithField("command", *c.Command).WithField("env", c.Env).Debug("Command prepared.")
 
 	c.prepared = true
 }

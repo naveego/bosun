@@ -9,6 +9,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -21,12 +22,22 @@ import (
 
 type TemplateHelper struct {
 	TemplateValues TemplateValues
-	VaultClient *vault.Client
+	VaultClient    *vault.Client
 }
 
-
-
 func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) (error) {
+
+	mergedYaml, err := h.LoadMergedYaml(globs...)
+	if err != nil {
+		return err
+	}
+
+	err = yaml.Unmarshal([]byte(mergedYaml), out)
+
+	return err
+}
+
+func (h *TemplateHelper) LoadMergedYaml(globs ...string) (string, error) {
 
 	var merged map[string]interface{}
 
@@ -35,20 +46,20 @@ func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) (error) 
 		p, err := filepath.Glob(glob)
 
 		if err != nil {
-			return  err
+			return "", err
 		}
 		paths = append(paths, p...)
 	}
 
 	if len(paths) == 0 {
-		return errors.Errorf("no paths found from expanding %v", globs)
+		return "", errors.Errorf("no paths found from expanding %v", globs)
 	}
 
 	for _, path := range paths {
 
 		b, err := ioutil.ReadFile(path)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		builder := NewTemplateBuilder(path).
@@ -63,7 +74,7 @@ func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) (error) 
 		yamlString, err := builder.BuildAndExecute(h.TemplateValues)
 
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		var current map[string]interface{}
@@ -85,19 +96,17 @@ func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) (error) 
 				}
 			}
 
-			return  err
+			return "", err
 		}
 
 		if err = mergo.Merge(&merged, current); err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	mergedYaml, _ := yaml.Marshal(merged)
+	mergedYaml, err := yaml.Marshal(merged)
 
-	err := yaml.Unmarshal(mergedYaml, out)
-
-	return err
+	return string(mergedYaml), err
 }
 
 type TemplateBuilder struct {
@@ -105,17 +114,30 @@ type TemplateBuilder struct {
 	content string
 }
 
-
-
 func NewTemplateBuilder(name string) *TemplateBuilder {
 	t := template.New(name).
 		Funcs(sprig.TxtFuncMap()).
 		Funcs(template.FuncMap{
 			"exec": func(exe string, args ...string) (string, error) {
-
 				out, err := NewCommand(exe, args...).RunOut()
 				return out, err
+			},
+			"generateLastPassPassword": func(name, username, url string) (string, error) {
+				password, err := NewCommand("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
+				if err == nil {
+					return password, nil
+				}
 
+				fmt.Printf("LPASS: password %q does not yet exist; it will be generated; %s\n", name, err)
+
+				// password doesn't exist yet
+
+				password, err = NewCommand("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
+				if err != nil {
+					return "", err
+				}
+
+				return password, nil
 			},
 		})
 
@@ -268,7 +290,6 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 		},
 
 		"vaultSecret": func(path string, optionalKeyAndDefault ...string) (string, error) {
-
 			key := ""
 			defaultValue := ""
 			switch len(optionalKeyAndDefault) {
@@ -279,71 +300,123 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 				defaultValue = optionalKeyAndDefault[1]
 			}
 
-			var secretValue string
-
-			secret, err := client.Logical().Read(path)
-			if err != nil {
-				return "", err
+			action := getOrUpdateVaultSecretAction{
+				path:         path,
+				key:          key,
+				defaultValue: defaultValue,
+				client:       client,
 			}
 
-			if secret != nil && secret.Data != nil{
+			return action.execute()
+		},
 
-				if key == "" && len(secret.Data) == 1 {
-					// user didn't specify key, but there is only one
-					// value, so we'll use that
-					for _, v := range secret.Data {
-						secretValue, _ = v.(string)
-						break
-					}
-				} else {
-					value, ok := secret.Data[key]
-					if ok {
-						// secret contained requested key
-						secretValue, _ = value.(string)
-					}
-				}
+		"bcryptedVaultSecret": func(path, key, plaintext string) (string, error) {
+			action := getOrUpdateVaultSecretAction{
+				path:         path,
+				key:          key,
+				defaultValue: plaintext,
+				bcrypt:       true,
+				client:       client,
 			}
 
-			// didn't find the value
-			if secretValue == "" {
-
-				data := make(map[string]interface{})
-				if secret != nil && secret.Data != nil {
-					// There was a secret, it just didn't have the key
-					// we're looking for. We'll keep the data so it doesn't get erased.
-					data = secret.Data
-				}
-
-				if defaultValue != "" {
-					// There was a default value, so we'll store that.
-					secretValue = defaultValue
-				} else if !IsInteractive() {
-					// No terminal attached, so we can't ask the user for values.
-					return "", errors.Errorf("no vault secret found at path %q", path)
-				} else {
-					// Prompt the user for the value.
-					secretValue = RequestStringFromUser("No value found in VaultClient at path %q; please provide the value", path)
-				}
-
-				// User didn't provide a key, so we'll set the value under "key"
-				if key == "" {
-					key = "key"
-				}
-
-				// Store the data in Vault so we'll have it next time.
-				data[key] = secretValue
-				_, err = client.Logical().Write(path, data)
-
-				if err != nil {
-					return "", errors.WithMessage(err, "could not persist provided secret in vault")
-				}
-			}
-
-			return secretValue, nil
+			return action.execute()
 		},
 	})
 
 	return t
+}
+
+type getOrUpdateVaultSecretAction struct {
+	path         string
+	key          string
+	defaultValue string
+	replace      bool
+	bcrypt       bool
+	client       *vault.Client
+}
+
+func (g getOrUpdateVaultSecretAction) execute() (string, error) {
+
+	var secretValue string
+	client := g.client
+	path := g.path
+	key := g.key
+	defaultValue := g.defaultValue
+
+	update := g.replace
+
+	secret, err := client.Logical().Read(path)
+	if err != nil {
+		return "", err
+	}
+
+	if secret != nil && secret.Data != nil {
+
+		if key == "" && len(secret.Data) == 1 {
+			// user didn't specify key, but there is only one
+			// value, so we'll use that
+			for _, v := range secret.Data {
+				secretValue, _ = v.(string)
+				break
+			}
+		} else {
+			value, ok := secret.Data[key]
+			if ok {
+				// secret contained requested key
+				secretValue, _ = value.(string)
+			}
+		}
+	}
+
+	data := make(map[string]interface{})
+	if secret != nil && secret.Data != nil {
+		// There was a secret, it just didn't have the key
+		// we're looking for. We'll keep the data so it doesn't get erased.
+		data = secret.Data
+	}
+
+	if g.bcrypt {
+		// value is stored in bcrypted format
+		var secretNotSet = secretValue == ""
+		var secretHasChanged = bcrypt.CompareHashAndPassword([]byte(secretValue), []byte(defaultValue)) != nil
+		if secretNotSet || secretHasChanged {
+			b, _ := bcrypt.GenerateFromPassword([]byte(defaultValue), 15)
+			secretValue = string(b)
+			update = true
+		}
+	}
+
+	// didn't find the value
+	if secretValue == "" {
+		update = true
+		if defaultValue != "" {
+			// There was a default value, so we'll store that.
+			secretValue = defaultValue
+		} else if !IsInteractive() {
+			// No terminal attached, so we can't ask the user for values.
+			return "", errors.Errorf("no vault secret found at path %q", path)
+		} else {
+			// Prompt the user for the value.
+			secretValue = RequestStringFromUser("No value found in VaultClient at path %q; please provide the value", path)
+		}
+
+		// User didn't provide a key, so we'll set the value under "key"
+		if key == "" {
+			key = "key"
+		}
+	}
+
+	if update {
+		// Store the data in Vault so we'll have it next time.
+		data[key] = secretValue
+		_, err = client.Logical().Write(path, data)
+
+		if err != nil {
+			return "", errors.WithMessage(err, "could not persist provided secret in vault")
+		}
+	}
+
+	return secretValue, nil
 }
 
 func IsInteractive() bool {

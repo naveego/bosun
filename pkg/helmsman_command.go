@@ -80,19 +80,19 @@ type release struct {
 }
 
 type HelmsmanCommand struct {
-	VaultClient      *vault.Client
-	Domain           string
-	Cluster          string
-	HelmsmanFilePath string
-	MarketingRelease string
-	Apply            bool
-	DryRun           bool
-	NoConfirm        bool
-	KeepRenderedFile bool
-	NoVault          bool
-	Values           map[string]string
-	Apps             []string
-	Verbose          bool
+	VaultClient       *vault.Client
+	Domain            string
+	Cluster           string
+	HelmsmanFilePaths []string
+	MarketingRelease  string
+	Apply             bool
+	DryRun            bool
+	NoConfirm         bool
+	KeepRenderedFile  bool
+	NoVault           bool
+	Values            map[string]interface{}
+	Apps              []string
+	Verbose           bool
 }
 
 func (r *HelmsmanCommand) Execute() error {
@@ -101,22 +101,23 @@ func (r *HelmsmanCommand) Execute() error {
 		err error
 	)
 
-	stateBytes, err := r.getStateBytes()
+	th := TemplateHelper{
+		TemplateValues: TemplateValues{
+			Domain:  r.Domain,
+			Cluster: r.Cluster,
+			Values:  r.Values,
+		},
+	}
+	if !r.NoVault {
+		th.VaultClient = r.VaultClient
+	}
+
+	stateYaml, err := th.LoadMergedYaml(r.HelmsmanFilePaths...)
 	if err != nil {
 		return err
 	}
 
-	tmpl, err := r.makeTemplate(stateBytes)
-	if err != nil {
-		return err
-	}
-
-	stateBytes, err = r.render(tmpl)
-	if err != nil {
-		return err
-	}
-
-	stateBytes, err = r.preprocess(stateBytes)
+	stateBytes, err := r.preprocess([]byte(stateYaml))
 	if err != nil {
 		return err
 	}
@@ -210,8 +211,8 @@ func (r *HelmsmanCommand) summarizeAndConfirm(fileContent string) error {
 }
 
 func (r *HelmsmanCommand) executeHelmsman(fileContent string) error {
-
-	helmsmanTempFilePath := fmt.Sprintf("%s-temp-%d.yaml", r.HelmsmanFilePath, time.Now().Unix())
+	helmsmanTempFileName := fmt.Sprintf("helmsman-temp-%d.yaml", time.Now().Unix())
+	helmsmanTempFilePath := filepath.Join(filepath.Dir(r.HelmsmanFilePaths[0]), helmsmanTempFileName)
 	err := ioutil.WriteFile(helmsmanTempFilePath, []byte(fileContent), 0600)
 	if err != nil {
 		return err
@@ -227,6 +228,7 @@ func (r *HelmsmanCommand) executeHelmsman(fileContent string) error {
 		"-f",
 		filepath.Base(helmsmanTempFilePath),
 		"--no-banner",
+		"--keep-untracked-releases",
 	}
 
 	if r.Verbose {
@@ -237,12 +239,6 @@ func (r *HelmsmanCommand) executeHelmsman(fileContent string) error {
 		args = append(args, "--dry-run")
 	} else {
 		args = append(args, "--apply")
-	}
-
-	if len(r.Apps) > 0 {
-		// we're doing a partial release, don't delete things that
-		// were excluded from the rendered state file.
-		args = append(args, "--keep-untracked-releases")
 	}
 
 	cmd := exec.Command("helmsman", args...)
@@ -275,35 +271,4 @@ func (r *HelmsmanCommand) executeHelmsman(fileContent string) error {
 	}
 
 	return nil
-}
-
-func (r *HelmsmanCommand) getStateBytes() ([]byte, error) {
-	var (
-		err               error
-		helmsmanFileBytes []byte
-	)
-	helmsmanFileBytes, err = ioutil.ReadFile(r.HelmsmanFilePath)
-	if err != nil {
-		return nil, err
-	}
-
-	return helmsmanFileBytes, nil
-}
-
-func (r *HelmsmanCommand) makeTemplate(stateBytes []byte) (*template.Template, error) {
-
-	templateString := string(stateBytes)
-
-	b := NewTemplateBuilder(r.HelmsmanFilePath)
-
-	if r.NoVault {
-		b = b.WithDisabledVaultTemplateFunctions()
-	} else {
-		b = b.WithVaultTemplateFunctions(r.VaultClient)
-	}
-
-	tmpl, err := b.WithTemplate(templateString).Build()
-
-	return tmpl, err
-
 }
