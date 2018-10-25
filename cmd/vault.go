@@ -46,7 +46,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
+		vaultClient, err := pkg.NewVaultLowlevelClient(viper.GetString(ArgVaultToken), viper.GetString(ArgVaultAddr))
 		if err != nil {
 			return err
 		}
@@ -103,7 +103,7 @@ Otherwise, this will do nothing.
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
+		vaultClient, err := pkg.NewVaultLowlevelClient(viper.GetString(ArgVaultToken), viper.GetString(ArgVaultAddr))
 		if err != nil {
 			return err
 		}
@@ -230,12 +230,22 @@ func initialize(vaultClient *api.Client) (keys []string, rootToken string, err e
 
 }
 
+const (
+	ArgVaultAddr = "vault-addr"
+	ArgVaultToken = "vault-token"
+)
 
 
 func init() {
-
-
 	vaultCmd.AddCommand(vaultInitCmd)
 
+	addVaultFlags(vaultCmd)
+	addVaultFlags(vaultInitCmd)
+
 	rootCmd.AddCommand(vaultCmd)
+}
+
+func addVaultFlags(cmd *cobra.Command) {
+	cmd.Flags().String(ArgVaultAddr, "", "URL to Vault. Or set VAULT_ADDR.")
+	cmd.Flags().String(ArgVaultToken, "", "Vault token. Or set VAULT_TOKEN.")
 }

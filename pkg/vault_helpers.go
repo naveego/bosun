@@ -6,6 +6,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/api"
+	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
@@ -25,7 +26,7 @@ type VaultLayout struct {
 	Auth      map[string]map[string]interface{}
 	Mounts    map[string]map[string]interface{}
 	Resources map[string]map[string]interface{}
-	Policies  map[string]map[string]interface{}
+	Policies  map[string]interface{}
 }
 
 type TemplateValues struct {
@@ -109,7 +110,7 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, clien
 var lineExtractor = regexp.MustCompile(`line (\d+):`)
 
 func (v *VaultLayout) merge(other *VaultLayout) {
-	v.Policies = mergeMaps(v.Policies, other.Policies)
+	_ = mergo.Merge(&v.Policies, other.Policies)
 	v.Resources = mergeMaps(v.Resources, other.Resources)
 	v.Auth = mergeMaps(v.Auth, other.Auth)
 	v.Mounts = mergeMaps(v.Mounts, other.Mounts)
@@ -227,14 +228,22 @@ func (v VaultLayout) Apply(client *api.Client) error {
 
 	for path, data := range v.Policies {
 		log := Log.WithField("@type", "Policy").WithField("path", path)
-		b, err := json.Marshal(remap(data))
-		if err != nil {
-			recordError(log, data, err)
-			continue
+		var policy string
+		switch d := data.(type){
+		case string:
+			policy = d
+		default:
+			b, err := json.MarshalIndent(remap(d), "", "  ")
+			if err != nil {
+				recordError(log, d, err)
+				continue
+			}
+			policy = string(b)
 		}
-		err = client.Sys().PutPolicy(path, string(b))
+
+		err := client.Sys().PutPolicy(path, policy)
 		if err != nil {
-			recordError(log, data, err)
+			recordError(log, policy, err)
 			continue
 		}
 		log.Info("Policy updated.")
@@ -247,7 +256,7 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	return nil
 }
 
-func remap(m map[string]interface{}) map[string]interface{} {
+func remap(m interface{}) map[string]interface{} {
 	x := ensureJsonMarshallable(m)
 	return x.(map[string]interface{})
 }

@@ -51,7 +51,6 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 
 		verbose := viper.GetBool("verbose")
 		if verbose {
-			fmt.Println("verbose")
 			logrus.SetLevel(logrus.DebugLevel)
 			pkg.Log.Debug("Logging at debug level.")
 		} else {
