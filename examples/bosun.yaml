@@ -1,0 +1,59 @@
+currentEnvironment: red
+environments:
+  - name: red
+    cluster: minikube
+    domain: n5o.red
+    commands:
+      - name: kube
+        command:
+          - kubectl
+          - config
+          - use-context
+          - minikube
+    variables:
+      - name: AWS_DEFAULT_PROFILE
+        value: black
+      - name: VAULT_ADDR
+        value: http://vault.n5o.red
+      - name: VAULT_TOKEN
+        value: root
+  - name: green
+    cluster: green
+    domain: n5o.green
+    commands:
+      - name: kube
+        command:
+          - kubectl
+          - config
+          - use-context
+          - green
+    variables:
+      - name: AWS_DEFAULT_PROFILE
+        value: green
+      - name: VAULT_ADDR
+        value: https://vault.n5o.green
+      - name: VAULT_TOKEN
+        value: root
+  - name: blue
+    cluster: blue
+    domain: n5o.blue
+    commands:
+      - name: kube
+        command:
+          - kubectl
+          - config
+          - use-context
+          - blue
+    variables:
+      - name: AWS_DEFAULT_PROFILE
+        value: blue
+      - name: VAULT_ADDR
+        value: https://vault.n5o.blue
+      - name: VAULT_TOKEN
+        script: |
+          password=$(lpass show --password 5762692479412676749)
+          vault login -method=userpass -format=json username=steve password=$password | jq -r .auth.client_token
+microservices:
+  - name: metabase
+    path: /home/steve/go/src/github.com/naveegoinc/metabase/bosun.yaml
+    values: {}

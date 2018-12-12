@@ -30,6 +30,8 @@ import (
 )
 
 type Script struct {
+	Cluster string
+	Domain string
 	Steps []ScriptStep
 }
 
@@ -60,11 +62,27 @@ var scriptCmd = &cobra.Command{
 			return err
 		}
 
+		g := globalParameters{
+			domain:script.Domain,
+			cluster:script.Cluster,
+		}
+
+		err = g.init()
+		if err != nil {
+			return errors.Wrap(err, "value can be defined in script file or as a parameter")
+		}
+
+		script.Cluster = g.cluster
+		script.Domain = g.domain
+
 		rootDir := filepath.Dir(scriptFilePath)
 
 		exe, err := os.Executable()
 		if err != nil {
 			return err
+		}
+		if !strings.Contains(exe, "bosun") {
+			exe = "bosun" // support working under debugger
 		}
 
 		exe, err = exec.LookPath(exe)
@@ -72,9 +90,21 @@ var scriptCmd = &cobra.Command{
 			return err
 		}
 
-		for i, step := range script.Steps {
+		if len(scriptStepsSlice) == 0 {
+			for i := range script.Steps {
+				scriptStepsSlice = append(scriptStepsSlice, i)
+			}
+		}
+
+		for _, i := range scriptStepsSlice{
+			if i >= len(script.Steps){
+				return errors.Errorf("invalid step %d (there are %d steps)", i, len(script.Steps))
+			}
+			step := script.Steps[i]
 			log := pkg.Log.WithField("step", i).WithField("command", step.Command)
-			log.Info("Executing step")
+			if step.Flags == nil {
+				step.Flags = make(map[string]interface{})
+			}
 
 			var stepArgs []string
 			stepArgs = append(stepArgs, strings.Fields(step.Command)...)
@@ -86,8 +116,17 @@ var scriptCmd = &cobra.Command{
 				stepArgs = append(stepArgs, "--" + ArgGlobalDryRun)
 			}
 
+			step.Flags[ArgGlobalDomain] = script.Domain
+			step.Flags[ArgGlobalCluster] = script.Cluster
+
 			for k, v := range step.Flags {
 				switch vt := v.(type) {
+				case []interface{}:
+					var arr  []string
+					for _, i := range vt {
+						arr = append(arr, fmt.Sprint(i))
+					}
+					stepArgs = append(stepArgs, fmt.Sprintf("--%s", k), strings.Join(arr, ","))
 				case bool:
 					stepArgs = append(stepArgs, fmt.Sprintf("--%s", k))
 				default:
@@ -98,6 +137,8 @@ var scriptCmd = &cobra.Command{
 			for _, v := range step.Args {
 				stepArgs = append(stepArgs, v)
 			}
+
+			log.WithField("args", stepArgs).Info("Executing step")
 
 			err = pkg.NewCommand(exe, stepArgs...).WithDir(rootDir).RunE()
 			if err != nil {
@@ -110,6 +151,17 @@ var scriptCmd = &cobra.Command{
 	},
 }
 
+const (
+	ArgScriptSteps = "steps"
+)
+
+var (
+	scriptStepsSlice []int
+)
+
 func init() {
+
+	scriptCmd.Flags().IntSliceVar(&scriptStepsSlice, ArgScriptSteps, []int{}, "Steps to run (defaults to all steps)")
+
 	rootCmd.AddCommand(scriptCmd)
 }

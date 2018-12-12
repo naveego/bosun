@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/spf13/cobra"
@@ -27,8 +26,8 @@ import (
 
 // helmsmanCmd represents the helmsman command
 var helmsmanCmd = &cobra.Command{
-	Use:   "helmsman {cluster} {helmsman-file} [additional-helmsman-files...}",
-	Args:  cobra.MinimumNArgs(2),
+	Use:   "helmsman {helmsman-file} [additional-helmsman-files...}",
+	Args:  cobra.MinimumNArgs(1),
 	Short: "Deploys a helmsman to a cluster. Supports --dry-run flag.",
 	Long: `This command has environmental pre-reqs:
 - You must be authenticated to vault (with VAULT_ADDR set and either VAULT_TOKEN set or a ~/.vault-token file created by logging in to vault).
@@ -47,18 +46,23 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 		var err error
 		noVault := viper.GetBool(ArgHelmsmanNoVault)
 
-
 		checkExecutableDependency("helm")
+
+		g := globalParameters{}
+		err = g.init()
+		if err != nil {
+			return err
+		}
 
 		var vaultClient *api.Client
 		if !noVault {
-			vaultClient, err = pkg.NewVaultLowlevelClient("", "")
+			vaultClient, err = pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 			if err != nil {
 				return err
 			}
 		}
 
-		helmsmanFile, err := filepath.Abs(args[1])
+		helmsmanFile, err := filepath.Abs(args[0])
 		if err != nil {
 			return err
 		}
@@ -70,8 +74,9 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 
 		r := pkg.HelmsmanCommand{
 			VaultClient:      vaultClient,
-			Cluster:          args[0],
-			HelmsmanFilePaths: args[1:],
+			Cluster:          g.cluster ,
+			Domain: g.domain,
+			HelmsmanFilePaths: args[0:],
 			Apply:            viper.GetBool(ArgHelmsmanApply),
 			NoConfirm:        viper.GetBool(ArgHelmsmanNoConfirm),
 			DryRun:           viper.GetBool(ArgGlobalDryRun),
@@ -82,15 +87,13 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 			Verbose:          viper.GetBool(ArgGlobalVerbose),
 		}
 
-		r.Domain = viper.GetString(ArgHelmsmanDomain)
-		if r.Domain == "" {
-			r.Domain = fmt.Sprintf("n5o.%s", r.Cluster)
-		}
 
 		r.MarketingRelease, err = getMarketingRelease()
 		if err != nil {
 			return err
 		}
+
+		pkg.Log.Debugf("Deploying for release %s", r.MarketingRelease)
 
 
 		values := viper.GetStringSlice(ArgHelmsmanSet)
@@ -108,7 +111,6 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 }
 
 const (
-	ArgHelmsmanDomain           = "domain"
 	ArgHelmsmanMarketingRelease = "marketing-release"
 	ArgHelmsmanApply            = "apply"
 	ArgHelmsmanSet              = "set"
@@ -119,8 +121,6 @@ const (
 )
 
 func init() {
-	rootCmd.AddCommand(helmsmanCmd)
-	helmsmanCmd.Flags().String(ArgHelmsmanDomain, "", "The value of {{ .Domain }} in the template. If not set, will default to '.n5o.{{.Cluster}}'.")
 	helmsmanCmd.Flags().String(ArgHelmsmanMarketingRelease, "", "The value of {{ .MarketingRelease }} in the template. If not set, will default to the current branch.")
 	helmsmanCmd.Flags().Bool(ArgHelmsmanApply, false, "Actually run the deploy (if not set, will render and print the template, then exit).")
 	helmsmanCmd.Flags().Bool(ArgHelmsmanNoConfirm, false, "Suppress all confirmation messages.")
@@ -128,4 +128,6 @@ func init() {
 	helmsmanCmd.Flags().Bool(ArgHelmsmanNoVault, false, "Disable vault integration (secrets will be populated with the string 'disabled').")
 	helmsmanCmd.Flags().StringSlice(ArgHelmsmanSet, []string{}, "Comma-delimited list of value=key pairs to set in the helmsman chart. Available as {{ .Values.value }} in template.")
 	helmsmanCmd.Flags().StringSlice(ArgHelmsmanApps, []string{}, "Comma-delimited list of apps to include (if not set, all apps will be included).")
+
+	rootCmd.AddCommand(helmsmanCmd)
 }

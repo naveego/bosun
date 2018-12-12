@@ -96,6 +96,7 @@ func (c *Command) MustRun()  {
 func (c *Command) RunE() error {
 	c.prepare()
 
+	c.cmd.Stdin = os.Stdin
 	c.cmd.Stdout = os.Stdout
 	c.cmd.Stderr = os.Stderr
 	err := c.cmd.Run()

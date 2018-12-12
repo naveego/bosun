@@ -5,14 +5,25 @@ import (
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 )
+
+func getBosun() (*bosun.Bosun, error) {
+	config, state, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
+	if err != nil {
+		return nil, err
+	}
+
+	return bosun.New(config, state), nil
+}
 
 func checkExecutableDependency(exe string) {
 	path, err := exec.LookPath(exe)
@@ -86,4 +97,70 @@ func getMarketingRelease() (string, error) {
 	}
 
 	return marketingRelease, nil
+}
+
+type globalParameters struct {
+	vaultToken string
+	vaultAddr string
+	cluster string
+	domain string
+}
+
+func (p *globalParameters) init() error {
+
+	if p.domain == "" {
+		p.domain = viper.GetString(ArgGlobalDomain)
+	}
+	if p.domain == "" {
+		return errors.New("domain not set")
+	}
+
+	if p.cluster == "" {
+		p.cluster = viper.GetString(ArgGlobalCluster)
+	}
+	if p.cluster == "" {
+		return errors.New("cluster not set")
+	}
+
+	if p.vaultToken == "" {
+		p.vaultToken = viper.GetString(ArgVaultToken)
+	}
+	if p.vaultToken == "" && p.cluster != "blue" {
+		p.vaultToken = "root"
+	}
+	if p.vaultToken == "" {
+		return errors.New("vault token not set (try setting VAULT_TOKEN)")
+	}
+
+	if p.vaultAddr == "" {
+		p.vaultAddr = viper.GetString(ArgVaultAddr)
+	}
+
+	if p.vaultAddr == "" {
+		switch p.domain {
+		case "n5o.red":
+			p.vaultAddr = "http://vault.n5o.red"
+		default:
+			p.vaultAddr = fmt.Sprintf("https://vault.%s", p.domain)
+		}
+	}
+
+	return nil
+}
+
+func findFileInDirOrAncestors(dir string, filename string) (string, error) {
+	startedAt := dir
+
+	for {
+		if dir == "" || dir == filepath.Dir(dir) {
+			return "", errors.Errorf("file %q not found in %q or any parent", filename, startedAt)
+		}
+		curr := filepath.Join(dir, filename)
+
+		_, err := os.Stat(curr)
+		if err == nil {
+			return curr, nil
+		}
+		dir = filepath.Dir(dir)
+	}
 }

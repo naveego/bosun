@@ -86,15 +86,9 @@ func (h *TemplateHelper) LoadMergedYaml(globs ...string) (string, error) {
 			if len(matches) > 0 {
 				badLine, _ = strconv.Atoi(matches[1])
 			}
-			color.Red("Invalid yaml in %s:", path)
-			lines := strings.Split(yamlString, "\n")
-			for i, line := range lines {
-				if i == badLine {
-					color.Red(line + "\n")
-				} else {
-					fmt.Println(yamlString)
-				}
-			}
+			color.Red("Invalid yaml in %s at line %d:", path, badLine)
+
+			//fmt.Println(yamlString)
 
 			return "", err
 		}

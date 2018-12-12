@@ -51,7 +51,7 @@ error if the chart has already been published.
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		if helmPublishForce{
+		if helmPublishForce {
 			log.Warn("Force publishing all matched charts.")
 		}
 
@@ -63,7 +63,7 @@ error if the chart has already been published.
 		repos, err := pkg.NewCommand("helm repo list").RunOut()
 		check(err, repos)
 		if !strings.Contains(repos, "s3://helm.n5o.black") {
-			pkg.NewCommand("helm repo add helm.n5o.black s3://helm.n5o.black").MustRun()
+			pkg.NewCommand("helm repo add helm.n5o.black s3://helm.n5o.black").WithEnvValue("AWS_DEFAULT_REGION", "us-east-1").MustRun()
 		}
 
 		if len(args) == 0 {
@@ -160,6 +160,46 @@ error if the chart has already been published.
 	},
 }
 
+var helmDeployCmd = &cobra.Command{
+	Use:   "deploy [path]",
+	Args:  cobra.MaximumNArgs(1),
+	Short: "Deploys the current microservice, based on the bosun.yaml file in provided path or current dir.",
+	Long:  `If path is not provided, will use current path. Will recurse up directories looking for bosun.yaml file.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		var dir string
+		var err error
+		if len(args) == 1 {
+			dir = args[0]
+		} else {
+
+			dir, err = os.Getwd()
+			if err != nil {
+				return err
+			}
+		}
+		path, err := findFileInDirOrAncestors(dir, "bosun.yaml")
+		if err != nil {
+			return err
+		}
+
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+
+		ms, err := b.GetOrAddMicroserviceForPath(path)
+		if err != nil {
+			return err
+		}
+
+		err = ms.Deploy()
+
+		return err
+
+	},
+}
+
 var versionExtractor = regexp.MustCompile("version: (.*)")
 
 var (
@@ -170,5 +210,8 @@ func init() {
 	helmPublishCmd.Flags().BoolVarP(&helmPublishForce, ArgPublishChartForce, "f", false, "Force helm to publish the chart even if the version already exists.")
 
 	helmCmd.AddCommand(helmPublishCmd)
+
+	helmCmd.AddCommand(helmDeployCmd)
+
 	rootCmd.AddCommand(helmCmd)
 }

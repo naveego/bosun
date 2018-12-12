@@ -62,12 +62,19 @@ var dashboardTokenCmd = &cobra.Command{
 
 var pullSecretForce bool
 
+const(
+	ArgKubePullSecretUsername = "pull-secret-username"
+	ArgKubePullSecretPassword = "pull-secret-password"
+	ArgKubePullSecretPasswordLpassPath = "pull-secret-password-path"
+)
+
 var pullSecretCmd = &cobra.Command{
-	Use:   "pull-secret {username} [password]",
-	Args:  cobra.RangeArgs(1, 2),
+	Use:   "pull-secret [username] [password]",
+	Args:  cobra.RangeArgs(0, 2),
 	Short: "Sets a pull secret in kubernetes for https://docker.n5o.black.",
-	Long:  `If password parameter is not provided you will be prompted.`,
+	Long:  `If username or password parameter is not provided you will be prompted.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		var err error
 		viper.BindPFlags(cmd.Flags())
 
 		force := viper.GetBool("force")
@@ -80,16 +87,33 @@ var pullSecretCmd = &cobra.Command{
 			}
 		}
 
-
-		username := args[0]
+		var username string
 		var password string
+
+		if len(args) > 0 {
+			username = args[0]
+		} else if viper.GetString(ArgKubePullSecretUsername) != "" {
+			username = viper.GetString(ArgKubePullSecretUsername)
+		} else {
+			username = pkg.RequestStringFromUser("Please provide username")
+		}
+
 		if len(args) == 2 {
 			password = args[1]
+		} else if viper.GetString(ArgKubePullSecretPassword) != "" {
+			password = viper.GetString(ArgKubePullSecretPassword)
+		} else if viper.GetString(ArgKubePullSecretPasswordLpassPath) != "" {
+			path :=  viper.GetString(ArgKubePullSecretPasswordLpassPath)
+			pkg.Log.WithField("path", path ).Info("Trying to get password from LastPass.")
+			password, err = pkg.NewCommand("lpass", "show", "--password", path).RunOut()
+			if err != nil {
+				return err
+			}
 		} else {
 			password = pkg.RequestSecretFromUser("Please provide password for user %s", username)
 		}
 
-		err := pkg.NewCommand("kubectl",
+		err = pkg.NewCommand("kubectl",
 				"create", "secret", "docker-registry",
 				"docker-n5o-black",
 				"--docker-server=https://docker.n5o.black",
@@ -116,6 +140,9 @@ func init() {
 	kubeCmd.AddCommand(dashboardTokenCmd)
 
 	pullSecretCmd.Flags().BoolVarP(&pullSecretForce, "force", "f", false, "Force create (overwrite) the secret even if it already exists.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretUsername, "", "User for pulling from docker harbor.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretPassword, "", "Secret password for pulling from docker harbor.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "Path in LastPass for the password for pulling from docker harbor.")
 	kubeCmd.AddCommand(pullSecretCmd)
 
 	rootCmd.AddCommand(kubeCmd)

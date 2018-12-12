@@ -37,10 +37,11 @@ var rootCmd = &cobra.Command{
 	Short: "Devops tool.",
 	Long: `This is a catchall for devops tooling. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 
 		viper.RegisterAlias("debug", "verbose")
 		viper.BindPFlags(cmd.Flags())
+		viper.BindPFlags(cmd.PersistentFlags())
 
 		logrus.SetFormatter(&logrus.TextFormatter{
 			FullTimestamp: true,
@@ -62,6 +63,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			cmd.SilenceUsage = true
 		}
 
+		return nil
 	},
 }
 
@@ -75,11 +77,12 @@ func Execute() {
 }
 
 const (
-	ArgGlobalVerbose = "verbose"
-	ArgGlobalDryRun  = "dry-run"
-	ArgGlobalCluster ="cluster"
-	ArgGlobalDomain  ="domain"
-	ArgGlobalValues  = "values"
+	ArgGlobalVerbose   = "verbose"
+	ArgGlobalDryRun    = "dry-run"
+	ArgGlobalCluster   ="cluster"
+	ArgGlobalDomain    ="domain"
+	ArgGlobalValues    = "values"
+	ArgBosunConfigFile = "config-file"
 )
 
 func init() {
@@ -87,6 +90,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&step, "step", -1, "The step we are on.")
 	rootCmd.PersistentFlags().MarkHidden("step")
 
+	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 

@@ -65,8 +65,8 @@ type release struct {
 	Version         string   `yaml:"version"`
 	ValuesFile      string   `yaml:"valuesFile"`
 	ValuesFiles     []string `yaml:"valuesFiles"`
-	SecretFile      string   `yaml:"secretFile"`
-	SecretFiles     []string `yaml:"secretFiles"`
+	SecretFile      string   `yaml:"secretsFile"`
+	SecretFiles     []string `yaml:"secretsFiles"`
 	Purge           bool     `yaml:"purge"`
 	Test            bool     `yaml:"test"`
 	Protected       bool     `yaml:"protected"`
@@ -108,19 +108,29 @@ func (r *HelmsmanCommand) Execute() error {
 			Values:  r.Values,
 		},
 	}
+
+	th.TemplateValues.Values["domain"] = r.Domain
+	th.TemplateValues.Values["cluster"] = r.Cluster
+
 	if !r.NoVault {
 		th.VaultClient = r.VaultClient
 	}
+
+	Log.WithField("paths", r.HelmsmanFilePaths).Debug("Loading helmsman files from paths.")
 
 	stateYaml, err := th.LoadMergedYaml(r.HelmsmanFilePaths...)
 	if err != nil {
 		return err
 	}
 
+	Log.Debug("Loaded DSF from paths.")
+
 	stateBytes, err := r.preprocess([]byte(stateYaml))
 	if err != nil {
 		return err
 	}
+
+	Log.Debug("Processed DSF templates...")
 
 	if !r.NoConfirm {
 		err = r.summarizeAndConfirm(string(stateBytes))

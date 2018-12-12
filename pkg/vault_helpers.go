@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 
@@ -83,21 +84,19 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, clien
 
 		err = yaml.Unmarshal([]byte(yamlString), vl)
 		if err != nil {
-			var badLine int
-			matches := lineExtractor.FindStringSubmatch(err.Error())
-			if len(matches) > 0 {
-				badLine, _ = strconv.Atoi(matches[1])
-			}
 			color.Red("Invalid yaml in %s:", path)
-			lines := strings.Split(yamlString, "\n")
-			for i, line := range lines {
-				if i == badLine {
-					color.Red(line + "\n")
-				} else {
-					fmt.Println(yamlString)
+			if err != nil {
+				var badLine int
+				matches := lineExtractor.FindStringSubmatch(err.Error())
+				if len(matches) > 0 {
+					badLine, _ = strconv.Atoi(matches[1])
 				}
-			}
+				color.Red("Invalid yaml in %s at line %d:", path, badLine)
 
+				fmt.Println(yamlString)
+
+				return nil, err
+			}
 			return nil, err
 		}
 
@@ -295,6 +294,8 @@ func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
 
 	vaultConfig := api.DefaultConfig()
 	vaultConfig.Address = vaultAddr
+	vaultConfig.Timeout = 5*time.Second
+	vaultConfig.MaxRetries = 2
 
 	err := vaultConfig.ReadEnvironment()
 	if err != nil {

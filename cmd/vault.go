@@ -15,16 +15,16 @@
 package cmd
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+	"os/user"
 	"strings"
+	"time"
 )
 
 // vaultCmd represents the vault command
@@ -46,7 +46,13 @@ Any values provided using --values will be in {{ .Values.xxx }}
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(viper.GetString(ArgVaultToken), viper.GetString(ArgVaultAddr))
+		g := globalParameters{}
+		err := g.init()
+		if err != nil {
+			return err
+		}
+
+		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err
 		}
@@ -99,149 +105,153 @@ If Vault has not been initialized, this will initialize it and store the keys in
 If Vault is initialized, but sealed, this will unseal it using the keys stored in Kubernetes.
 Otherwise, this will do nothing.
 `,
-	Example:"vault init-dev",
+	Example:"vault bootstrap-dev",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(viper.GetString(ArgVaultToken), viper.GetString(ArgVaultAddr))
+		g := globalParameters{}
+		err := g.init()
 		if err != nil {
 			return err
 		}
 
-		initialized, err := vaultClient.Sys().InitStatus()
+		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err
 		}
 
-		if !initialized {
-			_, _, err = initialize(vaultClient)
-			if err != nil {
-				return err
-			}
-		} else {
-			fmt.Printf("Vault at %q is already initialized.\n", vaultClient.Address())
+		initializer := pkg.VaultInitializer{
+			Client:vaultClient,
 		}
 
-		sealStatus, err := vaultClient.Sys().SealStatus()
-		if err != nil {
-			return err
-		}
-		if sealStatus.Sealed {
-			err = unseal(vaultClient)
-			if err != nil {
-				return err
-			}
-		} else {
-			fmt.Printf("Vault at %q is already unsealed.\n", vaultClient.Address())
-		}
-
-		err = installPlugin(vaultClient)
-
-
+		err = initializer.InitNonProd()
 
 		return err
 	},
 }
 
-func installPlugin(vaultClient *api.Client)error {
-	joseSHA, err := pkg.NewCommand("kubectl exec vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
-	if err != nil {
-		return err
-	}
+var vaultUnsealCmd = &cobra.Command{
+	Use:   "unseal {path/to/keys}",
+	Args: cobra.ExactArgs(1),
+	Short: "Unseals vault using the keys at the provided path, if it exists. Intended to be run from within kubernetes, with the shard secret mounted.",
+	SilenceErrors:true,
+	SilenceUsage:true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
 
-	err = vaultClient.Sys().RegisterPlugin(&api.RegisterPluginInput{
-		Name:"jose",
-		SHA256:joseSHA,
-		Command:"jose-plugin",
-	})
-
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("JOSE plugin installed.")
-	return nil
-}
-
-func unseal(vaultClient *api.Client) error {
-	secretYaml, err := pkg.NewCommand("kubectl get secret vault-unseal-keys -o yaml").RunOut()
-	if err != nil {
-		return err
-	}
-
-
-	var secret map[string]interface{}
-	err = yaml.Unmarshal([]byte(secretYaml), &secret)
-	if err != nil {
-		return err
-	}
-
-	data := secret["data"].(map[interface{}]interface{})
-	for k, v := range data {
-		fmt.Printf("Unsealing with key %v\n", k)
-
-		shard, _ := base64.StdEncoding.DecodeString(v.(string))
-		_, err = vaultClient.Sys().Unseal(string(shard))
+		g := globalParameters{}
+		err := g.init()
 		if err != nil {
 			return err
 		}
-	}
 
-	return nil
+		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		if err != nil {
+			return err
+		}
+
+		initializer := pkg.VaultInitializer{
+			Client:vaultClient,
+		}
+
+		err = initializer.Unseal(args[0])
+
+		return err
+	},
 }
 
-func initialize(vaultClient *api.Client) (keys []string, rootToken string, err error) {
-	err = pkg.NewCommand("kubectl delete secret vault-secret --ignore-not-found=true").RunE()
-	if err != nil {
-		return nil, "", err
-	}
 
-	initResp, err := vaultClient.Sys().Init(&api.InitRequest{
-		SecretShares:1,
-		SecretThreshold:1,
-	})
-	if err != nil {
-		return nil, "", err
-	}
+var vaultJWTCmd = &cobra.Command{
+	Use:   "jwt",
+	Short: "Creates a JWT.",
+	Long: ``,
+	Example:"vault init-dev",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		viper.BindEnv(ArgVaultAddr, "VAULT_ADDR")
+		viper.BindEnv(ArgVaultToken, "VAULT_TOKEN")
 
-	err = pkg.NewCommand("kubectl", "create", "secret", "generic", "vault-root-token", fmt.Sprintf("--from-literal=root=%s", initResp.RootToken)).RunE()
-	if err != nil {
-		return nil, "", err
-	}
-
-	for i, key := range initResp.Keys {
-		fmt.Printf("Seal key %d: %q", i, key)
-		err = pkg.NewCommand("kubectl", "create", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=key%d=%s", i, key)).RunE()
+		g := globalParameters{}
+		err := g.init()
 		if err != nil {
-			return nil, "", err
+			return err
 		}
-	}
 
-	root := initResp.RootToken
+		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		if err != nil {
+			return err
+		}
 
-	vaultClient.SetToken(root)
+		role:=viper.GetString(ArgVaultJWTRole)
+		tenant:=viper.GetString(ArgVaultJWTTenant)
+		sub:=viper.GetString(ArgVaultJWTSub)
+		claimsStrings:=viper.GetStringSlice(ArgVaultJWTClaims)
+		 claims := map[string]string{
+		 	"tid":tenant,
+		 	"sub":sub,
+		 }
+		 for _, c := range claimsStrings {
+		 	segs := strings.Split(c, "=")
+		 	if len(segs) == 2 {
+		 		claims[segs[0]] = segs[1]
+			} else {
+				return errors.Errorf("invalid claim %q (wanted k=v format)", c)
+			}
+		 }
+		 ttl := viper.GetDuration(ArgVaultJWTTTL)
 
-	_, err = vaultClient.Auth().Token().Create(&api.TokenCreateRequest{
-		ID:"root",
-		Policies:[]string{"root"},
-	})
+		req := map[string]interface{}{
+			"claims": claims,
+			"token_ttl": ttl.Seconds(),
+		}
 
-	return initResp.Keys, initResp.RootToken, nil
+		s, err := vaultClient.Logical().Write(fmt.Sprintf("jose/jwt/issue/%s", role), req)
+		if err != nil {
+			return err
+		}
 
+		fmt.Println(s.Data["token"])
+
+		return err
+	},
 }
 
 const (
 	ArgVaultAddr = "vault-addr"
 	ArgVaultToken = "vault-token"
+	ArgVaultJWTRole ="role"
+	ArgVaultJWTTenant ="tenant"
+	ArgVaultJWTSub = "sub"
+	ArgVaultJWTTTL = "ttl"
+	ArgVaultJWTClaims = "claims"
 )
 
 
 func init() {
+
+	sub := "admin"
+	u, err := user.Current()
+	if err == nil {
+		sub = u.Username
+	}
+
+	vaultJWTCmd.Flags().StringP(ArgVaultJWTRole, "r", "auth", "The role to use when creating the token." )
+	vaultJWTCmd.Flags().StringP(ArgVaultJWTTenant, "t", "", "The tenant to set." )
+	vaultJWTCmd.MarkFlagRequired(ArgVaultJWTTenant)
+	vaultJWTCmd.Flags().StringP(ArgVaultJWTSub, "s", sub, "The sub to set." )
+	vaultJWTCmd.Flags().Duration(ArgVaultJWTTTL, 15*time.Minute, "The TTL for the JWT, in go duration format.")
+	vaultJWTCmd.Flags().StringSlice(ArgVaultJWTClaims, []string{}, "Additional claims to set, as k=v pairs. Use the flag multiple times or delimit claims with commas.")
+	addVaultFlags(vaultJWTCmd)
+	vaultCmd.AddCommand(vaultJWTCmd)
+
+
+	addVaultFlags(vaultInitCmd)
 	vaultCmd.AddCommand(vaultInitCmd)
 
-	addVaultFlags(vaultCmd)
-	addVaultFlags(vaultInitCmd)
+	addVaultFlags(vaultUnsealCmd)
+	vaultCmd.AddCommand(vaultUnsealCmd)
 
+	addVaultFlags(vaultCmd)
 	rootCmd.AddCommand(vaultCmd)
 }
 
