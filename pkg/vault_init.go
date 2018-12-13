@@ -45,11 +45,14 @@ func (v VaultInitializer) InitNonProd() error {
 func (v VaultInitializer) installPlugin()error {
 	vaultClient := v.Client
 
+	Log.Debug("Getting hash for JOSE...")
+
 	joseSHA, err := NewCommand("kubectl exec vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
 	if err != nil {
 		return err
 	}
 
+	Log.Debug("Registering JOSE...")
 	err = vaultClient.Sys().RegisterPlugin(&api.RegisterPluginInput{
 		Name:"jose",
 		SHA256:joseSHA,
@@ -60,7 +63,7 @@ func (v VaultInitializer) installPlugin()error {
 		return err
 	}
 
-	fmt.Println("JOSE plugin installed.")
+	Log.Debug("JOSE plugin installed and registered.")
 	return nil
 }
 

@@ -16,10 +16,14 @@ package cmd
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"github.com/fatih/color"
-
 	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
+	"io/ioutil"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -72,7 +76,7 @@ var pullSecretCmd = &cobra.Command{
 	Use:   "pull-secret [username] [password]",
 	Args:  cobra.RangeArgs(0, 2),
 	Short: "Sets a pull secret in kubernetes for https://docker.n5o.black.",
-	Long:  `If username or password parameter is not provided you will be prompted.`,
+	Long:  `If username and password not provided then the value from your docker config will be used.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var err error
 		viper.BindPFlags(cmd.Flags())
@@ -85,32 +89,64 @@ var pullSecretCmd = &cobra.Command{
 				color.Yellow("Pull secret already exists (run with --force parameter to overwrite).")
 				return nil
 			}
+		} else {
+			pkg.NewCommand("kubectl delete secret docker-n5o-black").RunE()
 		}
 
 		var username string
 		var password string
 
-		if len(args) > 0 {
-			username = args[0]
-		} else if viper.GetString(ArgKubePullSecretUsername) != "" {
-			username = viper.GetString(ArgKubePullSecretUsername)
-		} else {
-			username = pkg.RequestStringFromUser("Please provide username")
-		}
-
-		if len(args) == 2 {
-			password = args[1]
-		} else if viper.GetString(ArgKubePullSecretPassword) != "" {
-			password = viper.GetString(ArgKubePullSecretPassword)
-		} else if viper.GetString(ArgKubePullSecretPasswordLpassPath) != "" {
-			path :=  viper.GetString(ArgKubePullSecretPasswordLpassPath)
-			pkg.Log.WithField("path", path ).Info("Trying to get password from LastPass.")
-			password, err = pkg.NewCommand("lpass", "show", "--password", path).RunOut()
-			if err != nil {
-				return err
+		if len(args) == 0 {
+			var dockerConfig map[string]interface{}
+			dockerConfigPath, ok := os.LookupEnv("DOCKER_CONFIG")
+			if !ok {
+				dockerConfigPath = os.ExpandEnv("$HOME/.docker/config.json")
 			}
+			data, err := ioutil.ReadFile(dockerConfigPath)
+			if err != nil{
+				return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, err)
+			}
+
+			err = json.Unmarshal(data, &dockerConfig)
+			if err != nil{
+				return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
+			}
+
+			auths := dockerConfig["auths"].(map[string]interface{})
+			entry := auths["docker.n5o.black"].(map[string]interface{})
+			if entry == nil {
+				return errors.New("no docker.n5o.black entry in docker config, you should docker login first")
+			}
+			authBase64, _ := entry["auth"].(string)
+			auth, err := base64.StdEncoding.DecodeString(authBase64)
+			if err != nil{
+				return errors.Errorf("invalid docker.n5o.black entry in docker config, you should docker login first: %s", err)
+			}
+			segs := strings.Split(string(auth), ":")
+			username, password = segs[0], segs[1]
 		} else {
-			password = pkg.RequestSecretFromUser("Please provide password for user %s", username)
+			if len(args) > 0 {
+				username = args[0]
+			} else if viper.GetString(ArgKubePullSecretUsername) != "" {
+				username = viper.GetString(ArgKubePullSecretUsername)
+			} else {
+				username = pkg.RequestStringFromUser("Please provide username")
+			}
+
+			if len(args) == 2 {
+				password = args[1]
+			} else if viper.GetString(ArgKubePullSecretPassword) != "" {
+				password = viper.GetString(ArgKubePullSecretPassword)
+			} else if viper.GetString(ArgKubePullSecretPasswordLpassPath) != "" {
+				path :=  viper.GetString(ArgKubePullSecretPasswordLpassPath)
+				pkg.Log.WithField("path", path ).Info("Trying to get password from LastPass.")
+				password, err = pkg.NewCommand("lpass", "show", "--password", path).RunOut()
+				if err != nil {
+					return err
+				}
+			} else {
+				password = pkg.RequestSecretFromUser("Please provide password for user %s", username)
+			}
 		}
 
 		err = pkg.NewCommand("kubectl",
@@ -124,14 +160,6 @@ var pullSecretCmd = &cobra.Command{
 			return err
 		}
 
-		err = pkg.NewCommand("kubectl",
-				"create", "secret", "docker-registry",
-				"--namespace=kube-system",
-				"docker-n5o-black",
-				"--docker-server=https://docker.n5o.black",
-				fmt.Sprintf("--docker-username=%s", username),
-				fmt.Sprintf("--docker-password=%s", password),).RunE()
-
 		return err
 	},
 }
@@ -142,7 +170,7 @@ func init() {
 	pullSecretCmd.Flags().BoolVarP(&pullSecretForce, "force", "f", false, "Force create (overwrite) the secret even if it already exists.")
 	pullSecretCmd.Flags().String(ArgKubePullSecretUsername, "", "User for pulling from docker harbor.")
 	pullSecretCmd.Flags().String(ArgKubePullSecretPassword, "", "Secret password for pulling from docker harbor.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "Path in LastPass for the password for pulling from docker harbor.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "FromPath in LastPass for the password for pulling from docker harbor.")
 	kubeCmd.AddCommand(pullSecretCmd)
 
 	rootCmd.AddCommand(kubeCmd)

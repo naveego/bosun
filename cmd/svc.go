@@ -22,6 +22,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"
+	"os/signal"
+	"strings"
+	"text/tabwriter"
+	"time"
 )
 
 // svcCmd represents the svc command
@@ -31,10 +35,10 @@ var svcCmd = &cobra.Command{
 }
 
 var svcListCmd = &cobra.Command{
-	Use:   "list",
-	Aliases:[]string{"ls"},
-	Short: "Lists services",
-	SilenceUsage:true,
+	Use:          "list",
+	Aliases:      []string{"ls"},
+	Short:        "Lists services",
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b, err := getBosun()
@@ -42,17 +46,31 @@ var svcListCmd = &cobra.Command{
 			return err
 		}
 
+		sb := new(strings.Builder)
+		w := new(tabwriter.Writer)
+		w.Init(sb, 0, 8, 2, '\t', 0)
+		fmt.Fprintln(w, "SERVICE\tDEPLOYED\tROUTED TO HOST\t")
 		for _, m := range b.GetMicroservices() {
-			fmt.Printf("%s  	%t\n", m.Config.Name, m.DesiredState.RouteToHost)
+			err = m.LoadActualState()
+			if err != nil {
+				fmt.Fprintf(w, "%s\tError: %s\t\t\n", m.Config.Name, err)
+			} else {
+				fmt.Fprintf(w, "%s\t%t\t%t\n", m.Config.Name, m.ActualState.Deployed, m.ActualState.RouteToHost)
+			}
 		}
+
+		w.Flush()
+
+		fmt.Println(sb.String())
+
 		return nil
 	},
 }
 
 var svcAddCmd = &cobra.Command{
-	Use:   "add [path]",
-	Short: "Adds the microservice at the given path, or the current path. A bosun.yaml file must be in the directory at the given path.",
-	SilenceUsage:true,
+	Use:          "add [path]",
+	Short:        "Adds the microservice at the given path, or the current path. A bosun.yaml file must be in the directory at the given path.",
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		var dir string
@@ -92,10 +110,11 @@ var svcAddCmd = &cobra.Command{
 }
 
 var svcToggleCmd = &cobra.Command{
-	Use:   "toggle [service]",
-	Args:  cobra.MaximumNArgs(1),
-	Short: "Toggles or sets where the service will be run from.",
-	SilenceUsage:true,
+	Use:          "toggle [service] [service...]",
+	Short:        "Toggles or sets where a service will be run from. If service is not specified, the service in the current directory is used.",
+	SilenceUsage: true,
+
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		viper.BindPFlags(cmd.Flags())
@@ -111,44 +130,43 @@ var svcToggleCmd = &cobra.Command{
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to toggle services.")
 		}
-		var ms *bosun.Microservice
-		if len(args) == 1 {
-			ms, err = b.GetMicroservice(args[0])
+
+		var services []*bosun.Microservice
+		if viper.GetBool(ArgSvcToggleAll) {
+			if !viper.GetBool(ArgSvcToggleMinikube) && !viper.GetBool(ArgSvcToggleLocalhost) {
+				return errors.Errorf("--%s or --%s must be set when using the --% flag",
+					ArgSvcToggleLocalhost, ArgSvcToggleMinikube, ArgSvcToggleAll)
+			}
+			services = b.GetMicroservices()
 		} else {
-			wd, _ := os.Getwd()
-			bosunFile, err := findFileInDirOrAncestors(wd, "bosun.yaml")
+			services, err = getMicroservices(b, args)
+		}
+		if err != nil {
+			return err
+		}
+
+		for _, ms := range services {
+			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
+			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
+			if wantsLocalhost {
+				ms.DesiredState.RouteToHost = true
+			} else if wantsMinikube {
+				ms.DesiredState.RouteToHost = false
+			} else {
+				ms.DesiredState.RouteToHost = !ms.DesiredState.RouteToHost
+			}
+
+			if ms.DesiredState.RouteToHost {
+				pkg.Log.Info("Configuring to be served from localhost...")
+			} else {
+				pkg.Log.Info("Configuring to be served from minikube...")
+			}
+
+			err = ms.Deploy()
+
 			if err != nil {
 				return err
 			}
-
-			ms, err = b.GetOrAddMicroserviceForPath(bosunFile)
-		}
-
-		if err != nil {
-			return err
-		}
-
-		wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
-		wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
-		if wantsLocalhost {
-			ms.DesiredState.RouteToHost = true
-		} else if wantsMinikube {
-			ms.DesiredState.RouteToHost = false
-		} else {
-			ms.DesiredState.RouteToHost = !ms.DesiredState.RouteToHost
-		}
-
-		if ms.DesiredState.RouteToHost {
-			pkg.Log.Info("Configuring to be served from localhost...")
-		} else {
-			pkg.Log.Info("Configuring to be served from minikube...")
-		}
-
-
-		err = ms.Deploy()
-
-		if err != nil {
-			return err
 		}
 
 		err = b.Save()
@@ -157,19 +175,100 @@ var svcToggleCmd = &cobra.Command{
 	},
 }
 
+var svcRunCmd = &cobra.Command{
+	Use:          "run [service]",
+	Short:        "Configures a service to have traffic routed to localhost, then runs the service's run command.",
+	SilenceUsage: true,
+	SilenceErrors:true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		viper.BindPFlags(cmd.Flags())
+
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+		c, err := b.GetCurrentEnvironment()
+		if err != nil {
+			return err
+		}
+		if c.Name != "red" {
+			return errors.New("Environment must be set to 'red' to run services.")
+		}
+
+		var services []*bosun.Microservice
+
+		services, err = getMicroservices(b, args)
+		if err != nil {
+			return err
+		}
+
+		service := services[0]
+
+		run, err := service.GetRunCommand()
+		if err != nil {
+			return err
+		}
+
+		err = service.LoadActualState()
+		if err != nil {
+			return err
+		}
+
+		if !service.ActualState.RouteToHost {
+			service.DesiredState.RouteToHost = true
+			err = service.Deploy()
+			if err != nil {
+				return err
+			}
+		}
+
+		err = b.Save()
+
+		done := make(chan struct{})
+		s := make(chan os.Signal)
+		signal.Notify(s, os.Kill, os.Interrupt)
+		log := pkg.Log.WithField("cmd", run.Args)
+
+		go func() {
+			log.Info("Running child process.")
+			err = run.Run()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-s:
+			log.Info("Killing child process.")
+			run.Process.Signal(os.Interrupt)
+		}
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			log.Warn("Child process did not exit when signalled.")
+			run.Process.Kill()
+		}
+
+		return err
+	},
+}
+
 const (
 	ArgSvcToggleLocalhost = "localhost"
-	ArgSvcToggleMinikube = "minikube"
+	ArgSvcToggleMinikube  = "minikube"
+	ArgSvcToggleAll  = "all"
 )
 
 func init() {
 
 	svcCmd.AddCommand(svcToggleCmd)
-	svcToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
-	svcToggleCmd.Flags().Bool(ArgSvcToggleMinikube, false, "Run service at minikube.")
+	svcToggleCmd.Flags().BoolP(ArgSvcToggleLocalhost, "l", false, "Run service at localhost.")
+	svcToggleCmd.Flags().BoolP(ArgSvcToggleMinikube, "m",  false, "Run service at minikube.")
+	svcToggleCmd.Flags().BoolP(ArgSvcToggleAll, "a", false, "Toggle all known microservices.")
 
 	svcCmd.AddCommand(svcListCmd)
 	svcCmd.AddCommand(svcAddCmd)
 
+	svcCmd.AddCommand(svcRunCmd)
 	rootCmd.AddCommand(svcCmd)
 }

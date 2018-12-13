@@ -22,7 +22,46 @@ func getBosun() (*bosun.Bosun, error) {
 		return nil, err
 	}
 
-	return bosun.New(config, state), nil
+	params := bosun.Parameters{
+		Verbose:viper.GetBool(ArgGlobalVerbose),
+		DryRun:viper.GetBool(ArgGlobalDryRun),
+	}
+
+	return bosun.New(params, config, state), nil
+}
+
+// gets one or more microservices matching names.
+// if names is empty, tries to find a microservice starting
+// from the current directory
+func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.Microservice, error){
+
+	var services []*bosun.Microservice
+
+	var err error
+	var ms *bosun.Microservice
+	if len(names) > 0 {
+		for _, name := range names {
+			ms, err = b.GetMicroservice(name)
+			if err != nil {
+				return nil, err
+			}
+			services = append(services, ms)
+		}
+	} else {
+		wd, _ := os.Getwd()
+		bosunFile, err := findFileInDirOrAncestors(wd, "bosun.yaml")
+		if err != nil {
+			return nil, err
+		}
+
+		ms, err = b.GetOrAddMicroserviceForPath(bosunFile)
+		if err != nil {
+			return nil, err
+		}
+		services = append(services, ms)
+	}
+
+	return services, nil
 }
 
 func checkExecutableDependency(exe string) {

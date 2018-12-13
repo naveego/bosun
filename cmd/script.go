@@ -16,138 +16,86 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
-	"github.com/pkg/errors"
+	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-
-	"github.com/spf13/cobra"
+	"text/tabwriter"
 )
 
-type Script struct {
-	Cluster string
-	Domain string
-	Steps []ScriptStep
-}
-
-type ScriptStep struct {
-	Command string
-	Args    []string
-	Flags   map[string]interface{}
-}
-
 var scriptCmd = &cobra.Command{
-	Use:   "script {script-file}",
-	Args:  cobra.ExactArgs(1),
-	Short: "Run a scripted sequence of commands.",
-	Long:  `Provide a script file path.`,
-	SilenceUsage:true,
+	Use:          "script {script-file}",
+	Args:         cobra.ExactArgs(1),
+	Short:        "Run a scripted sequence of commands.",
+	Long:         `Provide a script file path.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		scriptFilePath := args[0]
-		var script Script
-		b, err := ioutil.ReadFile(scriptFilePath)
+		b, err := getBosun()
 		if err != nil {
 			return err
 		}
 
-		err = yaml.Unmarshal(b, &script)
+		script, err := b.GetScript(args[0])
 		if err != nil {
-			return err
-		}
-
-		g := globalParameters{
-			domain:script.Domain,
-			cluster:script.Cluster,
-		}
-
-		err = g.init()
-		if err != nil {
-			return errors.Wrap(err, "value can be defined in script file or as a parameter")
-		}
-
-		script.Cluster = g.cluster
-		script.Domain = g.domain
-
-		rootDir := filepath.Dir(scriptFilePath)
-
-		exe, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		if !strings.Contains(exe, "bosun") {
-			exe = "bosun" // support working under debugger
-		}
-
-		exe, err = exec.LookPath(exe)
-		if err != nil {
-			return err
-		}
-
-		if len(scriptStepsSlice) == 0 {
-			for i := range script.Steps {
-				scriptStepsSlice = append(scriptStepsSlice, i)
-			}
-		}
-
-		for _, i := range scriptStepsSlice{
-			if i >= len(script.Steps){
-				return errors.Errorf("invalid step %d (there are %d steps)", i, len(script.Steps))
-			}
-			step := script.Steps[i]
-			log := pkg.Log.WithField("step", i).WithField("command", step.Command)
-			if step.Flags == nil {
-				step.Flags = make(map[string]interface{})
-			}
-
-			var stepArgs []string
-			stepArgs = append(stepArgs, strings.Fields(step.Command)...)
-			stepArgs = append(stepArgs, "--step", fmt.Sprintf("%d", i))
-			if viper.GetBool(ArgGlobalVerbose) {
-				stepArgs = append(stepArgs, "--" + ArgGlobalVerbose)
-			}
-			if viper.GetBool(ArgGlobalDryRun) {
-				stepArgs = append(stepArgs, "--" + ArgGlobalDryRun)
-			}
-
-			step.Flags[ArgGlobalDomain] = script.Domain
-			step.Flags[ArgGlobalCluster] = script.Cluster
-
-			for k, v := range step.Flags {
-				switch vt := v.(type) {
-				case []interface{}:
-					var arr  []string
-					for _, i := range vt {
-						arr = append(arr, fmt.Sprint(i))
-					}
-					stepArgs = append(stepArgs, fmt.Sprintf("--%s", k), strings.Join(arr, ","))
-				case bool:
-					stepArgs = append(stepArgs, fmt.Sprintf("--%s", k))
-				default:
-					stepArgs = append(stepArgs, fmt.Sprintf("--%s", k), fmt.Sprintf("%v", vt))
-				}
-			}
-
-			for _, v := range step.Args {
-				stepArgs = append(stepArgs, v)
-			}
-
-			log.WithField("args", stepArgs).Info("Executing step")
-
-			err = pkg.NewCommand(exe, stepArgs...).WithDir(rootDir).RunE()
+			scriptFilePath := args[0]
+			var script bosun.Script
+			data, err := ioutil.ReadFile(scriptFilePath)
 			if err != nil {
-				log.WithField("flags", step.Flags).WithField("args", step.Args).Error("Step failed.")
-				return errors.New("script abended")
+				return err
+			}
+
+			err = yaml.Unmarshal(data, &script)
+			if err != nil {
+				return err
 			}
 		}
 
-		return nil
+		err = b.Execute(script, scriptStepsSlice...)
+
+		return err
+	},
+}
+
+var scriptListCmd = &cobra.Command{
+	Use:          "list",
+	Short:        "List scripts from current environment.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+
+		s, err := b.GetScripts()
+		if err != nil {
+			return err
+		}
+
+		if len(s) == 0 {
+			fmt.Println("No scripts in current environment.")
+			return nil
+		}
+
+		fmt.Printf("Found %d scripts.\n", len(s))
+
+		sb := new(strings.Builder)
+		w := new(tabwriter.Writer)
+		w.Init(sb, 0, 8, 2, '\t', 0)
+		fmt.Fprintln(w, "NAME\tPATH\tDESCRIPTION")
+		for _, script := range s {
+			fmt.Fprintf(w, "%s\t%s\t%s\n", script.Name, script.FromPath, script.Description)
+		}
+
+		w.Flush()
+
+		fmt.Println(sb.String())
+
+		return err
 	},
 }
 
@@ -162,6 +110,8 @@ var (
 func init() {
 
 	scriptCmd.Flags().IntSliceVar(&scriptStepsSlice, ArgScriptSteps, []int{}, "Steps to run (defaults to all steps)")
+
+	scriptCmd.AddCommand(scriptListCmd)
 
 	rootCmd.AddCommand(scriptCmd)
 }

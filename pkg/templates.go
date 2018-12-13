@@ -173,7 +173,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				return "", errors.New("cluster parameter was not set")
 			}
 
-			o, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.server}'`, cluster)).RunOut()
+			o, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.server}`, cluster)).RunOut()
 			return o, err
 		},
 		"kube_ca_cert": func(cluster string) (string, error) {
