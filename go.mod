@@ -44,8 +44,7 @@ require (
 	github.com/gogo/protobuf v1.1.1 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
-	github.com/google/go-github v17.0.0+incompatible // indirect
-	github.com/google/go-querystring v1.0.0 // indirect
+	github.com/google/go-github/v20 v20.0.0
 	github.com/google/uuid v1.0.0 // indirect
 	github.com/gotestyourself/gotestyourself v2.1.0+incompatible // indirect
 	github.com/hashicorp/consul v1.2.3 // indirect
@@ -103,7 +102,7 @@ require (
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
 	golang.org/x/crypto v0.0.0-20181001203147-e3636079e1a4
 	golang.org/x/net v0.0.0-20181003013248-f5e5bdd77824 // indirect
-	golang.org/x/oauth2 v0.0.0-20181003184128-c57b0facaced // indirect
+	golang.org/x/oauth2 v0.0.0-20181003184128-c57b0facaced
 	golang.org/x/time v0.0.0-20180412165947-fbb02b2291d2 // indirect
 	google.golang.org/grpc v1.15.0 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
