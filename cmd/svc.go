@@ -131,16 +131,8 @@ var svcToggleCmd = &cobra.Command{
 			return errors.New("Environment must be set to 'red' to toggle services.")
 		}
 
-		var services []*bosun.Microservice
-		if viper.GetBool(ArgSvcToggleAll) {
-			if !viper.GetBool(ArgSvcToggleMinikube) && !viper.GetBool(ArgSvcToggleLocalhost) {
-				return errors.Errorf("--%s or --%s must be set when using the --% flag",
-					ArgSvcToggleLocalhost, ArgSvcToggleMinikube, ArgSvcToggleAll)
-			}
-			services = b.GetMicroservices()
-		} else {
-			services, err = getMicroservices(b, args)
-		}
+
+			services, err := getMicroservices(b, args)
 		if err != nil {
 			return err
 		}
@@ -256,15 +248,17 @@ var svcRunCmd = &cobra.Command{
 const (
 	ArgSvcToggleLocalhost = "localhost"
 	ArgSvcToggleMinikube  = "minikube"
-	ArgSvcToggleAll  = "all"
+	ArgSvcAll             = "all"
+	ArgSvcLabels             = "labels"
 )
 
 func init() {
+	svcCmd.PersistentFlags().BoolP(ArgSvcAll, "a", false, "Apply to all known microservices.")
+	svcCmd.PersistentFlags().StringSliceP(ArgSvcLabels, "L", []string{}, "Apply to microservices with the provided labels.")
 
 	svcCmd.AddCommand(svcToggleCmd)
-	svcToggleCmd.Flags().BoolP(ArgSvcToggleLocalhost, "l", false, "Run service at localhost.")
-	svcToggleCmd.Flags().BoolP(ArgSvcToggleMinikube, "m",  false, "Run service at minikube.")
-	svcToggleCmd.Flags().BoolP(ArgSvcToggleAll, "a", false, "Toggle all known microservices.")
+	svcToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
+	svcToggleCmd.Flags().Bool(ArgSvcToggleMinikube,  false, "Run service at minikube.")
 
 	svcCmd.AddCommand(svcListCmd)
 	svcCmd.AddCommand(svcAddCmd)

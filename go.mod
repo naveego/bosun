@@ -44,6 +44,7 @@ require (
 	github.com/gogo/protobuf v1.1.1 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
+	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v20 v20.0.0
 	github.com/google/uuid v1.0.0 // indirect
 	github.com/gotestyourself/gotestyourself v2.1.0+incompatible // indirect

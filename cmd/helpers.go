@@ -23,8 +23,8 @@ func getBosun() (*bosun.Bosun, error) {
 	}
 
 	params := bosun.Parameters{
-		Verbose:viper.GetBool(ArgGlobalVerbose),
-		DryRun:viper.GetBool(ArgGlobalDryRun),
+		Verbose: viper.GetBool(ArgGlobalVerbose),
+		DryRun:  viper.GetBool(ArgGlobalDryRun),
 	}
 
 	return bosun.New(params, config, state), nil
@@ -33,33 +33,59 @@ func getBosun() (*bosun.Bosun, error) {
 // gets one or more microservices matching names.
 // if names is empty, tries to find a microservice starting
 // from the current directory
-func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.Microservice, error){
+func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.Microservice, error) {
 
 	var services []*bosun.Microservice
-
 	var err error
+
+	all := b.GetMicroservices()
+
+	if viper.GetBool(ArgSvcAll) {
+		return all, nil
+	}
+
+	labels := viper.GetStringSlice(ArgSvcLabels)
+	if len(labels) > 0 {
+		for _, label := range labels {
+			for _, svc := range services {
+				for _, svcLabel := range svc.Config.Labels {
+					if svcLabel == label {
+						services = append(services, svc)
+						goto nextLabel
+					}
+				}
+			}
+		nextLabel:
+		}
+
+		return services, nil
+	}
+
 	var ms *bosun.Microservice
 	if len(names) > 0 {
-		for _, name := range names {
-			ms, err = b.GetMicroservice(name)
-			if err != nil {
-				return nil, err
+		for _, svc := range all {
+			for _, name := range names {
+				if svc.Config.Name == name {
+					services = append(services, svc)
+					goto nextName
+				}
 			}
-			services = append(services, ms)
+		nextName:
 		}
-	} else {
-		wd, _ := os.Getwd()
-		bosunFile, err := findFileInDirOrAncestors(wd, "bosun.yaml")
-		if err != nil {
-			return nil, err
-		}
-
-		ms, err = b.GetOrAddMicroserviceForPath(bosunFile)
-		if err != nil {
-			return nil, err
-		}
-		services = append(services, ms)
+		return services, nil
 	}
+
+	wd, _ := os.Getwd()
+	bosunFile, err := findFileInDirOrAncestors(wd, "bosun.yaml")
+	if err != nil {
+		return nil, err
+	}
+
+	ms, err = b.GetOrAddMicroserviceForPath(bosunFile)
+	if err != nil {
+		return nil, err
+	}
+	services = append(services, ms)
 
 	return services, nil
 }
@@ -140,9 +166,9 @@ func getMarketingRelease() (string, error) {
 
 type globalParameters struct {
 	vaultToken string
-	vaultAddr string
-	cluster string
-	domain string
+	vaultAddr  string
+	cluster    string
+	domain     string
 }
 
 func (p *globalParameters) init() error {
