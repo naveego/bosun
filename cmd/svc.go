@@ -49,13 +49,13 @@ var svcListCmd = &cobra.Command{
 		sb := new(strings.Builder)
 		w := new(tabwriter.Writer)
 		w.Init(sb, 0, 8, 2, '\t', 0)
-		fmt.Fprintln(w, "SERVICE\tDEPLOYED\tROUTED TO HOST\t")
+		fmt.Fprintln(w, "SERVICE\tDEPLOYED\tROUTED TO HOST\tLABELS\t")
 		for _, m := range b.GetMicroservices() {
 			err = m.LoadActualState()
 			if err != nil {
-				fmt.Fprintf(w, "%s\tError: %s\t\t\n", m.Config.Name, err)
+				fmt.Fprintf(w, "%s\tError: %s\n", m.Config.Name, err)
 			} else {
-				fmt.Fprintf(w, "%s\t%t\t%t\n", m.Config.Name, m.ActualState.Deployed, m.ActualState.RouteToHost)
+				fmt.Fprintf(w, "%s\t%t\t%t\t%s\n", m.Config.Name, m.ActualState.Deployed, m.ActualState.RouteToHost, strings.Join(m.Config.Labels, ", "))
 			}
 		}
 

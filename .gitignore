@@ -41,3 +41,4 @@ mage_output_file.go
 .DS_Store
 
 bosun
+!bosun/
