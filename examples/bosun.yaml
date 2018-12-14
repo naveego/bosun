@@ -1,35 +1,31 @@
 currentEnvironment: red
 imports:
-  - /home/steve/src/github.com/naveegoinc/devops/deploy/red.bosun.yaml
-  - /home/steve/go/src/github.com/naveegoinc/metabase/bosun.yaml
-  - /home/steve/go/src/github.com/naveegoinc/frontends/packages/dataflow-ui/bosun.yaml
-  - /home/steve/go/src/github.com/naveegoinc/frontends/packages/mdm-ui/bosun.yaml
-  - /home/steve/go/src/github.com/naveegoinc/go-between/bosun.yaml
+  - $HOME/src/github.com/naveegoinc/devops/deploy/red.bosun.yaml
 environments:
   - name: red
     cluster: minikube
     domain: n5o.red
     variables:
-      - fromPath: /home/steve/.bosun/bosun.yaml
+      - fromPath: $HOME/.bosun/bosun.yaml
         name: AWS_DEFAULT_PROFILE
         value: black
-      - fromPath: /home/steve/.bosun/bosun.yaml
+      - fromPath: $HOME/.bosun/bosun.yaml
         name: VAULT_ADDR
         value: http://vault.n5o.red
-      - fromPath: /home/steve/.bosun/bosun.yaml
+      - fromPath: $HOME/.bosun/bosun.yaml
         name: VAULT_TOKEN
         value: root
   - name: green
     cluster: green
     domain: n5o.green
     variables:
-      - fromPath: /home/steve/.bosun/bosun.yaml
+      - fromPath: $HOME/.bosun/bosun.yaml
         name: AWS_DEFAULT_PROFILE
         value: green
-      - fromPath: /home/steve/.bosun/bosun.yaml
+      - fromPath: $HOME/.bosun/bosun.yaml
         name: VAULT_ADDR
         value: https://vault.n5o.green
-      - fromPath: /home/steve/.bosun/bosun.yaml
+      - fromPath: $HOME/.bosun/bosun.yaml
         name: VAULT_TOKEN
         value: root
 

@@ -1,95 +1,84 @@
----
-version: v1.6.2
----
 
-![helmsman-logo](docs/images/helmsman.png)
 
-# What is Helmsman?
+## Quick Start
 
-Helmsman is a Helm Charts (k8s applications) as Code tool which allows you to automate the deployment/management of your Helm charts from version controlled code.
+1. Install the dependencies below.
+2. Copy ./examples/bosun.yaml to `$HOME/.bosun/bosun.yaml`.
+3. Get the latest version of https://github.com/naveegoinc/devops, branch 2018.2.1. 
+4. `go install github.com/naveego/bosun`
+5. Run `$(bosun env red)` to set the environment variables for the red environment. Run it without the `$()` to see what it does.
+6. Run `bosun script list` to make sure everything is registered. You should see one script, named `up`.
+7. Run `docker stop $(docker ps -q)` to stop all your docker containers.
+8. Clear any hardcoded *.n5o.red entries out of `etc/hosts`.
+9. Run `bosun script up --verbose` to bring up minikube and deploy everything to it. 
+   - You may need to run this a few times if things are slow to come up and subsequent steps time out.
+   - After minikube has started you can run `minikube dashboard` to open the dashboard and see what things have been deployed.
+   - After traefik is up (in the kube-system namespace) you can browse to http://traefik.n5o.red to see its dashboard.
+   - You can browse to things routed through traefik using https if you install the certs in the ./dev/certs folder in the devops repo.
+   
+### Dependencies
 
-# How does it work?
+- Virtualbox (https://www.virtualbox.org/wiki/Downloads) 
+- Minikube (https://github.com/kubernetes/minikube)
+- Kubernetes (https://kubernetes.io/)
+- Helmsman (https://github.com/Praqma/helmsman) 
+    - Currently you need to clone the repo and use my latest pull request:
 
-Helmsman uses a simple declarative [TOML](https://github.com/toml-lang/toml) file to allow you to describe a desired state for your k8s applications as in the [example toml file](https://github.com/Praqma/helmsman/blob/master/example.toml).
-Alternatively YAML declaration is also acceptable [example yaml file](https://github.com/Praqma/helmsman/blob/master/example.yaml).
+      ```sh
+        git clone git@github.com:Praqma/helmsman.git
+        git fetch origin pull/144/head:bosun-branch
+        git checkout bosun-branch
+        go install        
+      ```
 
-The desired state file (DSF) follows the [desired state specification](https://github.com/Praqma/helmsman/blob/master/docs/desired_state_specification.md).
+- Vault (https://www.vaultproject.io/docs/install/index.html)
+- Helm >v2.11.0 (https://github.com/helm/helm) 
+  - Helm diff plugin (https://github.com/databus23/helm-diff)
+  - Helm s3 plugin (https://github.com/hypnoglow/helm-s3)
+- LastPass CLI (https://github.com/lastpass/lastpass-cli) 
+    - To avoid storing passwords in scripts, only needed if you're touching the blue environment.   
 
-Helmsman sees what you desire, validates that your desire makes sense (e.g. that the charts you desire are available in the repos you defined), compares it with the current state of Helm and figures out what to do to make your desire come true.
 
-To plan without executing:
-``` $ helmsman -f example.toml ```
+## How to make microservices available as apps
 
-To plan and execute the plan:
-``` $ helmsman --apply -f example.toml ```
+1. Add a `routeToHost: false` entry in the values.yaml file for your chart.
+2. Make the spec in the service for your chart look like this:
+```yaml
+spec:
+{{- if .Values.routeToHost }}
+  clusterIP: # must be empty to delete clusterIP assigned by kube
+  type: ExternalName
+  # This is a DNS record that points to an IP that resolves to your physical computer
+  # from within minikube. That should be 192.168.99.1 in virtualbox.
+  externalName: minikube-host.n5o.red 
+  ports:
+    - port: # the port your service listens to when running on localhost 
+      targetPort:  # the port your service listens to when running on localhost 
+      protocol: TCP
+      name: http
+{{- else }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  type: {{ .Values.service.type }}
+  selector:
+    app: {{ template "YOUR_MICROSERVICE.name" . }}
+    release: {{ .Release.Name }}
+{{- end}}
 
-To show debugging details:
-``` $ helmsman --debug --apply -f example.toml ```
-
-To run a dry-run:
-``` $ helmsman --debug --dry-run -f example.toml ```
-
-# Features
-
-- **Built for CD**: Helmsman can be used as a docker image or a binary.
-- **Applications as code**: describe your desired applications and manage them from a single version-controlled declarative file.
-- **Suitable for Multitenant Clusters**: deploy Tiller in different namespaces with service accounts and TLS.
-- **Easy to use**: deep knowledge of Helm CLI and Kubectl is NOT mandatory to use Helmsman.
-- **Plan, View, apply**: you can run Helmsman to generate and view a plan with/without executing it.
-- **Portable**: Helmsman can be used to manage charts deployments on any k8s cluster.
-- **Protect Namespaces/Releases**: you can define certain namespaces/releases to be protected against accidental human mistakes.
-- **Define the order of managing releases**: you can define the priorities at which releases are managed by helmsman (useful for dependencies).
-- **Idempotency**: As long your desired state file does not change, you can execute Helmsman several times and get the same result.
-- **Continue from failures**: In the case of partial deployment due to a specific chart deployment failure, fix your helm chart and execute Helmsman again without needing to rollback the partial successes first.
-
-# Install
-
-## From binary
-
-Check the [releases page](https://github.com/Praqma/Helmsman/releases) for the different versions.
+``` 
+3. Add a `bosun.yaml` file in your microservice:
+```yaml
+apps:
+  - name: MICROSERVICE_NAME
+    version: MICROSERVICE_VERSION
+    repo: naveegoinc/REPO
+    chartPath: deploy/charts/MICROSERVICE_NAME #this should be a relative path from the bosun.yaml file
+    runCommand: [ ... ] # a command that will start your microservice on your machine
 ```
-# on Linux
-curl -L https://github.com/Praqma/helmsman/releases/download/v1.6.2/helmsman_1.6.2_linux_amd64.tar.gz | tar zx
-# on MacOS
-curl -L https://github.com/Praqma/helmsman/releases/download/v1.6.2/helmsman_1.6.2_darwin_amd64.tar.gz | tar zx
-
-mv helmsman /usr/local/bin/helmsman
-```
-
-## As a docker image
-Check the images on [dockerhub](https://hub.docker.com/r/praqma/helmsman/tags/)
-
-## As a package
-Helmsman has been packaged in Archlinux under `helmsman-bin` for the latest binary release, and `helmsman-git` for master.
-
-# Documentation
-
-Documentation and How-Tos can be found [here](https://github.com/Praqma/helmsman/blob/master/docs/).
-Helmsman lets you:
-
-- [install/delete/upgrade/rollback your helm charts from code](https://github.com/Praqma/helmsman/blob/master/docs/how_to/manipulate_apps.md).
-- [work safely in a multitenant cluster](https://github.com/Praqma/helmsman/blob/master/docs/how_to/multitenant_clusters_guide.md).
-- [pass secrets/user input to helm charts from environment variables](https://github.com/Praqma/helmsman/blob/master/docs/how_to/pass_secrets_from_env_variables.md).
-- [send Slack notifications from Helmsman](https://github.com/Praqma/helmsman/blob/master/docs/how_to/send_slack_notifications_from_helmsman.md)
-- [test releases when they are first installed](https://github.com/Praqma/helmsman/blob/master/docs/how_to/test_charts.md).
-- [use public and private helm charts](https://github.com/Praqma/helmsman/blob/master/docs/how_to/use_private_helm_charts.md).
-- [use locally developed helm charts (the tar archives)](https://github.com/Praqma/helmsman/blob/master/docs/how_to/use_local_charts.md).
-- [define namespaces to be used in your cluster](https://github.com/Praqma/helmsman/blob/master/docs/how_to/define_namespaces.md).
-- [move charts across namespaces](https://github.com/Praqma/helmsman/blob/master/docs/how_to/move_charts_across_namespaces.md).
-- [protect namespaces/releases against accidental changes](https://github.com/Praqma/helmsman/blob/master/docs/how_to/protect_namespaces_and_releases.md)
-- [Define priorities at which releases are deployed/managed](https://github.com/Praqma/helmsman/blob/master/docs/how_to/use_the_priority_key.md)
-- [Override the defined namespaces to deploy all releases in a specific namespace](https://github.com/Praqma/helmsman/blob/master/docs/how_to/override_defined_namespaces.md)
-
-
-## Usage
-
-Helmsman can be used in three different settings:
-
-- [As a binary with Minikube](https://github.com/Praqma/helmsman/blob/master/docs/how_to/run_helmsman_with_minikube.md).
-- [As a binary with a hosted cluster](https://github.com/Praqma/helmsman/blob/master/docs/how_to/run_helmsman_with_hosted_cluster.md).
-- [As a docker image in a CI system or local machine](https://github.com/Praqma/helmsman/blob/master/docs/how_to/run_helmsman_in_ci.md) Always use a tagged docker image from [dockerhub](https://hub.docker.com/r/praqma/helmsman/) as the `latest` image can (at times) be unstable.
-
-
-# Contributing
-
-Pull requests, feedback/feature requests are welcome. Please check our [contribution guide](CONTRIBUTION.md).
+3. Run `bosun config add {path to bosun file you just created}`.
+4. Run `bosun app list`. You should see your app on the list.
+5. Run `bosun app run {your microservice name}`. Your microservice should start and you should be able to open it in the browser.
+6. Run `bosun app toggle --minikube`. Your microservice will now be served from a container in minikube.
