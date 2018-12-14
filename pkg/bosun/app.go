@@ -11,17 +11,17 @@ import (
 	"strings"
 )
 
-type Microservice struct {
-	bosun *Bosun
-	Config *MicroserviceConfig
-	HelmRelease *HelmRelease
-	DesiredState MicroserviceState
-	ActualState *MicroserviceState
+type App struct {
+	bosun        *Bosun
+	Config       *AppConfig
+	HelmRelease  *HelmRelease
+	DesiredState AppState
+	ActualState  *AppState
 }
 
-func (m *Microservice) LoadActualState() error {
+func (m *App) LoadActualState() error {
 
-	m.ActualState = new(MicroserviceState)
+	m.ActualState = new(AppState)
 
 	log := pkg.Log.WithField("name", m.Config.Name)
 
@@ -49,11 +49,11 @@ func (m *Microservice) LoadActualState() error {
 	return nil
 }
 
-func (m *Microservice) Dir() string {
+func (m *App) Dir() string {
 	return filepath.Dir(m.Config.FromPath)
 }
 
-func (m *Microservice) GetRunCommand() (*exec.Cmd, error) {
+func (m *App) GetRunCommand() (*exec.Cmd, error) {
 
 
 	if m.Config.RunCommand == nil || len(m.Config.RunCommand) == 0{
@@ -68,14 +68,14 @@ func (m *Microservice) GetRunCommand() (*exec.Cmd, error) {
 	return c, nil
 }
 
-func (m *Microservice) Deploy() error {
+func (m *App) Deploy() error {
 
 	if !m.bosun.IsClusterAvailable() {
 		return errors.New("cluster not available")
 	}
 
 	m.DesiredState.Deployed = true
-	m.ActualState = new(MicroserviceState)
+	m.ActualState = new(AppState)
 
 	pkg.Log.Info("Deploying...")
 	status, err := m.GetStatus()
@@ -109,23 +109,23 @@ func (m *Microservice) Deploy() error {
 	return nil
 }
 
-func (m *Microservice) Delete() error {
+func (m *App) Delete() error {
 	return pkg.NewCommand("helm", "delete", "--purge", m.Config.Name).RunE()
 }
 
-func (m *Microservice) Install() error {
+func (m *App) Install() error {
 	args := append([]string{"install", "--name", m.Config.Name, m.Config.ChartPath}, m.makeHelmArgs()...)
 	return pkg.NewCommand("helm", args...).RunE()
 }
 
-func (m *Microservice) Upgrade() error {
+func (m *App) Upgrade() error {
 	args := append([]string{"upgrade", m.Config.Name, m.Config.ChartPath}, m.makeHelmArgs()...)
 	args = append(args, "--set", fmt.Sprintf("routeToHost=%t", m.DesiredState.RouteToHost))
 
 	return pkg.NewCommand("helm", args...).RunE()
 }
 
-func (m *Microservice) GetStatus() (string, error) {
+func (m *App) GetStatus() (string, error) {
 	release, err := m.GetHelmRelease(m.Config.Name)
 	if err != nil {
 		return "", err
@@ -137,7 +137,7 @@ func (m *Microservice) GetStatus() (string, error) {
 	return release.Status, nil
 }
 
-func (m *Microservice) makeHelmArgs() []string {
+func (m *App) makeHelmArgs() []string {
 
 	env, err := m.bosun.GetCurrentEnvironment()
 	if err != nil {
@@ -192,7 +192,7 @@ type HelmRelease struct {
 	Namespace string `yaml:"Namespace"`
 }
 
-func (m *Microservice) GetHelmRelease(name string) (*HelmRelease, error) {
+func (m *App) GetHelmRelease(name string) (*HelmRelease, error) {
 
 	if m.HelmRelease == nil {
 		releases, err := m.GetHelmList(name)
@@ -210,7 +210,7 @@ func (m *Microservice) GetHelmRelease(name string) (*HelmRelease, error) {
 	return m.HelmRelease, nil
 }
 
-func (m *Microservice) GetHelmList(filter ...string) ([]*HelmRelease, error) {
+func (m *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
 	data, err := pkg.NewCommand("helm",  args...).RunOut()

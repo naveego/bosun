@@ -14,7 +14,7 @@ type Bosun struct {
 	params           Parameters
 	config           *Config
 	state            *State
-	microservices    map[string]*Microservice
+	microservices    map[string]*App
 	clusterAvailable *bool
 }
 
@@ -30,25 +30,25 @@ func New(params Parameters, config *Config, state *State) *Bosun {
 	}
 
 	if state.Microservices == nil {
-		state.Microservices = make(map[string]MicroserviceState)
+		state.Microservices = make(map[string]AppState)
 	}
 
 	b := &Bosun{
 		params:        params,
 		config:        config,
 		state:         state,
-		microservices: make(map[string]*Microservice),
+		microservices: make(map[string]*App),
 	}
 
-	for _, m := range config.Microservices {
+	for _, m := range config.Apps {
 		b.addMicroservice(m)
 	}
 
 	return b
 }
 
-func (b *Bosun) addMicroservice(config *MicroserviceConfig) *Microservice {
-	ms := &Microservice{
+func (b *Bosun) addMicroservice(config *AppConfig) *App {
+	ms := &App{
 		bosun:  b,
 		Config: config,
 	}
@@ -57,8 +57,8 @@ func (b *Bosun) addMicroservice(config *MicroserviceConfig) *Microservice {
 	return ms
 }
 
-func (b *Bosun) GetMicroservices() []*Microservice {
-	var ms []*Microservice
+func (b *Bosun) GetMicroservices() []*App {
+	var ms []*App
 
 	for _, x := range b.microservices {
 		ms = append(ms, x)
@@ -89,7 +89,7 @@ func (b *Bosun) GetScript(name string) (*Script, error) {
 	return nil, errors.Errorf("no script in environment %q with name %q", env.Name, name)
 }
 
-func (b *Bosun) GetMicroservice(name string) (*Microservice, error) {
+func (b *Bosun) GetMicroservice(name string) (*App, error) {
 	m, ok := b.microservices[name]
 	if !ok {
 		return nil, errors.Errorf("no service named %q", name)
@@ -97,7 +97,7 @@ func (b *Bosun) GetMicroservice(name string) (*Microservice, error) {
 	return m, nil
 }
 
-func (b *Bosun) GetOrAddMicroserviceForPath(path string) (*Microservice, error) {
+func (b *Bosun) GetOrAddMicroserviceForPath(path string) (*App, error) {
 	for _, m := range b.microservices {
 		if m.Config.FromPath == path {
 			return m, nil
@@ -114,7 +114,7 @@ func (b *Bosun) GetOrAddMicroserviceForPath(path string) (*Microservice, error) 
 	b.config.Merge(c)
 
 	var name string
-	for _, m := range c.Microservices {
+	for _, m := range c.Apps {
 		b.addMicroservice(m)
 		name = m.Name
 	}
@@ -181,7 +181,7 @@ func (b *Bosun) SaveState() error {
 	statePath := getStatePath(b.config.Path)
 
 	state := State{
-		Microservices: make(map[string]MicroserviceState),
+		Microservices: make(map[string]AppState),
 	}
 
 	for _, m := range b.microservices {
@@ -238,7 +238,7 @@ func (b *Bosun) IsClusterAvailable() bool {
 			b.clusterAvailable = &result
 			pkg.Log.Debugf("Cluster is available: %t", result)
 		case <-time.After(2 * time.Second):
-			pkg.Log.Warn("Cluster did not respond quickly, assuming it is unavailable.")
+			pkg.Log.Warn("Cluster did not respond quickly, I will assume it is unavailable.")
 			if cmd.Process != nil {
 				cmd.Process.Kill()
 			}

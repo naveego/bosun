@@ -28,16 +28,16 @@ import (
 	"time"
 )
 
-// svcCmd represents the svc command
-var svcCmd = &cobra.Command{
-	Use:   "svc",
+// appCmd represents the app command
+var appCmd = &cobra.Command{
+	Use:   "app",
 	Short: "Service commands",
 }
 
-var svcListCmd = &cobra.Command{
+var appListCmd = &cobra.Command{
 	Use:          "list",
 	Aliases:      []string{"ls"},
-	Short:        "Lists services",
+	Short:        "Lists apps",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -49,7 +49,7 @@ var svcListCmd = &cobra.Command{
 		sb := new(strings.Builder)
 		w := new(tabwriter.Writer)
 		w.Init(sb, 0, 8, 2, '\t', 0)
-		fmt.Fprintln(w, "SERVICE\tDEPLOYED\tROUTED TO HOST\tLABELS\t")
+		fmt.Fprintln(w, "APP\tDEPLOYED\tROUTED TO HOST\tLABELS\t")
 		for _, m := range b.GetMicroservices() {
 			err = m.LoadActualState()
 			if err != nil {
@@ -67,54 +67,12 @@ var svcListCmd = &cobra.Command{
 	},
 }
 
-var svcAddCmd = &cobra.Command{
-	Use:          "add [path]",
-	Short:        "Adds the microservice at the given path, or the current path. A bosun.yaml file must be in the directory at the given path.",
+
+var appToggleCmd = &cobra.Command{
+	Use:          "toggle [name] [name...]",
+	Short:        "Toggles or sets where traffic for an app will be routed to.",
+	Long:"If app is not specified, the first app in the nearest bosun.yaml file is used.",
 	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-
-		var dir string
-		var err error
-		if len(args) == 1 {
-			dir = args[0]
-		} else {
-			dir, err = os.Getwd()
-			if err != nil {
-				return err
-			}
-		}
-		path, err := findFileInDirOrAncestors(dir, "bosun.yaml")
-		if err != nil {
-			return err
-		}
-
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
-
-		m, err := b.GetOrAddMicroserviceForPath(path)
-		if err != nil {
-			return err
-		}
-
-		err = b.Save()
-		if err != nil {
-			return err
-		}
-
-		pkg.Log.WithField("name", m.Config.Name).Info("Added microservice.")
-
-		return nil
-	},
-}
-
-var svcToggleCmd = &cobra.Command{
-	Use:          "toggle [service] [service...]",
-	Short:        "Toggles or sets where a service will be run from. If service is not specified, the service in the current directory is used.",
-	SilenceUsage: true,
-
-
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		viper.BindPFlags(cmd.Flags())
@@ -167,9 +125,9 @@ var svcToggleCmd = &cobra.Command{
 	},
 }
 
-var svcRunCmd = &cobra.Command{
-	Use:          "run [service]",
-	Short:        "Configures a service to have traffic routed to localhost, then runs the service's run command.",
+var appRunCmd = &cobra.Command{
+	Use:          "run [app]",
+	Short:        "Configures an app to have traffic routed to localhost, then runs the apps's run command.",
 	SilenceUsage: true,
 	SilenceErrors:true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -188,7 +146,7 @@ var svcRunCmd = &cobra.Command{
 			return errors.New("Environment must be set to 'red' to run services.")
 		}
 
-		var services []*bosun.Microservice
+		var services []*bosun.App
 
 		services, err = getMicroservices(b, args)
 		if err != nil {
@@ -253,16 +211,15 @@ const (
 )
 
 func init() {
-	svcCmd.PersistentFlags().BoolP(ArgSvcAll, "a", false, "Apply to all known microservices.")
-	svcCmd.PersistentFlags().StringSliceP(ArgSvcLabels, "L", []string{}, "Apply to microservices with the provided labels.")
+	appCmd.PersistentFlags().BoolP(ArgSvcAll, "a", false, "Apply to all known microservices.")
+	appCmd.PersistentFlags().StringSliceP(ArgSvcLabels, "L", []string{}, "Apply to microservices with the provided labels.")
 
-	svcCmd.AddCommand(svcToggleCmd)
-	svcToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
-	svcToggleCmd.Flags().Bool(ArgSvcToggleMinikube,  false, "Run service at minikube.")
+	appCmd.AddCommand(appToggleCmd)
+	appToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
+	appToggleCmd.Flags().Bool(ArgSvcToggleMinikube,  false, "Run service at minikube.")
 
-	svcCmd.AddCommand(svcListCmd)
-	svcCmd.AddCommand(svcAddCmd)
+	appCmd.AddCommand(appListCmd)
 
-	svcCmd.AddCommand(svcRunCmd)
-	rootCmd.AddCommand(svcCmd)
+	appCmd.AddCommand(appRunCmd)
+	rootCmd.AddCommand(appCmd)
 }

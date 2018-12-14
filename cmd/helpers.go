@@ -33,9 +33,9 @@ func getBosun() (*bosun.Bosun, error) {
 // gets one or more microservices matching names.
 // if names is empty, tries to find a microservice starting
 // from the current directory
-func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.Microservice, error) {
+func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 
-	var services []*bosun.Microservice
+	var services []*bosun.App
 	var err error
 
 	all := b.GetMicroservices()
@@ -61,7 +61,7 @@ func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.Microservice, er
 		return services, nil
 	}
 
-	var ms *bosun.Microservice
+	var ms *bosun.App
 	if len(names) > 0 {
 		for _, svc := range all {
 			for _, name := range names {

@@ -10,29 +10,30 @@ import (
 )
 
 type Config struct {
-	CurrentEnvironment string                `yaml:"currentEnvironment"`
-	Repo               string                `yaml:"repo,omitempty"`
-	Imports            []string              `yaml:"imports,omitempty"`
-	Environments       []*EnvironmentConfig  `yaml:"environments"`
-	Microservices      []*MicroserviceConfig `yaml:"microservices"`
-	Path               string                `yaml:"-"`
+	CurrentEnvironment string               `yaml:"currentEnvironment"`
+	Repo               string               `yaml:"repo,omitempty"`
+	Imports            []string             `yaml:"imports,omitempty"`
+	Environments       []*EnvironmentConfig `yaml:"environments"`
+	Apps               []*AppConfig         `yaml:"apps"`
+	Path               string               `yaml:"-"`
 }
 
 type State struct {
-	Microservices map[string]MicroserviceState
+	Microservices map[string]AppState
 }
 
-type MicroserviceConfig struct {
-	FromPath   string                        `yaml:"fromPath,omitempty"`
-	Name       string                        `yaml:"name"`
-	Repo       string                        `yaml:"repo,omitempty"`
-	Version    string                        `yaml:"version,omitempty"`
-	ChartPath  string                        `yaml:"chartPath,omitempty"`
-	RunCommand []string                      `yaml:"runCommand,omitempty"`
-	DependsOn  []Dependency                  `yaml:"dependsOn,omitempty"`
-	Labels     []string                      `yaml:"labels,omitempty"`
-	Values     map[string]MicroserviceValues `yaml:"values,omitempty"`
-	Error      error                         `yaml:"-"`
+type AppConfig struct {
+	FromPath   string               `yaml:"fromPath,omitempty"`
+	Name       string               `yaml:"name"`
+	Namespace string 				`yaml:"namespace,omitempty"`
+	Repo       string               `yaml:"repo,omitempty"`
+	Version    string               `yaml:"version,omitempty"`
+	ChartPath  string               `yaml:"chartPath,omitempty"`
+	RunCommand []string             `yaml:"runCommand,omitempty"`
+	DependsOn  []Dependency         `yaml:"dependsOn,omitempty"`
+	Labels     []string             `yaml:"labels,omitempty"`
+	Values     map[string]AppValues `yaml:"values,omitempty"`
+	Error      error                `yaml:"-"`
 }
 
 type Dependency struct {
@@ -40,12 +41,12 @@ type Dependency struct {
 	Repo string `yaml:"repo"`
 }
 
-type MicroserviceValues struct {
+type AppValues struct {
 	Set   map[string]string `yaml:"set,omitempty"`
 	Files []string          `yaml:"files,omitempty"`
 }
 
-type MicroserviceState struct {
+type AppState struct {
 	Branch      string `yaml:"branch"`
 	Deployed    bool   `yaml:"deployed"`
 	RouteToHost bool   `yaml:"routeToHost"`
@@ -99,7 +100,7 @@ func LoadConfig(path string) (*Config, *State, error) {
 		}
 	}
 
-	for _, m := range c.Microservices {
+	for _, m := range c.Apps {
 		m.FromPath = c.Path
 	}
 
@@ -163,11 +164,11 @@ func (c *Config) Unmerge(toPath string) *Config {
 		config.Environments = append(config.Environments, o)
 	}
 
-	for _, m := range c.Microservices {
+	for _, m := range c.Apps {
 		if shouldMerge(m.FromPath, toPath) {
 			m2 := *m
 			m2.FromPath = ""
-			config.Microservices = append(config.Microservices, &m2)
+			config.Apps = append(config.Apps, &m2)
 		}
 	}
 
@@ -180,21 +181,21 @@ func (c *Config) Merge(other *Config) error {
 		c.mergeEnvironment(otherEnv)
 	}
 
-	for _, otherSvc := range other.Microservices {
-		c.mergeMicroservice(otherSvc)
+	for _, otherSvc := range other.Apps {
+		c.mergeApp(otherSvc)
 	}
 
 	return nil
 }
 
-func (c *Config) mergeMicroservice(svc *MicroserviceConfig) error {
-	for _, e := range c.Microservices {
+func (c *Config) mergeApp(svc *AppConfig) error {
+	for _, e := range c.Apps {
 		if e.Name == svc.Name {
 			return errors.Errorf("duplicate microservice: %q is defined in %q and %q", svc.Name, svc.FromPath, e.FromPath)
 		}
 	}
 
-	c.Microservices = append(c.Microservices, svc)
+	c.Apps = append(c.Apps, svc)
 
 	return nil
 }
