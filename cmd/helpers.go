@@ -17,7 +17,7 @@ import (
 )
 
 func getBosun() (*bosun.Bosun, error) {
-	config, state, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
+	config, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func getBosun() (*bosun.Bosun, error) {
 		DryRun:  viper.GetBool(ArgGlobalDryRun),
 	}
 
-	return bosun.New(params, config, state), nil
+	return bosun.New(params, config), nil
 }
 
 // gets one or more microservices matching names.

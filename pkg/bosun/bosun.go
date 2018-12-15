@@ -12,8 +12,8 @@ import (
 
 type Bosun struct {
 	params           Parameters
-	config           *Config
-	state            *State
+	rootConfig           *RootConfig
+	config *Config
 	microservices    map[string]*App
 	clusterAvailable *bool
 }
@@ -23,37 +23,30 @@ type Parameters struct {
 	DryRun  bool
 }
 
-func New(params Parameters, config *Config, state *State) *Bosun {
+func New(params Parameters, rootConfig *RootConfig) *Bosun {
 
-	if state == nil {
-		state = new(State)
-	}
-
-	if state.Microservices == nil {
-		state.Microservices = make(map[string]AppState)
-	}
 
 	b := &Bosun{
 		params:        params,
-		config:        config,
-		state:         state,
+		rootConfig:        rootConfig,
+		config: rootConfig.MergedConfig,
 		microservices: make(map[string]*App),
 	}
 
-	for _, m := range config.Apps {
-		b.addMicroservice(m)
+	for _, a := range b.config.Apps {
+		b.addApp(a)
 	}
 
 	return b
 }
 
-func (b *Bosun) addMicroservice(config *AppConfig) *App {
+func (b *Bosun) addApp(config *AppConfig) *App {
 	ms := &App{
 		bosun:  b,
 		Config: config,
 	}
 	b.microservices[config.Name] = ms
-	ms.DesiredState = b.state.Microservices[config.Name]
+	ms.DesiredState = b.rootConfig.AppStates[config.Name]
 	return ms
 }
 
@@ -104,22 +97,23 @@ func (b *Bosun) GetOrAddMicroserviceForPath(path string) (*App, error) {
 		}
 	}
 
-	c, _, err := LoadConfig(path)
+	err := b.rootConfig.importFromPath(path)
+
 	if err != nil {
 		return nil, err
 	}
 
 	pkg.Log.WithField("path", path).Debug("New microservice found at path.")
 
-	b.config.Merge(c)
+	imported := b.rootConfig.ImportedConfigs[path]
 
 	var name string
-	for _, m := range c.Apps {
-		b.addMicroservice(m)
+	for _, m := range imported.Apps {
+		b.addApp(m)
 		name = m.Name
 	}
 
-	err = b.SaveConfig()
+	err = b.Save()
 	if err != nil {
 		return nil, err
 	}
@@ -151,18 +145,10 @@ func (b *Bosun) GetCurrentEnvironment() (*EnvironmentConfig, error) {
 	return nil, errors.Errorf("current environment %q does not exist", b.config.CurrentEnvironment)
 }
 
+
 func (b *Bosun) Save() error {
-	err := b.SaveConfig()
-	if err != nil {
-		return err
-	}
 
-	return b.SaveState()
-}
-
-func (b *Bosun) SaveConfig() error {
-
-	config := b.config.Unmerge(b.config.Path)
+	config := b.rootConfig
 
 	data, err := yaml.Marshal(config)
 	if err != nil {
@@ -172,30 +158,6 @@ func (b *Bosun) SaveConfig() error {
 	err = ioutil.WriteFile(config.Path, data, 0700)
 	if err != nil {
 		return errors.Wrap(err, "writing for save")
-	}
-
-	return nil
-}
-
-func (b *Bosun) SaveState() error {
-	statePath := getStatePath(b.config.Path)
-
-	state := State{
-		Microservices: make(map[string]AppState),
-	}
-
-	for _, m := range b.microservices {
-		state.Microservices[m.Config.Name] = m.DesiredState
-	}
-
-	data, err := yaml.Marshal(state)
-	if err != nil {
-		return errors.Wrap(err, "marshalling state")
-	}
-
-	err = ioutil.WriteFile(statePath, data, 0700)
-	if err != nil {
-		return errors.Wrap(err, "writing state")
 	}
 
 	return nil

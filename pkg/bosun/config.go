@@ -2,12 +2,20 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
+
+type RootConfig struct {
+	Path               string               `yaml:"-"`
+	CurrentEnvironment string               `yaml:"currentEnvironment"`
+	Imports            []string             `yaml:"imports,omitempty"`
+	AppStates               map[string]AppState         `yaml:"appStates"`
+	MergedConfig *Config `yaml:"-"`
+	ImportedConfigs map[string]*Config `yaml:"-"`
+}
 
 type Config struct {
 	CurrentEnvironment string               `yaml:"currentEnvironment"`
@@ -16,6 +24,7 @@ type Config struct {
 	Environments       []*EnvironmentConfig `yaml:"environments"`
 	Apps               []*AppConfig         `yaml:"apps"`
 	Path               string               `yaml:"-"`
+	RootConfig *Config `yaml:"-"`
 }
 
 type State struct {
@@ -52,7 +61,11 @@ type AppState struct {
 	RouteToHost bool   `yaml:"routeToHost"`
 }
 
-func LoadConfig(path string) (*Config, *State, error) {
+func (a *AppConfig) SetFromPath(path string) {
+	a.FromPath = path
+}
+
+func LoadConfig(path string) (*RootConfig, error) {
 	defaultPath := os.ExpandEnv("$HOME/.bosun/bosun.yaml")
 	if path == "" {
 		path = defaultPath
@@ -60,76 +73,93 @@ func LoadConfig(path string) (*Config, *State, error) {
 		path = os.ExpandEnv(path)
 	}
 
-	b, err := ioutil.ReadFile(path)
+	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && path == defaultPath {
-			err = os.MkdirAll(filepath.Dir(defaultPath), 0700)
+			err = os.MkdirAll(filepath.Dir(defaultPath), 0600)
 			if err != nil {
-				return nil, nil, errors.Errorf("could not create directory for default config file path: %s", err)
+				return nil, errors.Errorf("could not create directory for default config file path: %s", err)
 			}
 			f, err := os.Open(defaultPath)
 			if err != nil {
-				return nil, nil, errors.Errorf("could not create default config file: %s", err)
+				return nil, errors.Errorf("could not create default config file: %s", err)
 			}
 			f.Close()
 		} else {
-			return nil, nil, err
+			return nil, err
 		}
+	}
+
+	c := &RootConfig{
+		Path: path,
+		AppStates: map[string]AppState{},
+		ImportedConfigs: map[string]*Config{},
+		MergedConfig: new(Config),
+	}
+
+	err = pkg.LoadYaml(path, &c)
+	if err != nil {
+		return nil, errors.Wrap(err, "loading root config")
+	}
+
+	for _, importPath := range c.Imports {
+
+		err = c.importFromPath(importPath)
+		if err != nil {
+			pkg.Log.WithError(err).Error("Error importing config.")
+		}
+	}
+
+	return c, nil
+}
+
+func (r *RootConfig) importFromPath(path string) error {
+	log := pkg.Log.WithField("import_path", path)
+	log.Debug("Importing config...")
+
+	if r.ImportedConfigs[path] != nil {
+		log.Info("Already imported.")
+		return nil
 	}
 
 	c := &Config{
 		Path: path,
 	}
 
-	err = yaml.Unmarshal(b, c)
+	err := pkg.LoadYaml(path, &c)
 
 	if err != nil {
-		return nil, nil, err
+		return errors.Errorf("yaml error loading %q: %s", path, err)
 	}
 
 	for _, e := range c.Environments {
-		e.FromPath = c.Path
-		for i := range e.Scripts {
-			e.Scripts[i].FromPath = c.Path
-		}
-		for i := range e.Variables {
-			e.Variables[i].FromPath = c.Path
-		}
-		for i := range e.Commands {
-			e.Variables[i].FromPath = c.Path
-		}
+		e.SetFromPath(path)
 	}
 
 	for _, m := range c.Apps {
-		m.FromPath = c.Path
+		m.SetFromPath(c.Path)
 	}
 
-	statePath := getStatePath(path)
-	b, err = ioutil.ReadFile(statePath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, nil, errors.Wrap(err, "loading state file")
-	}
-	var state *State
-	err = yaml.Unmarshal(b, &state)
+	err = r.MergedConfig.Merge(c)
+
 	if err != nil {
-		return nil, nil, err
+		return errors.Errorf("merge error loading %q: %s", path, err)
 	}
+
+	log.Debug("Import complete.")
+
+	r.ImportedConfigs[path]=c
 
 	for _, importPath := range c.Imports {
-
-		other, _, err := LoadConfig(importPath)
+		err = r.importFromPath(importPath)
 		if err != nil {
-			return nil, nil, errors.Errorf("failed to load imported config from %q: %s", importPath, err)
-		}
-
-		err = c.Merge(other)
-		if err != nil {
-			return nil, nil, errors.Errorf("failed to merge imported config from %q: %s", importPath, err)
+			return errors.Errorf("error with config imported to %q: %s", path)
 		}
 	}
 
-	return c, state, err
+	return nil
 }
+
 
 func (c *Config) Unmerge(toPath string) *Config {
 
