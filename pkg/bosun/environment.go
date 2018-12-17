@@ -3,6 +3,7 @@ package bosun
 import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"os"
 )
 
 type EnvironmentConfig struct {
@@ -19,7 +20,7 @@ type EnvironmentVariable struct {
 	FromPath string        `yaml:"fromPath,omitempty"`
 	Name     string        `yaml:"name"`
 	From     *DynamicValue `yaml:"from"`
-	Value string `yaml:"-"`
+	Value    string        `yaml:"-"`
 }
 
 type EnvironmentCommand struct {
@@ -50,7 +51,10 @@ func (e *EnvironmentVariable) Ensure() error {
 		return nil
 	}
 
+
 	if e.Value != "" {
+		// set the value in the process environment
+		os.Setenv(e.Name, e.Value)
 		return nil
 	}
 
@@ -62,10 +66,13 @@ func (e *EnvironmentVariable) Ensure() error {
 	e.Value, err = e.From.Resolve(ctx)
 
 	if err != nil {
-		return errors.Errorf("error populating variable %q", e.Name, err)
+		return errors.Errorf("error populating variable %q: %s", e.Name, err)
 	}
 
-	log.Debug("Resolved value.")
+	log.WithField("value", e.Value).Debug("Resolved value.")
+
+	// set the value in the process environment
+	os.Setenv(e.Name, e.Value)
 
 	return nil
 }

@@ -48,7 +48,7 @@ func (c *Command) WithEnvValue(key,value string) *Command{
 }
 
 func (c *Command) WithArgs(args ...string) *Command{
-	c.Args = args
+	c.Args = append(c.Args, args...)
 	return c
 }
 
@@ -57,13 +57,17 @@ func (c *Command) WithCommand(cmd string) *Command{
 	return c
 }
 
+func (c *Command) GetCmd() *exec.Cmd {
+	c.prepare()
+	return c.cmd
+}
+
 func (c *Command) prepare() {
 
 
 	if c.cmd != nil{
 		return
 	}
-
 
 	if c.Command != nil {
 		segs := strings.Fields(*c.Command)
@@ -74,7 +78,9 @@ func (c *Command) prepare() {
 		c.Command = &command
 	}
 
-	c.cmd = exec.Command(*c.Exe, c.Args...)
+	exe, _ := exec.LookPath(*c.Exe)
+
+	c.cmd = exec.Command(exe, c.Args...)
 
 	if c.Dir != nil {
 		c.cmd.Dir = *c.Dir
@@ -82,7 +88,7 @@ func (c *Command) prepare() {
 
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
-	Log.WithField("command", *c.Command).WithField("env", c.Env).Debug("Command prepared.")
+	Log.WithField("exe", exe).WithField("args", c.Args).WithField("env", c.Env).Debug("Command prepared.")
 
 	c.prepared = true
 }

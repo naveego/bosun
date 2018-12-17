@@ -46,7 +46,7 @@ require (
 	github.com/google/go-cmp v0.2.0 // indirect
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v20 v20.0.0
-	github.com/google/uuid v1.0.0 // indirect
+	github.com/google/uuid v1.0.0
 	github.com/gotestyourself/gotestyourself v2.1.0+incompatible // indirect
 	github.com/hashicorp/consul v1.2.3 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.0 // indirect
@@ -70,7 +70,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jefferai/jsonx v0.0.0-20160721235117-9cc31c3135ee // indirect
 	github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a // indirect
-	github.com/keybase/go-crypto v0.0.0-20180920171116-0b2a91ace448
+	github.com/keybase/go-crypto v0.0.0-20180920171116-0b2a91ace448 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/lib/pq v1.0.0 // indirect
 	github.com/lunixbochs/vtclean v0.0.0-20180621232353-2d01aacdc34a // indirect
@@ -83,6 +83,9 @@ require (
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.0.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.0.0 // indirect
+	github.com/mitsuse/progress-go v0.0.0-20141019171308-a02be359a572
+	github.com/onsi/ginkgo v1.7.0
+	github.com/onsi/gomega v1.4.3
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.1.1 // indirect
@@ -96,6 +99,7 @@ require (
 	github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e
 	github.com/prometheus/procfs v0.0.0-20180920065004-418d78d0b9a7 // indirect
 	github.com/ryanuber/go-glob v0.0.0-20170128012129-256dc444b735 // indirect
+	github.com/schollz/progressbar v1.0.0
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sirupsen/logrus v1.1.0
 	github.com/spf13/cobra v0.0.3

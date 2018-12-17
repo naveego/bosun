@@ -4,14 +4,49 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"os"
 	"runtime"
+	"strings"
 )
 
 type DynamicValue struct {
-	Value   string                   `yaml:"value:omitempty"`
-	Command []string                 `yaml:"command,omitempty"`
-	Script  string                   `yaml:"script,omitempty"`
-	OS      map[string]*DynamicValue `yaml:"os,omitempty"`
+	Value    string                   `yaml:"value,omitempty"`
+	Command  []string                 `yaml:"command,omitempty"`
+	Script   string                   `yaml:"script,omitempty"`
+	OS       map[string]*DynamicValue `yaml:"os,omitempty"`
 	resolved bool
+}
+
+type dynamicValueUnmarshall DynamicValue
+
+func (d *DynamicValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+
+	var s string
+	var c []string
+	var u dynamicValueUnmarshall
+
+	err := unmarshal(&s)
+	if err == nil {
+		multiline := len(strings.Split(s, "\n")) > 1
+		if multiline {
+			u.Script = s
+		} else {
+			u.Value = s
+		}
+		goto Convert
+	}
+
+	err = unmarshal(&c)
+	if err == nil {
+		u.Command = c
+		goto Convert
+	}
+
+	err = unmarshal(&u)
+	
+	Convert:
+	x := DynamicValue(u)
+	*d = x
+
+	return err
 }
 
 type ResolveContext struct {

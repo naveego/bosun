@@ -99,8 +99,8 @@ func (v VaultInitializer) Unseal(path string) error {
 			keys = append(keys, string(shard))
 		}
 	} else {
-		files, _ := filepath.Glob(path +"/key*")
-		Log.WithField("files", files).Debug("Found key files.")
+		files, _ := filepath.Glob(path +"/Key*")
+		Log.WithField("files", files).Debug("Found Key files.")
 		for _, file := range files {
 			key, _ := ioutil.ReadFile(file)
 			keys = append(keys, string(key))
@@ -109,7 +109,7 @@ func (v VaultInitializer) Unseal(path string) error {
 
 
 	for k, v := range keys {
-		fmt.Printf("Unsealing with key %v: %q\n", k, v)
+		fmt.Printf("Unsealing with Key %v: %q\n", k, v)
 		_, err = vaultClient.Sys().Unseal(v)
 		if err != nil {
 			return err
@@ -142,9 +142,9 @@ func (v VaultInitializer) initialize() (keys []string, rootToken string, err err
 	}
 
 	for i, key := range initResp.Keys {
-		fmt.Printf("Seal key %d: %q", i, key)
+		fmt.Printf("Seal Key %d: %q", i, key)
 
-		err = NewCommand("kubectl", "create", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=key%d=%s", i, key)).RunE()
+		err = NewCommand("kubectl", "create", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=Key%d=%s", i, key)).RunE()
 		if err != nil {
 			return nil, "", err
 		}

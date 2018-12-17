@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/google/uuid"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -160,6 +161,58 @@ var vaultUnsealCmd = &cobra.Command{
 	},
 }
 
+var vaultSecretCmd = &cobra.Command{
+	Use:   "secret {path} [key]",
+	Args: cobra.RangeArgs(1,2),
+	Short: "Gets a secret value from vault, optionally populating the value if not found.",
+	SilenceErrors:true,
+	SilenceUsage:true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		g := globalParameters{}
+		err := g.init()
+		if err != nil {
+			return err
+		}
+
+		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		if err != nil {
+			return err
+		}
+
+		path := args[0]
+		key := "key"
+		if len(args) > 1 {
+			key = args[1]
+		}
+
+
+		defaultValue := viper.GetString(ArgVaultSecretDefault)
+		if viper.GetBool(ArgVaultSecretGenerate) {
+			defaultValue = strings.Replace(uuid.New().String(), "-", "", -1)
+		}
+
+		action := pkg.GetOrUpdateVaultSecretAction{
+			Client: vaultClient,
+			Path: path,
+			Key: key,
+			Replace: viper.GetBool(ArgVaultSecretOverwrite),
+			DefaultValue:defaultValue,
+		}
+
+		p, err := action.Execute()
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(p)
+
+		return err
+	},
+}
+
 
 var vaultJWTCmd = &cobra.Command{
 	Use:   "jwt",
@@ -217,13 +270,16 @@ var vaultJWTCmd = &cobra.Command{
 }
 
 const (
-	ArgVaultAddr = "vault-addr"
-	ArgVaultToken = "vault-token"
-	ArgVaultJWTRole ="role"
-	ArgVaultJWTTenant ="tenant"
-	ArgVaultJWTSub = "sub"
-	ArgVaultJWTTTL = "ttl"
-	ArgVaultJWTClaims = "claims"
+	ArgVaultAddr           = "vault-addr"
+	ArgVaultToken          = "vault-token"
+	ArgVaultJWTRole        ="role"
+	ArgVaultJWTTenant      ="tenant"
+	ArgVaultJWTSub         = "sub"
+	ArgVaultJWTTTL         = "ttl"
+	ArgVaultJWTClaims      = "claims"
+	ArgVaultSecretGenerate = "generate"
+	ArgVaultSecretOverwrite = "overwrite"
+	ArgVaultSecretDefault = "default"
 )
 
 
@@ -250,6 +306,13 @@ func init() {
 
 	addVaultFlags(vaultUnsealCmd)
 	vaultCmd.AddCommand(vaultUnsealCmd)
+
+	addVaultFlags(vaultSecretCmd)
+	vaultSecretCmd.Flags().Bool(ArgVaultSecretGenerate, false, "Generate the secret if it's not found.")
+	vaultSecretCmd.Flags().Bool(ArgVaultSecretOverwrite, false, "Overwrite existing secret.")
+	vaultSecretCmd.Flags().String(ArgVaultSecretDefault, "", "Set the secret to this value if not found or --overwrite is set.")
+	vaultCmd.AddCommand(vaultSecretCmd)
+
 
 	addVaultFlags(vaultCmd)
 	rootCmd.AddCommand(vaultCmd)

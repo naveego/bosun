@@ -41,7 +41,7 @@ func NewTemplateValues(args ...string) (TemplateValues, error) {
 	for _, kv := range args{
 		segs := strings.Split(kv, "=")
 		if len(segs) != 2 {
-			return t, errors.Errorf("invalid values flag value: %q (should be key=value)", kv)
+			return t, errors.Errorf("invalid values flag value: %q (should be Key=value)", kv)
 		}
 		t.Values[segs[0]] = segs[1]
 	}
@@ -140,7 +140,7 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	}
 
 	for path, data := range v.Auth {
-		log := Log.WithField("@type", "Auth").WithField("path", path)
+		log := Log.WithField("@type", "Auth").WithField("Path", path)
 		mounts, err := client.Sys().ListAuth()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -161,7 +161,7 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	}
 
 	for path, data := range v.Mounts {
-		log := Log.WithField("@type", "Mount").WithField("path", path)
+		log := Log.WithField("@type", "Mount").WithField("Path", path)
 		mounts, err := client.Sys().ListMounts()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -182,11 +182,11 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	}
 
 	for path, data := range v.Resources {
-		log := Log.WithField("@type", "Resource").WithField("path", path)
+		log := Log.WithField("@type", "Resource").WithField("Path", path)
 
 		u, err := url.Parse(path)
 		if err != nil {
-			recordError(log, data, errors.WithMessage(err, "resource path was invalid"))
+			recordError(log, data, errors.WithMessage(err, "resource Path was invalid"))
 			continue
 		}
 
@@ -226,7 +226,7 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	}
 
 	for path, data := range v.Policies {
-		log := Log.WithField("@type", "Policy").WithField("path", path)
+		log := Log.WithField("@type", "Policy").WithField("Path", path)
 		var policy string
 		switch d := data.(type){
 		case string:
@@ -269,7 +269,7 @@ func ensureJsonMarshallable(m interface{}) interface{} {
 			if ks, ok := ki.(string); ok {
 				mapsi[ks] = ensureJsonMarshallable(vi)
 			} else {
-				Log.WithField("ki", ki).WithField("v", v).Panicf("could not convert child key %v (of type %T) to string", ki, ki)
+				Log.WithField("ki", ki).WithField("v", v).Panicf("could not convert child Key %v (of type %T) to string", ki, ki)
 			}
 		}
 		return mapsi
@@ -398,7 +398,7 @@ func tryGetTokenUsingEC2Metadata(vaultClient *api.Client) (string, error) {
 			return "", fmt.Errorf("error saving nonce to %q: %s", noncePath, err)
 		}
 	} else if err != nil {
-		return "", fmt.Errorf("error reading nonce from path %q: %s", noncePath, err)
+		return "", fmt.Errorf("error reading nonce from Path %q: %s", noncePath, err)
 	}
 
 	secret, err := vaultClient.Logical().Write("Auth/aws/login", map[string]interface{}{

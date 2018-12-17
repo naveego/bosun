@@ -32,6 +32,14 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 		return err
 	}
 
+	if err = env.Ensure(); err != nil {
+		return errors.Wrap(err, "ensure environment")
+	}
+
+	if _, err = env.Render(); err != nil {
+		return errors.Wrap(err, "render environment")
+	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return err

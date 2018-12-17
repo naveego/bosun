@@ -7,14 +7,16 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os/exec"
+	"sort"
+	"strings"
 	"time"
 )
 
 type Bosun struct {
 	params           Parameters
-	rootConfig           *RootConfig
-	config *Config
-	microservices    map[string]*App
+	rootConfig       *RootConfig
+	config           *Config
+	apps             map[string]*App
 	clusterAvailable *bool
 }
 
@@ -27,10 +29,10 @@ func New(params Parameters, rootConfig *RootConfig) *Bosun {
 
 
 	b := &Bosun{
-		params:        params,
-		rootConfig:        rootConfig,
-		config: rootConfig.MergedConfig,
-		microservices: make(map[string]*App),
+		params:     params,
+		rootConfig: rootConfig,
+		config:     rootConfig.MergedConfig,
+		apps:       make(map[string]*App),
 	}
 
 	for _, a := range b.config.Apps {
@@ -43,20 +45,35 @@ func New(params Parameters, rootConfig *RootConfig) *Bosun {
 func (b *Bosun) addApp(config *AppConfig) *App {
 	ms := &App{
 		bosun:  b,
-		Config: config,
+		AppConfig: *config,
 	}
-	b.microservices[config.Name] = ms
+	b.apps[config.Name] = ms
 	ms.DesiredState = b.rootConfig.AppStates[config.Name]
 	return ms
 }
 
-func (b *Bosun) GetMicroservices() []*App {
-	var ms []*App
+func (b *Bosun) GetApps() []*App {
+	var ms AppSlice
 
-	for _, x := range b.microservices {
+	for _, x := range b.apps {
 		ms = append(ms, x)
 	}
+	sort.Sort(ms)
 	return ms
+}
+
+type AppSlice []*App
+
+func (a AppSlice) Len() int {
+	return len(a)
+}
+
+func (a AppSlice) Less(i, j int) bool {
+	return strings.Compare(a[i].Name, a[j].Name) < 0
+}
+
+func (a AppSlice) Swap(i, j int) {
+	a[i], a[j]= a[j],a[i]
 }
 
 func (b *Bosun) GetScripts() ([]*Script, error) {
@@ -83,7 +100,7 @@ func (b *Bosun) GetScript(name string) (*Script, error) {
 }
 
 func (b *Bosun) GetMicroservice(name string) (*App, error) {
-	m, ok := b.microservices[name]
+	m, ok := b.apps[name]
 	if !ok {
 		return nil, errors.Errorf("no service named %q", name)
 	}
@@ -91,8 +108,8 @@ func (b *Bosun) GetMicroservice(name string) (*App, error) {
 }
 
 func (b *Bosun) GetOrAddMicroserviceForPath(path string) (*App, error) {
-	for _, m := range b.microservices {
-		if m.Config.FromPath == path {
+	for _, m := range b.apps {
+		if m.FromPath == path {
 			return m, nil
 		}
 	}
@@ -126,7 +143,7 @@ func (b *Bosun) SetCurrentEnvironment(name string) error {
 
 	for _, env := range b.config.Environments {
 		if env.Name == name {
-			b.config.CurrentEnvironment = name
+			b.rootConfig.CurrentEnvironment = name
 			return nil
 		}
 	}
@@ -137,18 +154,23 @@ func (b *Bosun) SetCurrentEnvironment(name string) error {
 func (b *Bosun) GetCurrentEnvironment() (*EnvironmentConfig, error) {
 
 	for _, env := range b.config.Environments {
-		if env.Name == b.config.CurrentEnvironment {
+		if env.Name == b.rootConfig.CurrentEnvironment {
 			return env, nil
 		}
 	}
 
-	return nil, errors.Errorf("current environment %q does not exist", b.config.CurrentEnvironment)
+	return nil, errors.Errorf("current environment %q does not exist", b.rootConfig.CurrentEnvironment)
 }
 
 
 func (b *Bosun) Save() error {
 
 	config := b.rootConfig
+
+	config.AppStates = make(map[string]AppState)
+	for _, app := range b.apps {
+		config.AppStates[app.Name] = app.DesiredState
+	}
 
 	data, err := yaml.Marshal(config)
 	if err != nil {
@@ -209,4 +231,32 @@ func (b *Bosun) IsClusterAvailable() bool {
 	}
 
 	return *b.clusterAvailable
+}
+
+func (b *Bosun) Reconcile(app *App) error {
+	err := app.LoadActualState(true)
+	if err != nil {
+		return errors.Errorf("error checking actual state for %q: %s", app.Name, err)
+	}
+
+	log := pkg.Log.WithField("app", app.Name)
+	log.Debug("Planning reconciliation...")
+
+	plan, err := app.PlanReconciliation()
+
+	if err != nil {
+		return err
+	}
+
+	for _, step := range plan {
+		log.WithField("step", step.Description).Info("Planned step.")
+	}
+
+	log.Debug("Executing...")
+	err = plan.Execute()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
