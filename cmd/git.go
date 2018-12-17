@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -145,7 +144,7 @@ var gitTaskCmd = &cobra.Command{
 		return nil
 	},
 }
-}
+
 
 func dumpJSON(label string, data interface{}) {
 	if viper.GetBool(ArgGlobalVerbose) {
