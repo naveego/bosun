@@ -73,7 +73,7 @@ var configImportCmd = &cobra.Command{
 			return nil
 		}
 
-		err = b.SaveConfig()
+		err = b.Save()
 
 		if err != nil {
 			return err

@@ -9,7 +9,6 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -294,50 +293,37 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 				defaultValue = optionalKeyAndDefault[1]
 			}
 
-			action := getOrUpdateVaultSecretAction{
-				path:         path,
-				key:          key,
-				defaultValue: defaultValue,
-				client:       client,
+			action := GetOrUpdateVaultSecretAction{
+				Path:         path,
+				Key:          key,
+				DefaultValue: defaultValue,
+				Client:       client,
 			}
 
-			return action.execute()
-		},
-
-		"bcryptedVaultSecret": func(path, key, plaintext string) (string, error) {
-			action := getOrUpdateVaultSecretAction{
-				path:         path,
-				key:          key,
-				defaultValue: plaintext,
-				bcrypt:       true,
-				client:       client,
-			}
-
-			return action.execute()
+			return action.Execute()
 		},
 	})
 
 	return t
 }
 
-type getOrUpdateVaultSecretAction struct {
-	path         string
-	key          string
-	defaultValue string
-	replace      bool
-	bcrypt       bool
-	client       *vault.Client
+type GetOrUpdateVaultSecretAction struct {
+	Path         string
+	Key          string
+	DefaultValue string
+	Replace      bool
+	Client       *vault.Client
 }
 
-func (g getOrUpdateVaultSecretAction) execute() (string, error) {
+func (g GetOrUpdateVaultSecretAction) Execute() (string, error) {
 
 	var secretValue string
-	client := g.client
-	path := g.path
-	key := g.key
-	defaultValue := g.defaultValue
+	client := g.Client
+	path := g.Path
+	key := g.Key
+	defaultValue := g.DefaultValue
 
-	update := g.replace
+	update := g.Replace
 
 	secret, err := client.Logical().Read(path)
 	if err != nil {
@@ -347,7 +333,7 @@ func (g getOrUpdateVaultSecretAction) execute() (string, error) {
 	if secret != nil && secret.Data != nil {
 
 		if key == "" && len(secret.Data) == 1 {
-			// user didn't specify key, but there is only one
+			// user didn't specify Key, but there is only one
 			// value, so we'll use that
 			for _, v := range secret.Data {
 				secretValue, _ = v.(string)
@@ -356,7 +342,7 @@ func (g getOrUpdateVaultSecretAction) execute() (string, error) {
 		} else {
 			value, ok := secret.Data[key]
 			if ok {
-				// secret contained requested key
+				// secret contained requested Key
 				secretValue, _ = value.(string)
 			}
 		}
@@ -364,20 +350,9 @@ func (g getOrUpdateVaultSecretAction) execute() (string, error) {
 
 	data := make(map[string]interface{})
 	if secret != nil && secret.Data != nil {
-		// There was a secret, it just didn't have the key
+		// There was a secret, it just didn't have the Key
 		// we're looking for. We'll keep the data so it doesn't get erased.
 		data = secret.Data
-	}
-
-	if g.bcrypt {
-		// value is stored in bcrypted format
-		var secretNotSet = secretValue == ""
-		var secretHasChanged = bcrypt.CompareHashAndPassword([]byte(secretValue), []byte(defaultValue)) != nil
-		if secretNotSet || secretHasChanged {
-			b, _ := bcrypt.GenerateFromPassword([]byte(defaultValue), 15)
-			secretValue = string(b)
-			update = true
-		}
 	}
 
 	// didn't find the value
@@ -388,15 +363,15 @@ func (g getOrUpdateVaultSecretAction) execute() (string, error) {
 			secretValue = defaultValue
 		} else if !IsInteractive() {
 			// No terminal attached, so we can't ask the user for values.
-			return "", errors.Errorf("no vault secret found at path %q", path)
+			return "", errors.Errorf("no vault secret found at Path %q", path)
 		} else {
 			// Prompt the user for the value.
-			secretValue = RequestStringFromUser("No value found in VaultClient at path %q; please provide the value", path)
+			secretValue = RequestStringFromUser("No value found in VaultClient at Path %q; please provide the value", path)
 		}
 
-		// User didn't provide a key, so we'll set the value under "key"
+		// User didn't provide a Key, so we'll set the value under "Key"
 		if key == "" {
-			key = "key"
+			key = "Key"
 		}
 	}
 

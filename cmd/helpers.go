@@ -17,7 +17,7 @@ import (
 )
 
 func getBosun() (*bosun.Bosun, error) {
-	config, state, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
+	config, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
 	if err != nil {
 		return nil, err
 	}
@@ -27,35 +27,34 @@ func getBosun() (*bosun.Bosun, error) {
 		DryRun:  viper.GetBool(ArgGlobalDryRun),
 	}
 
-	return bosun.New(params, config, state), nil
+	return bosun.New(params, config), nil
 }
 
 // gets one or more microservices matching names.
 // if names is empty, tries to find a microservice starting
 // from the current directory
-func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
+func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 
 	var services []*bosun.App
 	var err error
 
-	all := b.GetMicroservices()
+	all := b.GetApps()
 
-	if viper.GetBool(ArgSvcAll) {
+	if viper.GetBool(ArgAppAll) {
 		return all, nil
 	}
 
-	labels := viper.GetStringSlice(ArgSvcLabels)
+	labels := viper.GetStringSlice(ArgAppLabels)
 	if len(labels) > 0 {
 		for _, label := range labels {
-			for _, svc := range services {
-				for _, svcLabel := range svc.Config.Labels {
+			for _, svc := range all {
+				for _, svcLabel := range svc.Labels {
 					if svcLabel == label {
 						services = append(services, svc)
-						goto nextLabel
+						break
 					}
 				}
 			}
-		nextLabel:
 		}
 
 		return services, nil
@@ -65,12 +64,11 @@ func getMicroservices(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 	if len(names) > 0 {
 		for _, svc := range all {
 			for _, name := range names {
-				if svc.Config.Name == name {
+				if svc.Name == name {
 					services = append(services, svc)
-					goto nextName
+					continue
 				}
 			}
-		nextName:
 		}
 		return services, nil
 	}
@@ -229,3 +227,42 @@ func findFileInDirOrAncestors(dir string, filename string) (string, error) {
 		dir = filepath.Dir(dir)
 	}
 }
+
+type Color string
+
+const (
+	Reset                   Color = "\x1b[0000m"
+	Bright                        = "\x1b[0001m"
+	BlackText                     = "\x1b[0030m"
+	RedText                       = "\x1b[0031m"
+	GreenText                     = "\x1b[0032m"
+	YellowText                    = "\x1b[0033m"
+	BlueText                      = "\x1b[0034m"
+	MagentaText                   = "\x1b[0035m"
+	CyanText                      = "\x1b[0036m"
+	WhiteText                     = "\x1b[0037m"
+	DefaultText                   = "\x1b[0039m"
+	BrightRedText                 = "\x1b[1;31m"
+	BrightGreenText               = "\x1b[1;32m"
+	BrightYellowText              = "\x1b[1;33m"
+	BrightBlueText                = "\x1b[1;34m"
+	BrightMagentaText             = "\x1b[1;35m"
+	BrightCyanText                = "\x1b[1;36m"
+	BrightWhiteText               = "\x1b[1;37m"
+	BlackBackground               = "\x1b[0040m"
+	RedBackground                 = "\x1b[0041m"
+	GreenBackground               = "\x1b[0042m"
+	YellowBackground              = "\x1b[0043m"
+	BlueBackground                = "\x1b[0044m"
+	MagentaBackground             = "\x1b[0045m"
+	CyanBackground                = "\x1b[0046m"
+	WhiteBackground               = "\x1b[0047m"
+	BrightBlackBackground         = "\x1b[0100m"
+	BrightRedBackground           = "\x1b[0101m"
+	BrightGreenBackground         = "\x1b[0102m"
+	BrightYellowBackground        = "\x1b[0103m"
+	BrightBlueBackground          = "\x1b[0104m"
+	BrightMagentaBackground       = "\x1b[0105m"
+	BrightCyanBackground          = "\x1b[0106m"
+	BrightWhiteBackground         = "\x1b[0107m"
+)

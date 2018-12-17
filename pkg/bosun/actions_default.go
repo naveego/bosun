@@ -13,18 +13,19 @@ import (
 func (e *EnvironmentConfig) render() string {
 	w := new(strings.Builder)
 	for _, v := range e.Variables {
-		fmt.Fprintf(w, "export %s=%s\n", v.Name, v.Value)
+		fmt.Fprintf(w, "export %s=%s\n", v.Name, v.From.GetValue())
 	}
 	return w.String()
 }
 
-func (e *EnvironmentVariable) ensureWithScript() (string, error) {
-	tmp, err := ioutil.TempFile(os.TempDir(), "bosun-env")
+
+func executeScript(script string) (string, error) {
+	tmp, err := ioutil.TempFile(os.TempDir(), "bosun-script")
 	if err != nil {
 		return "", err
 	}
 	tmp.Close()
-	ioutil.WriteFile(tmp.Name(), []byte(e.Script), 0700)
+	ioutil.WriteFile(tmp.Name(), []byte(script), 0700)
 
 	defer os.Remove(tmp.Name())
 

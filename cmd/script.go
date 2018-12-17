@@ -16,18 +16,18 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"strings"
-	"text/tabwriter"
 )
 
 var scriptCmd = &cobra.Command{
 	Use:          "script {script-file}",
 	Args:         cobra.ExactArgs(1),
+	Aliases:[]string{"scripts"},
 	Short:        "Run a scripted sequence of commands.",
 	Long:         `Provide a script file path.`,
 	SilenceUsage: true,
@@ -81,19 +81,14 @@ var scriptListCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("Found %d scripts.\n", len(s))
+		fmt.Printf("Found %d scripts.\n\n", len(s))
 
-		sb := new(strings.Builder)
-		w := new(tabwriter.Writer)
-		w.Init(sb, 0, 8, 2, '\t', 0)
-		fmt.Fprintln(w, "NAME\tPATH\tDESCRIPTION")
 		for _, script := range s {
-			fmt.Fprintf(w, "%s\t%s\t%s\n", script.Name, script.FromPath, script.Description)
+			color.New(color.Bold).Println(script.Name)
+			color.Blue("FROM: %s\n", script.FromPath)
+			color.White("%s\n", script.Description)
+			fmt.Println()
 		}
-
-		w.Flush()
-
-		fmt.Println(sb.String())
 
 		return err
 	},

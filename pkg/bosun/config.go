@@ -2,57 +2,35 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
 
+type RootConfig struct {
+	Path               string              `yaml:"-"`
+	CurrentEnvironment string              `yaml:"currentEnvironment"`
+	Imports            []string            `yaml:"imports,omitempty"`
+	AppStates          map[string]AppState `yaml:"appStates"`
+	MergedConfig       *Config             `yaml:"-"`
+	ImportedConfigs    map[string]*Config  `yaml:"-"`
+}
+
 type Config struct {
-	CurrentEnvironment string               `yaml:"currentEnvironment"`
-	Repo               string               `yaml:"repo,omitempty"`
-	Imports            []string             `yaml:"imports,omitempty"`
-	Environments       []*EnvironmentConfig `yaml:"environments"`
-	Apps               []*AppConfig         `yaml:"apps"`
-	Path               string               `yaml:"-"`
+	Repo         string               `yaml:"repo,omitempty"`
+	Imports      []string             `yaml:"imports,omitempty"`
+	Environments []*EnvironmentConfig `yaml:"environments"`
+	Apps         []*AppConfig         `yaml:"apps"`
+	Path         string               `yaml:"-"`
+	RootConfig   *Config              `yaml:"-"`
 }
 
 type State struct {
 	Microservices map[string]AppState
 }
 
-type AppConfig struct {
-	FromPath   string               `yaml:"fromPath,omitempty"`
-	Name       string               `yaml:"name"`
-	Namespace string 				`yaml:"namespace,omitempty"`
-	Repo       string               `yaml:"repo,omitempty"`
-	Version    string               `yaml:"version,omitempty"`
-	ChartPath  string               `yaml:"chartPath,omitempty"`
-	RunCommand []string             `yaml:"runCommand,omitempty"`
-	DependsOn  []Dependency         `yaml:"dependsOn,omitempty"`
-	Labels     []string             `yaml:"labels,omitempty"`
-	Values     map[string]AppValues `yaml:"values,omitempty"`
-	Error      error                `yaml:"-"`
-}
-
-type Dependency struct {
-	Name string `yaml:"name"`
-	Repo string `yaml:"repo"`
-}
-
-type AppValues struct {
-	Set   map[string]string `yaml:"set,omitempty"`
-	Files []string          `yaml:"files,omitempty"`
-}
-
-type AppState struct {
-	Branch      string `yaml:"branch"`
-	Deployed    bool   `yaml:"deployed"`
-	RouteToHost bool   `yaml:"routeToHost"`
-}
-
-func LoadConfig(path string) (*Config, *State, error) {
+func LoadConfig(path string) (*RootConfig, error) {
 	defaultPath := os.ExpandEnv("$HOME/.bosun/bosun.yaml")
 	if path == "" {
 		path = defaultPath
@@ -60,119 +38,92 @@ func LoadConfig(path string) (*Config, *State, error) {
 		path = os.ExpandEnv(path)
 	}
 
-	b, err := ioutil.ReadFile(path)
+	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && path == defaultPath {
-			err = os.MkdirAll(filepath.Dir(defaultPath), 0700)
+			err = os.MkdirAll(filepath.Dir(defaultPath), 0600)
 			if err != nil {
-				return nil, nil, errors.Errorf("could not create directory for default config file path: %s", err)
+				return nil, errors.Errorf("could not create directory for default config file path: %s", err)
 			}
 			f, err := os.Open(defaultPath)
 			if err != nil {
-				return nil, nil, errors.Errorf("could not create default config file: %s", err)
+				return nil, errors.Errorf("could not create default config file: %s", err)
 			}
 			f.Close()
 		} else {
-			return nil, nil, err
+			return nil, err
 		}
+	}
+
+	c := &RootConfig{
+		Path:            path,
+		AppStates:       map[string]AppState{},
+		ImportedConfigs: map[string]*Config{},
+		MergedConfig:    new(Config),
+	}
+
+	err = pkg.LoadYaml(path, &c)
+	if err != nil {
+		return nil, errors.Wrap(err, "loading root config")
+	}
+
+	err = c.importFromPaths(path, c.Imports)
+
+	return c, err
+}
+
+func (r *RootConfig) importFromPaths(relativeTo string, paths []string) error {
+	for _, importPath := range paths {
+		for _, importPath = range expandPath(relativeTo, importPath) {
+			err := r.importFromPath(importPath)
+			if err != nil {
+				return errors.Errorf("error importing config relative to %q: %s", relativeTo, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (r *RootConfig) importFromPath(path string) error {
+	log := pkg.Log.WithField("import_path", path)
+	log.Debug("Importing config...")
+
+	if r.ImportedConfigs[path] != nil {
+		// log.Info("Already imported.")
+		return nil
 	}
 
 	c := &Config{
 		Path: path,
 	}
 
-	err = yaml.Unmarshal(b, c)
+	err := pkg.LoadYaml(path, &c)
 
 	if err != nil {
-		return nil, nil, err
+		return errors.Errorf("yaml error loading %q: %s", path, err)
 	}
 
 	for _, e := range c.Environments {
-		e.FromPath = c.Path
-		for i := range e.Scripts {
-			e.Scripts[i].FromPath = c.Path
-		}
-		for i := range e.Variables {
-			e.Variables[i].FromPath = c.Path
-		}
-		for i := range e.Commands {
-			e.Variables[i].FromPath = c.Path
-		}
+		e.SetFromPath(path)
 	}
 
 	for _, m := range c.Apps {
-		m.FromPath = c.Path
+		m.SetFromPath(path)
 	}
 
-	statePath := getStatePath(path)
-	b, err = ioutil.ReadFile(statePath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, nil, errors.Wrap(err, "loading state file")
-	}
-	var state *State
-	err = yaml.Unmarshal(b, &state)
+	err = r.MergedConfig.Merge(c)
+
 	if err != nil {
-		return nil, nil, err
+		return errors.Errorf("merge error loading %q: %s", path, err)
 	}
 
-	for _, importPath := range c.Imports {
+	log.Debug("Import complete.")
 
-		other, _, err := LoadConfig(importPath)
-		if err != nil {
-			return nil, nil, errors.Errorf("failed to load imported config from %q: %s", importPath, err)
-		}
+	r.ImportedConfigs[path] = c
 
-		err = c.Merge(other)
-		if err != nil {
-			return nil, nil, errors.Errorf("failed to merge imported config from %q: %s", importPath, err)
-		}
-	}
+	err = r.importFromPaths(c.Path, c.Imports)
 
-	return c, state, err
-}
-
-func (c *Config) Unmerge(toPath string) *Config {
-
-	config := &Config{
-		Path:               toPath,
-		CurrentEnvironment: c.CurrentEnvironment,
-		Imports:            c.Imports,
-	}
-
-	for _, e := range c.Environments {
-		o := &EnvironmentConfig{
-			Name:    e.Name,
-			Domain:  e.Domain,
-			Cluster: e.Cluster,
-		}
-		for _, x := range e.Scripts {
-			if shouldMerge(x.FromPath, toPath) {
-				o.Scripts = append(o.Scripts, x)
-
-			}
-		}
-		for _, x := range e.Variables {
-			if shouldMerge(x.FromPath, toPath) {
-				o.Variables = append(o.Variables, x)
-			}
-		}
-		for _, x := range e.Commands {
-			if shouldMerge(x.FromPath, toPath) {
-				o.Commands = append(o.Commands, x)
-			}
-		}
-		config.Environments = append(config.Environments, o)
-	}
-
-	for _, m := range c.Apps {
-		if shouldMerge(m.FromPath, toPath) {
-			m2 := *m
-			m2.FromPath = ""
-			config.Apps = append(config.Apps, &m2)
-		}
-	}
-
-	return config
+	return nil
 }
 
 func (c *Config) Merge(other *Config) error {
@@ -214,21 +165,30 @@ func (c *Config) mergeEnvironment(env *EnvironmentConfig) error {
 
 }
 
-func (c *Config) GetCurrentEnvironmentConfig() *EnvironmentConfig {
+func (c *Config) GetEnvironmentConfig(name string) *EnvironmentConfig {
 	for _, e := range c.Environments {
-		if e.Name == c.CurrentEnvironment {
+		if e.Name == name {
 			return e
 		}
 	}
 
-	panic(fmt.Sprintf("no environment named %q", c.CurrentEnvironment))
+	panic(fmt.Sprintf("no environment named %q", name))
 }
 
-func shouldMerge(fromPath, toPath string) bool {
-	return fromPath == "" || fromPath == toPath
+// expandPath resolves a path relative to another file's path, including expanding env variables and globs.
+func expandPath(relativeToFile, path string) []string {
+
+	path = resolvePath(relativeToFile, path)
+
+	paths, _ := filepath.Glob(path)
+
+	return paths
 }
 
-func getStatePath(configPath string) string {
-	statePath := filepath.Join(filepath.Dir(configPath), "state.yaml")
-	return statePath
+func resolvePath(relativeToFile, path string) string {
+	path = os.ExpandEnv(path)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(relativeToFile), path)
+	}
+	return path
 }

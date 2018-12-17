@@ -1,17 +1,13 @@
 package bosun
 
 import (
-	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"os"
-	"os/exec"
-	"runtime"
-	"strings"
 )
 
 type EnvironmentConfig struct {
-	FromPath string `yaml:"fromPath,omitempty"`
+	FromPath  string                 `yaml:"fromPath,omitempty"`
 	Name      string                 `yaml:name`
 	Cluster   string                 `yaml:"cluster"`
 	Domain    string                 `yaml:"domain"`
@@ -21,64 +17,65 @@ type EnvironmentConfig struct {
 }
 
 type EnvironmentVariable struct {
-	FromPath string `yaml:"fromPath,omitempty"`
-	Name    string   `yaml:"name"`
-	Value   string   `yaml:"value,omitempty"`
-	Command []string `yaml:"command,omitempty"`
-	Script  string   `yaml:"script,omitempty"`
+	FromPath string        `yaml:"fromPath,omitempty"`
+	Name     string        `yaml:"name"`
+	From     *DynamicValue `yaml:"from"`
+	Value    string        `yaml:"-"`
 }
 
 type EnvironmentCommand struct {
-	FromPath string `yaml:"fromPath,omitempty"`
-	Name           string   `yaml:"name"`
-	Command        []string `yaml:"command,omitempty"`
-	LinuxCommand   []string `yaml:"linux,omitempty"`
-	DarwinCommand  []string `yaml:"darwin,omitempty"`
-	WindowsCommand []string `yaml:"windows,omitempty"`
+	FromPath string        `yaml:"fromPath,omitempty"`
+	Name     string        `yaml:"name"`
+	Exec     *DynamicValue `yaml:"exec,omitempty"`
 }
 
-// Ensure sets the Value of the EnvironmentVariable
-// if there are Command values.
-func (e *EnvironmentVariable) Ensure() error {
+func (e *EnvironmentConfig) SetFromPath(path string) {
+	e.FromPath = path
+	for i := range e.Scripts {
+		e.Scripts[i].FromPath = path
+	}
+	for i := range e.Variables {
+		e.Variables[i].FromPath = path
+	}
+	for i := range e.Commands {
+		e.Variables[i].FromPath = path
+	}
+}
 
-	defer func() {
-		os.Setenv(e.Name, e.Value)
-	}()
+// Ensure sets Value using the From DynamicValue.
+func (e *EnvironmentVariable) Ensure() error {
+	log := pkg.Log.WithField("name", e.Name).WithField("fromPath", e.FromPath)
+
+	if e.From == nil {
+		log.Warn("`from` was not set")
+		return nil
+	}
+
 
 	if e.Value != "" {
+		// set the value in the process environment
+		os.Setenv(e.Name, e.Value)
 		return nil
 	}
 
-	if len(e.Command) > 0 {
+	log.Debug("Resolving value...")
 
-		cmd := exec.Command(e.Command[0], e.Command[1:]...)
-		pkg.Log.Debugf("Populating variable $%s by running command: %s", e.Name, strings.Join(e.Command, " "))
-		err := cmd.Run()
-		if err != nil {
-			return errors.Errorf("error populating variable %q using command: %s", e.Name, err)
-		}
-		o, _ := cmd.Output()
-		e.Value = string(o)
-		pkg.Log.Debugf("Output: %s", e.Value)
+	ctx := NewResolveContext(e.FromPath)
 
-		return nil
+	var err error
+	e.Value, err = e.From.Resolve(ctx)
+
+	if err != nil {
+		return errors.Errorf("error populating variable %q: %s", e.Name, err)
 	}
 
-	if e.Script != "" {
-		pkg.Log.Debugf("Populating variable $%s by running script: %s", e.Name, e.Script)
+	log.WithField("value", e.Value).Debug("Resolved value.")
 
-		var err error
-		e.Value, err = e.ensureWithScript()
-		if err != nil {
-			return errors.Errorf("error populating variable %q using script: %s", e.Name, err)
-		}
+	// set the value in the process environment
+	os.Setenv(e.Name, e.Value)
 
-		return nil
-	}
-
-	return errors.Errorf("no value, command, or script for variable %q", e.Name)
+	return nil
 }
-
 
 func (e *EnvironmentConfig) Ensure() error {
 	for _, v := range e.Variables {
@@ -104,40 +101,21 @@ func (e *EnvironmentConfig) Render() (string, error) {
 
 func (e *EnvironmentConfig) Execute() error {
 
-	var cmds []*exec.Cmd
+	ctx := NewResolveContext(e.FromPath)
 
 	for _, cmd := range e.Commands {
-		var c []string
-		switch runtime.GOOS {
-		case "windows":
-			c = cmd.WindowsCommand
-		case "linux":
-			c = cmd.LinuxCommand
-		case "darwin":
-			c = cmd.DarwinCommand
+		log := pkg.Log.WithField("name", cmd.Name).WithField("fromPath", e.FromPath)
+		if cmd.Exec == nil {
+			log.Warn("`exec` not set")
+			continue
 		}
-		if len(c) == 0 {
-			c = cmd.Command
-		}
-		if len(c) == 0 {
-			return errors.Errorf(`command %q did not have an entry for "all" or for the current OS %q`, cmd.Name, runtime.GOOS)
-		}
-
-		cmds = append(cmds, exec.Command(c[0], c[1:]...))
-	}
-
-	for i, cmd := range cmds {
-		label := fmt.Sprintf("%s (%s)", e.Commands[i].Name,
-			strings.Join(cmd.Args, " "))
-		pkg.Log.Debugf("Running command: %s", label)
-		err := cmd.Run()
+		log.Debug("Running command...")
+		_, err := cmd.Exec.Resolve(ctx)
 		if err != nil {
-			return errors.Errorf("error running command %s: %s", label, err, )
+			return errors.Errorf("error running command %s: %s", cmd.Name, err)
 		}
-		o, _ := cmd.Output()
-		if len(o) > 0 {
-			pkg.Log.Debugf("Output: %s", string(o))
-		}
+		log.Debug("Command complete.")
+
 	}
 
 	return nil
