@@ -9,8 +9,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/oauth2"
+	"net/http"
 	"os"
- "golang.org/x/oauth2"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,13 +23,11 @@ var gitCmd = &cobra.Command{
 	Short: "Git commands.",
 }
 
-const(
-	ArgGitBody = "body"
-	ArgGitTaskParentOrg = "parent-org"
+const (
+	ArgGitBody           = "body"
+	ArgGitTaskParentOrg  = "parent-org"
 	ArgGitTaskParentRepo = "parent-repo"
 )
-
-
 
 func init() {
 
@@ -38,31 +37,35 @@ func init() {
 	gitTaskCmd.Flags().String(ArgGitTaskParentRepo, "stories", "Parent repo.")
 
 	rootCmd.AddCommand(gitCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// gitCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// gitCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
+func getGitClient() (*github.Client, error) {
+	token, ok := os.LookupEnv("GITHUB_TOKEN")
+	if !ok {
+		return nil, errors.New("GITHUB_TOKEN must be set")
+	}
 
+	ctx := context.Background()
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: token},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+
+	client := github.NewClient(tc)
+	return client, nil
+}
 
 var gitTaskCmd = &cobra.Command{
 	Use:   "task {parent-number} {task name}",
-	Args: cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(2),
 	Short: "Creates a task in the current repo for the story, and a branch for that task.",
-	Long:"Requires github hub tool to be installed (https://hub.github.com/).",
+	Long:  "Requires github hub tool to be installed (https://hub.github.com/).",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		var err error
 
 		viper.BindPFlags(cmd.Flags())
-		
+
 		currentDir, _ := os.Getwd()
 		repo := filepath.Base(currentDir)
 		org := filepath.Base(filepath.Dir(currentDir))
@@ -77,18 +80,12 @@ var gitTaskCmd = &cobra.Command{
 			return errors.Wrap(err, "issue number must be a number")
 		}
 
-		token, ok := os.LookupEnv("GITHUB_TOKEN")
-		if !ok {
-			return errors.New("GITHUB_TOKEN must be set")
+		client, err := getGitClient()
+		if err != nil {
+			return err
 		}
 
 		ctx := context.Background()
-		ts := oauth2.StaticTokenSource(
-			&oauth2.Token{AccessToken: token},
-		)
-		tc := oauth2.NewClient(ctx, ts)
-
-		client := github.NewClient(tc)
 
 		story, _, err := client.Issues.Get(ctx, parentOrg, parentRepo, storyNumber)
 		if err != nil {
@@ -100,7 +97,7 @@ var gitTaskCmd = &cobra.Command{
 		body := viper.GetString(ArgGitBody)
 		issueRequest := &github.IssueRequest{
 			Title: github.String(taskName),
-			Body: github.String(fmt.Sprintf("%s\n\nrequired by %s/%s#%d", body, parentOrg, parentRepo, storyNumber)),
+			Body:  github.String(fmt.Sprintf("%s\n\nrequired by %s/%s#%d", body, parentOrg, parentRepo, storyNumber)),
 		}
 		if story.Assignee != nil {
 			issueRequest.Assignee = story.Assignee.Name
@@ -135,7 +132,7 @@ var gitTaskCmd = &cobra.Command{
 		branchName := fmt.Sprintf("issue/#%d/%s", issueNumber, slug)
 		pkg.Log.WithField("branch", branchName).Info("Creating branch.")
 		err = pkg.NewCommand("git", "checkout", "-b", branchName).RunE()
-		if err != nil{
+		if err != nil {
 			return err
 		}
 
@@ -147,6 +144,7 @@ var gitTaskCmd = &cobra.Command{
 
 		return nil
 	},
+}
 }
 
 func dumpJSON(label string, data interface{}) {
