@@ -41,23 +41,23 @@ func (d *DynamicValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	err = unmarshal(&u)
-	
-	Convert:
+
+Convert:
 	x := DynamicValue(u)
 	*d = x
 
 	return err
 }
 
-type ResolveContext struct {
+type DynamicValueContext struct {
 	Dir string
 }
 
-func NewResolveContext(dir string) ResolveContext {
+func NewDynamicValueContext(dir string) DynamicValueContext {
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
-	return ResolveContext{
+	return DynamicValueContext{
 		Dir: dir,
 	}
 }
@@ -72,7 +72,9 @@ func (d *DynamicValue) GetValue() string {
 	return d.Value
 }
 
-func (d *DynamicValue) Resolve(ctx ResolveContext) (string, error) {
+// Resolve sets the Value field by executing Script, Command, or an entry under OS.
+// If resolve has been called before, the value from that resolve is returned.
+func (d *DynamicValue) Resolve(ctx DynamicValueContext) (string, error) {
 	var err error
 
 	if d.resolved {
@@ -92,4 +94,22 @@ func (d *DynamicValue) Resolve(ctx ResolveContext) (string, error) {
 	}
 
 	return d.Value, err
+}
+
+// Execute executes the DynamicValue, and treats the Value field as a script.
+func (d *DynamicValue) Execute(ctx DynamicValueContext) (string, error) {
+	var err error
+	var value string
+
+	if specific, ok := d.OS[runtime.GOOS]; ok {
+		value, err = specific.Execute(ctx)
+	} else if len(d.Command) != 0 {
+		value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).RunOut()
+	} else if len(d.Script) > 0 {
+		value, err = executeScript(d.Script)
+	} else if len(d.Value) > 0 {
+		value, err = executeScript(d.Value)
+	}
+
+	return value, err
 }

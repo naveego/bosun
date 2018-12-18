@@ -60,7 +60,7 @@ func (e *EnvironmentVariable) Ensure() error {
 
 	log.Debug("Resolving value...")
 
-	ctx := NewResolveContext(e.FromPath)
+	ctx := NewDynamicValueContext(e.FromPath)
 
 	var err error
 	e.Value, err = e.From.Resolve(ctx)
@@ -78,6 +78,10 @@ func (e *EnvironmentVariable) Ensure() error {
 }
 
 func (e *EnvironmentConfig) Ensure() error {
+
+	os.Setenv("BOSUN_DOMAIN", e.Domain)
+	os.Setenv("BOSUN_CLUSTER", e.Cluster)
+
 	for _, v := range e.Variables {
 		if err := v.Ensure(); err != nil {
 			return err
@@ -101,7 +105,7 @@ func (e *EnvironmentConfig) Render() (string, error) {
 
 func (e *EnvironmentConfig) Execute() error {
 
-	ctx := NewResolveContext(e.FromPath)
+	ctx := NewDynamicValueContext(e.FromPath)
 
 	for _, cmd := range e.Commands {
 		log := pkg.Log.WithField("name", cmd.Name).WithField("fromPath", e.FromPath)
@@ -110,7 +114,7 @@ func (e *EnvironmentConfig) Execute() error {
 			continue
 		}
 		log.Debug("Running command...")
-		_, err := cmd.Exec.Resolve(ctx)
+		_, err := cmd.Exec.Execute(ctx)
 		if err != nil {
 			return errors.Errorf("error running command %s: %s", cmd.Name, err)
 		}

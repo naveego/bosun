@@ -98,6 +98,12 @@ func (c *Command) MustRun()  {
 	Must(c.RunE())
 }
 
+func (c *Command) MustOut() string  {
+	out, err := c.RunOut()
+	Must(err)
+	return out
+}
+
 // RunE runs the command and returns the error only.
 func (c *Command) RunE() error {
 	c.prepare()

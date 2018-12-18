@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,13 +36,19 @@ func init() {
 	gitTaskCmd.Flags().String(ArgGitTaskParentOrg, "naveegoinc", "Parent org.")
 	gitTaskCmd.Flags().String(ArgGitTaskParentRepo, "stories", "Parent repo.")
 
+
+	gitDeployCmd.AddCommand(gitDeployStartCmd)
+	gitDeployCmd.AddCommand(gitDeployUpdateCmd)
+
+	gitCmd.AddCommand(gitDeployCmd)
+
 	rootCmd.AddCommand(gitCmd)
 }
 
-func getGitClient() (*github.Client, error) {
+func getGitClient() *github.Client {
 	token, ok := os.LookupEnv("GITHUB_TOKEN")
 	if !ok {
-		return nil, errors.New("GITHUB_TOKEN must be set")
+		log.Fatal("GITHUB_TOKEN must be set")
 	}
 
 	ctx := context.Background()
@@ -51,7 +58,74 @@ func getGitClient() (*github.Client, error) {
 	tc := oauth2.NewClient(ctx, ts)
 
 	client := github.NewClient(tc)
-	return client, nil
+
+	return client
+}
+
+var gitDeployCmd = &cobra.Command{
+	Use:   "deploy",
+	Short: "Deploy-related commands.",
+}
+
+var gitDeployStartCmd = &cobra.Command{
+	Use:   "start {cluster}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Notifies github that a deploy has happened.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := getGitClient()
+
+		cluster := args[0]
+		sha := pkg.NewCommand("git rev-parse HEAD").MustOut()
+		isProd := cluster == "blue"
+
+		deploymentRequest := &github.DeploymentRequest{
+			Description: github.String(fmt.Sprintf("Deployment to %s", cluster)),
+			Environment: &cluster,
+			Ref:         &sha,
+			ProductionEnvironment: &isProd,
+			Task:github.String("deploy"),
+		}
+
+		org, repo := getOrgAndRepo()
+
+		deployment, _, err := client.Repositories.CreateDeployment(context.Background(), org, repo, deploymentRequest)
+		if err != nil {
+			return err
+		}
+
+		id := *deployment.ID
+		fmt.Println(id)
+		return nil
+	},
+}
+
+var gitDeployUpdateCmd = &cobra.Command{
+	Use:   "update {deployment-id} {success|failure}",
+	Args:  cobra.ExactArgs(2),
+	Short: "Notifies github that a deploy has happened.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := getGitClient()
+
+		org, repo := getOrgAndRepo()
+
+		deploymentID, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return errors.Wrap(err, "invalid deployment ID")
+		}
+
+		req := &github.DeploymentStatusRequest{
+			State:&args[1],
+		}
+
+		deployment, _, err := client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deploymentID, req)
+		if err != nil {
+			return err
+		}
+
+		id := *deployment.ID
+		fmt.Println(id)
+		return nil
+	},
 }
 
 var gitTaskCmd = &cobra.Command{
@@ -65,10 +139,7 @@ var gitTaskCmd = &cobra.Command{
 
 		viper.BindPFlags(cmd.Flags())
 
-		currentDir, _ := os.Getwd()
-		repo := filepath.Base(currentDir)
-		org := filepath.Base(filepath.Dir(currentDir))
-		fmt.Println(org, repo)
+		org, repo := getOrgAndRepo()
 
 		parentOrg := viper.GetString(ArgGitTaskParentOrg)
 		parentRepo := viper.GetString(ArgGitTaskParentRepo)
@@ -79,10 +150,7 @@ var gitTaskCmd = &cobra.Command{
 			return errors.Wrap(err, "issue number must be a number")
 		}
 
-		client, err := getGitClient()
-		if err != nil {
-			return err
-		}
+		client := getGitClient()
 
 		ctx := context.Background()
 
@@ -145,6 +213,12 @@ var gitTaskCmd = &cobra.Command{
 	},
 }
 
+func getOrgAndRepo() (string,string){
+	currentDir, _ := os.Getwd()
+	repo := filepath.Base(currentDir)
+	org := filepath.Base(filepath.Dir(currentDir))
+	return org, repo
+}
 
 func dumpJSON(label string, data interface{}) {
 	if viper.GetBool(ArgGlobalVerbose) {

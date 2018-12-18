@@ -89,7 +89,7 @@ func (r *RootConfig) importFromPath(path string) error {
 	log.Debug("Importing config...")
 
 	if r.ImportedConfigs[path] != nil {
-		// log.Info("Already imported.")
+		log.Debugf("Already imported.")
 		return nil
 	}
 
@@ -123,7 +123,7 @@ func (r *RootConfig) importFromPath(path string) error {
 
 	err = r.importFromPaths(c.Path, c.Imports)
 
-	return nil
+	return err
 }
 
 func (c *Config) Merge(other *Config) error {

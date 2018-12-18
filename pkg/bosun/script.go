@@ -14,7 +14,8 @@ type Script struct {
 	FromPath string `yaml:"fromPath,omitempty"`
 	Name     string       `yaml:"name"`
 	Description string `yaml:"description,omitempty"`
-	Steps    []ScriptStep `yaml:steps`
+	Steps    []ScriptStep `yaml:"steps,omitempty"`
+	Literal *DynamicValue `yaml:"literal,omitempty"`
 }
 
 type ScriptStep struct {
@@ -24,6 +25,8 @@ type ScriptStep struct {
 }
 
 func (b *Bosun) Execute(s *Script, steps ...int) error {
+
+	log := pkg.Log.WithField("name", s.Name)
 
 	relativeDir := filepath.Dir(s.FromPath)
 
@@ -39,6 +42,15 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 	if _, err = env.Render(); err != nil {
 		return errors.Wrap(err, "render environment")
 	}
+
+	if s.Literal != nil {
+		log.Debug("Executing literal script, not bosun script.")
+
+		ctx := NewDynamicValueContext(filepath.Dir(s.FromPath))
+		_, err = s.Literal.Execute(ctx)
+		return err
+	}
+
 
 	exe, err := os.Executable()
 	if err != nil {
