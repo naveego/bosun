@@ -87,15 +87,6 @@ You must set the --apply flag to actually run the helmsman (this is to prevent a
 			Verbose:          viper.GetBool(ArgGlobalVerbose),
 		}
 
-
-		r.MarketingRelease, err = getMarketingRelease()
-		if err != nil {
-			return err
-		}
-
-		pkg.Log.Debugf("Deploying for release %s", r.MarketingRelease)
-
-
 		values := viper.GetStringSlice(ArgHelmsmanSet)
 		for _, v := range values {
 			segs := strings.Split(v, "=")

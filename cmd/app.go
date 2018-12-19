@@ -25,11 +25,10 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 )
-
-
 
 const (
 	ArgSvcToggleLocalhost = "localhost"
@@ -38,7 +37,10 @@ const (
 	ArgAppLabels          = "labels"
 	ArgAppListDiff        = "diff"
 	ArgAppListSkipActual  = "skip-actual"
-	ArgAppDeployForce = "force"
+	ArgAppDeployForce     = "force"
+	ArgAppDeploySet       = "set"
+	ArgAppDeployDeps      = "deploy-deps"
+	ArgAppDeletePurge     = "purge"
 )
 
 func init() {
@@ -50,17 +52,23 @@ func init() {
 	appToggleCmd.Flags().Bool(ArgSvcToggleMinikube, false, "Run service at minikube.")
 
 	appListCmd.Flags().Bool(ArgAppListDiff, false, "Run diff on deployed charts.")
-	appListCmd.Flags().BoolP(ArgAppListSkipActual,"s", false, "Skip collection of actual state.")
+	appListCmd.Flags().BoolP(ArgAppListSkipActual, "s", false, "Skip collection of actual state.")
 	appCmd.AddCommand(appListCmd)
 
+	appCmd.AddCommand(appAcceptActualCmd)
+
 	appDeployCmd.Flags().Bool(ArgAppDeployForce, false, "Force deploy even if nothing has changed.")
+	appDeployCmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
+	appDeployCmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
 	appCmd.AddCommand(appDeployCmd)
+
+	appDeleteCmd.Flags().Bool(ArgAppDeletePurge, false, "Purge the release from the cluster.")
 	appCmd.AddCommand(appDeleteCmd)
 
 	appCmd.AddCommand(appRunCmd)
+	appCmd.AddCommand(appVersionCmd)
 	rootCmd.AddCommand(appCmd)
 }
-
 
 // appCmd represents the app command
 var appCmd = &cobra.Command{
@@ -69,8 +77,94 @@ var appCmd = &cobra.Command{
 	Short:   "Service commands",
 }
 
+var appVersionCmd = &cobra.Command{
+	Use:     "version [name]",
+	Aliases: []string{"v"},
+	Args:    cobra.RangeArgs(0, 1),
+	Short:   "Outputs the version of an app.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		app := getApp(b, args)
+		fmt.Println(app.Version)
+		return nil
+	},
+}
+
+var appAcceptActualCmd = &cobra.Command{
+	Use:          "accept-actual [name...]",
+	Short:        "Updates the desired state to match the actual state of the apps. ",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+
+		apps, err := getApps(b, args)
+		if err != nil {
+			return err
+		}
+
+		p := progressbar.New(len(apps))
+
+		foreachAppConcurrent(apps, func(app *bosun.App) error {
+			err := app.LoadActualState(false)
+			p.Add(1)
+			return err
+		})
+
+		for _, app := range apps {
+			log := pkg.Log.WithField("name", app)
+			log.Debug("Getting actual state...")
+			err = app.LoadActualState(true)
+			if err != nil {
+				log.WithError(err).Error("Could not get actual state.")
+				continue
+			}
+
+			app.DesiredState = app.ActualState
+			log.Debug("Updated.")
+			p.Add(1)
+		}
+
+		err = b.Save()
+
+		return err
+	},
+}
+
+func foreachAppConcurrent(apps []*bosun.App, action func(app *bosun.App) error) error {
+
+	wg := new(sync.WaitGroup)
+	wg.Add(len(apps))
+
+	hadErr := false
+
+	for i := range apps {
+		app := apps[i]
+		go func() {
+			err := action(app)
+			if err != nil {
+				hadErr = true
+				pkg.Log.WithField("name", app.Name).WithError(err).Error("App action failed.")
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	if hadErr {
+		return errors.New("Had an error.")
+	}
+
+	return nil
+}
+
 var appListCmd = &cobra.Command{
-	Use:          "list",
+	Use:          "list [name...]",
 	Aliases:      []string{"ls"},
 	Short:        "Lists apps",
 	SilenceUsage: true,
@@ -82,9 +176,11 @@ var appListCmd = &cobra.Command{
 			return err
 		}
 
-		if len(viper.GetStringSlice(ArgAppLabels)) == 0 {
+		if len(viper.GetStringSlice(ArgAppLabels)) == 0 && len(args) == 0 {
 			viper.Set(ArgAppAll, true)
 		}
+
+		env := b.GetCurrentEnvironment()
 
 		apps, err := getApps(b, args)
 		if err != nil {
@@ -96,46 +192,60 @@ var appListCmd = &cobra.Command{
 		diff := viper.GetBool(ArgAppListDiff)
 		skipActual := viper.GetBool(ArgAppListSkipActual)
 
+		if !skipActual {
+			err = foreachAppConcurrent(apps, func(app *bosun.App) error {
+				err := app.LoadActualState(false)
+				p.Add(1)
+				return err
+
+			})
+			if err != nil {
+				return err
+			}
+		}
+
 		sb := new(strings.Builder)
 		w := new(tabwriter.Writer)
 		w.Init(sb, 0, 8, 3, '\t', 0)
 		fmt.Fprintln(w,
-			fmtTableEntry("APP") + "\t"+
-			fmtTableEntry("STATUS")+"\t"+
-			fmtTableEntry("ROUTE")+"\t"+
-			fmtTableEntry("DIFF")+"\t"+
-			fmtTableEntry("LABELS")+"\t")
+			fmtTableEntry("APP")+"\t"+
+				fmtTableEntry("STATUS")+"\t"+
+				fmtTableEntry("ROUTE")+"\t"+
+				fmtTableEntry("DIFF")+"\t"+
+				fmtTableEntry("LABELS")+"\t")
 		for _, m := range apps {
 
-			if !skipActual {
-				err = m.LoadActualState(diff)
+			if !m.HasChart() {
+				fmt.Fprintf(w, "%s - no chart \t\n", m.Name)
+				continue
 			}
 
-			if err != nil {
-				fmt.Fprintf(w, "%s\tError: %s\n", m.Name, err)
-			} else {
-				actual, desired := m.ActualState, m.DesiredState
-				var diffStatus string
-				if diff && actual.Diff != "" {
-					diffStatus = "detected"
-				}
-
-				if desired.Status == "" {
-					desired.Status = bosun.StatusNotFound
-				}
-
-				if desired.Routing == "" {
-					desired.Routing = bosun.RoutingNA
-				}
-
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					fmtTableEntry(m.Name),
-					fmtDesiredActual(desired.Status, actual.Status),
-					fmtDesiredActual(desired.Routing, actual.Routing),
-					fmtTableEntry(diffStatus),
-					fmtTableEntry(strings.Join(m.Labels, ", ")))
+			actual, desired := m.ActualState, m.DesiredState
+			var diffStatus string
+			if diff && actual.Diff != "" {
+				diffStatus = "detected"
 			}
-			p.Add(1)
+
+			if desired.Status == "" {
+				desired.Status = bosun.StatusNotFound
+			}
+
+			if desired.Routing == "" {
+				desired.Routing = bosun.RoutingNA
+			}
+
+			routing := "n/a"
+			if env.Cluster == "minikube" {
+				routing = fmtDesiredActual(desired.Routing, actual.Routing)
+			}
+
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				fmtTableEntry(m.Name),
+				fmtDesiredActual(desired.Status, actual.Status),
+				routing,
+				fmtTableEntry(diffStatus),
+				fmtTableEntry(strings.Join(m.Labels, ", ")))
+
 		}
 
 		fmt.Println()
@@ -149,7 +259,7 @@ var appListCmd = &cobra.Command{
 func fmtDesiredActual(desired, actual interface{}) string {
 
 	if desired == actual {
-		return fmt.Sprintf("✔ %v", actual)
+		return fmt.Sprintf("✔️%v", actual)
 	}
 
 	return fmt.Sprintf("❌ %v [want %v]", actual, desired)
@@ -173,10 +283,8 @@ var appToggleCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c, err := b.GetCurrentEnvironment()
-		if err != nil {
-			return err
-		}
+		c := b.GetCurrentEnvironment()
+
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to toggle services.")
 		}
@@ -219,24 +327,92 @@ var appToggleCmd = &cobra.Command{
 
 var appDeployCmd = &cobra.Command{
 	Use:          "deploy [name] [name...]",
-	Short:        "Toggles or sets where traffic for an app will be routed to.",
+	Short:        "Deploys the requested app.",
 	Long:         "If app is not specified, the first app in the nearest bosun.yaml file is used.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		viper.BindPFlags(cmd.Flags())
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := mustGetBosun()
+		env := b.GetCurrentEnvironment()
 
 		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
 
+		sets := map[string]string{}
+		for _, set := range viper.GetStringSlice(ArgAppDeploySet) {
+
+			segs := strings.Split(set, "=")
+			if len(segs) != 2 {
+				return errors.Errorf("invalid set (should be key=value): %q", set)
+			}
+			sets[segs[0]] = segs[1]
+		}
+
+		var requestedAppNames []string
+		requestedAppNameSet := map[string]bool{}
 		for _, app := range apps {
+			requestedAppNameSet[app.Name] = true
+		}
+		for appName := range requestedAppNameSet {
+			requestedAppNames = append(requestedAppNames, appName)
+		}
+
+		allApps := b.GetApps()
+
+		topology, err := bosun.GetDependenciesInTopologicalOrder(allApps, requestedAppNames...)
+
+		if err != nil {
+			return errors.Errorf("apps could not be sorted in dependency order: %s", err)
+		}
+
+		deployDeps := viper.GetBool(ArgAppDeployDeps)
+
+		var toDeploy []*bosun.App
+
+		for _, dep := range topology {
+			app, ok := allApps[dep.Name]
+			if !ok {
+				if requestedAppNameSet[dep.Name] {
+					return errors.Errorf("a requested app %q could not be found in the list of apps", dep.Name)
+				} else {
+					if deployDeps {
+						return errors.Errorf("an app specifies a dependency that could not be found: %q from repo %q", dep.Name, dep.Repo)
+					} else {
+						pkg.Log.Debugf("Skipping missing dependency %q because it was not requested.", dep.Name)
+					}
+				}
+			} else {
+				if requestedAppNameSet[dep.Name] || deployDeps {
+					toDeploy = append(toDeploy, app)
+				} else {
+					pkg.Log.Debugf("Skipping dependency %q because it was not requested.", dep.Name)
+				}
+			}
+		}
+
+		for _, app := range toDeploy {
+			requested := requestedAppNameSet[app.Name]
+			if requested {
+				pkg.Log.Infof("App %q will be deployed because it was requested.", app.Name)
+			} else {
+				pkg.Log.Infof("App %q will be deployed because it was a dependency of a requested app.", app.Name)
+			}
+		}
+
+		for _, app := range toDeploy {
+
+			envValues := app.GetValuesForEnvironment(env.Name)
+			if envValues.Set == nil {
+				envValues.Set = make(map[string]*bosun.DynamicValue)
+			}
+			for k, v := range sets {
+				envValues.Set[k] = &bosun.DynamicValue{Value: v}
+			}
+
 			app.DesiredState.Status = bosun.StatusDeployed
 			if app.DesiredState.Routing == "" {
 				app.DesiredState.Routing = bosun.RoutingCluster
@@ -276,7 +452,12 @@ var appDeleteCmd = &cobra.Command{
 		}
 
 		for _, ms := range services {
-			ms.DesiredState.Status = bosun.StatusNotFound
+			if viper.GetBool(ArgAppDeletePurge) {
+				ms.DesiredState.Status = bosun.StatusNotFound
+			} else {
+				ms.DesiredState.Status = bosun.StatusDeleted
+			}
+
 			ms.DesiredState.Routing = bosun.RoutingNA
 			err = b.Reconcile(ms)
 			if err != nil {
@@ -303,10 +484,8 @@ var appRunCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c, err := b.GetCurrentEnvironment()
-		if err != nil {
-			return err
-		}
+		c := b.GetCurrentEnvironment()
+
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to run services.")
 		}

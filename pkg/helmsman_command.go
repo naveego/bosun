@@ -84,7 +84,6 @@ type HelmsmanCommand struct {
 	Domain            string
 	Cluster           string
 	HelmsmanFilePaths []string
-	MarketingRelease  string
 	Apply             bool
 	DryRun            bool
 	NoConfirm         bool

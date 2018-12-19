@@ -9,12 +9,21 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 )
+
+func mustGetBosun() *bosun.Bosun {
+	b, err := getBosun()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return b
+}
 
 func getBosun() (*bosun.Bosun, error) {
 	config, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
@@ -25,20 +34,36 @@ func getBosun() (*bosun.Bosun, error) {
 	params := bosun.Parameters{
 		Verbose: viper.GetBool(ArgGlobalVerbose),
 		DryRun:  viper.GetBool(ArgGlobalDryRun),
+		CIMode: viper.GetBool(ArgGlobalCIMode),
 	}
 
-	return bosun.New(params, config), nil
+	return bosun.New(params, config)
 }
 
-// gets one or more microservices matching names.
-// if names is empty, tries to find a microservice starting
+func getApp(b *bosun.Bosun, names []string) *bosun.App {
+	apps, err := getApps(b, names)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(apps) == 0 {
+		log.Fatalf("no apps matched %v", names)
+	}
+	if len(apps) > 1 {
+		log.Fatalf("%d apps match %v", len(apps), names)
+	}
+	return apps[0]
+}
+
+// gets one or more apps matching names, or if names
+// are valid file paths, imports the file at that path.
+// if names is empty, tries to find a apps starting
 // from the current directory
 func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 
-	var services []*bosun.App
+	var apps []*bosun.App
 	var err error
 
-	all := b.GetApps()
+	all := b.GetAppsSortedByName()
 
 	if viper.GetBool(ArgAppAll) {
 		return all, nil
@@ -50,42 +75,49 @@ func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 			for _, svc := range all {
 				for _, svcLabel := range svc.Labels {
 					if svcLabel == label {
-						services = append(services, svc)
+						apps = append(apps, svc)
 						break
 					}
 				}
 			}
 		}
 
-		return services, nil
+		return apps, nil
 	}
 
-	var ms *bosun.App
+	var app *bosun.App
 	if len(names) > 0 {
-		for _, svc := range all {
-			for _, name := range names {
-				if svc.Name == name {
-					services = append(services, svc)
+		for _, name := range names {
+			maybePath, _ := filepath.Abs(name)
+			for _, svc := range all {
+				if svc.Name == name || svc.FromPath == maybePath {
+					apps = append(apps, svc)
 					continue
 				}
 			}
+			if _, err = os.Stat(maybePath); err == nil {
+				app, err = b.GetOrAddAppForPath(maybePath)
+				apps = append(apps, app)
+			}
 		}
-		return services, nil
+		return apps, nil
 	}
+
+	var bosunFile string
 
 	wd, _ := os.Getwd()
-	bosunFile, err := findFileInDirOrAncestors(wd, "bosun.yaml")
+	bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
 	if err != nil {
 		return nil, err
 	}
 
-	ms, err = b.GetOrAddMicroserviceForPath(bosunFile)
+	app, err = b.GetOrAddAppForPath(bosunFile)
 	if err != nil {
 		return nil, err
 	}
-	services = append(services, ms)
+	apps = append(apps, app)
 
-	return services, nil
+	return apps, nil
 }
 
 func checkExecutableDependency(exe string) {
@@ -227,42 +259,3 @@ func findFileInDirOrAncestors(dir string, filename string) (string, error) {
 		dir = filepath.Dir(dir)
 	}
 }
-
-type Color string
-
-const (
-	Reset                   Color = "\x1b[0000m"
-	Bright                        = "\x1b[0001m"
-	BlackText                     = "\x1b[0030m"
-	RedText                       = "\x1b[0031m"
-	GreenText                     = "\x1b[0032m"
-	YellowText                    = "\x1b[0033m"
-	BlueText                      = "\x1b[0034m"
-	MagentaText                   = "\x1b[0035m"
-	CyanText                      = "\x1b[0036m"
-	WhiteText                     = "\x1b[0037m"
-	DefaultText                   = "\x1b[0039m"
-	BrightRedText                 = "\x1b[1;31m"
-	BrightGreenText               = "\x1b[1;32m"
-	BrightYellowText              = "\x1b[1;33m"
-	BrightBlueText                = "\x1b[1;34m"
-	BrightMagentaText             = "\x1b[1;35m"
-	BrightCyanText                = "\x1b[1;36m"
-	BrightWhiteText               = "\x1b[1;37m"
-	BlackBackground               = "\x1b[0040m"
-	RedBackground                 = "\x1b[0041m"
-	GreenBackground               = "\x1b[0042m"
-	YellowBackground              = "\x1b[0043m"
-	BlueBackground                = "\x1b[0044m"
-	MagentaBackground             = "\x1b[0045m"
-	CyanBackground                = "\x1b[0046m"
-	WhiteBackground               = "\x1b[0047m"
-	BrightBlackBackground         = "\x1b[0100m"
-	BrightRedBackground           = "\x1b[0101m"
-	BrightGreenBackground         = "\x1b[0102m"
-	BrightYellowBackground        = "\x1b[0103m"
-	BrightBlueBackground          = "\x1b[0104m"
-	BrightMagentaBackground       = "\x1b[0105m"
-	BrightCyanBackground          = "\x1b[0106m"
-	BrightWhiteBackground         = "\x1b[0107m"
-)

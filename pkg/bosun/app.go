@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"github.com/stevenle/topsort"
 	"gopkg.in/yaml.v2"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -20,68 +20,164 @@ type App struct {
 	ActualState  AppState
 }
 
-func (m *App) LoadActualState(diff bool) error {
+type AppsSortedByName []*App
+type DependenciesSortedByTopology []Dependency
 
-	m.ActualState = AppState{}
+func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (DependenciesSortedByTopology, error) {
 
-	log := pkg.Log.WithField("name", m.Name)
+	const target = "__TARGET__"
 
-	if !m.bosun.IsClusterAvailable() {
+	repos := map[string]string{}
+
+	graph := topsort.NewGraph()
+
+	graph.AddNode(target)
+
+	for _, root := range roots {
+		graph.AddNode(root)
+		graph.AddEdge(target, root)
+	}
+
+	// add our root node to the graph
+
+	for _, app := range apps {
+		graph.AddNode(app.Name)
+		for _, dep := range app.DependsOn {
+			if repos[dep.Name] == "" || dep.Repo != "" {
+				repos[dep.Name] = dep.Repo
+			}
+
+			// make sure dep is in the graph
+			graph.AddNode(dep.Name)
+			graph.AddEdge(app.Name, dep.Name)
+		}
+	}
+
+	sortedNames, err := graph.TopSort(target)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DependenciesSortedByTopology
+	for _, name := range sortedNames {
+		if name == target {
+			continue
+		}
+
+		// exclude non-existent apps
+		repo := repos[name]
+		dep := Dependency{
+			Name: name,
+			Repo: repo,
+		}
+		if dep.Repo == "" {
+			dep.Repo = "unknown"
+		}
+		result = append(result, dep)
+	}
+
+	return result, nil
+}
+
+func (a AppsSortedByName) Len() int {
+	return len(a)
+}
+
+func (a AppsSortedByName) Less(i, j int) bool {
+	return strings.Compare(a[i].Name, a[j].Name) < 0
+}
+
+func (a AppsSortedByName) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
+func (a *App) HasChart() bool {
+	return a.ChartPath != "" || a.Chart != ""
+}
+
+func (a *App) GetValuesForEnvironment(name string) AppValues {
+	if a.Values == nil {
+		a.Values = map[string]AppValues{}
+	}
+	av, ok := a.Values[name]
+	if !ok {
+		av = NewAppValues()
+		a.Values[name] = av
+	}
+	return av
+}
+
+func (a *App) LoadActualState(diff bool) error {
+
+	ctx := a.bosun.NewContext(a.FromPath)
+
+	a.ActualState = AppState{}
+
+	log := pkg.Log.WithField("name", a.Name)
+
+	if !a.HasChart() {
+		return nil
+	}
+
+	if !a.bosun.IsClusterAvailable() {
 		log.Debug("Cluster not available.")
 
-		m.ActualState.Status = "unknown"
-		m.ActualState.Routing = "unknown"
-		m.ActualState.Version = "unknown"
+		a.ActualState.Status = "unknown"
+		a.ActualState.Routing = "unknown"
+		a.ActualState.Version = "unknown"
 
 		return nil
 	}
 
 	log.Debug("Getting actual state...")
 
-	release, err := m.GetHelmRelease(m.Name)
+	release, err := a.GetHelmRelease(a.Name)
 
 	if err != nil || release == nil {
 		if release == nil || strings.Contains(err.Error(), "not found") {
-			m.ActualState.Status = StatusNotFound
-			m.ActualState.Routing = RoutingNA
-			m.ActualState.Version = ""
+			a.ActualState.Status = StatusNotFound
+			a.ActualState.Routing = RoutingNA
+			a.ActualState.Version = ""
 		} else {
-			m.ActualState.Error = err
+			a.ActualState.Error = err
 		}
 		return nil
 	}
 
-	m.ActualState.Status = release.Status
+	a.ActualState.Status = release.Status
 
-	releaseData, _ := pkg.NewCommand("helm", "get", m.Name).RunOut()
+	releaseData, _ := pkg.NewCommand("helm", "get", a.Name).RunOut()
 
 	if strings.Contains(releaseData, "routeToHost: true") {
-		m.ActualState.Routing = RoutingLocalhost
+		a.ActualState.Routing = RoutingLocalhost
 	} else {
-		m.ActualState.Routing = RoutingCluster
+		a.ActualState.Routing = RoutingCluster
 	}
 
 	if diff {
-		if m.ActualState.Status == StatusDeployed {
-			m.ActualState.Diff, m.ActualState.Error = m.diff()
+		if a.ActualState.Status == StatusDeployed {
+			a.ActualState.Diff, err = a.diff(ctx)
+			if err != nil {
+				return errors.Wrap(err, "diff")
+			}
 		}
 	}
 
 	return nil
 }
 
-func (m *App) Dir() string {
-	return filepath.Dir(m.FromPath)
+func (a *App) Dir() string {
+	return filepath.Dir(a.FromPath)
 }
 
-func (m *App) GetRunCommand() (*exec.Cmd, error) {
+func (a *App) GetRunCommand() (*exec.Cmd, error) {
 
-	if m.RunCommand == nil || len(m.RunCommand) == 0 {
-		return nil, errors.Errorf("no runCommand in %q", m.FromPath)
+	if a.RunCommand == nil || len(a.RunCommand) == 0 {
+		return nil, errors.Errorf("no runCommand in %q", a.FromPath)
 	}
 
-	c := exec.Command(m.RunCommand[0], m.RunCommand[1:]...)
-	c.Dir = m.Dir()
+	c := exec.Command(a.RunCommand[0], a.RunCommand[1:]...)
+	c.Dir = a.Dir()
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 
@@ -92,36 +188,24 @@ type Plan []PlanStep
 
 type PlanStep struct {
 	Description string
-	Action      func() error
+	Action      func(ctx BosunContext) error
 }
 
-func (p Plan) Execute() error {
-	for _, step := range p {
-		err := step.Action()
-		if err != nil {
-			return err
-		}
-	}
 
-	return nil
-}
+func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
-func (m *App) PlanReconciliation() (Plan, error) {
-
-	if !m.bosun.IsClusterAvailable() {
+	if !a.bosun.IsClusterAvailable() {
 		return nil, errors.New("cluster not available")
 	}
 
 	var steps []PlanStep
 
-	actual, desired := m.ActualState, m.DesiredState
+	actual, desired := a.ActualState, a.DesiredState
 
-	if actual.Status == desired.Status &&
-		actual.Routing == desired.Routing &&
-		actual.Version == desired.Version &&
-		!desired.Force {
-		return nil, nil
-	}
+	log := pkg.Log.WithField("name", a.Name)
+
+	log.WithField("state", desired.String()).Debug("Desired state.")
+	log.WithField("state", actual.String()).Debug("Actual state.")
 
 	var (
 		needsDelete  bool
@@ -129,48 +213,43 @@ func (m *App) PlanReconciliation() (Plan, error) {
 		needsUpgrade bool
 	)
 
-	if desired.Status == StatusNotFound {
-		needsDelete = true
+	if desired.Status == StatusNotFound || desired.Status == StatusDeleted {
+		needsDelete = actual.Status != StatusDeleted && actual.Status != StatusNotFound
 	} else {
-		switch actual.Status {
-		case StatusDeployed, StatusNotFound:
-			needsDelete = false
-		default:
-			needsDelete = true
-		}
+		needsDelete = actual.Status == StatusFailed
+		needsDelete = needsDelete || actual.Status == StatusPendingUpgrade
 	}
 
 	if desired.Status == StatusDeployed {
-		if needsDelete || actual.Status == StatusNotFound {
+		if actual.Status == StatusNotFound {
 			needsInstall = true
 		} else {
-			if actual.Routing != desired.Routing ||
-				actual.Version != desired.Version ||
-				actual.Diff != "" ||
-				desired.Force {
-				needsUpgrade = true
-			}
+			needsUpgrade = actual.Status != StatusDeployed
+			needsUpgrade = needsUpgrade || actual.Routing != desired.Routing
+			needsUpgrade = needsUpgrade || actual.Version != desired.Version
+			needsUpgrade = needsUpgrade || actual.Diff != ""
+			needsUpgrade = needsUpgrade || desired.Force
 		}
 	}
 
 	if needsDelete {
 		steps = append(steps, PlanStep{
 			Description: "Delete",
-			Action:      m.Delete,
+			Action:      a.Delete,
 		})
 	}
 
 	if needsInstall {
 		steps = append(steps, PlanStep{
 			Description: "Install",
-			Action:      m.Install,
+			Action:      a.Install,
 		})
 	}
 
 	if needsUpgrade {
 		steps = append(steps, PlanStep{
 			Description: "Upgrade",
-			Action:      m.Upgrade,
+			Action:      a.Upgrade,
 		})
 	}
 
@@ -178,9 +257,12 @@ func (m *App) PlanReconciliation() (Plan, error) {
 
 }
 
-func (m *App) diff() (string, error) {
-	msg, err := pkg.NewCommand("helm", "diff", "upgrade", m.Name, m.getChartRef(), "--version", strconv.Quote(m.Version)).
-		WithArgs(m.makeHelmArgs()...).
+func (a *App) diff(ctx BosunContext) (string, error) {
+
+	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
+
+	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.getChartRef(), "--version", a.Version).
+		WithArgs(args...).
 		RunOut()
 
 	if err != nil {
@@ -193,22 +275,34 @@ func (m *App) diff() (string, error) {
 	return msg, nil
 }
 
-func (m *App) Delete() error {
-	return pkg.NewCommand("helm", "delete", "--purge", m.Name).RunE()
+func (a *App) Delete(ctx BosunContext) error {
+	args := []string{"delete"}
+	if a.DesiredState.Status == StatusNotFound {
+		args = append(args, "--purge")
+	}
+	args = append(args, a.Name)
+
+	out, err := pkg.NewCommand("helm", args...).RunOut()
+	pkg.Log.Debug(out)
+	return err
 }
 
-func (m *App) Install() error {
-	args := append([]string{"install", "--name", m.Name, m.getChartRef()}, m.makeHelmArgs()...)
-	return pkg.NewCommand("helm", args...).RunE()
+func (a *App) Install(ctx BosunContext) error {
+	args := append([]string{"install", "--name", a.Name, a.getChartRef()}, a.makeHelmArgs(ctx)...)
+	out, err := pkg.NewCommand("helm", args...).RunOut()
+	pkg.Log.Debug(out)
+	return err
 }
 
-func (m *App) Upgrade() error {
-	args := append([]string{"upgrade", m.Name, m.getChartRef()}, m.makeHelmArgs()...)
-	return pkg.NewCommand("helm", args...).RunE()
+func (a *App) Upgrade(ctx BosunContext) error {
+	args := append([]string{"upgrade", a.Name, a.getChartRef()}, a.makeHelmArgs(ctx)...)
+	out, err := pkg.NewCommand("helm", args...).RunOut()
+	pkg.Log.Debug(out)
+	return err
 }
 
-func (m *App) GetStatus() (string, error) {
-	release, err := m.GetHelmRelease(m.Name)
+func (a *App) GetStatus() (string, error) {
+	release, err := a.GetHelmRelease(a.Name)
 	if err != nil {
 		return "", err
 	}
@@ -219,36 +313,42 @@ func (m *App) GetStatus() (string, error) {
 	return release.Status, nil
 }
 
-func (m *App) getChartRef() string {
-	if m.Chart != "" {
-		return m.Chart
+func (a *App) getChartRef() string {
+	if a.Chart != "" {
+		return a.Chart
 	}
-	return m.ChartPath
+	return a.ChartPath
 }
 
-func (m *App) makeHelmArgs() []string {
-
-	env, err := m.bosun.GetCurrentEnvironment()
-	if err != nil {
-		panic(err)
-	}
+func (a *App) makeHelmArgs(ctx BosunContext) []string {
 
 	envs := []string{
 		"all",
-		m.bosun.rootConfig.CurrentEnvironment,
+		ctx.Env.Name,
 	}
 
 	var args []string
 
+	args = append(args,
+		"--set", fmt.Sprintf("domain=%s", ctx.Env.Domain))
+
+	if a.Namespace != "" && a.Namespace != "default" {
+		args = append(args,
+			"--namespace", a.Namespace)
+	}
+
+
+
 	for _, envName := range envs {
 
-		values, ok := m.Values[envName]
+		values, ok := a.Values[envName]
 		if !ok {
 			continue
 		}
 
 		for k, v := range values.Set {
-			args = append(args, "--set", fmt.Sprintf("%s=%s", k, v))
+			v.Resolve(ctx)
+			args = append(args, "--set", fmt.Sprintf("%s=%s", k, v.GetValue()))
 		}
 
 		for _, f := range values.Files {
@@ -256,9 +356,9 @@ func (m *App) makeHelmArgs() []string {
 		}
 	}
 
-	if env.Name == "red" {
+	if ctx.Env.IsLocal {
 		args = append(args, "--set", "imagePullPolicy=IfNotPresent")
-		if m.DesiredState.Routing == RoutingLocalhost {
+		if a.DesiredState.Routing == RoutingLocalhost {
 			args = append(args, "--set", fmt.Sprintf("routeToHost=true"))
 		} else {
 			args = append(args, "--set", fmt.Sprintf("routeToHost=false"))
@@ -267,9 +367,7 @@ func (m *App) makeHelmArgs() []string {
 		args = append(args, "--set", "routeToHost=false")
 	}
 
-	args = append(args, "--set", fmt.Sprintf("domain=%s", env.Domain))
-
-	if m.bosun.params.DryRun {
+	if a.bosun.params.DryRun {
 		args = append(args, "--dry-run", "--debug")
 	}
 
@@ -289,10 +387,10 @@ type HelmRelease struct {
 	Namespace  string `yaml:"Namespace"`
 }
 
-func (m *App) GetHelmRelease(name string) (*HelmRelease, error) {
+func (a *App) GetHelmRelease(name string) (*HelmRelease, error) {
 
-	if m.HelmRelease == nil {
-		releases, err := m.GetHelmList(name)
+	if a.HelmRelease == nil {
+		releases, err := a.GetHelmList(fmt.Sprintf(`^%s$`, name))
 		if err != nil {
 			return nil, err
 		}
@@ -301,13 +399,13 @@ func (m *App) GetHelmRelease(name string) (*HelmRelease, error) {
 			return nil, nil
 		}
 
-		m.HelmRelease = releases[0]
+		a.HelmRelease = releases[0]
 	}
 
-	return m.HelmRelease, nil
+	return a.HelmRelease, nil
 }
 
-func (m *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
+func (a *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
 	data, err := pkg.NewCommand("helm", args...).RunOut()
@@ -323,4 +421,21 @@ func (m *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 	err = yaml.Unmarshal([]byte(data), &result)
 
 	return result.Releases, err
+}
+
+func omitStrings(from []string, toOmit ...string) []string {
+	var out []string
+	for _, s := range from {
+		matched := false
+		for _, o := range toOmit {
+			if o == s {
+				matched = true
+				continue
+			}
+		}
+		if !matched {
+			out = append(out, s)
+		}
+	}
+	return out
 }

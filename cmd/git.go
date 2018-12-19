@@ -117,13 +117,10 @@ var gitDeployUpdateCmd = &cobra.Command{
 			State:&args[1],
 		}
 
-		deployment, _, err := client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deploymentID, req)
+		_, _, err = client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deploymentID, req)
 		if err != nil {
 			return err
 		}
-
-		id := *deployment.ID
-		fmt.Println(id)
 		return nil
 	},
 }

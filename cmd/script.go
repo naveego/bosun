@@ -62,6 +62,7 @@ var scriptCmd = &cobra.Command{
 
 var scriptListCmd = &cobra.Command{
 	Use:          "list",
+	Aliases:[]string{"ls"},
 	Short:        "List scripts from current environment.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,19 +72,17 @@ var scriptListCmd = &cobra.Command{
 			return err
 		}
 
-		s, err := b.GetScripts()
-		if err != nil {
-			return err
-		}
+		scripts := b.GetScripts()
 
-		if len(s) == 0 {
+
+		if len(scripts) == 0 {
 			fmt.Println("No scripts in current environment.")
 			return nil
 		}
 
-		fmt.Printf("Found %d scripts.\n\n", len(s))
+		fmt.Printf("Found %d scripts.\n\n", len(scripts))
 
-		for _, script := range s {
+		for _, script := range scripts {
 			color.New(color.Bold).Println(script.Name)
 			color.Blue("FROM: %s\n", script.FromPath)
 			color.White("%s\n", script.Description)

@@ -2,7 +2,6 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
-	"os"
 	"runtime"
 	"strings"
 )
@@ -49,19 +48,6 @@ Convert:
 	return err
 }
 
-type DynamicValueContext struct {
-	Dir string
-}
-
-func NewDynamicValueContext(dir string) DynamicValueContext {
-	if dir == "" {
-		dir, _ = os.Getwd()
-	}
-	return DynamicValueContext{
-		Dir: dir,
-	}
-}
-
 func (d *DynamicValue) GetValue() string {
 	if d == nil {
 		return ""
@@ -74,7 +60,7 @@ func (d *DynamicValue) GetValue() string {
 
 // Resolve sets the Value field by executing Script, Command, or an entry under OS.
 // If resolve has been called before, the value from that resolve is returned.
-func (d *DynamicValue) Resolve(ctx DynamicValueContext) (string, error) {
+func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
 	var err error
 
 	if d.resolved {
@@ -93,11 +79,14 @@ func (d *DynamicValue) Resolve(ctx DynamicValueContext) (string, error) {
 		}
 	}
 
+	// trim whitespace, as script output may contain line breaks at the end
+	d.Value = strings.TrimSpace(d.Value)
+
 	return d.Value, err
 }
 
 // Execute executes the DynamicValue, and treats the Value field as a script.
-func (d *DynamicValue) Execute(ctx DynamicValueContext) (string, error) {
+func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
 	var err error
 	var value string
 

@@ -19,11 +19,30 @@ import (
 	"github.com/spf13/cobra"
 )
 
+
+
+func init() {
+
+	envCmd.AddCommand(envNameCmd)
+
+	rootCmd.AddCommand(envCmd)
+}
+
+var envNameCmd = &cobra.Command{
+	Use:   "name",
+	Short: "Prints the name of the current environment.",
+	Run: func(cmd *cobra.Command, args []string) {
+		b := mustGetBosun()
+		e := b.GetCurrentEnvironment()
+		fmt.Println(e.Name)
+	},
+}
+
 // envCmd represents the env command
 var envCmd = &cobra.Command{
 	Use:   "env {environment}",
 	Args:  cobra.ExactArgs(1),
-	Short: "Outputs a script which will configure the environment. Should be called using $() so that the shell will apply the script.",
+	Short: "Sets the environment, and outputs a script which will set environment variables in the environment. Should be called using $() so that the shell will apply the script.",
 	Example: "$(bosun env {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -39,18 +58,21 @@ var envCmd = &cobra.Command{
 			return err
 		}
 
+		env := b.GetCurrentEnvironment()
 
-		env, err := b.GetCurrentEnvironment()
+		ctx := b.NewContext("")
+
+		err = env.ForceEnsure(ctx)
 		if err != nil {
 			return err
 		}
 
-		err = env.Execute()
+		err = env.Execute(ctx)
 		if err != nil {
 			return err
 		}
 
-		script, err := env.Render()
+		script, err := env.Render(ctx)
 		if err != nil {
 			return err
 		}
@@ -64,10 +86,4 @@ var envCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-
-func init() {
-
-	rootCmd.AddCommand(envCmd)
 }

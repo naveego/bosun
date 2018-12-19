@@ -14,7 +14,7 @@ func yamlize(y string) string {
 
 var _ = Describe("Config", func() {
 
-	Describe("AppValuesMap", func(){
+	Describe("AppValuesByEnvironment", func(){
 		It("should merge values when unmarshalled", func(){
 
 			input := yamlize(`
@@ -35,14 +35,14 @@ green:
 	files:
 		- greenfile
 `)
-			var sut AppValuesMap
+			var sut AppValuesByEnvironment
 			Expect(yaml.Unmarshal([]byte(input), &sut)			).To(Succeed())
 
-			Expect(sut).To(BeEquivalentTo(AppValuesMap{
+			Expect(sut).To(BeEquivalentTo(AppValuesByEnvironment{
 				"red":{
-					Set:map[string]string{
-						"redgreen1":"a",
-						"red1":"b",
+					Set:map[string]*DynamicValue{
+						"redgreen1": {Value: "a"},
+						"red1":     {Value: "b"},
 					},
 					Files:[]string{
 						"redgreenfile",
@@ -50,9 +50,9 @@ green:
 					},
 				},
 				"green":{
-					Set:map[string]string{
-						"redgreen1":"c",
-						"green1":"d",
+					Set:map[string]*DynamicValue{
+						"redgreen1":{Value:"c"},
+						"green1":{Value:"d"},
 					},
 					Files:[]string{
 						"redgreenfile",

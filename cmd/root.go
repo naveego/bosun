@@ -31,6 +31,11 @@ var cfgFile string
 
 var step int
 
+var version string
+var timestamp string
+var commit string
+
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "bosun",
@@ -83,12 +88,15 @@ const (
 	ArgGlobalDomain    ="domain"
 	ArgGlobalValues    = "values"
 	ArgBosunConfigFile = "config-file"
+	ArgGlobalCIMode    = "ci-mode"
 )
 
 func init() {
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", configPath, "The config file for bosun.")
 	rootCmd.PersistentFlags().IntVar(&step, "step", -1, "The step we are on.")
 	rootCmd.PersistentFlags().MarkHidden("step")
+
+	rootCmd.PersistentFlags().Bool(ArgGlobalCIMode, false, "Operate in CI mode, reporting deployments and builds to github.")
 
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
@@ -105,8 +113,11 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().String(ArgGlobalCluster, defaultCluster, "The cluster to use when getting kube config data, and as the .Cluster value in templates.")
+	rootCmd.PersistentFlags().MarkHidden(ArgGlobalCluster)
 	rootCmd.PersistentFlags().String(ArgGlobalDomain, defaultDomain, "The domain to use when connecting, and as the .Domain value in templates.")
+	rootCmd.PersistentFlags().MarkHidden(ArgGlobalDomain)
 	rootCmd.PersistentFlags().StringSlice(ArgGlobalValues, []string{}, "Any number of key=value values which will be available under the .Values token in templates.")
+	rootCmd.PersistentFlags().MarkHidden(ArgGlobalValues)
 
 
 	viper.RegisterAlias("debug", "verbose")

@@ -12,7 +12,7 @@ type RootConfig struct {
 	Path               string              `yaml:"-"`
 	CurrentEnvironment string              `yaml:"currentEnvironment"`
 	Imports            []string            `yaml:"imports,omitempty"`
-	AppStates          map[string]AppState `yaml:"appStates"`
+	AppStates          AppStatesByEnvironment `yaml:"appStates"`
 	MergedConfig       *Config             `yaml:"-"`
 	ImportedConfigs    map[string]*Config  `yaml:"-"`
 }
@@ -57,7 +57,7 @@ func LoadConfig(path string) (*RootConfig, error) {
 
 	c := &RootConfig{
 		Path:            path,
-		AppStates:       map[string]AppState{},
+		AppStates:       AppStatesByEnvironment{},
 		ImportedConfigs: map[string]*Config{},
 		MergedConfig:    new(Config),
 	}
@@ -139,19 +139,29 @@ func (c *Config) Merge(other *Config) error {
 	return nil
 }
 
-func (c *Config) mergeApp(svc *AppConfig) error {
+func (c *Config) mergeApp(app *AppConfig) error {
 	for _, e := range c.Apps {
-		if e.Name == svc.Name {
-			return errors.Errorf("duplicate microservice: %q is defined in %q and %q", svc.Name, svc.FromPath, e.FromPath)
+		if e.Name == app.Name {
+			return errors.Errorf("duplicate microservice: %q is defined in %q and %q", app.Name, app.FromPath, e.FromPath)
 		}
 	}
 
-	c.Apps = append(c.Apps, svc)
+	c.Apps = append(c.Apps, app)
+
+
 
 	return nil
 }
 
 func (c *Config) mergeEnvironment(env *EnvironmentConfig) error {
+
+	if env.Name == "all" {
+		for _, e := range c.Environments {
+			e.Merge(env)
+		}
+		return nil
+	}
+
 	for _, e := range c.Environments {
 		if e.Name == env.Name {
 			e.Merge(env)
@@ -162,7 +172,6 @@ func (c *Config) mergeEnvironment(env *EnvironmentConfig) error {
 	c.Environments = append(c.Environments, env)
 
 	return nil
-
 }
 
 func (c *Config) GetEnvironmentConfig(name string) *EnvironmentConfig {

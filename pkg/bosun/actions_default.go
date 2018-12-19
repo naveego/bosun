@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-func (e *EnvironmentConfig) render() string {
+func render(vars map[string]string) string {
 	w := new(strings.Builder)
-	for _, v := range e.Variables {
-		fmt.Fprintf(w, "export %s=%s\n", v.Name, v.From.GetValue())
+	for k, v := range vars {
+		fmt.Fprintf(w, "export %s=%s\n", k, v)
 	}
 	return w.String()
 }

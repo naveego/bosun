@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 )
@@ -28,9 +29,8 @@ var configCmd = &cobra.Command{
 	Short: "Root command for configuring bosun.",
 }
 
-
 var configDumpCmd = &cobra.Command{
-	Use:   "dump",
+	Use:   "dump [app]",
 	Short: "Prints current merged config.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, err := getBosun()
@@ -38,19 +38,30 @@ var configDumpCmd = &cobra.Command{
 			return err
 		}
 
-		c := b.GetMergedConfig()
+		if len(args) == 1 {
+			app, err := b.GetApp(args[0])
+			if err != nil {
+				return err
+			}
+			data, _ := yaml.Marshal(app.AppConfig)
+			fmt.Println(string(data))
+			return nil
+		}
 
-		fmt.Println(c)
+		c := b.GetMergedConfig()
+		data, _ := yaml.Marshal(c)
+
+		fmt.Println(string(data))
 
 		return nil
 	},
 }
 
 var configImportCmd = &cobra.Command{
-	Use:   "import {file}",
-	Aliases:[]string{"include", "add"},
-	Args: cobra.ExactArgs(1),
-	Short: "Includes the file in the user's bosun.yaml.",
+	Use:     "import {file}",
+	Aliases: []string{"include", "add"},
+	Args:    cobra.ExactArgs(1),
+	Short:   "Includes the file in the user's bosun.yaml.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		filename, err := filepath.Abs(args[0])
@@ -66,7 +77,6 @@ var configImportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
 
 		if !b.AddImport(filename) {
 			fmt.Printf("File %s is already imported in user config.\n", filename)
@@ -84,7 +94,6 @@ var configImportCmd = &cobra.Command{
 		return err
 	},
 }
-
 
 func init() {
 

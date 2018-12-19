@@ -11,17 +11,20 @@ import (
 )
 
 type Script struct {
-	FromPath string `yaml:"fromPath,omitempty"`
 	Name     string       `yaml:"name"`
+	FromPath string `yaml:"fromPath,omitempty"`
 	Description string `yaml:"description,omitempty"`
 	Steps    []ScriptStep `yaml:"steps,omitempty"`
 	Literal *DynamicValue `yaml:"literal,omitempty"`
 }
 
 type ScriptStep struct {
+	Name string `yaml:"name,omitempty"`
+	Description string `yaml:"description,omitempty"`
 	Command string `yaml:"command"`
 	Args    []string `yaml:"args"`
 	Flags   map[string]interface{} `yaml:"flags"`
+	Literal *DynamicValue `yaml:"literal,omitempty"`
 }
 
 func (b *Bosun) Execute(s *Script, steps ...int) error {
@@ -30,24 +33,21 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 
 	relativeDir := filepath.Dir(s.FromPath)
 
-	env, err := b.GetCurrentEnvironment()
-	if err != nil {
-		return err
-	}
+	env := b.GetCurrentEnvironment()
+	var err error
+	ctx := b.NewContext("")
 
-	if err = env.Ensure(); err != nil {
+	if err = env.Ensure(ctx); err != nil {
 		return errors.Wrap(err, "ensure environment")
 	}
 
-	if _, err = env.Render(); err != nil {
+	if _, err = env.Render(ctx); err != nil {
 		return errors.Wrap(err, "render environment")
 	}
 
 	if s.Literal != nil {
 		log.Debug("Executing literal script, not bosun script.")
-
-		ctx := NewDynamicValueContext(filepath.Dir(s.FromPath))
-		_, err = s.Literal.Execute(ctx)
+		_, err = s.Literal.Execute(ctx.ForDir(filepath.Dir(s.FromPath)))
 		return err
 	}
 
@@ -77,6 +77,23 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 		}
 		step := s.Steps[i]
 		log := pkg.Log.WithField("step", i).WithField("command", step.Command)
+		if step.Name != "" {
+			log = log.WithField("name", step.Name)
+		}
+		if step.Description != "" {
+			log.Info(step.Description)
+		}
+
+		if step.Literal != nil {
+			log.Info("Step is a literal script, not a bosun action.")
+
+			_, err = step.Literal.Execute(ctx.ForDir(filepath.Dir(s.FromPath)))
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 		if step.Flags == nil {
 			step.Flags = make(map[string]interface{})
 		}

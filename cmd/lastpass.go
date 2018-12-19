@@ -33,13 +33,13 @@ var lpassCmd = &cobra.Command{
 	Use:   "lpass",
 	Aliases:[]string{"lastpass"},
 	Args:  cobra.ExactArgs(1),
-	Short: "Root command for lpassuring bosun.",
+	Short: "Root command for LastPass commands.",
 }
 
 
 var lpassPasswordCmd = &cobra.Command{
 	Use:   "password {folder/name} {username} {url}",
-	Short: "Gets (or optionally generates) a password in LastPass.",
+	Short: "Gets (or generates if not found) a password in LastPass.",
 	Args:cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -53,7 +53,7 @@ var lpassPasswordCmd = &cobra.Command{
 			return nil
 		}
 
-		pkg.Log.Info("Password does not yet exist; it will be generated.", name, err)
+		pkg.Log.Debug("Password %q does not yet exist; it will be generated.", name)
 
 		password, err = pkg.NewCommand("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
 		if err == nil {

@@ -1,20 +1,24 @@
 package bosun
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type AppConfig struct {
-	FromPath   string               `yaml:"fromPath,omitempty"`
-	Name       string               `yaml:"name"`
-	Namespace  string               `yaml:"namespace,omitempty"`
-	Repo       string               `yaml:"repo,omitempty"`
-	Version    string               `yaml:"version,omitempty"`
-	Chart      string               `yaml:"chart,omitempty"`
-	ChartPath  string               `yaml:"chartPath,omitempty"`
-	VaultPaths []string 			`yaml:"vaultPaths,omitempty"`
-	RunCommand []string             `yaml:"runCommand,omitempty"`
-	DependsOn  []Dependency         `yaml:"dependsOn,omitempty"`
-	Labels     []string             `yaml:"labels,omitempty"`
-	Values     map[string]AppValues `yaml:"values,omitempty"`
+	Name       string       `yaml:"name"`
+	FromPath   string                 `yaml:"fromPath,omitempty"`
+	Namespace  string                 `yaml:"namespace,omitempty"`
+	Repo       string                 `yaml:"repo,omitempty"`
+	Version    string                 `yaml:"version,omitempty"`
+	Chart      string                 `yaml:"chart,omitempty"`
+	ChartPath  string                 `yaml:"chartPath,omitempty"`
+	VaultPaths []string               `yaml:"vaultPaths,omitempty"`
+	RunCommand []string               `yaml:"runCommand,omitempty"`
+	DependsOn  []Dependency           `yaml:"dependsOn,omitempty"`
+	Labels     []string               `yaml:"labels,omitempty"`
+	Values     AppValuesByEnvironment `yaml:"values,omitempty"`
+	Scripts    []*Script              `yaml:"scripts,omitempty"`
 }
 
 type Dependency struct {
@@ -23,13 +27,45 @@ type Dependency struct {
 }
 
 type AppValues struct {
-	Set   map[string]string `yaml:"set,omitempty"`
+	Set   map[string]*DynamicValue `yaml:"set,omitempty"`
 	Files []string          `yaml:"files,omitempty"`
 }
 
+func NewAppValues() AppValues {
+	return AppValues{Set:make(map[string]*DynamicValue)}
+}
+
+
+func (a *AppConfig) SetFromPath(path string) {
+	a.FromPath = path
+	for i := range a.Scripts {
+		a.Scripts[i].FromPath = a.FromPath
+	}
+}
+
+func (a *AppConfig) ConfigureForEnvironment(ctx BosunContext) {
+
+	if a.ChartPath != "" {
+		a.ChartPath = resolvePath(a.FromPath, a.ChartPath)
+	}
+	for i := range a.VaultPaths {
+		a.VaultPaths[i] = resolvePath(a.FromPath, a.VaultPaths[i])
+	}
+	// only resolve the files for the current context, anything else is confusing
+	// when the config is dumped.
+	for env, av := range a.Values {
+		if env == ctx.Env.Name {
+			for i := range av.Files {
+				av.Files[i] = resolvePath(a.FromPath, av.Files[i])
+			}
+		}
+	}
+}
+
+
 func (a AppValues) Combine(other AppValues) AppValues {
 	out := AppValues{
-		Set: make(map[string]string),
+		Set: make(map[string]*DynamicValue),
 	}
 	out.Files = append(out.Files, other.Files...)
 	out.Files = append(out.Files, a.Files...)
@@ -45,9 +81,9 @@ func (a AppValues) Combine(other AppValues) AppValues {
 	return out
 }
 
-type AppValuesMap map[string]AppValues
+type AppValuesByEnvironment map[string]AppValues
 
-func (a *AppValuesMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (a *AppValuesByEnvironment) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	var m map[string]AppValues
 
@@ -57,7 +93,7 @@ func (a *AppValuesMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	multis := map[string]AppValues{}
-	out := AppValuesMap{}
+	out := AppValuesByEnvironment{}
 
 	for k, v := range m {
 		keys := strings.Split(k, ",")
@@ -80,14 +116,28 @@ func (a *AppValuesMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+type AppStatesByEnvironment map[string]AppStateMap
+
+type AppStateMap map[string]AppState
+
 type AppState struct {
 	Branch  string `yaml:"branch,omitempty"`
 	Status  string `yaml:"deployment,omitempty"`
 	Routing string `yaml:"routing,omitempty"`
 	Version string `yaml:"version,omitempty"`
-	Diff    string `yaml:"diff,omitempty"`
+	Diff    string `yaml:"-"`
 	Error   error  `yaml:"-"`
-	Force bool `yaml:"-"`
+	Force   bool   `yaml:"-"`
+}
+
+func (a AppState) String() string {
+	hasDiff := a.Diff != ""
+	return fmt.Sprintf("status:%s routing:%s version:%s hasDiff:%t, force:%t",
+		a.Status,
+		a.Routing,
+		a.Version,
+		hasDiff,
+		a.Force)
 }
 
 const (
@@ -102,13 +152,3 @@ const (
 )
 
 type Routing string
-
-func (a *AppConfig) SetFromPath(path string) {
-	a.FromPath = path
-	if a.ChartPath != "" {
-		a.ChartPath = resolvePath(path, a.ChartPath)
-	}
-	for i := range a.VaultPaths {
-		a.VaultPaths[i] = resolvePath(path, a.VaultPaths[i])
-	}
-}
