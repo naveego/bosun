@@ -22,7 +22,7 @@ type AppAction struct {
 func (a *AppAction) Execute(ctx BosunContext, values Values) error {
 
 	if a.VaultFile != "" {
-		a.VaultFile = resolvePath(ctx.Dir, a.VaultFile)
+		a.VaultFile = resolvePath(ctx.Dir + "/placeholder", a.VaultFile)
 		err := a.executeVault(ctx, values)
 		if err != nil {
 			return err
@@ -54,9 +54,10 @@ func (a *AppAction) executeVault(ctx BosunContext, values Values) error {
 		return err
 	}
 
+	y, _ := yaml.Marshal(vaultLayout)
+	ctx.Log.Debugf("Vault layout from %s:\n%s", a.VaultFile, string(y))
+
 	if ctx.IsDryRun() {
-		y, _ := yaml.Marshal(vaultLayout)
-		ctx.Log.Debugf("Vault layout from %s (skipped for dry run):\n %s", a.VaultFile, string(y))
 		return nil
 	}
 
