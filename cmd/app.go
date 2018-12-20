@@ -259,10 +259,10 @@ var appListCmd = &cobra.Command{
 func fmtDesiredActual(desired, actual interface{}) string {
 
 	if desired == actual {
-		return fmt.Sprintf("✔️%v", actual)
+		return fmt.Sprintf("✔   ️%v", actual)
 	}
 
-	return fmt.Sprintf("❌ %v [want %v]", actual, desired)
+	return fmt.Sprintf("❌   %v [want %v]", actual, desired)
 
 }
 
@@ -355,7 +355,7 @@ var appDeployCmd = &cobra.Command{
 		var requestedAppNames []string
 		requestedAppNameSet := map[string]bool{}
 		for _, app := range apps {
-			if app != nil {
+			if app == nil {
 				continue
 			}
 			requestedAppNameSet[app.Name] = true

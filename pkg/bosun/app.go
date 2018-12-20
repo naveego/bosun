@@ -95,9 +95,9 @@ func (a *App) HasChart() bool {
 	return a.ChartPath != "" || a.Chart != ""
 }
 
-func (a *App) GetValuesForEnvironment(name string) AppValues {
+func (a *App) GetValuesForEnvironment(name string) AppValuesConfig {
 	if a.Values == nil {
-		a.Values = map[string]AppValues{}
+		a.Values = map[string]AppValuesConfig{}
 	}
 	av, ok := a.Values[name]
 	if !ok {
@@ -187,12 +187,14 @@ func (a *App) GetRunCommand() (*exec.Cmd, error) {
 type Plan []PlanStep
 
 type PlanStep struct {
+	Name string
 	Description string
 	Action      func(ctx BosunContext) error
 }
 
-
 func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
+
+	ctx = ctx.ForDir(a.FromPath)
 
 	if !a.bosun.IsClusterAvailable() {
 		return nil, errors.New("cluster not available")
@@ -234,23 +236,61 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	if needsDelete {
 		steps = append(steps, PlanStep{
-			Description: "Delete",
+			Name: "Delete",
+			Description: "Delete release from kubernetes.",
 			Action:      a.Delete,
 		})
 	}
 
+	values, err := a.GetValuesMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if needsInstall || needsUpgrade {
+		for i := range a.Actions {
+			action := a.Actions[i]
+			if strings.Contains(string(action.Schedule), ActionBeforeDeploy) {
+				steps = append(steps, PlanStep{
+					Name:action.Name,
+					Description:action.Description,
+					Action: func(ctx BosunContext) error {
+						return action.Execute(ctx, values)
+					},
+				})
+			}
+		}
+	}
+
 	if needsInstall {
 		steps = append(steps, PlanStep{
-			Description: "Install",
+			Name: "Install",
+			Description: "Install chart to kubernetes.",
 			Action:      a.Install,
 		})
 	}
 
 	if needsUpgrade {
 		steps = append(steps, PlanStep{
-			Description: "Upgrade",
+			Name: "Upgrade",
+			Description: "Upgrade existing chart in kubernetes.",
 			Action:      a.Upgrade,
 		})
+	}
+
+	if needsInstall || needsUpgrade {
+		for i := range a.Actions {
+			action := a.Actions[i]
+			if strings.Contains(string(action.Schedule), ActionAfterDeploy) {
+				steps = append(steps, PlanStep{
+					Name:action.Name,
+					Description:action.Description,
+					Action: func(ctx BosunContext) error {
+						return action.Execute(ctx, values)
+					},
+				})
+			}
+		}
 	}
 
 	return steps, nil
@@ -313,6 +353,29 @@ func (a *App) GetStatus() (string, error) {
 	return release.Status, nil
 }
 
+func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
+
+	values := Values{}
+
+	valuesConfig, ok := a.Values[ctx.Env.Name]
+	if ok {
+		for _, f := range valuesConfig.Files {
+			vf, err := ReadValuesFile(f)
+			if err != nil {
+				return nil, err
+			}
+			values.MergeInto(vf)
+		}
+
+		for k, v := range valuesConfig.Set {
+			v.Resolve(ctx)
+			values.AddPath(k, v.GetValue())
+		}
+	}
+
+	return values, nil
+}
+
 func (a *App) getChartRef() string {
 	if a.Chart != "" {
 		return a.Chart
@@ -321,11 +384,6 @@ func (a *App) getChartRef() string {
 }
 
 func (a *App) makeHelmArgs(ctx BosunContext) []string {
-
-	envs := []string{
-		"all",
-		ctx.Env.Name,
-	}
 
 	var args []string
 
@@ -337,15 +395,8 @@ func (a *App) makeHelmArgs(ctx BosunContext) []string {
 			"--namespace", a.Namespace)
 	}
 
-
-
-	for _, envName := range envs {
-
-		values, ok := a.Values[envName]
-		if !ok {
-			continue
-		}
-
+	values, ok := a.Values[ctx.Env.Name]
+	if ok {
 		for k, v := range values.Set {
 			v.Resolve(ctx)
 			args = append(args, "--set", fmt.Sprintf("%s=%s", k, v.GetValue()))

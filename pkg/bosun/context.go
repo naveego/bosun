@@ -2,6 +2,8 @@ package bosun
 
 import (
 	"context"
+	vault "github.com/hashicorp/vault/api"
+	"github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
 )
@@ -10,6 +12,7 @@ type BosunContext struct {
 	Bosun *Bosun
 	Env *EnvironmentConfig
 	Dir string
+	Log *logrus.Entry
 	Ctx context.Context
 }
 
@@ -21,4 +24,12 @@ func (c BosunContext) ForDir(dir string) BosunContext {
 	}
 	c.Dir = dir
 	return c
+}
+
+func (c BosunContext) GetVaultClient() (*vault.Client, error){
+	return c.Bosun.GetVaultClient()
+}
+
+func (c BosunContext) IsDryRun() bool {
+	return c.Bosun.params.DryRun
 }

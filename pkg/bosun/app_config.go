@@ -19,20 +19,23 @@ type AppConfig struct {
 	Labels     []string               `yaml:"labels,omitempty"`
 	Values     AppValuesByEnvironment `yaml:"values,omitempty"`
 	Scripts    []*Script              `yaml:"scripts,omitempty"`
+	Actions []*AppAction `yaml:"actions,omitempty"`
 }
+
+
 
 type Dependency struct {
 	Name string `yaml:"name,omitempty"`
 	Repo string `yaml:"repo,omitempty"`
 }
 
-type AppValues struct {
+type AppValuesConfig struct {
 	Set   map[string]*DynamicValue `yaml:"set,omitempty"`
 	Files []string          `yaml:"files,omitempty"`
 }
 
-func NewAppValues() AppValues {
-	return AppValues{Set:make(map[string]*DynamicValue)}
+func NewAppValues() AppValuesConfig {
+	return AppValuesConfig{Set: make(map[string]*DynamicValue)}
 }
 
 
@@ -63,8 +66,8 @@ func (a *AppConfig) ConfigureForEnvironment(ctx BosunContext) {
 }
 
 
-func (a AppValues) Combine(other AppValues) AppValues {
-	out := AppValues{
+func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
+	out := AppValuesConfig{
 		Set: make(map[string]*DynamicValue),
 	}
 	out.Files = append(out.Files, other.Files...)
@@ -81,18 +84,18 @@ func (a AppValues) Combine(other AppValues) AppValues {
 	return out
 }
 
-type AppValuesByEnvironment map[string]AppValues
+type AppValuesByEnvironment map[string]AppValuesConfig
 
 func (a *AppValuesByEnvironment) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
-	var m map[string]AppValues
+	var m map[string]AppValuesConfig
 
 	err := unmarshal(&m)
 	if err != nil {
 		return err
 	}
 
-	multis := map[string]AppValues{}
+	multis := map[string]AppValuesConfig{}
 	out := AppValuesByEnvironment{}
 
 	for k, v := range m {

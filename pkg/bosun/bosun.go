@@ -328,7 +328,7 @@ func (b *Bosun) Reconcile(app *App) error {
 	}
 
 	for _, step := range plan {
-		log.WithField("step", step.Description).Info("Planned step.")
+		log.WithField("step", step.Name).WithField("description", step.Description).Info("Planned step.")
 	}
 
 	log.Info("Planning complete.")
@@ -336,12 +336,12 @@ func (b *Bosun) Reconcile(app *App) error {
 	log.Debug("Executing plan...")
 
 	for _, step := range plan {
-		pkg.Log.WithField("name", step.Description).Info("Executing step...")
+		log.WithField("step", step.Name).Info("Executing step...")
 		err := step.Action(ctx)
 		if err != nil {
 			return err
 		}
-		pkg.Log.WithField("name", step.Description).Info("Step complete.")
+		pkg.Log.WithField("step", step.Name).Info("Step complete.")
 	}
 
 	log.Debug("Plan executed.")
@@ -367,5 +367,6 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 		Bosun: b,
 		Env:   b.GetCurrentEnvironment(),
 		Ctx:   context.Background(),
+		Log: pkg.Log,
 	}.ForDir(dir)
 }
