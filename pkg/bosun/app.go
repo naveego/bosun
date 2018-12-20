@@ -194,7 +194,7 @@ type PlanStep struct {
 
 func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
-	ctx = ctx.ForDir(a.FromPath)
+	ctx = ctx.WithDir(a.FromPath)
 
 	if !a.bosun.IsClusterAvailable() {
 		return nil, errors.New("cluster not available")

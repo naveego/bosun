@@ -45,7 +45,7 @@ func (e *EnvironmentConfig) SetFromPath(path string) {
 
 // Ensure sets Value using the From DynamicValue.
 func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
-	ctx = ctx.ForDir(e.FromPath)
+	ctx = ctx.WithDir(e.FromPath)
 	log := pkg.Log.WithField("name", e.Name).WithField("fromPath", e.FromPath)
 
 	if e.From == nil {
@@ -95,7 +95,7 @@ func (e *EnvironmentConfig) Ensure(ctx BosunContext) error {
 // even if the environment already appears to have been configured.
 func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 
-	ctx = ctx.ForDir(e.FromPath)
+	ctx = ctx.WithDir(e.FromPath)
 
 	os.Setenv(EnvDomain, e.Domain)
 	os.Setenv(EnvCluster, e.Cluster)
@@ -138,7 +138,7 @@ func (e *EnvironmentConfig) Render(ctx BosunContext) (string, error) {
 
 func (e *EnvironmentConfig) Execute(ctx BosunContext) error {
 
-	ctx = ctx.ForDir(e.FromPath)
+	ctx = ctx.WithDir(e.FromPath)
 
 	for _, cmd := range e.Commands {
 		log := pkg.Log.WithField("name", cmd.Name).WithField("fromPath", e.FromPath)

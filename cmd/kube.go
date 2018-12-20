@@ -155,6 +155,7 @@ var pullSecretCmd = &cobra.Command{
 				"--docker-server=https://docker.n5o.black",
 				fmt.Sprintf("--docker-username=%s", username),
 				fmt.Sprintf("--docker-password=%s", password),
+				fmt.Sprintf("--docker-email=%s", username),
 		).RunE()
 		if err != nil {
 			return err

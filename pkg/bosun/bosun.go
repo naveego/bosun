@@ -66,7 +66,7 @@ func New(params Parameters, rootConfig *RootConfig) (*Bosun, error) {
 	// now that environment variables are all set
 	// we'll resolve all the paths in all our apps
 	for _, app := range b.apps {
-		app.ConfigureForEnvironment(ctx.ForDir(app.FromPath))
+		app.ConfigureForEnvironment(ctx.WithDir(app.FromPath))
 	}
 
 	return b, nil
@@ -293,7 +293,7 @@ func (b *Bosun) Reconcile(app *App) error {
 			app.DesiredState.Status == StatusDeployed &&
 			!b.params.DryRun
 
-	ctx := b.NewContext(app.FromPath)
+	ctx := b.NewContext(app.FromPath).WithLog(log)
 
 	log.Info("Planning reconciliation...")
 
@@ -336,12 +336,13 @@ func (b *Bosun) Reconcile(app *App) error {
 	log.Debug("Executing plan...")
 
 	for _, step := range plan {
-		log.WithField("step", step.Name).Info("Executing step...")
-		err := step.Action(ctx)
+		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
+		stepCtx.Log.Info("Executing step...")
+		err := step.Action(stepCtx)
 		if err != nil {
 			return err
 		}
-		pkg.Log.WithField("step", step.Name).Info("Step complete.")
+		stepCtx.Log.Info("Step complete.")
 	}
 
 	log.Debug("Plan executed.")
@@ -368,5 +369,5 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 		Env:   b.GetCurrentEnvironment(),
 		Ctx:   context.Background(),
 		Log: pkg.Log,
-	}.ForDir(dir)
+	}.WithDir(dir)
 }

@@ -47,7 +47,7 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 
 	if s.Literal != nil {
 		log.Debug("Executing literal script, not bosun script.")
-		_, err = s.Literal.Execute(ctx.ForDir(filepath.Dir(s.FromPath)))
+		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)))
 		return err
 	}
 
@@ -87,7 +87,7 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 		if step.Literal != nil {
 			log.Info("Step is a literal script, not a bosun action.")
 
-			_, err = step.Literal.Execute(ctx.ForDir(filepath.Dir(s.FromPath)))
+			_, err = step.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)))
 			if err != nil {
 				return err
 			}

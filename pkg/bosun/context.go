@@ -16,13 +16,21 @@ type BosunContext struct {
 	Ctx context.Context
 }
 
-func (c BosunContext) ForDir(dir string) BosunContext {
+
+
+
+func (c BosunContext) WithDir(dir string) BosunContext {
 	if stat, err := os.Stat(dir); err == nil {
 		if !stat.IsDir() {
 			dir = filepath.Dir(dir)
 		}
 	}
 	c.Dir = dir
+	return c
+}
+
+func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
+	c.Log = log
 	return c
 }
 
