@@ -250,7 +250,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	if needsInstall || needsUpgrade {
 		for i := range a.Actions {
 			action := a.Actions[i]
-			if strings.Contains(string(action.Schedule), ActionBeforeDeploy) {
+			if strings.Contains(string(action.When), ActionBeforeDeploy) {
 				steps = append(steps, PlanStep{
 					Name:action.Name,
 					Description:action.Description,
@@ -281,7 +281,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	if needsInstall || needsUpgrade {
 		for i := range a.Actions {
 			action := a.Actions[i]
-			if strings.Contains(string(action.Schedule), ActionAfterDeploy) {
+			if strings.Contains(string(action.When), ActionAfterDeploy) {
 				steps = append(steps, PlanStep{
 					Name:action.Name,
 					Description:action.Description,

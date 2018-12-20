@@ -3,6 +3,7 @@ package bosun
 import (
 	"github.com/naveego/bosun/pkg"
 	"gopkg.in/yaml.v2"
+	"strings"
 )
 
 type ActionSchedule string
@@ -13,17 +14,35 @@ const (
 )
 
 type AppAction struct {
-	Name string `yaml:"name"`
-	Description string `yaml:"description,omitempty"`
-	Schedule ActionSchedule `yaml:"schedule"`
-	VaultFile string `yaml:"vaultFile,omitempty"`
+	Name        string         `yaml:"name"`
+	Description string         `yaml:"description,omitempty"`
+	When        ActionSchedule `yaml:"when"`
+	Where      string 			`yaml:"where"`
+	VaultFile   string         `yaml:"vaultFile,omitempty"`
+	Exec        *DynamicValue  `yaml:"exec,omitempty"`
 }
 
 func (a *AppAction) Execute(ctx BosunContext, values Values) error {
+	log := ctx.Log.WithField("action", a.Name)
+
+	if a.Where != "" && !strings.Contains(a.Where, ctx.Env.Name) {
+		log.Debugf("Skipping because 'where' is %q.", a.Where)
+		return nil
+	}
+
 
 	if a.VaultFile != "" {
+		log.Debug("Applying vault layout...")
 		a.VaultFile = resolvePath(ctx.Dir + "/placeholder", a.VaultFile)
 		err := a.executeVault(ctx, values)
+		if err != nil {
+			return err
+		}
+	}
+
+	if a.Exec != nil {
+		log.Debug("Executing command or script...")
+		_, err := a.Exec.Execute(ctx)
 		if err != nil {
 			return err
 		}
