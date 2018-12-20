@@ -355,6 +355,9 @@ var appDeployCmd = &cobra.Command{
 		var requestedAppNames []string
 		requestedAppNameSet := map[string]bool{}
 		for _, app := range apps {
+			if app != nil {
+				continue
+			}
 			requestedAppNameSet[app.Name] = true
 		}
 		for appName := range requestedAppNameSet {
