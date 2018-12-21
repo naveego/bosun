@@ -184,6 +184,16 @@ func (c *Config) GetEnvironmentConfig(name string) *EnvironmentConfig {
 	panic(fmt.Sprintf("no environment named %q", name))
 }
 
+func getDirIfFile(dirOrFilePath string) string {
+
+	dirOrFilePath, _ = filepath.Abs(dirOrFilePath)
+	stat, err := os.Stat(dirOrFilePath)
+	if err == nil && !stat.IsDir() {
+		dirOrFilePath = filepath.Dir(dirOrFilePath)
+	}
+	return dirOrFilePath
+}
+
 // expandPath resolves a path relative to another file's path, including expanding env variables and globs.
 func expandPath(relativeToFile, path string) []string {
 

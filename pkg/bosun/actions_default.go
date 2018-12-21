@@ -4,9 +4,7 @@ package bosun
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"os/exec"
+	"github.com/naveego/bosun/pkg"
 	"strings"
 )
 
@@ -19,22 +17,7 @@ func render(vars map[string]string) string {
 }
 
 
-func executeScript(script string) (string, error) {
-	tmp, err := ioutil.TempFile(os.TempDir(), "bosun-script")
-	if err != nil {
-		return "", err
-	}
-	tmp.Close()
-	ioutil.WriteFile(tmp.Name(), []byte(script), 0700)
-
-	defer os.Remove(tmp.Name())
-
-	// pkg.Log.Debugf("running script from temp file %q", tmp.Name())
-	cmd := exec.Command("bash", tmp.Name())
-	o, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return string(o), nil
+func getCommandForScript(file string) *pkg.Command {
+	cmd := pkg.NewCommand("/bin/sh", file)
+	return cmd
 }

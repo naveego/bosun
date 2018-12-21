@@ -294,6 +294,13 @@ func (b *Bosun) Reconcile(app *App) error {
 			!b.params.DryRun
 
 	ctx := b.NewContext(app.FromPath).WithLog(log)
+	values, err := app.GetValuesMap(ctx)
+	if err != nil {
+		return errors.Errorf( "create values map for app %q: %s", app.Name, err)
+	}
+
+	ctx = ctx.WithValues(values)
+
 
 	log.Info("Planning reconciliation...")
 
@@ -363,11 +370,11 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
-
 	return BosunContext{
 		Bosun: b,
 		Env:   b.GetCurrentEnvironment(),
-		Ctx:   context.Background(),
 		Log: pkg.Log,
-	}.WithDir(dir)
+	}.WithDir(dir).WithContext(context.Background())
+
 }
+

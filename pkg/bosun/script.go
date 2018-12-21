@@ -135,7 +135,7 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 		err = pkg.NewCommand(exe, stepArgs...).WithDir(relativeDir).RunE()
 		if err != nil {
 			log.WithField("flags", step.Flags).WithField("args", step.Args).Error("Step failed.")
-			return errors.New("s abended")
+			return errors.Errorf("script %q abended on step %q (%d): %s", s.Name, step.Name, i, err)
 		}
 	}
 

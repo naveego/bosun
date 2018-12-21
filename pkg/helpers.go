@@ -13,7 +13,7 @@ import (
 	"runtime"
 )
 
-var Log *logrus.Entry
+var Log = logrus.NewEntry(logrus.StandardLogger())
 
 func RequestStringFromUser(text string, args ... interface{}) (string) {
 

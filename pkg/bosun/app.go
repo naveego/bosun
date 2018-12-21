@@ -242,11 +242,6 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 		})
 	}
 
-	values, err := a.GetValuesMap(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	if needsInstall || needsUpgrade {
 		for i := range a.Actions {
 			action := a.Actions[i]
@@ -255,7 +250,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 					Name:action.Name,
 					Description:action.Description,
 					Action: func(ctx BosunContext) error {
-						return action.Execute(ctx, values)
+						return action.Execute(ctx)
 					},
 				})
 			}
@@ -286,7 +281,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 					Name:action.Name,
 					Description:action.Description,
 					Action: func(ctx BosunContext) error {
-						return action.Execute(ctx, values)
+						return action.Execute(ctx)
 					},
 				})
 			}

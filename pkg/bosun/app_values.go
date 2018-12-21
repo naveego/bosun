@@ -25,6 +25,26 @@ func (v Values) YAML() (string, error) {
 	return string(b), err
 }
 
+// ToEnv returns a map with all the tables in the
+// Values converted to _ delimited environment variables,
+// prefixed with `prefix`.
+func (v Values) ToEnv(prefix string) map[string]string {
+	out := map[string]string{}
+	v.toEnv(prefix, out)
+	return out
+}
+
+func (v Values) toEnv(prefix string, acc map[string]string) {
+	for k, v := range v {
+		k := strings.ToUpper(k)
+		if values, ok := v.(Values); ok {
+			values.toEnv(k + "_", acc)
+		} else {
+			acc[k] = fmt.Sprint(v)
+		}
+	}
+}
+
 // Table gets a table (YAML subsection) from a Values object.
 //
 // The table is returned as a Values.

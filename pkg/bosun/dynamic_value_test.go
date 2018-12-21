@@ -53,4 +53,14 @@ script
 `,
 		}))
 	})
+
+	It("should resolve value from script", func() {
+		sut := &DynamicValue{
+			Script:`
+  testVar="test-string"
+  echo $testVar
+`,
+		}
+		Expect(sut.Execute(BosunContext{})).To(Equal("test-string"))
+	})
 })

@@ -135,12 +135,12 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	hadErrors := false
 
 	recordError := func(log *logrus.Entry, data interface{}, err error) {
-		log.WithField("data", data).WithError(err).Error()
+		log.WithError(err).Error()
 		hadErrors = true
 	}
 
 	for path, data := range v.Auth {
-		log := Log.WithField("@type", "Auth").WithField("Path", path)
+		log := Log.WithField("@type", "Auth").WithField("path", path)
 		mounts, err := client.Sys().ListAuth()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)

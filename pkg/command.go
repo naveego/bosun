@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"os"
@@ -13,12 +14,13 @@ type Command struct {
 	Exe *string
 	// Args is the arguments to be passed to the exe.
 	Args []string
-	Env []string
+	Env  []string
 	// Command is the exe with its args as a single string, as you would type it on the CLI.
 	Command  *string
 	Dir      *string
+	ctx      context.Context
 	prepared bool
-	cmd *exec.Cmd
+	cmd      *exec.Cmd
 }
 
 func NewCommand(exe string, args ...string) *Command {
@@ -33,26 +35,38 @@ func NewCommand(exe string, args ...string) *Command {
 	return c
 }
 
-func (c *Command) WithDir(dir string) *Command{
+func (c *Command) WithDir(dir string) *Command {
 	c.Dir = &dir
 	return c
 }
-func (c *Command) WithExe(exe string) *Command{
+func (c *Command) WithExe(exe string) *Command {
 	c.Exe = &exe
 	return c
 }
 
-func (c *Command) WithEnvValue(key,value string) *Command{
+func (c *Command) IncludeEnv(env map[string]string) *Command {
+	for k, v := range env {
+		c.WithEnvValue(k, v)
+	}
+	return c
+}
+
+func (c *Command) WithEnvValue(key, value string) *Command {
 	c.Env = append(c.Env, fmt.Sprintf("%s=%s", key, value))
 	return c
 }
 
-func (c *Command) WithArgs(args ...string) *Command{
+func (c *Command) WithContext(ctx context.Context) *Command {
+	c.ctx = ctx
+	return c
+}
+
+func (c *Command) WithArgs(args ...string) *Command {
 	c.Args = append(c.Args, args...)
 	return c
 }
 
-func (c *Command) WithCommand(cmd string) *Command{
+func (c *Command) WithCommand(cmd string) *Command {
 	c.Command = &cmd
 	return c
 }
@@ -64,8 +78,7 @@ func (c *Command) GetCmd() *exec.Cmd {
 
 func (c *Command) prepare() {
 
-
-	if c.cmd != nil{
+	if c.cmd != nil {
 		return
 	}
 
@@ -94,24 +107,29 @@ func (c *Command) prepare() {
 }
 
 // MustRun runs the command and kills this process if the command returns an error.
-func (c *Command) MustRun()  {
+func (c *Command) MustRun() {
 	Must(c.RunE())
 }
 
-func (c *Command) MustOut() string  {
+func (c *Command) MustOut() string {
 	out, err := c.RunOut()
 	Must(err)
 	return out
 }
 
 // RunE runs the command and returns the error only.
+// Input and output for current process are attached to the command process.
 func (c *Command) RunE() error {
 	c.prepare()
 
 	c.cmd.Stdin = os.Stdin
 	c.cmd.Stdout = os.Stdout
 	c.cmd.Stderr = os.Stderr
-	err := c.cmd.Run()
+	var err error
+
+	executeWithContext(c.ctx, c.cmd, func() {
+		err = c.cmd.Run()
+	})
 
 	return err
 }
@@ -119,13 +137,43 @@ func (c *Command) RunE() error {
 // RunOut runs the command and returns the output or an error.
 func (c *Command) RunOut() (string, error) {
 	c.prepare()
+	var result string
+	var err error
 
 	cmd := c.cmd
-	out, err := cmd.Output()
-	if exitErr, ok :=  err.(*exec.ExitError); ok {
-		err = errors.WithMessage(err, string(exitErr.Stderr))
-	}
-	result := strings.Trim(string(out),"\n\r")
+	executeWithContext(c.ctx, cmd, func() {
+		var out []byte
+		out, err = cmd.Output()
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			err = errors.WithMessage(err, string(exitErr.Stderr))
+		}
+		result = strings.Trim(string(out), "\n\r")
+	})
+
 	return result, err
 }
 
+// Blocks until fn returns, or ctx is done. If ctx is done first
+// and cmd is still running, cmd will be killed.
+func executeWithContext(ctx context.Context, cmd *exec.Cmd, fn func()) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return
+	case <-ctx.Done():
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+	}
+
+	<-done
+}

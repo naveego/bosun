@@ -2,6 +2,9 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
+	"io/ioutil"
+	"os"
 	"runtime"
 	"strings"
 )
@@ -70,13 +73,7 @@ func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
 	d.resolved = true
 
 	if d.Value == "" {
-		if specific, ok := d.OS[runtime.GOOS]; ok {
-			d.Value, err = specific.Resolve(ctx)
-		} else if len(d.Command) != 0 {
-			d.Value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).RunOut()
-		} else if len(d.Script) > 0 {
-			d.Value, err = executeScript(d.Script)
-		}
+		d.Value, err = d.Execute(ctx)
 	}
 
 	// trim whitespace, as script output may contain line breaks at the end
@@ -90,15 +87,50 @@ func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
 	var err error
 	var value string
 
-	if specific, ok := d.OS[runtime.GOOS]; ok {
-		value, err = specific.Execute(ctx)
-	} else if len(d.Command) != 0 {
-		value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).RunOut()
-	} else if len(d.Script) > 0 {
-		value, err = executeScript(d.Script)
-	} else if len(d.Value) > 0 {
-		value, err = executeScript(d.Value)
+	doneCh := make(chan struct{})
+
+	go func() {
+		if specific, ok := d.OS[runtime.GOOS]; ok {
+			value, err = specific.Execute(ctx)
+		} else if len(d.Command) != 0 {
+			value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.ValuesAsEnvVars).WithContext(ctx.Ctx()).RunOut()
+		} else if len(d.Script) > 0 {
+			value, err = executeScript(d.Script, ctx)
+		} else if len(d.Value) > 0 {
+			value, err = executeScript(d.Value, ctx)
+		}
+		close(doneCh)
+	}()
+
+	select {
+	case <-doneCh:
+	case <-ctx.Ctx().Done():
+		return "", errors.New("timed out")
 	}
 
 	return value, err
+}
+
+func executeScript(script string, ctx BosunContext) (string, error) {
+	tmp, err := ioutil.TempFile(os.TempDir(), "bosun-script")
+	if err != nil {
+		return "", err
+	}
+	tmp.Close()
+	ioutil.WriteFile(tmp.Name(), []byte(script), 0700)
+
+	//defer os.Remove(tmp.Name())
+
+	// pkg.Log.Debugf("running script from temp file %q", tmp.Name())
+	cmd := getCommandForScript(tmp.Name()).
+		WithDir(ctx.Dir).
+		IncludeEnv(ctx.ValuesAsEnvVars).
+		WithContext(ctx.Ctx())
+
+	o, err := cmd.RunOut()
+	if err != nil {
+		return "", err
+	}
+
+	return string(o), nil
 }
