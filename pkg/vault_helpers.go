@@ -66,37 +66,14 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, clien
 	}
 
 	for _, path := range paths {
-		vl := new(VaultLayout)
 
 		b, err := ioutil.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
 
-		yamlString, err := NewTemplateBuilder(path).
-			WithKubeFunctions().
-			WithVaultTemplateFunctions(client).
-			WithTemplate(string(b)).
-			BuildAndExecute(templateArgs)
+		vl, err := LoadVaultLayoutFromBytes(path, b, templateArgs, client)
 		if err != nil {
-			return nil, err
-		}
-
-		err = yaml.Unmarshal([]byte(yamlString), vl)
-		if err != nil {
-			color.Red("Invalid yaml in %s:", path)
-			if err != nil {
-				var badLine int
-				matches := lineExtractor.FindStringSubmatch(err.Error())
-				if len(matches) > 0 {
-					badLine, _ = strconv.Atoi(matches[1])
-				}
-				color.Red("Invalid yaml in %s at line %d:", path, badLine)
-
-				fmt.Println(yamlString)
-
-				return nil, err
-			}
 			return nil, err
 		}
 
@@ -104,6 +81,39 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, clien
 	}
 
 	return mergedLayout, nil
+}
+
+func LoadVaultLayoutFromBytes(label string, data []byte, templateArgs TemplateValues, client *api.Client) (*VaultLayout, error) {
+	yamlString, err := NewTemplateBuilder(label).
+		WithKubeFunctions().
+		WithVaultTemplateFunctions(client).
+		WithTemplate(string(data)).
+		BuildAndExecute(templateArgs)
+	if err != nil {
+		return nil, err
+	}
+
+	vl := new(VaultLayout)
+
+	err = yaml.Unmarshal([]byte(yamlString), vl)
+	if err != nil {
+		color.Red("Invalid yaml in %s:", label)
+		if err != nil {
+			var badLine int
+			matches := lineExtractor.FindStringSubmatch(err.Error())
+			if len(matches) > 0 {
+				badLine, _ = strconv.Atoi(matches[1])
+			}
+			color.Red("Invalid yaml in %s at line %d:", label, badLine)
+
+			fmt.Println(yamlString)
+
+			return nil, err
+		}
+		return nil, err
+	}
+
+	return  vl, nil
 }
 
 var lineExtractor = regexp.MustCompile(`line (\d+):`)

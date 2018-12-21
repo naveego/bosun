@@ -12,7 +12,11 @@ import (
 
 func GetCurrentOrgAndRepo() (string, string) {
 	currentDir, _ := os.Getwd()
-	return GetOrgAndRepoFromPath(currentDir)
+	repoDir, err := GetRepoPath(currentDir)
+	if err != nil {
+		panic(err)
+	}
+	return GetOrgAndRepoFromPath(repoDir)
 }
 
 func GetRepoPath(path string) (string, error) {

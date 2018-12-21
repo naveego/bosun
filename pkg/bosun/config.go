@@ -132,21 +132,24 @@ func (c *Config) Merge(other *Config) error {
 		c.mergeEnvironment(otherEnv)
 	}
 
-	for _, otherSvc := range other.Apps {
-		c.mergeApp(otherSvc)
+	for _, otherApp := range other.Apps {
+		c.mergeApp(otherApp)
 	}
 
 	return nil
 }
 
-func (c *Config) mergeApp(app *AppConfig) error {
-	for _, e := range c.Apps {
-		if e.Name == app.Name {
-			return errors.Errorf("duplicate microservice: %q is defined in %q and %q", app.Name, app.FromPath, e.FromPath)
+func (c *Config) mergeApp(incoming *AppConfig) error {
+	for _, app := range c.Apps {
+		if app.Name == incoming.Name {
+			// app already registered in a partial form
+			err := app.Merge(incoming)
+
+			return err
 		}
 	}
 
-	c.Apps = append(c.Apps, app)
+	c.Apps = append(c.Apps, incoming)
 
 
 

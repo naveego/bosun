@@ -3,6 +3,7 @@ package bosun
 import (
 	"github.com/naveego/bosun/pkg"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"strings"
 	"time"
 )
@@ -16,16 +17,21 @@ const (
 )
 
 type AppAction struct {
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description,omitempty"`
-	When        ActionSchedule `yaml:"when"`
-	Where       string         `yaml:"where"`
-	VaultFile   string         `yaml:"vaultFile,omitempty"`
-	Exec        *DynamicValue  `yaml:"exec,omitempty"`
-	Test        *AppTest       `yaml:"test,omitempty"`
+	Name        string          `yaml:"name"`
+	Description string          `yaml:"description,omitempty"`
+	When        ActionSchedule  `yaml:"when"`
+	Where       string          `yaml:"where"`
+	Vault       *AppVaultAction `yaml:"vault,omitempty"`
+	Exec        *DynamicValue   `yaml:"exec,omitempty"`
+	Test        *AppTestAction  `yaml:"test,omitempty"`
 }
 
-type AppTest struct {
+type AppVaultAction struct {
+	File   string           `yaml:"file"`
+	Layout *pkg.VaultLayout `yaml:"layout"`
+}
+
+type AppTestAction struct {
 	MaxAttempts int           `yaml:"maxAttempts,omitempty"`
 	Timeout     time.Duration `yaml:"timeout"`
 	Exec        *DynamicValue `yaml:"exec"`
@@ -39,9 +45,8 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 		return nil
 	}
 
-	if a.VaultFile != "" {
+	if a.Vault != nil {
 		log.Debug("Applying vault layout...")
-		a.VaultFile = resolvePath(ctx.Dir+"/placeholder", a.VaultFile)
 		err := a.executeVault(ctx)
 		if err != nil {
 			return err
@@ -74,6 +79,19 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 		return err
 	}
 
+	vaultAction := a.Vault
+	var vaultLayout *pkg.VaultLayout
+	var layoutBytes []byte
+	if vaultAction.File != "" {
+		path := resolvePath(ctx.Dir, vaultAction.File)
+		layoutBytes, err = ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+	} else {
+		layoutBytes, _ = yaml.Marshal(vaultAction.Layout)
+	}
+
 	env := ctx.Env
 
 	values.AddPath("cluster", env.Cluster)
@@ -85,13 +103,13 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 		Values:  values,
 	}
 
-	vaultLayout, err := pkg.LoadVaultLayoutFromFiles([]string{a.VaultFile}, templateArgs, vaultClient)
+	vaultLayout, err = pkg.LoadVaultLayoutFromBytes(a.Name, layoutBytes, templateArgs, vaultClient)
 	if err != nil {
 		return err
 	}
 
 	y, _ := yaml.Marshal(vaultLayout)
-	ctx.Log.Debugf("Vault layout from %s:\n%s", a.VaultFile, string(y))
+	ctx.Log.Debugf("Vault layout from %s:\n%s", a.Name, string(y))
 
 	if ctx.IsDryRun() {
 		return nil
