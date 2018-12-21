@@ -83,7 +83,7 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 	var vaultLayout *pkg.VaultLayout
 	var layoutBytes []byte
 	if vaultAction.File != "" {
-		path := resolvePath(ctx.Dir, vaultAction.File)
+		path := ctx.ResolvePath(vaultAction.File)
 		layoutBytes, err = ioutil.ReadFile(path)
 		if err != nil {
 			return err

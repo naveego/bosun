@@ -64,3 +64,10 @@ func (c BosunContext) WithTimeout(timeout time.Duration) BosunContext {
 	ctx, _ := context.WithTimeout(c.Ctx(), timeout)
 	return c.WithContext(ctx)
 }
+
+func (c BosunContext) ResolvePath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(c.Dir, path)
+}
