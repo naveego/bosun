@@ -1,0 +1,34 @@
+environments: []
+appRefs: {}
+apps: []
+releases:
+- name: 2018.2.1-test
+  fromPath: /home/steve/src/github.com/naveego/bosun/examples/releases.yaml
+  apps:
+    dataflow-ui:
+      name: dataflow-ui
+      repo: ""
+      repoPath: ""
+      bosunPath: /home/steve/go/src/github.com/naveegoinc/frontends/packages/dataflow-ui/bosun.yaml
+      branch: ""
+      version: ""
+      tag: ""
+      string: ""
+    mdm-ui:
+      name: mdm-ui
+      repo: ""
+      repoPath: ""
+      bosunPath: /home/steve/go/src/github.com/naveegoinc/frontends/packages/mdm-ui/bosun.yaml
+      branch: ""
+      version: ""
+      tag: ""
+      string: ""
+    metabase:
+      name: metabase
+      repo: ""
+      repoPath: ""
+      bosunPath: /home/steve/go/src/github.com/naveegoinc/metabase/bosun.yaml
+      branch: ""
+      version: ""
+      tag: ""
+      string: ""

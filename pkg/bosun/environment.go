@@ -101,7 +101,7 @@ func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 	os.Setenv(EnvCluster, e.Cluster)
 	os.Setenv(EnvEnvironment, e.Name)
 
-	_, err := pkg.NewCommand("kubectl", "config", "use-context", e.Cluster).RunOut()
+	_, err := pkg.NewCommand("kubectl", "mergedFragments", "use-context", e.Cluster).RunOut()
 	if err != nil {
 		return err
 	}

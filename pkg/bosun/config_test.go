@@ -12,7 +12,7 @@ func yamlize(y string) string {
 	return strings.Replace(y, "\t", "  ", -1)
 }
 
-var _ = Describe("Config", func() {
+var _ = Describe("ConfigFragment", func() {
 
 	Describe("AppValuesByEnvironment", func(){
 		It("should merge values when unmarshalled", func(){

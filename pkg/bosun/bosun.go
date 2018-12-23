@@ -18,8 +18,9 @@ import (
 
 type Bosun struct {
 	params           Parameters
-	rootConfig       *RootConfig
-	config           *Config
+	rootConfig       *Config
+	mergedFragments  *ConfigFragment
+	deps             map[string]*Dependency
 	apps             map[string]*App
 	vaultClient      *vault.Client
 	env              *EnvironmentConfig
@@ -32,21 +33,26 @@ type Parameters struct {
 	CIMode  bool
 }
 
-func New(params Parameters, rootConfig *RootConfig) (*Bosun, error) {
+func New(params Parameters, rootConfig *Config) (*Bosun, error) {
 	b := &Bosun{
-		params:     params,
-		rootConfig: rootConfig,
-		config:     rootConfig.MergedConfig,
-		apps:       make(map[string]*App),
+		params:          params,
+		rootConfig:      rootConfig,
+		mergedFragments: rootConfig.MergedFragments,
+		apps:            make(map[string]*App),
+		deps:            make(map[string]*Dependency),
 	}
 
-	for _, a := range b.config.Apps {
+	for _, dep := range b.mergedFragments.AppRefs {
+		b.deps[dep.Name] = dep
+	}
+
+	for _, a := range b.mergedFragments.Apps {
 		b.addApp(a)
 	}
 
 	// if only one environment exists, it's the current one
-	if rootConfig.CurrentEnvironment == "" && len(b.config.Environments) == 1 {
-		rootConfig.CurrentEnvironment = b.config.Environments[0].Name
+	if rootConfig.CurrentEnvironment == "" && len(b.mergedFragments.Environments) == 1 {
+		rootConfig.CurrentEnvironment = b.mergedFragments.Environments[0].Name
 	}
 
 	if rootConfig.CurrentEnvironment != "" {
@@ -73,14 +79,26 @@ func New(params Parameters, rootConfig *RootConfig) (*Bosun, error) {
 }
 
 func (b *Bosun) addApp(config *AppConfig) *App {
-	ms := &App{
-		bosun:     b,
-		AppConfig: *config,
-	}
-	b.apps[config.Name] = ms
+	app := NewApp(config)
+	b.apps[config.Name] = app
 	appStates := b.rootConfig.AppStates[b.rootConfig.CurrentEnvironment]
-	ms.DesiredState = appStates[config.Name]
-	return ms
+	app.DesiredState = appStates[config.Name]
+
+	dep, ok := b.deps[config.Name]
+	if !ok {
+		dep = &Dependency{Name:config.Name, Repo:config.Repo}
+		b.deps[config.Name] = dep
+	}
+
+	dep.App = app
+
+	for _, d2 := range app.DependsOn {
+		if _, ok := b.deps[d2.Name]; !ok {
+			b.deps[d2.Name] = &d2
+		}
+	}
+
+	return app
 }
 
 func (b *Bosun) GetAppsSortedByName() AppsSortedByName {
@@ -91,6 +109,15 @@ func (b *Bosun) GetAppsSortedByName() AppsSortedByName {
 	}
 	sort.Sort(ms)
 	return ms
+}
+
+func (b *Bosun) GetDeps() Dependencies {
+	var deps Dependencies
+	for _, dep := range b.deps {
+		deps = append(deps, *dep)
+	}
+	sort.Sort(deps)
+	return deps
 }
 
 func (b *Bosun) GetApps() map[string]*App {
@@ -145,7 +172,7 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 		}
 	}
 
-	err := b.rootConfig.importFromPath(path)
+	err := b.rootConfig.importFragmentFromPath(path)
 
 	if err != nil {
 		return nil, err
@@ -153,7 +180,7 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 
 	pkg.Log.WithField("path", path).Debug("New microservice found at path.")
 
-	imported := b.rootConfig.ImportedConfigs[path]
+	imported := b.rootConfig.ImportedFragments[path]
 
 	var name string
 	for _, m := range imported.Apps {
@@ -226,9 +253,9 @@ func (b *Bosun) Save() error {
 	return nil
 }
 
-func (b *Bosun) GetMergedConfig() Config {
+func (b *Bosun) GetMergedConfig() ConfigFragment {
 
-	return *b.config
+	return *b.mergedFragments
 
 }
 
@@ -281,7 +308,9 @@ func (b *Bosun) Reconcile(app *App) error {
 		return nil
 	}
 
-	err := app.LoadActualState(true)
+	ctx := b.NewContext(app.FromPath).WithLog(log)
+
+	err := app.LoadActualState(true, ctx)
 	if err != nil {
 		return errors.Errorf("error checking actual state for %q: %s", app.Name, err)
 	}
@@ -293,7 +322,6 @@ func (b *Bosun) Reconcile(app *App) error {
 			app.DesiredState.Status == StatusDeployed &&
 			!b.params.DryRun
 
-	ctx := b.NewContext(app.FromPath).WithLog(log)
 	values, err := app.GetValuesMap(ctx)
 	if err != nil {
 		return errors.Errorf( "create values map for app %q: %s", app.Name, err)
@@ -358,7 +386,7 @@ func (b *Bosun) Reconcile(app *App) error {
 }
 
 func (b *Bosun) GetEnvironment(name string) (*EnvironmentConfig, error) {
-	for _, env := range b.config.Environments {
+	for _, env := range b.mergedFragments.Environments {
 		if env.Name == name {
 			return env, nil
 		}
@@ -376,5 +404,23 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 		Log: pkg.Log,
 	}.WithDir(dir).WithContext(context.Background())
 
+}
+
+func (b *Bosun) GetRelease(name string) (*Release, error) {
+	for _, e := range b.mergedFragments.Releases {
+		if e.Name == name {
+			return e, nil
+		}
+	}
+	return nil, errors.Errorf("no release with name %q", name)
+
+}
+
+func (b *Bosun) GetReleases() []*Release {
+	var releases []*Release
+	for _, r := range b.mergedFragments.Releases {
+		releases = append(releases, r)
+	}
+	return releases
 }
 

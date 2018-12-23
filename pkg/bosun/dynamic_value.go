@@ -93,7 +93,7 @@ func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
 		if specific, ok := d.OS[runtime.GOOS]; ok {
 			value, err = specific.Execute(ctx)
 		} else if len(d.Command) != 0 {
-			value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.ValuesAsEnvVars).WithContext(ctx.Ctx()).RunOut()
+			value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.GetValuesAsEnvVars()).WithContext(ctx.Ctx()).RunOut()
 		} else if len(d.Script) > 0 {
 			value, err = executeScript(d.Script, ctx)
 		} else if len(d.Value) > 0 {
@@ -119,12 +119,10 @@ func executeScript(script string, ctx BosunContext) (string, error) {
 	tmp.Close()
 	ioutil.WriteFile(tmp.Name(), []byte(script), 0700)
 
-	//defer os.Remove(tmp.Name())
 
-	// pkg.Log.Debugf("running script from temp file %q", tmp.Name())
 	cmd := getCommandForScript(tmp.Name()).
 		WithDir(ctx.Dir).
-		IncludeEnv(ctx.ValuesAsEnvVars).
+		IncludeEnv(ctx.GetValuesAsEnvVars()).
 		WithContext(ctx.Ctx())
 
 	o, err := cmd.RunOut()

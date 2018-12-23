@@ -12,7 +12,7 @@ var _ = Describe("App", func() {
 
 		apps := map[string]*App{
 			"a":{
-				AppConfig: AppConfig{
+				AppConfig: &AppConfig{
 					Name: "a",
 					DependsOn:[]Dependency{
 						{Name:"b"},
@@ -21,12 +21,12 @@ var _ = Describe("App", func() {
 				},
 			},
 			"b":{
-				AppConfig: AppConfig{
+				AppConfig: &AppConfig{
 					Name: "b",
 				},
 			},
 			"c":{
-				AppConfig: AppConfig{
+				AppConfig: &AppConfig{
 					Name: "c",
 					DependsOn:[]Dependency{
 						{Name:"b"},

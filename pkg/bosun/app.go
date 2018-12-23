@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/stevenle/topsort"
 	"gopkg.in/yaml.v2"
@@ -13,71 +14,22 @@ import (
 )
 
 type App struct {
-	bosun *Bosun
-	AppConfig
+	*AppConfig
 	HelmRelease  *HelmRelease
 	DesiredState AppState
 	ActualState  AppState
+	branch string
 }
 
 type AppsSortedByName []*App
 type DependenciesSortedByTopology []Dependency
 
-func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (DependenciesSortedByTopology, error) {
-
-	const target = "__TARGET__"
-
-	repos := map[string]string{}
-
-	graph := topsort.NewGraph()
-
-	graph.AddNode(target)
-
-	for _, root := range roots {
-		graph.AddNode(root)
-		graph.AddEdge(target, root)
+func NewApp(appConfig *AppConfig) *App {
+	return &App{
+		AppConfig: appConfig,
 	}
-
-	// add our root node to the graph
-
-	for _, app := range apps {
-		graph.AddNode(app.Name)
-		for _, dep := range app.DependsOn {
-			if repos[dep.Name] == "" || dep.Repo != "" {
-				repos[dep.Name] = dep.Repo
-			}
-
-			// make sure dep is in the graph
-			graph.AddNode(dep.Name)
-			graph.AddEdge(app.Name, dep.Name)
-		}
-	}
-
-	sortedNames, err := graph.TopSort(target)
-	if err != nil {
-		return nil, err
-	}
-
-	var result DependenciesSortedByTopology
-	for _, name := range sortedNames {
-		if name == target {
-			continue
-		}
-
-		// exclude non-existent apps
-		repo := repos[name]
-		dep := Dependency{
-			Name: name,
-			Repo: repo,
-		}
-		if dep.Repo == "" {
-			dep.Repo = "unknown"
-		}
-		result = append(result, dep)
-	}
-
-	return result, nil
 }
+
 
 func (a AppsSortedByName) Len() int {
 	return len(a)
@@ -89,6 +41,29 @@ func (a AppsSortedByName) Less(i, j int) bool {
 
 func (a AppsSortedByName) Swap(i, j int) {
 	a[i], a[j] = a[j], a[i]
+}
+
+func (a *App) IsRepoCloned() bool {
+
+	if a.FromPath == "" {
+		return false
+	}
+
+	if _, err := os.Stat(a.FromPath); os.IsNotExist(err) {
+		return false
+	}
+
+	return true
+}
+
+func (a *App) GetBranch() string {
+	if a.IsRepoCloned() {
+		if a.branch == "" {
+			g, _ := git.NewGitWrapper(a.FromPath)
+			a.branch = g.Branch()
+		}
+	}
+	return a.branch
 }
 
 func (a *App) HasChart() bool {
@@ -107,9 +82,8 @@ func (a *App) GetValuesForEnvironment(name string) AppValuesConfig {
 	return av
 }
 
-func (a *App) LoadActualState(diff bool) error {
-
-	ctx := a.bosun.NewContext(a.FromPath)
+func (a *App) LoadActualState(diff bool, ctx BosunContext) error {
+	ctx = ctx.WithDir(a.FromPath)
 
 	a.ActualState = AppState{}
 
@@ -119,7 +93,7 @@ func (a *App) LoadActualState(diff bool) error {
 		return nil
 	}
 
-	if !a.bosun.IsClusterAvailable() {
+	if !ctx.Bosun.IsClusterAvailable() {
 		log.Debug("Cluster not available.")
 
 		a.ActualState.Status = "unknown"
@@ -196,7 +170,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	ctx = ctx.WithDir(a.FromPath)
 
-	if !a.bosun.IsClusterAvailable() {
+	if !ctx.Bosun.IsClusterAvailable() {
 		return nil, errors.New("cluster not available")
 	}
 
@@ -350,7 +324,9 @@ func (a *App) GetStatus() (string, error) {
 
 func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 
-	values := Values{}
+	values := Values{
+		EnvAppVersion: a.Version,
+	}
 
 	valuesConfig, ok := a.Values[ctx.Env.Name]
 	if ok {
@@ -413,7 +389,7 @@ func (a *App) makeHelmArgs(ctx BosunContext) []string {
 		args = append(args, "--set", "routeToHost=false")
 	}
 
-	if a.bosun.params.DryRun {
+	if ctx.IsDryRun() {
 		args = append(args, "--dry-run", "--debug")
 	}
 
@@ -468,6 +444,63 @@ func (a *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	return result.Releases, err
 }
+
+func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (DependenciesSortedByTopology, error) {
+
+	const target = "__TARGET__"
+
+	repos := map[string]string{}
+
+	graph := topsort.NewGraph()
+
+	graph.AddNode(target)
+
+	for _, root := range roots {
+		graph.AddNode(root)
+		graph.AddEdge(target, root)
+	}
+
+	// add our root node to the graph
+
+	for _, app := range apps {
+		graph.AddNode(app.Name)
+		for _, dep := range app.DependsOn {
+			if repos[dep.Name] == "" || dep.Repo != "" {
+				repos[dep.Name] = dep.Repo
+			}
+
+			// make sure dep is in the graph
+			graph.AddNode(dep.Name)
+			graph.AddEdge(app.Name, dep.Name)
+		}
+	}
+
+	sortedNames, err := graph.TopSort(target)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DependenciesSortedByTopology
+	for _, name := range sortedNames {
+		if name == target {
+			continue
+		}
+
+		// exclude non-existent apps
+		repo := repos[name]
+		dep := Dependency{
+			Name: name,
+			Repo: repo,
+		}
+		if dep.Repo == "" {
+			dep.Repo = "unknown"
+		}
+		result = append(result, dep)
+	}
+
+	return result, nil
+}
+
 
 func omitStrings(from []string, toOmit ...string) []string {
 	var out []string

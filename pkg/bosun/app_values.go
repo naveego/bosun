@@ -36,11 +36,11 @@ func (v Values) ToEnv(prefix string) map[string]string {
 
 func (v Values) toEnv(prefix string, acc map[string]string) {
 	for k, v := range v {
-		k := strings.ToUpper(k)
+		key := prefix + strings.ToUpper(k)
 		if values, ok := v.(Values); ok {
-			values.toEnv(k + "_", acc)
+			values.toEnv(key + "_", acc)
 		} else {
-			acc[k] = fmt.Sprint(v)
+			acc[key] = fmt.Sprint(v)
 		}
 	}
 }

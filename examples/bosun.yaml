@@ -15,17 +15,3 @@ environments:
       - fromPath: $HOME/.bosun/bosun.yaml
         name: VAULT_TOKEN
         value: root
-  - name: green
-    cluster: green
-    domain: n5o.green
-    variables:
-      - fromPath: $HOME/.bosun/bosun.yaml
-        name: AWS_DEFAULT_PROFILE
-        value: green
-      - fromPath: $HOME/.bosun/bosun.yaml
-        name: VAULT_ADDR
-        value: https://vault.n5o.green
-      - fromPath: $HOME/.bosun/bosun.yaml
-        name: VAULT_TOKEN
-        value: root
-

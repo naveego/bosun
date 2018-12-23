@@ -15,7 +15,7 @@ type BosunContext struct {
 	Dir             string
 	Log             *logrus.Entry
 	Values          Values
-	ValuesAsEnvVars map[string]string
+	valuesAsEnvVars map[string]string
 	ctx             context.Context
 }
 
@@ -38,8 +38,15 @@ func (c BosunContext) Ctx() context.Context {
 
 func (c BosunContext) WithValues(v Values) BosunContext {
 	c.Values = v
-	c.ValuesAsEnvVars = v.ToEnv("BOSUN_")
+	c.valuesAsEnvVars = nil
 	return c
+}
+
+func (c BosunContext) GetValuesAsEnvVars() map[string]string {
+	if c.valuesAsEnvVars == nil && c.Values != nil {
+		c.valuesAsEnvVars = c.Values.ToEnv("BOSUN_")
+	}
+	return c.valuesAsEnvVars
 }
 
 func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {

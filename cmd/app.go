@@ -16,6 +16,8 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/Masterminds/semver"
+	"github.com/cheynewallace/tabby"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
@@ -65,6 +67,10 @@ func init() {
 	appDeleteCmd.Flags().Bool(ArgAppDeletePurge, false, "Purge the release from the cluster.")
 	appCmd.AddCommand(appDeleteCmd)
 
+	appCmd.AddCommand(appDepCmd)
+
+	appCmd.AddCommand(appBumpCmd)
+
 	appCmd.AddCommand(appRunCmd)
 	appCmd.AddCommand(appVersionCmd)
 	rootCmd.AddCommand(appCmd)
@@ -73,8 +79,8 @@ func init() {
 // appCmd represents the app command
 var appCmd = &cobra.Command{
 	Use:     "app",
-	Aliases: []string{"apps"},
-	Short:   "Service commands",
+	Aliases: []string{"apps", "a"},
+	Short:   "App commands",
 }
 
 var appVersionCmd = &cobra.Command{
@@ -90,6 +96,50 @@ var appVersionCmd = &cobra.Command{
 	},
 }
 
+var appBumpCmd = &cobra.Command{
+	Use:   "bump {name} {major|minor|patch|major.minor.patch}",
+	Args:  cobra.ExactArgs(2),
+	Short: "Updates the version of an app.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := mustGetBosun()
+		app := getApp(b, args)
+
+
+		version, err := semver.NewVersion(args[1])
+		if err == nil {
+			app.Version = version.String()
+		}
+
+		if err != nil {
+			version, err = semver.NewVersion(app.Version)
+			if err != nil {
+				return errors.Errorf("app has invalid version %q: %s", app.Version, err)
+			}
+			var v2 semver.Version
+
+			switch args[1] {
+			case "major":
+				v2 = version.IncMajor()
+			case "minor":
+				v2 = version.IncMinor()
+			case "patch":
+				v2 = version.IncPatch()
+			default:
+				return errors.Errorf("invalid version component %q (want major, minor, or patch)", args[0])
+			}
+			app.Version = v2.String()
+		}
+
+		err = app.Fragment.Save()
+		if err == nil {
+			fmt.Printf("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Fragment.FromPath)
+		}
+		return err
+
+	},
+}
+
 var appAcceptActualCmd = &cobra.Command{
 	Use:          "accept-actual [name...]",
 	Short:        "Updates the desired state to match the actual state of the apps. ",
@@ -97,10 +147,8 @@ var appAcceptActualCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := mustGetBosun()
+		ctx := b.NewContext("")
 
 		apps, err := getApps(b, args)
 		if err != nil {
@@ -109,24 +157,22 @@ var appAcceptActualCmd = &cobra.Command{
 
 		p := progressbar.New(len(apps))
 
-		foreachAppConcurrent(apps, func(app *bosun.App) error {
-			err := app.LoadActualState(false)
-			p.Add(1)
-			return err
-		})
-
-		for _, app := range apps {
+		err = foreachAppConcurrent(apps, func(app *bosun.App) error {
 			log := pkg.Log.WithField("name", app)
 			log.Debug("Getting actual state...")
-			err = app.LoadActualState(true)
+			err := app.LoadActualState(false, ctx)
+			p.Add(1)
 			if err != nil {
 				log.WithError(err).Error("Could not get actual state.")
-				continue
+				return err
 			}
-
 			app.DesiredState = app.ActualState
 			log.Debug("Updated.")
-			p.Add(1)
+			return nil
+		})
+
+		if err != nil {
+			return err
 		}
 
 		err = b.Save()
@@ -163,6 +209,43 @@ func foreachAppConcurrent(apps []*bosun.App, action func(app *bosun.App) error) 
 	return nil
 }
 
+var appDepCmd = &cobra.Command{
+	Use:          "deps",
+	Short:        "Lists dependencies",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		viper.SetDefault(ArgAppAll, true)
+
+		b := mustGetBosun()
+		deps := b.GetDeps()
+
+		t := tabby.New()
+		t.AddHeader("APP", "AVAILABLE", "VERSION", "PATH or REPO", "BRANCH")
+		for _, dep := range deps {
+			var check, pathrepo, branch, version string
+
+			if dep.App != nil {
+				check =					"✔"
+				pathrepo =		dep.App.FromPath
+				branch = 	dep.App.GetBranch()
+				version = dep.App.Version
+			} else {
+				check = ""
+				pathrepo = dep.Repo
+				branch = ""
+				version = dep.Version
+
+			}
+			t.AddLine(dep.Name, check, version, pathrepo, branch)
+		}
+
+		t.Print()
+
+		return nil
+	},
+}
+
 var appListCmd = &cobra.Command{
 	Use:          "list [name...]",
 	Aliases:      []string{"ls"},
@@ -171,15 +254,13 @@ var appListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := mustGetBosun()
 
 		if len(viper.GetStringSlice(ArgAppLabels)) == 0 && len(args) == 0 {
 			viper.Set(ArgAppAll, true)
 		}
 
+		ctx := b.NewContext("")
 		env := b.GetCurrentEnvironment()
 
 		apps, err := getApps(b, args)
@@ -194,7 +275,7 @@ var appListCmd = &cobra.Command{
 
 		if !skipActual {
 			err = foreachAppConcurrent(apps, func(app *bosun.App) error {
-				err := app.LoadActualState(false)
+				err := app.LoadActualState(false, ctx)
 				p.Add(1)
 				return err
 
@@ -542,4 +623,16 @@ var appRunCmd = &cobra.Command{
 
 		return err
 	},
+}
+
+func getStandardObjects(args []string) (*bosun.Bosun, *bosun.EnvironmentConfig, []*bosun.App, bosun.BosunContext) {
+	b := mustGetBosun()
+	env := b.GetCurrentEnvironment()
+	ctx := b.NewContext("")
+
+	apps, err := getApps(b, args)
+	if err != nil {
+		panic(err)
+	}
+	return b, env, apps, ctx
 }

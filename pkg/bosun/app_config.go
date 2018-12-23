@@ -2,7 +2,6 @@ package bosun
 
 import (
 	"fmt"
-	"github.com/imdario/mergo"
 	"strings"
 )
 
@@ -22,12 +21,22 @@ type AppConfig struct {
 	Values     AppValuesByEnvironment `yaml:"values,omitempty"`
 	Scripts    []*Script              `yaml:"scripts,omitempty"`
 	Actions    []*AppAction           `yaml:"actions,omitempty"`
+	Fragment *ConfigFragment            `yaml:"-"`
 }
 
 type Dependency struct {
-	Name string `yaml:"name,omitempty"`
-	Repo string `yaml:"repo,omitempty"`
+	Name     string `yaml:"name,omitempty"`
+	FromPath string `yaml:"fromPath"`
+	Repo     string `yaml:"repo,omitempty"`
+	App      *App   `yaml:"-"`
+	Version  string `yaml:"version"`
 }
+
+type Dependencies []Dependency
+
+func (d Dependencies) Len() int { return len(d) }
+func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[j].Name) < 0 }
+func (d Dependencies) Swap(i, j int) { d[i], d[j] = d[j], d[i] }
 
 type AppValuesConfig struct {
 	Set   map[string]*DynamicValue `yaml:"set,omitempty"`
@@ -38,10 +47,14 @@ func NewAppValues() AppValuesConfig {
 	return AppValuesConfig{Set: make(map[string]*DynamicValue)}
 }
 
-func (a *AppConfig) SetFromPath(path string) {
-	a.FromPath = path
+func (a *AppConfig) SetFragment(fragment *ConfigFragment) {
+	a.FromPath = fragment.FromPath
+	a.Fragment = fragment
 	for i := range a.Scripts {
 		a.Scripts[i].FromPath = a.FromPath
+	}
+	for i := range a.DependsOn {
+		a.DependsOn[i].FromPath = a.FromPath
 	}
 }
 
@@ -54,7 +67,7 @@ func (a *AppConfig) ConfigureForEnvironment(ctx BosunContext) {
 		a.VaultPaths[i] = resolvePath(a.FromPath, a.VaultPaths[i])
 	}
 	// only resolve the files for the current context, anything else is confusing
-	// when the config is dumped.
+	// when the mergedFragments is dumped.
 	for env, av := range a.Values {
 		if env == ctx.Env.Name {
 			for i := range av.Files {
@@ -62,11 +75,6 @@ func (a *AppConfig) ConfigureForEnvironment(ctx BosunContext) {
 			}
 		}
 	}
-}
-
-func (a *AppConfig) Merge(config *AppConfig) error{
-	err := mergo.Merge(a, config)
-	return err
 }
 
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
