@@ -25,6 +25,14 @@ func mustGetBosun() *bosun.Bosun {
 	return b
 }
 
+func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
+	r, err := b.GetCurrentRelease()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return r
+}
+
 func getBosun() (*bosun.Bosun, error) {
 	config, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
 	if err != nil {

@@ -1,23 +1,26 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/cheynewallace/tabby"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"strings"
 )
 
 func init() {
-
-	releaseCmd.AddCommand(releaseListCmd)
 
 	releaseCmd.AddCommand(releaseCreateCmd)
 
 	releaseAddCmd.Flags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
 	releaseAddCmd.Flags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
 
+
+	releaseCmd.AddCommand(releaseUseCmd)
 
 	releaseCmd.AddCommand(releaseAddCmd)
 
@@ -31,6 +34,14 @@ var releaseCmd = &cobra.Command{
 	Short: "Release commands.",
 }
 
+func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
+	for _, fn := range flags{
+		fn(child)
+	}
+	parent.AddCommand(child)
+
+	return child
+}
 
 var releaseListCmd = &cobra.Command{
 	Use:   "list",
@@ -38,14 +49,58 @@ var releaseListCmd = &cobra.Command{
 	Short: "Lists known releases.",
 	Run: func(cmd *cobra.Command, args []string) {
 		b := mustGetBosun()
+
+		current, _ := b.GetCurrentRelease()
 		t := tabby.New()
 		t.AddHeader("RELEASE", "PATH")
 		releases := b.GetReleases()
 		for _, release := range releases {
-			t.AddLine(release.Name, release.FromPath)
+			name := release.Name
+			if release == current {
+				name =fmt.Sprintf("* %s", name)
+			}
+			t.AddLine(name, release.FromPath)
 		}
-
 		t.Print()
+
+		if current == nil {
+			color.Red("No current release selected (use `bosun release use {name}` to select one).")
+		} else {
+			color.White("(* indicates currently active release)")
+		}
+	},
+}
+
+var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "show",
+	Aliases:[]string{"ls"},
+	Short: "Lists known releases.",
+	Run: func(cmd *cobra.Command, args []string) {
+		b := mustGetBosun()
+		r := mustGetCurrentRelease(b)
+
+		t := tabby.New()
+		t.AddHeader("APP", "VERSION", "REPO", "BRANCH", "COMMIT")
+		for _, app := range r.Apps {
+			t.AddLine(app.Name, app.Version, app.Repo, app.Branch, app.Commit)
+		}
+		t.Print()
+
+	},
+})
+
+
+var releaseUseCmd = &cobra.Command{
+	Use:   "use {name}",
+	Args:cobra.ExactArgs(1),
+	Short: "Sets the release which release commands will work against.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		err := b.UseRelease(args[0])
+		if err == nil {
+			err = b.Save()
+		}
+		return err
 	},
 }
 
@@ -65,23 +120,45 @@ var releaseCreateCmd = &cobra.Command{
 		}
 
 		err := c.Save()
+		if err != nil {
+			return err
+		}
+
+		b := mustGetBosun()
+
+		err = b.UseRelease(name)
+
+		if err != nil {
+			// release path is not already imported
+			b.AddImport(path)
+			err = b.Save()
+			if err != nil {
+				return err
+			}
+			b = mustGetBosun()
+			err = b.UseRelease(name)
+			if err != nil {
+				// this shouldn't happen...
+				return err
+			}
+		}
+
+		err = b.Save()
+
 		return err
 	},
 }
 
 var releaseAddCmd = &cobra.Command{
-	Use:   "add {release-name} [names...]",
-	Args: cobra.MinimumNArgs(1),
+	Use:   "add [names...]",
 	Short: "Adds one or more apps to a release.",
 	Long:"Provide app names or use labels.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 		b := mustGetBosun()
-		release, err := b.GetRelease(args[0])
-		if err != nil {
-			return err
-		}
-		apps,err:= getApps(b, args[1:])
+		release := mustGetCurrentRelease(b)
+
+		apps,err:= getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -107,3 +184,42 @@ var releaseAddCmd = &cobra.Command{
 		return err
 	},
 }
+
+var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "validate",
+	Short: "Validates the release.",
+	Long:"Validation checks that all apps in this release have a published chart and docker image for this release.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		release := mustGetCurrentRelease(b)
+
+		ctx := b.NewContext("")
+
+		w := new(strings.Builder)
+		hasErrors := false
+
+		for _, app := range release.Apps {
+
+			colorHeader.Fprintf(w, "%s\n", app.Name)
+			errs := app.Validate(ctx)
+			for _, err := range errs {
+				hasErrors = true
+				colorError.Fprintf(w, "- %s\n", err)
+			}
+			fmt.Fprintln(w)
+		}
+
+		fmt.Println(w.String())
+
+		if hasErrors {
+			return errors.New("Some apps are invalid.")
+		}
+
+		return nil
+	},
+})
+
+var (
+	colorHeader = color.New(color.Bold, color.FgHiWhite)
+	colorError = color.New(color.FgRed)
+)

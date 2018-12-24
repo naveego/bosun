@@ -7,28 +7,28 @@ releases:
   apps:
     dataflow-ui:
       name: dataflow-ui
-      repo: ""
+      repo: naveegoinc/frontends
       repoPath: ""
       bosunPath: /home/steve/go/src/github.com/naveegoinc/frontends/packages/dataflow-ui/bosun.yaml
-      branch: ""
-      version: ""
+      branch: issue/#89/improve-job-run-ux
+      version: 0.2.1
       tag: ""
-      string: ""
+      string: f2069da
     mdm-ui:
       name: mdm-ui
-      repo: ""
+      repo: naveegoinc/frontends
       repoPath: ""
       bosunPath: /home/steve/go/src/github.com/naveegoinc/frontends/packages/mdm-ui/bosun.yaml
-      branch: ""
-      version: ""
+      branch: issue/#89/improve-job-run-ux
+      version: 0.1.0
       tag: ""
-      string: ""
+      string: f2069da
     metabase:
       name: metabase
-      repo: ""
+      repo: naveegoinc/metabase
       repoPath: ""
       bosunPath: /home/steve/go/src/github.com/naveegoinc/metabase/bosun.yaml
-      branch: ""
-      version: ""
+      branch: issue/#29/update-vault-script
+      version: 0.3.2
       tag: ""
-      string: ""
+      string: 264216f

@@ -8,6 +8,7 @@ import (
 type AppConfig struct {
 	Name       string                 `yaml:"name"`
 	FromPath   string                 `yaml:"fromPath,omitempty"`
+	IsThirdParty bool `yaml:"isThirdParty"`
 	Namespace  string                 `yaml:"namespace,omitempty"`
 	Repo       string                 `yaml:"repo,omitempty"`
 	RepoPath   string                 `yaml:"repoPath,omitempty"`
@@ -22,6 +23,7 @@ type AppConfig struct {
 	Scripts    []*Script              `yaml:"scripts,omitempty"`
 	Actions    []*AppAction           `yaml:"actions,omitempty"`
 	Fragment *ConfigFragment            `yaml:"-"`
+	IsCloned bool `yaml:"-"`
 }
 
 type Dependency struct {

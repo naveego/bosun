@@ -21,6 +21,11 @@ func (g GitWrapper) Branch() string {
 	return o
 }
 
+func (g GitWrapper) Commit() string {
+	o, _ := pkg.NewCommand("git", "-C", g.dir, "log", "--pretty=format:'%h'", "-n", "1").RunOut()
+	return o
+}
+
 func (g GitWrapper) Tag() string {
 	o, _ := pkg.NewCommand("git", "-C", g.dir, "describe", "--abbrev=0", "--tags").RunOut()
 	return o

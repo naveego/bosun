@@ -14,6 +14,8 @@ type Config struct {
 	Path               string                     `yaml:"-"`
 	CurrentEnvironment string                     `yaml:"currentEnvironment"`
 	Imports            []string                   `yaml:"imports,omitempty"`
+	GitRoot string `yaml:"gitRoot"`
+	Release string `yaml:"release"`
 	AppStates          AppStatesByEnvironment     `yaml:"appStates"`
 	MergedFragments    *ConfigFragment            `yaml:"-"`
 	ImportedFragments  map[string]*ConfigFragment `yaml:"-"`

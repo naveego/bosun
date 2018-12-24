@@ -19,6 +19,8 @@ type App struct {
 	DesiredState AppState
 	ActualState  AppState
 	branch string
+	commit string
+	gitTag string
 }
 
 type AppsSortedByName []*App
@@ -64,6 +66,13 @@ func (a *App) GetBranch() string {
 		}
 	}
 	return a.branch
+}
+func (a *App) GetCommit() string {
+	if a.IsRepoCloned() && a.commit == ""{
+			g, _ := git.NewGitWrapper(a.FromPath)
+			a.commit = strings.Trim(g.Commit(), "'")
+	}
+	return a.commit
 }
 
 func (a *App) HasChart() bool {
@@ -354,6 +363,14 @@ func (a *App) getChartRef() string {
 	return a.ChartPath
 }
 
+func (a *App) getChartName() string {
+	if a.Chart != "" {
+		return a.Chart
+	}
+	name := filepath.Base(a.ChartPath)
+	return fmt.Sprintf("helm.n5o.black/%s", name)
+}
+
 func (a *App) makeHelmArgs(ctx BosunContext) []string {
 
 	var args []string
@@ -500,6 +517,7 @@ func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (D
 
 	return result, nil
 }
+
 
 
 func omitStrings(from []string, toOmit ...string) []string {

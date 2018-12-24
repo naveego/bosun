@@ -45,6 +45,12 @@ var minikubeUpCmd = &cobra.Command{
 
 		err := c.Up()
 
+		if err != nil {
+			return err
+		}
+
+		_, err = pkg.NewCommand("helm", "init").RunOut()
+
 		return err
 	},
 }

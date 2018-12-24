@@ -18,7 +18,7 @@ import (
 
 type Bosun struct {
 	params           Parameters
-	rootConfig       *Config
+	config           *Config
 	mergedFragments  *ConfigFragment
 	deps             map[string]*Dependency
 	apps             map[string]*App
@@ -36,7 +36,7 @@ type Parameters struct {
 func New(params Parameters, rootConfig *Config) (*Bosun, error) {
 	b := &Bosun{
 		params:          params,
-		rootConfig:      rootConfig,
+		config:          rootConfig,
 		mergedFragments: rootConfig.MergedFragments,
 		apps:            make(map[string]*App),
 		deps:            make(map[string]*Dependency),
@@ -64,7 +64,7 @@ func New(params Parameters, rootConfig *Config) (*Bosun, error) {
 
 		// set the current environment.
 		// this will also set environment vars based on it.
-		err = b.setCurrentEnvironment(env)
+		err = b.useEnvironment(env)
 	}
 
 	ctx := b.NewContext("")
@@ -81,7 +81,7 @@ func New(params Parameters, rootConfig *Config) (*Bosun, error) {
 func (b *Bosun) addApp(config *AppConfig) *App {
 	app := NewApp(config)
 	b.apps[config.Name] = app
-	appStates := b.rootConfig.AppStates[b.rootConfig.CurrentEnvironment]
+	appStates := b.config.AppStates[b.config.CurrentEnvironment]
 	app.DesiredState = appStates[config.Name]
 
 	dep, ok := b.deps[config.Name]
@@ -172,7 +172,7 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 		}
 	}
 
-	err := b.rootConfig.importFragmentFromPath(path)
+	err := b.config.importFragmentFromPath(path)
 
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 
 	pkg.Log.WithField("path", path).Debug("New microservice found at path.")
 
-	imported := b.rootConfig.ImportedFragments[path]
+	imported := b.config.ImportedFragments[path]
 
 	var name string
 	for _, m := range imported.Apps {
@@ -192,9 +192,9 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 	return m, nil
 }
 
-func (b *Bosun) setCurrentEnvironment(env *EnvironmentConfig) error {
+func (b *Bosun) useEnvironment(env *EnvironmentConfig) error {
 
-	b.rootConfig.CurrentEnvironment = env.Name
+	b.config.CurrentEnvironment = env.Name
 	b.env = env
 
 	err := b.env.Ensure(b.NewContext(""))
@@ -205,19 +205,19 @@ func (b *Bosun) setCurrentEnvironment(env *EnvironmentConfig) error {
 	return nil
 }
 
-func (b *Bosun) SetCurrentEnvironment(name string) error {
+func (b *Bosun) UseEnvironment(name string) error {
 
 	env, err := b.GetEnvironment(name)
 	if err != nil {
 		return err
 	}
 
-	return b.setCurrentEnvironment(env)
+	return b.useEnvironment(env)
 }
 
 func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 	if b.env == nil {
-		panic(errors.Errorf("environment not initialized; current environment is %s", b.rootConfig.CurrentEnvironment))
+		panic(errors.Errorf("environment not initialized; current environment is %s", b.config.CurrentEnvironment))
 	}
 
 	return b.env
@@ -225,7 +225,7 @@ func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 
 func (b *Bosun) Save() error {
 
-	config := b.rootConfig
+	config := b.config
 
 	if config.AppStates == nil {
 		config.AppStates = AppStatesByEnvironment{}
@@ -260,12 +260,12 @@ func (b *Bosun) GetMergedConfig() ConfigFragment {
 }
 
 func (b *Bosun) AddImport(file string) bool {
-	for _, i := range b.rootConfig.Imports {
+	for _, i := range b.config.Imports {
 		if i == file {
 			return false
 		}
 	}
-	b.rootConfig.Imports = append(b.rootConfig.Imports, file)
+	b.config.Imports = append(b.config.Imports, file)
 	return true
 }
 
@@ -406,6 +406,13 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 
 }
 
+func (b *Bosun) GetCurrentRelease() (*Release, error) {
+	if b.config.Release == "" {
+		return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
+	}
+	return b.GetRelease(b.config.Release)
+}
+
 func (b *Bosun) GetRelease(name string) (*Release, error) {
 	for _, e := range b.mergedFragments.Releases {
 		if e.Name == name {
@@ -424,3 +431,11 @@ func (b *Bosun) GetReleases() []*Release {
 	return releases
 }
 
+func (b *Bosun) UseRelease(name string) error {
+	_, err := b.GetRelease(name)
+	if err != nil {
+		return err
+	}
+	b.config.Release = name
+	return nil
+}

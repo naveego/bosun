@@ -53,7 +53,7 @@ var envCmd = &cobra.Command{
 
 		envName := args[0]
 
-		err = b.SetCurrentEnvironment(envName)
+		err = b.UseEnvironment(envName)
 		if err != nil {
 			return err
 		}
