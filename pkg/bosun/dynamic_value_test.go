@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/ginkgo/extensions/table"
 	"gopkg.in/yaml.v2"
-	"strings"
+	"runtime"
 )
 
 type container struct {
@@ -74,19 +74,25 @@ script
 			}))
 		})
 
-	})
-
-	Describe("execution", func() {
-
-		It("should resolve value from script", func() {
-			sut := &DynamicValue{
-				Script: `
-  testVar="test-string"
+	Describe("execution", func(){
+	It("should resolve value from script", func() {
+		script:=`
+  testVar="test string"
   echo $testVar
-`,
-			}
-			Expect(sut.Execute(BosunContext{})).To(Equal("test-string"))
-		})
+`
+
+		if runtime.GOOS == "windows"{
+			script = `
+set testVar=test string
+echo %testVar%
+`
+		}
+
+		sut := &DynamicValue{
+			Script:script,
+		}
+		Expect(sut.Execute(BosunContext{})).To(Equal("test string"))
+	})
 
 		It("should include env values", func() {
 			ctx := BosunContext{}.WithValues(Values{
@@ -104,5 +110,6 @@ script
 			Expect(result).To(ContainSubstring("BOSUN_APP_VERSION=1.2.3"))
 		})
 
+	})
 	})
 })

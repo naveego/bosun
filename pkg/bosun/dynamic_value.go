@@ -1,12 +1,13 @@
 package bosun
 
 import (
-	"github.com/naveego/bosun/pkg"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
+
+	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
 )
 
 type DynamicValue struct {
@@ -138,13 +139,18 @@ func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
 }
 
 func executeScript(script string, ctx BosunContext) (string, error) {
-	tmp, err := ioutil.TempFile(os.TempDir(), "bosun-script")
+	pattern := "bosun-script*"
+	if runtime.GOOS == "windows" {
+		pattern = "bosun-script*.bat"
+	}
+	tmp, err := ioutil.TempFile(os.TempDir(), pattern)
 	if err != nil {
 		return "", err
 	}
 	tmp.Close()
 	ioutil.WriteFile(tmp.Name(), []byte(script), 0700)
 
+	defer os.Remove(tmp.Name())
 
 	cmd := getCommandForScript(tmp.Name()).
 		WithDir(ctx.Dir).
