@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	"gopkg.in/yaml.v2"
 	"runtime"
+	"strings"
 )
 
 type container struct {
