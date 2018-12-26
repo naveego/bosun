@@ -21,6 +21,9 @@ type AppAction struct {
 	Description string          `yaml:"description,omitempty"`
 	When        ActionSchedule  `yaml:"when"`
 	Where       string          `yaml:"where"`
+	MaxAttempts int             `yaml:"maxAttempts,omitempty"`
+	Timeout     time.Duration   `yaml:"timeout"`
+	Interval    time.Duration   `yaml:"interval"`
 	Vault       *AppVaultAction `yaml:"vault,omitempty"`
 	Exec        *DynamicValue   `yaml:"exec,omitempty"`
 	Test        *AppTestAction  `yaml:"test,omitempty"`
@@ -32,20 +35,63 @@ type AppVaultAction struct {
 }
 
 type AppTestAction struct {
-	MaxAttempts int           `yaml:"maxAttempts,omitempty"`
-	Timeout     time.Duration `yaml:"timeout"`
-	Interval time.Duration `yaml:"interval"`
-	Exec        *DynamicValue `yaml:"exec"`
+	Exec *DynamicValue `yaml:"exec"`
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
-	log := ctx.Log.WithField("action", a.Name)
+	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name))
+	log := ctx.Log
 
 	if a.Where != "" && !strings.Contains(a.Where, ctx.Env.Name) {
 		log.Debugf("Skipping because 'where' is %q.", a.Where)
 		return nil
 	}
 
+	attempts := a.MaxAttempts
+	if attempts == 0 {
+		attempts = 1
+	}
+	timeout := a.Timeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+	interval := a.Interval
+	if interval == 0 {
+		interval = 5 * time.Second
+	}
+
+	for {
+
+		attemptCtx := ctx.WithTimeout(timeout)
+
+		err := a.execute(attemptCtx)
+
+		if err == nil {
+			// succeeded
+			return nil
+		}
+
+		attempts--
+
+		ctx.Log.WithError(err).WithField("attempts_remaining", attempts).Error("Test failed.")
+
+		if attempts == 0 {
+			return err
+		}
+
+		ctx.Log.WithField("wait", interval).Info("Waiting before trying again.")
+		select {
+		case <-ctx.Ctx().Done():
+			return nil
+		case <-time.After(interval):
+		}
+	}
+
+	return nil
+}
+
+func (a *AppAction) execute(ctx BosunContext) error {
+	log := ctx.Log
 	if a.Vault != nil {
 		log.Debug("Applying vault layout...")
 		err := a.executeVault(ctx)
@@ -126,34 +172,7 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 
 func (a *AppAction) executeTest(ctx BosunContext) error {
 	t := a.Test
-	attempts := t.MaxAttempts
-	timeout := t.Timeout
-	if timeout == 0 {
-		timeout = 5 * time.Second
-	}
-	interval := t.Interval
-	if interval == 0 {
-		interval = 5 * time.Second
-	}
-	var err error
-	attempt := 0
-	for {
-		attempt ++
-		attemptCtx := ctx.WithTimeout(timeout)
-		_, err = t.Exec.Execute(attemptCtx)
-
-		if err == nil {
-			// test succeeded
-			return nil
-		}
-		remaining :=  attempts - attempt
-		ctx.Log.WithError(err).WithField("attempts_remaining", remaining).Error("Test failed.")
-
-		if remaining > 0 {
-			ctx.Log.WithField("wait", interval).Info("Waiting before trying again.")
-			<-time.After(interval)
-		}
-	}
+	_, err := t.Exec.Execute(ctx)
 
 	return err
 }

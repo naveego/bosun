@@ -101,7 +101,7 @@ func (c *Command) prepare() {
 
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
-	Log.WithField("exe", exe).WithField("args", c.Args).WithField("env", c.Env).Debug("Command prepared.")
+	Log.WithField("exe", exe).WithField("args", c.Args).Debug("Command prepared.")
 
 	c.prepared = true
 }

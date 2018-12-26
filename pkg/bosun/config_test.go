@@ -1,7 +1,6 @@
 package bosun_test
 
 import (
-	"fmt"
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -71,7 +70,6 @@ values:
 
 			b, err := yaml.Marshal(sut)
 			Expect(err).ToNot(HaveOccurred())
-			fmt.Println(string(b))
 			roundtripped := string(b)
 			Expect(roundtripped).To(ContainSubstring("values"))
 

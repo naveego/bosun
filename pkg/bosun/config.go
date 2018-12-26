@@ -94,7 +94,7 @@ func LoadConfig(path string) (*Config, error) {
 
 	err = c.importFromPaths(path, syntheticPaths)
 	if err != nil {
-		return nil, errors.Errorf("error importing from path bas")
+		return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
 	}
 
 	return c, err
@@ -114,7 +114,7 @@ func (r *Config) importFromPaths(relativeTo string, paths []string) error {
 }
 
 func (r *Config) importFragmentFromPath(path string) error {
-	// log := pkg.Log.WithField("import_path", path)
+	//log := pkg.Log.WithField("import_path", path)
 	//log.Debug("Importing mergedFragments...")
 
 	if r.ImportedFragments[path] != nil {

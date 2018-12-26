@@ -226,89 +226,6 @@ type PlanStep struct {
 	Action      func(ctx BosunContext) error
 }
 
-func (a *App) Reconcile(ctx BosunContext) error {
-	ctx = ctx.WithDir(a.FromPath).WithLog(ctx.Log.WithField("app", a.Name))
-
-	log := ctx.Log
-
-	if !a.HasChart() {
-		log.Info("No chart defined for this app.")
-		return nil
-	}
-
-	err := a.LoadActualState(true, ctx)
-	if err != nil {
-		return errors.Errorf("error checking actual state for %q: %s", a.Name, err)
-	}
-
-	params := ctx.GetParams()
-	env := ctx.Env
-	reportDeploy := !params.DryRun &&
-		a.DesiredState.Status == StatusDeployed &&
-		!env.IsLocal &&
-		a.ReportDeployment
-
-	values, err := a.GetValuesMap(ctx)
-	if err != nil {
-		return errors.Errorf("create values map for app %q: %s", a.Name, err)
-	}
-
-	ctx = ctx.WithValues(values)
-
-	log.Info("Planning reconciliation...")
-
-	plan, err := a.PlanReconciliation(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	if len(plan) == 0 {
-		log.Info("No actions needed to reconcile state.")
-		return nil
-	}
-
-	if reportDeploy {
-		log.Info("Deploy progress will be reported to github.")
-		// create the deployment
-		deployID, err := git.CreateDeploy(ctx.Dir, env.Name)
-
-		// ensure that the deployment is updated when we return.
-		defer func() {
-			if err != nil {
-				git.UpdateDeploy(ctx.Dir, deployID, "failure")
-			} else {
-				git.UpdateDeploy(ctx.Dir, deployID, "success")
-			}
-		}()
-
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, step := range plan {
-		log.WithField("step", step.Name).WithField("description", step.Description).Info("Planned step.")
-	}
-
-	log.Info("Planning complete.")
-
-	log.Debug("Executing plan...")
-
-	for _, step := range plan {
-		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
-		stepCtx.Log.Info("Executing step...")
-		err := step.Action(stepCtx)
-		if err != nil {
-			return err
-		}
-		stepCtx.Log.Info("Step complete.")
-	}
-
-	log.Debug("Plan executed.")
-
-	return nil
-}
 
 func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
@@ -422,6 +339,91 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	return steps, nil
 
 }
+
+func (a *App) Reconcile(ctx BosunContext) error {
+	ctx = ctx.WithDir(a.FromPath).WithLog(ctx.Log.WithField("app", a.Name))
+
+	log := ctx.Log
+
+	if !a.HasChart() {
+		log.Info("No chart defined for this app.")
+		return nil
+	}
+
+	err := a.LoadActualState(true, ctx)
+	if err != nil {
+		return errors.Errorf("error checking actual state for %q: %s", a.Name, err)
+	}
+
+	params := ctx.GetParams()
+	env := ctx.Env
+	reportDeploy := !params.DryRun &&
+		a.DesiredState.Status == StatusDeployed &&
+		!env.IsLocal &&
+		a.ReportDeployment
+
+	values, err := a.GetValuesMap(ctx)
+	if err != nil {
+		return errors.Errorf("create values map for app %q: %s", a.Name, err)
+	}
+
+	ctx = ctx.WithValues(values)
+
+	log.Info("Planning reconciliation...")
+
+	plan, err := a.PlanReconciliation(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	if len(plan) == 0 {
+		log.Info("No actions needed to reconcile state.")
+		return nil
+	}
+
+	if reportDeploy {
+		log.Info("Deploy progress will be reported to github.")
+		// create the deployment
+		deployID, err := git.CreateDeploy(ctx.Dir, env.Name)
+
+		// ensure that the deployment is updated when we return.
+		defer func() {
+			if err != nil {
+				git.UpdateDeploy(ctx.Dir, deployID, "failure")
+			} else {
+				git.UpdateDeploy(ctx.Dir, deployID, "success")
+			}
+		}()
+
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, step := range plan {
+		log.WithField("step", step.Name).WithField("description", step.Description).Info("Planned step.")
+	}
+
+	log.Info("Planning complete.")
+
+	log.Debug("Executing plan...")
+
+	for _, step := range plan {
+		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
+		stepCtx.Log.Info("Executing step...")
+		err := step.Action(stepCtx)
+		if err != nil {
+			return err
+		}
+		stepCtx.Log.Info("Step complete.")
+	}
+
+	log.Debug("Plan executed.")
+
+	return nil
+}
+
 
 func (a *App) diff(ctx BosunContext) (string, error) {
 

@@ -305,6 +305,7 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
+
 	return BosunContext{
 		Bosun: b,
 		Env:   b.GetCurrentEnvironment(),

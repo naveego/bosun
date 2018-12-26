@@ -17,13 +17,39 @@ type DynamicValue struct {
 	resolved bool
 }
 
-type dynamicValueUnmarshall DynamicValue
+type dynamicValueMarshalling DynamicValue
+
+func (d *DynamicValue) MarshalYAML() (interface{}, error) {
+
+	if d == nil {
+		return nil, nil
+	}
+
+	if len(d.Value) > 0 {
+		return d.Value, nil
+	}
+
+	if len(d.Command) > 0{
+		return d.Command, nil
+	}
+
+	if len(d.Script) > 0 {
+		return d.Script, nil
+	}
+
+	if len(d.OS) > 0 {
+		return d.OS, nil
+	}
+
+	return nil, nil
+}
+
 
 func (d *DynamicValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	var s string
 	var c []string
-	var u dynamicValueUnmarshall
+	var u dynamicValueMarshalling
 
 	err := unmarshal(&s)
 	if err == nil {
