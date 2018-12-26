@@ -1,5 +1,6 @@
 package pkg
 
+import "runtime"
 
 type MinikubeCmd struct {
 }
@@ -16,21 +17,31 @@ func (m *MinikubeCmd) Up() error {
 
 	NewCommand("minikube config set embed-certs true").MustRun()
 
-	err = NewCommand("minikube",
-		"start",
-		"--memory=16000",
-		"--cpus=2",
-		"--kubernetes-version=v1.10.0",
-		"--vm-driver=virtualbox",
-		"--extra-config=apiserver.service-node-port-range=80-32000",
-	).RunE()
+	if runtime.GOOS == "windows" {
+		err = NewCommand("minikube",
+			"start",
+			"--memory=16000",
+			"--cpus=2",
+			"--kubernetes-version=v1.10.0",
+			"--vm-driver=hyperv",
+			"--hyperv-virtual-switch", "Default Switch",
+			"--extra-config=apiserver.service-node-port-range=80-32000",
+		).RunE()
+	} else {
+		err = NewCommand("minikube",
+			"start",
+			"--memory=16000",
+			"--cpus=2",
+			"--kubernetes-version=v1.10.0",
+			"--vm-driver=virtualbox",
+			"--extra-config=apiserver.service-node-port-range=80-32000",
+		).RunE()
+	}
 
 	if err != nil {
 		return err
 	}
 	NewCommand("minikube addons enable kube-dns").MustRun()
-
-
 
 	return nil
 }

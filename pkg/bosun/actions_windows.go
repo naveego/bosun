@@ -20,6 +20,6 @@ func  render(vars map[string]string) string {
 
 
 func getCommandForScript(file string) *pkg.Command {
-	cmd := pkg.NewCommand("cmd", file)
+	cmd := pkg.NewCommand("cmd", "/q", "/c", file)
 	return cmd
 }

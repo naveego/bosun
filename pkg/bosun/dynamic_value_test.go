@@ -5,6 +5,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
+	"runtime"
 )
 
 type container struct {
@@ -55,13 +56,21 @@ script
 	})
 
 	It("should resolve value from script", func() {
-		sut := &DynamicValue{
-			Script:`
-  testVar="test-string"
+		script:=`
+  testVar="test string"
   echo $testVar
-`,
+`
+		if runtime.GOOS == "windows"{
+			script = `
+set testVar=test string
+echo %testVar%
+`
 		}
-		Expect(sut.Execute(BosunContext{})).To(Equal("test-string"))
+
+		sut := &DynamicValue{
+			Script:script,
+		}
+		Expect(sut.Execute(BosunContext{})).To(Equal("test string"))
 	})
 
 	It("should include env values", func() {
