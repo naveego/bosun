@@ -19,7 +19,6 @@ func init() {
 	releaseAddCmd.Flags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
 	releaseAddCmd.Flags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
 
-
 	releaseCmd.AddCommand(releaseUseCmd)
 
 	releaseCmd.AddCommand(releaseAddCmd)
@@ -29,13 +28,13 @@ func init() {
 
 // releaseCmd represents the release command
 var releaseCmd = &cobra.Command{
-	Use:   "release",
-	Aliases:[]string{"rel", "r"},
-	Short: "Release commands.",
+	Use:     "release",
+	Aliases: []string{"rel", "r"},
+	Short:   "Release commands.",
 }
 
 func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
-	for _, fn := range flags{
+	for _, fn := range flags {
 		fn(child)
 	}
 	parent.AddCommand(child)
@@ -43,10 +42,10 @@ func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *
 	return child
 }
 
-var releaseListCmd = &cobra.Command{
-	Use:   "list",
-	Aliases:[]string{"ls"},
-	Short: "Lists known releases.",
+var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "Lists known releases.",
 	Run: func(cmd *cobra.Command, args []string) {
 		b := mustGetBosun()
 
@@ -57,7 +56,7 @@ var releaseListCmd = &cobra.Command{
 		for _, release := range releases {
 			name := release.Name
 			if release == current {
-				name =fmt.Sprintf("* %s", name)
+				name = fmt.Sprintf("* %s", name)
 			}
 			t.AddLine(name, release.FromPath)
 		}
@@ -69,30 +68,29 @@ var releaseListCmd = &cobra.Command{
 			color.White("(* indicates currently active release)")
 		}
 	},
-}
+})
 
 var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "show",
-	Aliases:[]string{"ls"},
-	Short: "Lists known releases.",
+	Use:     "show",
+	Aliases: []string{"ls"},
+	Short:   "Lists known releases.",
 	Run: func(cmd *cobra.Command, args []string) {
 		b := mustGetBosun()
 		r := mustGetCurrentRelease(b)
 
 		t := tabby.New()
-		t.AddHeader("APP", "VERSION", "REPO", "BRANCH", "COMMIT")
+		t.AddHeader("APP", "VERSION", "REPO", "BRANCH")
 		for _, app := range r.Apps {
-			t.AddLine(app.Name, app.Version, app.Repo, app.Branch, app.Commit)
+			t.AddLine(app.Name, app.Version, app.Repo, app.Branch)
 		}
 		t.Print()
 
 	},
 })
 
-
 var releaseUseCmd = &cobra.Command{
 	Use:   "use {name}",
-	Args:cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(1),
 	Short: "Sets the release which release commands will work against.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
@@ -106,15 +104,15 @@ var releaseUseCmd = &cobra.Command{
 
 var releaseCreateCmd = &cobra.Command{
 	Use:   "create {name} {path}",
-	Args:cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(2),
 	Short: "Creates a new release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, path := args[0], args[1]
 		c := bosun.ConfigFragment{
-			FromPath:path,
+			FromPath: path,
 			Releases: []*bosun.Release{
 				&bosun.Release{
-					Name:name,
+					Name: name,
 				},
 			},
 		}
@@ -152,13 +150,13 @@ var releaseCreateCmd = &cobra.Command{
 var releaseAddCmd = &cobra.Command{
 	Use:   "add [names...]",
 	Short: "Adds one or more apps to a release.",
-	Long:"Provide app names or use labels.",
+	Long:  "Provide app names or use labels.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 
-		apps,err:= getApps(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -174,10 +172,16 @@ var releaseAddCmd = &cobra.Command{
 				ctx.Log.Infof("Adding app %q", app.Name)
 			}
 
-			release.Apps[app.Name], err = app.MakeAppRelease()
+			release.Apps[app.Name], err = app.MakeAppRelease(release)
+
 			if err != nil {
-				return errors.Errorf("could not make release for app %q", app.Name)
+				return errors.Errorf("could not make release for app %q: %s", app.Name, err)
 			}
+		}
+
+		err = release.IncludeDependencies(ctx)
+		if err != nil {
+			return err
 		}
 
 		err = release.Fragment.Save()
@@ -186,9 +190,11 @@ var releaseAddCmd = &cobra.Command{
 }
 
 var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "validate",
-	Short: "Validates the release.",
-	Long:"Validation checks that all apps in this release have a published chart and docker image for this release.",
+	Use:           "validate",
+	Short:         "Validates the release.",
+	Long:          "Validation checks that all apps in this release have a published chart and docker image for this release.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
@@ -202,10 +208,15 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 
 			colorHeader.Fprintf(w, "%s\n", app.Name)
 			errs := app.Validate(ctx)
-			for _, err := range errs {
-				hasErrors = true
-				colorError.Fprintf(w, "- %s\n", err)
+			if len(errs) == 0 {
+				colorOK.Fprintf(w, "OK\n")
+			} else {
+				for _, err := range errs {
+					hasErrors = true
+					colorError.Fprintf(w, "- %s\n", err)
+				}
 			}
+
 			fmt.Fprintln(w)
 		}
 
@@ -219,7 +230,43 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 })
 
-var (
-	colorHeader = color.New(color.Bold, color.FgHiWhite)
-	colorError = color.New(color.FgRed)
-)
+var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:           "deploy",
+	Short:         "Deploys the release.",
+	Long:          "Deploys the current release to the current environment.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		release := mustGetCurrentRelease(b)
+
+		ctx := b.NewContext("")
+
+		w := new(strings.Builder)
+		hasErrors := false
+
+		for _, app := range release.Apps {
+
+			colorHeader.Fprintf(w, "%s\n", app.Name)
+			errs := app.Validate(ctx)
+			if len(errs) == 0 {
+				colorOK.Fprintf(w, "OK\n")
+			} else {
+				for _, err := range errs {
+					hasErrors = true
+					colorError.Fprintf(w, "- %s\n", err)
+				}
+			}
+
+			fmt.Fprintln(w)
+		}
+
+		fmt.Println(w.String())
+
+		if hasErrors {
+			return errors.New("Some apps are invalid.")
+		}
+
+		return nil
+	},
+})

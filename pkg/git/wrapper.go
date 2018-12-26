@@ -1,6 +1,10 @@
 package git
 
-import "github.com/naveego/bosun/pkg"
+import (
+	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
+	"strings"
+)
 
 type GitWrapper struct {
 	dir string
@@ -12,8 +16,18 @@ func NewGitWrapper(pathHint string) (GitWrapper, error) {
 		return GitWrapper{}, err
 	}
 	return GitWrapper{
-		dir:dir,
+		dir: dir,
 	}, nil
+}
+
+func (g GitWrapper) Exec(args ...string) (string, error) {
+	args = append([]string{"-C", g.dir}, args...)
+
+	out, err := pkg.NewCommand("git", args...).RunOut()
+	if err != nil {
+		return "", errors.Errorf("git %s: %s", strings.Join(args, " "), err)
+	}
+	return out, err
 }
 
 func (g GitWrapper) Branch() string {
@@ -29,4 +43,10 @@ func (g GitWrapper) Commit() string {
 func (g GitWrapper) Tag() string {
 	o, _ := pkg.NewCommand("git", "-C", g.dir, "describe", "--abbrev=0", "--tags").RunOut()
 	return o
+}
+
+func (g GitWrapper) Pull() error {
+	err := pkg.NewCommand("git", "-C", g.dir, "pull").RunE()
+	return err
+
 }

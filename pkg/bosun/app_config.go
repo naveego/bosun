@@ -6,39 +6,40 @@ import (
 )
 
 type AppConfig struct {
-	Name       string                 `yaml:"name"`
-	FromPath   string                 `yaml:"fromPath,omitempty"`
-	IsThirdParty bool `yaml:"isThirdParty"`
-	Namespace  string                 `yaml:"namespace,omitempty"`
-	Repo       string                 `yaml:"repo,omitempty"`
-	RepoPath   string                 `yaml:"repoPath,omitempty"`
-	Version    string                 `yaml:"version,omitempty"`
-	Chart      string                 `yaml:"chart,omitempty"`
-	ChartPath  string                 `yaml:"chartPath,omitempty"`
-	VaultPaths []string               `yaml:"vaultPaths,omitempty"`
-	RunCommand []string               `yaml:"runCommand,omitempty"`
-	DependsOn  []Dependency           `yaml:"dependsOn,omitempty"`
-	Labels     []string               `yaml:"labels,omitempty"`
-	Values     AppValuesByEnvironment `yaml:"values,omitempty"`
-	Scripts    []*Script              `yaml:"scripts,omitempty"`
-	Actions    []*AppAction           `yaml:"actions,omitempty"`
-	Fragment *ConfigFragment            `yaml:"-"`
-	IsCloned bool `yaml:"-"`
+	Name             string                 `yaml:"name"`
+	FromPath         string                 `yaml:"fromPath,omitempty"`
+	BranchForRelease bool                   `yaml:"branchForRelease,omitempty"`
+	ReportDeployment bool                   `yaml:"reportDeployment,omitempty"`
+	Namespace        string                 `yaml:"namespace,omitempty"`
+	Repo             string                 `yaml:"repo,omitempty"`
+	RepoPath         string                 `yaml:"repoPath,omitempty"`
+	HarborProject    string                 `yaml:"harborProject,omitempty"`
+	Version          string                 `yaml:"version,omitempty"`
+	Chart            string                 `yaml:"chart,omitempty"`
+	ChartPath        string                 `yaml:"chartPath,omitempty"`
+	VaultPaths       []string               `yaml:"vaultPaths,omitempty"`
+	RunCommand       []string               `yaml:"runCommand,omitempty"`
+	DependsOn        []Dependency           `yaml:"dependsOn,omitempty"`
+	Labels           []string               `yaml:"labels,omitempty"`
+	Values           AppValuesByEnvironment `yaml:"values,omitempty"`
+	Scripts          []*Script              `yaml:"scripts,omitempty"`
+	Actions          []*AppAction           `yaml:"actions,omitempty"`
+	Fragment         *ConfigFragment        `yaml:"-"`
 }
 
 type Dependency struct {
-	Name     string `yaml:"name,omitempty"`
-	FromPath string `yaml:"fromPath"`
+	Name     string `yaml:"name"`
+	FromPath string `yaml:"-"`
 	Repo     string `yaml:"repo,omitempty"`
 	App      *App   `yaml:"-"`
-	Version  string `yaml:"version"`
+	Version  string `yaml:"version,omitempty"`
 }
 
 type Dependencies []Dependency
 
-func (d Dependencies) Len() int { return len(d) }
+func (d Dependencies) Len() int           { return len(d) }
 func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[j].Name) < 0 }
-func (d Dependencies) Swap(i, j int) { d[i], d[j] = d[j], d[i] }
+func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 type AppValuesConfig struct {
 	Set   map[string]*DynamicValue `yaml:"set,omitempty"`
@@ -65,71 +66,56 @@ func (a *AppConfig) ConfigureForEnvironment(ctx BosunContext) {
 	if a.ChartPath != "" {
 		a.ChartPath = resolvePath(a.FromPath, a.ChartPath)
 	}
-	for i := range a.VaultPaths {
-		a.VaultPaths[i] = resolvePath(a.FromPath, a.VaultPaths[i])
-	}
-	// only resolve the files for the current context, anything else is confusing
-	// when the mergedFragments is dumped.
-	for env, av := range a.Values {
-		if env == ctx.Env.Name {
-			for i := range av.Files {
-				av.Files[i] = resolvePath(a.FromPath, av.Files[i])
-			}
-		}
-	}
 }
 
+// Combine returns a new AppValuesConfig with the values from
+// other added after (and/or overwriting) the values from this instance)
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 	out := AppValuesConfig{
 		Set: make(map[string]*DynamicValue),
 	}
-	out.Files = append(out.Files, other.Files...)
 	out.Files = append(out.Files, a.Files...)
+	out.Files = append(out.Files, other.Files...)
 
 	for k, v := range a.Set {
 		out.Set[k] = v
 	}
 	for k, v := range other.Set {
-		if _, ok := out.Set[k]; !ok {
-			out.Set[k] = v
-		}
+		out.Set[k] = v
 	}
+
 	return out
 }
 
 type AppValuesByEnvironment map[string]AppValuesConfig
 
-func (a *AppValuesByEnvironment) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (a *AppConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
+	out := AppValuesConfig{}
+	name := ctx.Env.Name
 
-	var m map[string]AppValuesConfig
+	// more precise values should override less precise values
+	priorities := make([][]AppValuesConfig, 10, 10)
 
-	err := unmarshal(&m)
-	if err != nil {
-		return err
-	}
-
-	multis := map[string]AppValuesConfig{}
-	out := AppValuesByEnvironment{}
-
-	for k, v := range m {
+	for k, v := range a.Values {
 		keys := strings.Split(k, ",")
-		if len(keys) > 1 {
-			multis[k] = multis[k].Combine(v)
-		} else {
-			out[k] = v
+		for _, k2 := range keys {
+			if k2 == name {
+				priorities[len(keys)] = append(priorities[len(keys)], v)
+			}
 		}
 	}
 
-	for k, v := range multis {
-		keys := strings.Split(k, ",")
-		for _, k = range keys {
-			out[k] = out[k].Combine(v)
+	for i := len(priorities) - 1; i >= 0; i-- {
+		for _, v := range priorities[i] {
+			out = out.Combine(v)
 		}
 	}
 
-	*a = out
+	for i := range out.Files {
+		out.Files[i] = resolvePath(a.FromPath, out.Files[i])
+	}
 
-	return nil
+	return out
 }
 
 type AppStatesByEnvironment map[string]AppStateMap

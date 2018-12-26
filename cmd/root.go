@@ -89,6 +89,8 @@ const (
 	ArgGlobalValues    = "values"
 	ArgBosunConfigFile = "config-file"
 	ArgGlobalCIMode    = "ci-mode"
+	ArgGlobalForce        = "force"
+
 )
 
 func init() {
@@ -101,6 +103,8 @@ func init() {
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
+
+	rootCmd.PersistentFlags().Bool(	ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 
 	defaultCluster := ""
 	defaultDomain := ""

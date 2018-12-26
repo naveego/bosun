@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 	"log"
 	"os"
 	"os/exec"
@@ -43,12 +44,13 @@ func getBosun() (*bosun.Bosun, error) {
 		Verbose: viper.GetBool(ArgGlobalVerbose),
 		DryRun:  viper.GetBool(ArgGlobalDryRun),
 		CIMode: viper.GetBool(ArgGlobalCIMode),
+		Force: viper.GetBool(ArgGlobalForce),
 	}
 
 	return bosun.New(params, config)
 }
 
-func getApp(b *bosun.Bosun, names []string) *bosun.App {
+func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {
 	apps, err := getApps(b, names)
 	if err != nil {
 		log.Fatal(err)
@@ -60,6 +62,14 @@ func getApp(b *bosun.Bosun, names []string) *bosun.App {
 		log.Fatalf("%d apps match %v", len(apps), names)
 	}
 	return apps[0]
+}
+
+func mustYaml(i interface{}) string {
+	b, err := yaml.Marshal(i)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 // gets one or more apps matching names, or if names
@@ -103,9 +113,11 @@ func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 					continue
 				}
 			}
-			if _, err = os.Stat(maybePath); err == nil {
+			if stat, err := os.Stat(maybePath); err == nil && !stat.IsDir() {
 				app, err = b.GetOrAddAppForPath(maybePath)
-				apps = append(apps, app)
+				if err ==  nil {
+					apps = append(apps, app)
+				}
 			}
 		}
 		return apps, nil
@@ -267,3 +279,10 @@ func findFileInDirOrAncestors(dir string, filename string) (string, error) {
 		dir = filepath.Dir(dir)
 	}
 }
+
+
+var (
+	colorHeader = color.New(color.Bold)
+	colorError  = color.New(color.FgRed)
+	colorOK     = color.New(color.FgGreen, color.Bold)
+)

@@ -1,5 +1,6 @@
 package bosun
 
+import "github.com/pkg/errors"
 
 const (
 	EnvEnvironment = "BOSUN_ENVIRONMENT"
@@ -14,3 +15,5 @@ const (
 	ScriptBuildImage = "buildImage"
 	ScriptTest = "test"
 )
+
+var ErrNotCloned = errors.New("not cloned")

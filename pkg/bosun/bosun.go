@@ -6,7 +6,6 @@ import (
 	"github.com/google/go-github/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -20,7 +19,6 @@ type Bosun struct {
 	params           Parameters
 	config           *Config
 	mergedFragments  *ConfigFragment
-	deps             map[string]*Dependency
 	apps             map[string]*App
 	vaultClient      *vault.Client
 	env              *EnvironmentConfig
@@ -31,35 +29,46 @@ type Parameters struct {
 	Verbose bool
 	DryRun  bool
 	CIMode  bool
+	Force   bool
+	ValueOverrides map[string]string
 }
 
-func New(params Parameters, rootConfig *Config) (*Bosun, error) {
+func New(params Parameters, config *Config) (*Bosun, error) {
 	b := &Bosun{
 		params:          params,
-		config:          rootConfig,
-		mergedFragments: rootConfig.MergedFragments,
+		config:          config,
+		mergedFragments: config.MergedFragments,
 		apps:            make(map[string]*App),
-		deps:            make(map[string]*Dependency),
 	}
 
 	for _, dep := range b.mergedFragments.AppRefs {
-		b.deps[dep.Name] = dep
+		b.apps[dep.Name] = NewAppFromDependency(dep)
 	}
 
 	for _, a := range b.mergedFragments.Apps {
-		b.addApp(a)
+		if a != nil {
+			b.addApp(a)
+		}
+	}
+
+	for _, r := range b.mergedFragments.Releases {
+		for _, a := range r.Apps {
+			if app, ok := b.apps[a.Name]; ok {
+				a.App = app
+			}
+		}
 	}
 
 	// if only one environment exists, it's the current one
-	if rootConfig.CurrentEnvironment == "" && len(b.mergedFragments.Environments) == 1 {
-		rootConfig.CurrentEnvironment = b.mergedFragments.Environments[0].Name
+	if config.CurrentEnvironment == "" && len(b.mergedFragments.Environments) == 1 {
+		config.CurrentEnvironment = b.mergedFragments.Environments[0].Name
 	}
 
-	if rootConfig.CurrentEnvironment != "" {
+	if config.CurrentEnvironment != "" {
 
-		env, err := b.GetEnvironment(rootConfig.CurrentEnvironment)
+		env, err := b.GetEnvironment(config.CurrentEnvironment)
 		if err != nil {
-			return nil, errors.Errorf("get environment %q: %s", rootConfig.CurrentEnvironment, err)
+			return nil, errors.Errorf("get environment %q: %s", config.CurrentEnvironment, err)
 		}
 
 		// set the current environment.
@@ -84,17 +93,9 @@ func (b *Bosun) addApp(config *AppConfig) *App {
 	appStates := b.config.AppStates[b.config.CurrentEnvironment]
 	app.DesiredState = appStates[config.Name]
 
-	dep, ok := b.deps[config.Name]
-	if !ok {
-		dep = &Dependency{Name:config.Name, Repo:config.Repo}
-		b.deps[config.Name] = dep
-	}
-
-	dep.App = app
-
 	for _, d2 := range app.DependsOn {
-		if _, ok := b.deps[d2.Name]; !ok {
-			b.deps[d2.Name] = &d2
+		if _, ok := b.apps[d2.Name]; !ok {
+			b.apps[d2.Name] = NewAppFromDependency(&d2)
 		}
 	}
 
@@ -109,15 +110,6 @@ func (b *Bosun) GetAppsSortedByName() AppsSortedByName {
 	}
 	sort.Sort(ms)
 	return ms
-}
-
-func (b *Bosun) GetDeps() Dependencies {
-	var deps Dependencies
-	for _, dep := range b.deps {
-		deps = append(deps, *dep)
-	}
-	sort.Sort(deps)
-	return deps
 }
 
 func (b *Bosun) GetApps() map[string]*App {
@@ -300,91 +292,6 @@ func (b *Bosun) IsClusterAvailable() bool {
 	return *b.clusterAvailable
 }
 
-func (b *Bosun) Reconcile(app *App) error {
-	log := pkg.Log.WithField("app", app.Name)
-
-	if !app.HasChart() {
-		log.Info("No chart defined for this app.")
-		return nil
-	}
-
-	ctx := b.NewContext(app.FromPath).WithLog(log)
-
-	err := app.LoadActualState(true, ctx)
-	if err != nil {
-		return errors.Errorf("error checking actual state for %q: %s", app.Name, err)
-	}
-
-	env := b.GetCurrentEnvironment()
-	reportDeploy :=
-		b.params.CIMode &&
-			env.IsLocal &&
-			app.DesiredState.Status == StatusDeployed &&
-			!b.params.DryRun
-
-	values, err := app.GetValuesMap(ctx)
-	if err != nil {
-		return errors.Errorf( "create values map for app %q: %s", app.Name, err)
-	}
-
-	ctx = ctx.WithValues(values)
-
-
-	log.Info("Planning reconciliation...")
-
-	plan, err := app.PlanReconciliation(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	if len(plan) == 0 {
-		log.Info("No actions needed to reconcile state.")
-		return nil
-	}
-
-	if reportDeploy {
-		log.Info("Deploy progress will be reported to github.")
-		// create the deployment
-		deployID, err := git.CreateDeploy(ctx.Dir, env.Name)
-
-		// ensure that the deployment is updated when we return.
-		defer func() {
-			if err != nil {
-				git.UpdateDeploy(ctx.Dir, deployID, "failure")
-			} else {
-				git.UpdateDeploy(ctx.Dir, deployID, "success")
-			}
-		}()
-
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, step := range plan {
-		log.WithField("step", step.Name).WithField("description", step.Description).Info("Planned step.")
-	}
-
-	log.Info("Planning complete.")
-
-	log.Debug("Executing plan...")
-
-	for _, step := range plan {
-		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
-		stepCtx.Log.Info("Executing step...")
-		err := step.Action(stepCtx)
-		if err != nil {
-			return err
-		}
-		stepCtx.Log.Info("Step complete.")
-	}
-
-	log.Debug("Plan executed.")
-
-	return nil
-}
-
 func (b *Bosun) GetEnvironment(name string) (*EnvironmentConfig, error) {
 	for _, env := range b.mergedFragments.Environments {
 		if env.Name == name {
@@ -401,7 +308,7 @@ func (b *Bosun) NewContext(dir string) BosunContext {
 	return BosunContext{
 		Bosun: b,
 		Env:   b.GetCurrentEnvironment(),
-		Log: pkg.Log,
+		Log:   pkg.Log,
 	}.WithDir(dir).WithContext(context.Background())
 
 }
@@ -438,4 +345,12 @@ func (b *Bosun) UseRelease(name string) error {
 	}
 	b.config.Release = name
 	return nil
+}
+
+func (b *Bosun) GetGitRoots() []string {
+	return b.config.GitRoots
+}
+
+func (b *Bosun) AddGitRoot(s string) {
+	b.config.GitRoots = append(b.config.GitRoots, s)
 }

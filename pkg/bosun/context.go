@@ -15,6 +15,7 @@ type BosunContext struct {
 	Dir             string
 	Log             *logrus.Entry
 	Values          Values
+	Release *Release
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
 }
@@ -36,6 +37,11 @@ func (c BosunContext) Ctx() context.Context {
 	return c.ctx
 }
 
+func (c BosunContext) WithRelease(r *Release) BosunContext {
+	c.Release = r
+	return c
+}
+
 func (c BosunContext) WithValues(v Values) BosunContext {
 	c.Values = v
 	c.valuesAsEnvVars = nil
@@ -54,7 +60,7 @@ func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
 	return c
 }
 
-func (c BosunContext) GetVaultClient() (*vault.Client, error){
+func (c BosunContext) GetVaultClient() (*vault.Client, error) {
 	return c.Bosun.GetVaultClient()
 }
 
@@ -77,4 +83,11 @@ func (c BosunContext) ResolvePath(path string) string {
 		return path
 	}
 	return filepath.Join(c.Dir, path)
+}
+
+func (c BosunContext) GetParams() Parameters {
+	if c.Bosun != nil {
+		return c.Bosun.params
+	}
+	return Parameters{}
 }

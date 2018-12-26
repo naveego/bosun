@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/Masterminds/semver"
 	"github.com/cheynewallace/tabby"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
@@ -39,10 +38,10 @@ const (
 	ArgAppLabels          = "labels"
 	ArgAppListDiff        = "diff"
 	ArgAppListSkipActual  = "skip-actual"
-	ArgAppDeployForce     = "force"
 	ArgAppDeploySet       = "set"
 	ArgAppDeployDeps      = "deploy-deps"
 	ArgAppDeletePurge     = "purge"
+	ArgAppCloneDir        = "dir"
 )
 
 func init() {
@@ -59,7 +58,6 @@ func init() {
 
 	appCmd.AddCommand(appAcceptActualCmd)
 
-	appDeployCmd.Flags().Bool(ArgAppDeployForce, false, "Force deploy even if nothing has changed.")
 	appDeployCmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
 	appDeployCmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
 	appCmd.AddCommand(appDeployCmd)
@@ -67,7 +65,7 @@ func init() {
 	appDeleteCmd.Flags().Bool(ArgAppDeletePurge, false, "Purge the release from the cluster.")
 	appCmd.AddCommand(appDeleteCmd)
 
-	appCmd.AddCommand(appDepCmd)
+	appCmd.AddCommand(appShowCmd)
 
 	appCmd.AddCommand(appBumpCmd)
 
@@ -90,7 +88,7 @@ var appVersionCmd = &cobra.Command{
 	Short:   "Outputs the version of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
-		app := getApp(b, args)
+		app := mustGetApp(b, args)
 		fmt.Println(app.Version)
 		return nil
 	},
@@ -103,32 +101,11 @@ var appBumpCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		app := getApp(b, args)
+		app := mustGetApp(b, args)
 
-
-		version, err := semver.NewVersion(args[1])
-		if err == nil {
-			app.Version = version.String()
-		}
-
+		err := app.BumpVersion(args[1])
 		if err != nil {
-			version, err = semver.NewVersion(app.Version)
-			if err != nil {
-				return errors.Errorf("app has invalid version %q: %s", app.Version, err)
-			}
-			var v2 semver.Version
-
-			switch args[1] {
-			case "major":
-				v2 = version.IncMajor()
-			case "minor":
-				v2 = version.IncMinor()
-			case "patch":
-				v2 = version.IncPatch()
-			default:
-				return errors.Errorf("invalid version component %q (want major, minor, or patch)", args[0])
-			}
-			app.Version = v2.String()
+			return err
 		}
 
 		err = app.Fragment.Save()
@@ -209,35 +186,38 @@ func foreachAppConcurrent(apps []*bosun.App, action func(app *bosun.App) error) 
 	return nil
 }
 
-var appDepCmd = &cobra.Command{
-	Use:          "deps",
-	Short:        "Lists dependencies",
+var appShowCmd = &cobra.Command{
+	Use:          "show",
+	Short:        "Lists the static config of all known apps.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 		viper.SetDefault(ArgAppAll, true)
 
 		b := mustGetBosun()
-		deps := b.GetDeps()
+		apps, err := getApps(b, args)
+		if err != nil {
+			return err
+		}
 
 		t := tabby.New()
 		t.AddHeader("APP", "AVAILABLE", "VERSION", "PATH or REPO", "BRANCH")
-		for _, dep := range deps {
+		for _, app := range apps {
 			var check, pathrepo, branch, version string
 
-			if dep.App != nil {
-				check =					"✔"
-				pathrepo =		dep.App.FromPath
-				branch = 	dep.App.GetBranch()
-				version = dep.App.Version
+			if app.IsRepoCloned() {
+				check = "✔"
+				pathrepo = app.FromPath
+				branch = app.GetBranch()
+				version = app.Version
 			} else {
 				check = ""
-				pathrepo = dep.Repo
+				pathrepo = app.Repo
 				branch = ""
-				version = dep.Version
+				version = app.Version
 
 			}
-			t.AddLine(dep.Name, check, version, pathrepo, branch)
+			t.AddLine(app.Name, check, version, pathrepo, branch)
 		}
 
 		t.Print()
@@ -375,25 +355,27 @@ var appToggleCmd = &cobra.Command{
 			return err
 		}
 
-		for _, ms := range services {
+		ctx := b.NewContext("")
+
+		for _, app := range services {
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
 			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
 			if wantsLocalhost {
-				ms.DesiredState.Routing = bosun.RoutingLocalhost
+				app.DesiredState.Routing = bosun.RoutingLocalhost
 			} else if wantsMinikube {
-				ms.DesiredState.Routing = bosun.RoutingCluster
+				app.DesiredState.Routing = bosun.RoutingCluster
 			} else {
-				switch ms.DesiredState.Routing {
+				switch app.DesiredState.Routing {
 				case bosun.RoutingCluster:
-					ms.DesiredState.Routing = bosun.RoutingLocalhost
+					app.DesiredState.Routing = bosun.RoutingLocalhost
 				case bosun.RoutingLocalhost:
-					ms.DesiredState.Routing = bosun.RoutingCluster
+					app.DesiredState.Routing = bosun.RoutingCluster
 				default:
-					ms.DesiredState.Routing = bosun.RoutingCluster
+					app.DesiredState.Routing = bosun.RoutingCluster
 				}
 			}
 
-			err = b.Reconcile(ms)
+			err = app.Reconcile(ctx)
 
 			if err != nil {
 				return err
@@ -416,12 +398,15 @@ var appDeployCmd = &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
-		env := b.GetCurrentEnvironment()
+		ctx := b.NewContext("")
 
 		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
+
+		ctx.Log.Debugf("Apps: \n%s\n", mustYaml(apps))
+
 
 		sets := map[string]string{}
 		for _, set := range viper.GetStringSlice(ArgAppDeploySet) {
@@ -433,7 +418,19 @@ var appDeployCmd = &cobra.Command{
 			sets[segs[0]] = segs[1]
 		}
 
-		var requestedAppNames []string
+		ctx.Log.Debug("Creating transient release...")
+		r := &bosun.Release{
+			Name:time.Now().Format(time.RFC3339),
+			Transient:true,
+		}
+		for _, app := range apps {
+			ctx.Log.WithField("app", app.Name).Debug("Including in release.")
+			err = r.IncludeApp(app)
+			if err != nil {
+				return errors.Errorf("error including app %q in release: %s", app.Name, err)
+			}
+		}
+
 		requestedAppNameSet := map[string]bool{}
 		for _, app := range apps {
 			if app == nil {
@@ -441,42 +438,17 @@ var appDeployCmd = &cobra.Command{
 			}
 			requestedAppNameSet[app.Name] = true
 		}
-		for appName := range requestedAppNameSet {
-			requestedAppNames = append(requestedAppNames, appName)
-		}
 
-		allApps := b.GetApps()
 
-		topology, err := bosun.GetDependenciesInTopologicalOrder(allApps, requestedAppNames...)
-
-		if err != nil {
-			return errors.Errorf("apps could not be sorted in dependency order: %s", err)
-		}
-
-		deployDeps := viper.GetBool(ArgAppDeployDeps)
-
-		var toDeploy []*bosun.App
-
-		for _, dep := range topology {
-			app, ok := allApps[dep.Name]
-			if !ok {
-				if requestedAppNameSet[dep.Name] {
-					return errors.Errorf("a requested app %q could not be found in the list of apps", dep.Name)
-				} else {
-					if deployDeps {
-						return errors.Errorf("an app specifies a dependency that could not be found: %q from repo %q", dep.Name, dep.Repo)
-					} else {
-						pkg.Log.Debugf("Skipping missing dependency %q because it was not requested.", dep.Name)
-					}
-				}
-			} else {
-				if requestedAppNameSet[dep.Name] || deployDeps {
-					toDeploy = append(toDeploy, app)
-				} else {
-					pkg.Log.Debugf("Skipping dependency %q because it was not requested.", dep.Name)
-				}
+		if viper.GetBool(ArgAppDeployDeps) {
+		ctx.Log.Debug("Including dependencies of all apps...")
+			err = r.IncludeDependencies(ctx)
+			if err != nil {
+				return errors.Wrap(err, "include dependencies")
 			}
 		}
+
+		toDeploy := r.Apps
 
 		for _, app := range toDeploy {
 			requested := requestedAppNameSet[app.Name]
@@ -487,29 +459,10 @@ var appDeployCmd = &cobra.Command{
 			}
 		}
 
-		for _, app := range toDeploy {
 
-			envValues := app.GetValuesForEnvironment(env.Name)
-			if envValues.Set == nil {
-				envValues.Set = make(map[string]*bosun.DynamicValue)
-			}
-			for k, v := range sets {
-				envValues.Set[k] = &bosun.DynamicValue{Value: v}
-			}
+		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", mustYaml(r))
 
-			app.DesiredState.Status = bosun.StatusDeployed
-			if app.DesiredState.Routing == "" {
-				app.DesiredState.Routing = bosun.RoutingCluster
-			}
-
-			app.DesiredState.Force = viper.GetBool(ArgAppDeployForce)
-
-			err = b.Reconcile(app)
-
-			if err != nil {
-				return err
-			}
-		}
+		err = r.Deploy(ctx)
 
 		err = b.Save()
 
@@ -535,15 +488,17 @@ var appDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		for _, ms := range services {
+		ctx := b.NewContext("")
+
+		for _, app := range services {
 			if viper.GetBool(ArgAppDeletePurge) {
-				ms.DesiredState.Status = bosun.StatusNotFound
+				app.DesiredState.Status = bosun.StatusNotFound
 			} else {
-				ms.DesiredState.Status = bosun.StatusDeleted
+				app.DesiredState.Status = bosun.StatusDeleted
 			}
 
-			ms.DesiredState.Routing = bosun.RoutingNA
-			err = b.Reconcile(ms)
+			app.DesiredState.Routing = bosun.RoutingNA
+			err = app.Reconcile(ctx)
 			if err != nil {
 				return err
 			}
@@ -571,26 +526,28 @@ var appRunCmd = &cobra.Command{
 		c := b.GetCurrentEnvironment()
 
 		if c.Name != "red" {
-			return errors.New("Environment must be set to 'red' to run services.")
+			return errors.New("Environment must be set to 'red' to run apps.")
 		}
 
-		var services []*bosun.App
+		var apps []*bosun.App
 
-		services, err = getApps(b, args)
+		apps, err = getApps(b, args)
 		if err != nil {
 			return err
 		}
 
-		service := services[0]
+		app := apps[0]
 
-		run, err := service.GetRunCommand()
+		run, err := app.GetRunCommand()
 		if err != nil {
 			return err
 		}
 
-		service.DesiredState.Routing = bosun.RoutingLocalhost
+		ctx := b.NewContext("")
 
-		err = b.Reconcile(service)
+		app.DesiredState.Routing = bosun.RoutingLocalhost
+
+		err = app.Reconcile(ctx)
 		if err != nil {
 			return err
 		}
@@ -624,6 +581,130 @@ var appRunCmd = &cobra.Command{
 		return err
 	},
 }
+
+var appPublishChartCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:           "publish-chart [app]",
+		Args:          cobra.MaximumNArgs(1),
+		Short:         "Publishes the chart for an app.",
+		Long:          "If app is not provided, the current directory is used.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+
+			b := mustGetBosun()
+			app := mustGetApp(b, args)
+			ctx := b.NewContext("")
+			err := app.PublishChart(ctx, viper.GetBool(ArgGlobalForce))
+			return err
+		},
+	},
+	func(cmd *cobra.Command) {
+		cmd.Flags().Bool(ArgGlobalForce, false, "Force publish even if version exists.")
+	})
+
+var appPullCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:           "pull [app]",
+		Short:         "Pulls the repo for the app.",
+		Long:          "If app is not provided, the current directory is used.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			b := mustGetBosun()
+			ctx := b.NewContext("")
+			apps, err := getApps(b, args)
+			if err != nil {
+				return err
+			}
+			repos := map[string]*bosun.App{}
+			for _, app := range apps {
+				repos[app.Repo] = app
+			}
+
+			for _, app := range repos {
+				log := ctx.Log.WithField("repo", app.Repo)
+				log.Info("Pulling...")
+				err := app.PullRepo(ctx)
+				if err != nil {
+					log.WithError(err).Error("Error pulling.")
+				} else {
+					log.Info("Pulled.")
+				}
+			}
+			return err
+		},
+	})
+
+var appCloneCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:   "clone [name] [name...]",
+		Short: "Clones the repo for the named app(s).",
+		Long:  "Uses the first directory in `gitRoots` from the root config.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			viper.BindPFlags(cmd.Flags())
+			b := mustGetBosun()
+
+			dir := viper.GetString(ArgAppCloneDir)
+			roots := b.GetGitRoots()
+			if dir == "" {
+				if len(roots) == 0 {
+					return errors.Errorf("gitRoots element is empty in config and --%s flag was not set", ArgAppCloneDir)
+				}
+				dir = roots[0]
+			}
+			rootExists := false
+			for _, root := range roots {
+				if root == dir {
+					rootExists = true
+					break
+				}
+			}
+			if !rootExists {
+				b.AddGitRoot(dir)
+				err := b.Save()
+				if err != nil {
+					return err
+				}
+				b = mustGetBosun()
+			}
+
+			apps, err := getApps(b, args)
+			if err != nil {
+				return err
+			}
+
+			repos := map[string]*bosun.App{}
+			for _, app := range apps {
+				repos[app.Repo] = app
+			}
+
+			ctx := b.NewContext("")
+			for _, app := range repos {
+				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
+				log.Info("Cloning...")
+				if app.IsRepoCloned() {
+					pkg.Log.Infof("App already cloned to %q", app.FromPath)
+					continue
+				}
+
+				err := app.CloneRepo(ctx, dir)
+				if err != nil {
+					log.WithError(err).Error("Error cloning.")
+				} else {
+					log.Info("Cloned.")
+				}
+			}
+
+			return err
+		},
+	},
+	func(cmd *cobra.Command) {
+		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into.")
+	})
 
 func getStandardObjects(args []string) (*bosun.Bosun, *bosun.EnvironmentConfig, []*bosun.App, bosun.BosunContext) {
 	b := mustGetBosun()

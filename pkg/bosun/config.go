@@ -14,8 +14,8 @@ type Config struct {
 	Path               string                     `yaml:"-"`
 	CurrentEnvironment string                     `yaml:"currentEnvironment"`
 	Imports            []string                   `yaml:"imports,omitempty"`
-	GitRoot string `yaml:"gitRoot"`
-	Release string `yaml:"release"`
+	GitRoots           []string                   `yaml:"gitRoots"`
+	Release            string                     `yaml:"release"`
 	AppStates          AppStatesByEnvironment     `yaml:"appStates"`
 	MergedFragments    *ConfigFragment            `yaml:"-"`
 	ImportedFragments  map[string]*ConfigFragment `yaml:"-"`
@@ -29,7 +29,7 @@ type ConfigFragment struct {
 	Apps         []*AppConfig           `yaml:"apps"`
 	FromPath     string                 `yaml:"-"`
 	Config       *Config                `yaml:"-"`
-	Releases     []*Release    `yaml:"releases,omitempty"`
+	Releases     []*Release             `yaml:"releases,omitempty"`
 }
 
 type State struct {
@@ -75,6 +75,28 @@ func LoadConfig(path string) (*Config, error) {
 
 	err = c.importFromPaths(path, c.Imports)
 
+	if err != nil {
+		return nil, errors.Wrap(err, "loading imports")
+	}
+
+	var syntheticPaths []string
+	for _, app := range c.MergedFragments.AppRefs {
+		if app.Repo != "" {
+			for _, root := range c.GitRoots {
+				dir := filepath.Join(root, app.Repo)
+				bosunFile := filepath.Join(dir, "bosun.yaml")
+				if _, err := os.Stat(bosunFile); err == nil {
+					syntheticPaths = append(syntheticPaths, bosunFile)
+				}
+			}
+		}
+	}
+
+	err = c.importFromPaths(path, syntheticPaths)
+	if err != nil {
+		return nil, errors.Errorf("error importing from path bas")
+	}
+
 	return c, err
 }
 
@@ -83,19 +105,20 @@ func (r *Config) importFromPaths(relativeTo string, paths []string) error {
 		for _, importPath = range expandPath(relativeTo, importPath) {
 			err := r.importFragmentFromPath(importPath)
 			if err != nil {
-				return errors.Errorf("error importing mergedFragments relative to %q: %s", relativeTo, err)
+				return errors.Errorf("error importing fragment relative to %q: %s", relativeTo, err)
 			}
 		}
 	}
+
 	return nil
 }
 
 func (r *Config) importFragmentFromPath(path string) error {
-	log := pkg.Log.WithField("import_path", path)
-	log.Debug("Importing mergedFragments...")
+	// log := pkg.Log.WithField("import_path", path)
+	//log.Debug("Importing mergedFragments...")
 
 	if r.ImportedFragments[path] != nil {
-		log.Debugf("Already imported.")
+	//	log.Debugf("Already imported.")
 		return nil
 	}
 
@@ -132,7 +155,7 @@ func (r *Config) importFragmentFromPath(path string) error {
 		return errors.Errorf("merge error loading %q: %s", path, err)
 	}
 
-	log.Debug("Import complete.")
+	//log.Debug("Import complete.")
 
 	r.ImportedFragments[path] = c
 
@@ -147,7 +170,7 @@ func (c *ConfigFragment) Merge(other *ConfigFragment) error {
 		c.mergeEnvironment(otherEnv)
 	}
 
-	if c.AppRefs == nil{
+	if c.AppRefs == nil {
 		c.AppRefs = make(map[string]*Dependency)
 	}
 
@@ -222,7 +245,7 @@ func (c *ConfigFragment) GetEnvironmentConfig(name string) *EnvironmentConfig {
 func (c *ConfigFragment) mergeRelease(release *Release) error {
 	for _, e := range c.Releases {
 		if e.Name == release.Name {
-		return errors.Errorf("already have a release named %q, from %q", release.Name, e.FromPath)
+			return errors.Errorf("already have a release named %q, from %q", release.Name, e.FromPath)
 
 		}
 	}

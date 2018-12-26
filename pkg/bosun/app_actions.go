@@ -27,13 +27,14 @@ type AppAction struct {
 }
 
 type AppVaultAction struct {
-	File   string           `yaml:"file"`
-	Layout *pkg.VaultLayout `yaml:"layout"`
+	File   string           `yaml:"file,omitempty"`
+	Layout *pkg.VaultLayout `yaml:"layout,omitempty"`
 }
 
 type AppTestAction struct {
 	MaxAttempts int           `yaml:"maxAttempts,omitempty"`
 	Timeout     time.Duration `yaml:"timeout"`
+	Interval time.Duration `yaml:"interval"`
 	Exec        *DynamicValue `yaml:"exec"`
 }
 
@@ -127,9 +128,17 @@ func (a *AppAction) executeTest(ctx BosunContext) error {
 	t := a.Test
 	attempts := t.MaxAttempts
 	timeout := t.Timeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+	interval := t.Interval
+	if interval == 0 {
+		interval = 5 * time.Second
+	}
 	var err error
-
-	for i := attempts; i > 0; i-- {
+	attempt := 0
+	for {
+		attempt ++
 		attemptCtx := ctx.WithTimeout(timeout)
 		_, err = t.Exec.Execute(attemptCtx)
 
@@ -137,8 +146,13 @@ func (a *AppAction) executeTest(ctx BosunContext) error {
 			// test succeeded
 			return nil
 		}
+		remaining :=  attempts - attempt
+		ctx.Log.WithError(err).WithField("attempts_remaining", remaining).Error("Test failed.")
 
-		ctx.Log.WithError(err).WithField("attempts_remaining", i-1).Error("Test failed.")
+		if remaining > 0 {
+			ctx.Log.WithField("wait", interval).Info("Waiting before trying again.")
+			<-time.After(interval)
+		}
 	}
 
 	return err
