@@ -3,8 +3,8 @@ package bosun_test
 import (
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	. "github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 	"runtime"
 	"strings"
@@ -26,11 +26,11 @@ var _ = Describe("DynamicValue", func() {
 			actual := strings.TrimSpace(string(out))
 			Expect(actual).To(Equal(yml))
 		},
-		Entry("value", "dv: some-value"),
-		Entry("command", `dv:
+			Entry("value", "dv: some-value"),
+			Entry("command", `dv:
 - some
 - command`),
-		Entry("script", `dv: |-
+			Entry("script", `dv: |-
   some
   value`),
 		)
@@ -75,42 +75,42 @@ script
 			}))
 		})
 
-	Describe("execution", func(){
-	It("should resolve value from script", func() {
-		script:=`
+		Describe("execution", func() {
+			It("should resolve value from script", func() {
+				script := `
   testVar="test string"
   echo $testVar
 `
 
-		if runtime.GOOS == "windows"{
-			script = `
+				if runtime.GOOS == "windows" {
+					script = `
 set testVar=test string
 echo %testVar%
 `
-		}
+				}
 
-		sut := &DynamicValue{
-			Script:script,
-		}
-		Expect(sut.Execute(BosunContext{})).To(Equal("test string"))
-	})
-
-		It("should include env values", func() {
-			ctx := BosunContext{}.WithValues(Values{
-				"test": Values{
-					"nested": "value",
-				},
-				"APP_VERSION": "1.2.3",
+				sut := &DynamicValue{
+					Script: script,
+				}
+				Expect(sut.Execute(BosunContext{})).To(Equal("test string"))
 			})
-			sut := &DynamicValue{
-				Command: []string{"env"},
-			}
-			result, err := sut.Execute(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(result).To(ContainSubstring("BOSUN_TEST_NESTED=value"))
-			Expect(result).To(ContainSubstring("BOSUN_APP_VERSION=1.2.3"))
-		})
 
-	})
+			It("should include env values", func() {
+				ctx := BosunContext{}.WithValues(Values{
+					"test": Values{
+						"nested": "value",
+					},
+					"APP_VERSION": "1.2.3",
+				})
+				sut := &DynamicValue{
+					Command: []string{"env"},
+				}
+				result, err := sut.Execute(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(ContainSubstring("BOSUN_TEST_NESTED=value"))
+				Expect(result).To(ContainSubstring("BOSUN_APP_VERSION=1.2.3"))
+			})
+
+		})
 	})
 })

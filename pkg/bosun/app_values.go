@@ -34,6 +34,7 @@ func (v Values) ToEnv(prefix string) map[string]string {
 	return out
 }
 
+
 func (v Values) toEnv(prefix string, acc map[string]string) {
 	for k, v := range v {
 		key := prefix + strings.ToUpper(k)
@@ -98,6 +99,18 @@ func (v Values) AddPath(path string, value interface{}) {
 	segs := strings.Split(path, ".")
 	v.addPath(segs, value)
 }
+
+// AddEnvAsPath turns an environment variable (like BOSUN_APP_VERSION) into
+// a path (like app.version) by trimming the prefix, lower casing, and converting to dots,
+// then adds it to the Values.
+func (v Values) AddEnvAsPath(prefix, envName string, value interface{}) Values {
+	name := strings.TrimPrefix(envName, prefix)
+	name = strings.ToLower(name)
+	name = strings.Replace(name, "_", ".", -1)
+	v.AddPath(name, value)
+	return v
+}
+
 
 func (v Values) addPath(path []string, value interface{}) {
 

@@ -1,10 +1,15 @@
 package bosun
 
 import (
+	"crypto/tls"
 	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"net"
+	"net/http"
 	"strings"
+	"text/template"
 	"time"
 )
 
@@ -35,7 +40,9 @@ type AppVaultAction struct {
 }
 
 type AppTestAction struct {
-	Exec *DynamicValue `yaml:"exec"`
+	Exec *DynamicValue `yaml:"exec,omitempty"`
+	HTTP string        `yaml:"http,omitempty""`
+	TCP  string        `yaml:"tcp,omitempty""`
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
@@ -120,7 +127,6 @@ func (a *AppAction) execute(ctx BosunContext) error {
 }
 
 func (a *AppAction) executeVault(ctx BosunContext) error {
-	values := ctx.Values
 	vaultClient, err := ctx.GetVaultClient()
 	if err != nil {
 		return err
@@ -139,16 +145,7 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 		layoutBytes, _ = yaml.Marshal(vaultAction.Layout)
 	}
 
-	env := ctx.Env
-
-	values.AddPath("cluster", env.Cluster)
-	values.AddPath("domain", env.Domain)
-
-	templateArgs := pkg.TemplateValues{
-		Cluster: env.Cluster,
-		Domain:  env.Domain,
-		Values:  values,
-	}
+	templateArgs := ctx.GetTemplateArgs()
 
 	vaultLayout, err = pkg.LoadVaultLayoutFromBytes(a.Name, layoutBytes, templateArgs, vaultClient)
 	if err != nil {
@@ -172,7 +169,52 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 
 func (a *AppAction) executeTest(ctx BosunContext) error {
 	t := a.Test
-	_, err := t.Exec.Execute(ctx)
 
-	return err
+	if t.Exec != nil {
+		_, err := t.Exec.Execute(ctx)
+		return err
+	}
+
+	if t.HTTP != "" {
+		target, err := renderTemplate(ctx, t.HTTP)
+		c := http.Client{
+			Transport:&http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+
+		resp, err := c.Get(target)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		return nil
+	}
+
+	if t.TCP != "" {
+		target, err := renderTemplate(ctx, t.HTTP)
+		d := new(net.Dialer)
+		conn, err := d.DialContext(ctx.Ctx(), "tcp", target)
+		if conn != nil {
+			conn.Close()
+		}
+		return err
+	}
+
+	return errors.New("test must have exec, http, or tcp element")
+}
+
+func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
+
+	t, err := template.New("").Parse(tmpl)
+	if err != nil {
+		return "", err
+	}
+
+	templateArgs := ctx.GetTemplateArgs()
+	w := new(strings.Builder)
+	err = t.Execute(w, templateArgs)
+
+	return w.String(), err
+
 }

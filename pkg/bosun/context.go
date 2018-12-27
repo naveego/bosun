@@ -3,6 +3,7 @@ package bosun
 import (
 	"context"
 	vault "github.com/hashicorp/vault/api"
+	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -90,4 +91,17 @@ func (c BosunContext) GetParams() Parameters {
 		return c.Bosun.params
 	}
 	return Parameters{}
+}
+
+func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
+	values := c.Values
+	values.AddPath("cluster", c.Env.Cluster)
+	values.AddPath("domain", c.Env.Domain)
+
+	templateArgs := pkg.TemplateValues{
+		Cluster: c.Env.Cluster,
+		Domain:  c.Env.Domain,
+		Values:  values,
+	}
+	return templateArgs
 }

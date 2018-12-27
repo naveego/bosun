@@ -226,7 +226,6 @@ type PlanStep struct {
 	Action      func(ctx BosunContext) error
 }
 
-
 func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	ctx = ctx.WithDir(a.FromPath)
@@ -282,7 +281,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 		})
 	}
 
-	if needsInstall || needsUpgrade {
+	if desired.Status == StatusDeployed {
 		for i := range a.Actions {
 			action := a.Actions[i]
 			if strings.Contains(string(action.When), ActionBeforeDeploy) {
@@ -321,7 +320,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 		})
 	}
 
-	if needsInstall || needsUpgrade {
+	if desired.Status == StatusDeployed {
 		for i := range a.Actions {
 			action := a.Actions[i]
 			if strings.Contains(string(action.When), ActionAfterDeploy) {
@@ -424,7 +423,6 @@ func (a *App) Reconcile(ctx BosunContext) error {
 	return nil
 }
 
-
 func (a *App) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
@@ -497,9 +495,9 @@ func (a *App) GetStatus() (string, error) {
 }
 
 func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
-	values := Values{
-		EnvAppVersion: a.Version,
-	}
+	values := Values{}.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version).
+		AddEnvAsPath(EnvPrefix, EnvAppBranch, a.GetBranch()).
+		AddEnvAsPath(EnvPrefix, EnvAppCommit, a.GetCommit())
 
 	if a.BranchForRelease {
 		if ctx.Release == nil || ctx.Release.Transient {
@@ -507,6 +505,8 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		} else {
 			values["tag"] = fmt.Sprintf("%s-%s", a.Version, ctx.Release.Name)
 		}
+	} else {
+		values["tag"] = "latest"
 	}
 
 	valuesConfig := a.GetValuesConfig(ctx)
@@ -523,11 +523,9 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		values.AddPath(k, v.GetValue())
 	}
 
-
 	for k, v := range ctx.GetParams().ValueOverrides {
-		values.AddPath(k,  v)
+		values.AddPath(k, v)
 	}
-
 
 	return values, nil
 }

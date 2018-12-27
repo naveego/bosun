@@ -47,6 +47,15 @@ func getBosun() (*bosun.Bosun, error) {
 		Force: viper.GetBool(ArgGlobalForce),
 	}
 
+	envFromEnv := os.Getenv(bosun.EnvEnvironment)
+	envFromConfig := config.CurrentEnvironment
+	if envFromConfig != envFromEnv {
+		colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)",
+			envFromConfig,
+			bosun.EnvEnvironment,
+			envFromEnv)
+	}
+
 	return bosun.New(params, config)
 }
 
