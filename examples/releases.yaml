@@ -42,7 +42,7 @@ releases:
       repo: naveegoinc/metabase
       repoPath: ""
       bosunPath: /home/steve/go/src/github.com/naveegoinc/metabase/bosun.yaml
-      branch: issue/#29/update-vault-script
+      branch: release/2018.2.1
       version: 0.3.2
       chartName: helm.n5o.black/metabase
     mongodb:

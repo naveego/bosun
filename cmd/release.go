@@ -242,31 +242,8 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 
 		ctx := b.NewContext("")
 
-		w := new(strings.Builder)
-		hasErrors := false
+		err := release.Deploy(ctx)
 
-		for _, app := range release.Apps {
-
-			colorHeader.Fprintf(w, "%s\n", app.Name)
-			errs := app.Validate(ctx)
-			if len(errs) == 0 {
-				colorOK.Fprintf(w, "OK\n")
-			} else {
-				for _, err := range errs {
-					hasErrors = true
-					colorError.Fprintf(w, "- %s\n", err)
-				}
-			}
-
-			fmt.Fprintln(w)
-		}
-
-		fmt.Println(w.String())
-
-		if hasErrors {
-			return errors.New("Some apps are invalid.")
-		}
-
-		return nil
+		return err
 	},
 })

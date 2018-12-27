@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -102,7 +103,7 @@ func (c *Command) prepare() {
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
 	Log.WithField("exe", exe).WithField("args", c.Args).
-		WithField("env", c.cmd.Env).
+	//	WithField("env", c.cmd.Env).
 		Debug("Command prepared.")
 
 	c.prepared = true
@@ -150,6 +151,27 @@ func (c *Command) RunOut() (string, error) {
 			err = errors.WithMessage(err, string(exitErr.Stderr))
 		}
 		result = strings.Trim(string(out), "\n\r")
+	})
+
+	return result, err
+}
+
+func (c *Command) RunOutLog() (string, error) {
+	c.prepare()
+	var result string
+	var err error
+
+	cmd := c.cmd
+	outCollector := new(strings.Builder)
+	errCollector := new(strings.Builder)
+	c.cmd.Stdout = io.MultiWriter(outCollector, os.Stdout)
+	c.cmd.Stderr = io.MultiWriter(errCollector, os.Stderr)
+	executeWithContext(c.ctx, cmd, func() {
+		err = cmd.Run()
+		if err != nil {
+			err = errors.Errorf("cmd failed: %s, %s", err, errCollector.String())
+		}
+		result = strings.Trim(outCollector.String(), "\n\r")
 	})
 
 	return result, err

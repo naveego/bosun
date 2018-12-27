@@ -228,7 +228,7 @@ var appShowCmd = &cobra.Command{
 
 var appListCmd = &cobra.Command{
 	Use:          "list [name...]",
-	Aliases:      []string{"ls"},
+	Aliases:      []string{"ls", "status"},
 	Short:        "Lists apps",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -594,6 +594,29 @@ var appPublishChartCmd = addCommand(
 		cmd.Flags().Bool(ArgGlobalForce, false, "Force publish even if version exists.")
 	})
 
+var appPublishImageCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:           "publish-image [app]",
+		Args:          cobra.MaximumNArgs(1),
+		Short:         "Publishes the image for an app.",
+		Long:          `If app is not provided, the current directory is used.
+The image will be published with the "latest" tag and with a tag for the current version.
+If the current branch is a release branch, the image will also be published with a tag formatted
+as "version-release".
+`,
+SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+
+			b := mustGetBosun()
+			app := mustGetApp(b, args)
+			ctx := b.NewContext("")
+			err := app.PublishImage(ctx)
+			return err
+		},
+	})
+
 var appPullCmd = addCommand(
 	appCmd,
 	&cobra.Command{
@@ -627,6 +650,42 @@ var appPullCmd = addCommand(
 			return err
 		},
 	})
+
+// var appScriptCmd = addCommand(appCmd, &cobra.Command{
+// 	Use:          "script [app] {name}",
+// 	Args:         cobra.RangeArgs(1, 2),
+// 	Aliases:[]string{"scripts"},
+// 	Short:        "Run a scripted sequence of commands.",
+// 	Long:         `If app is not provided, the current directory is used.`,
+// 	SilenceUsage: true,
+// 	RunE: func(cmd *cobra.Command, args []string) error {
+// 		viper.BindPFlags(cmd.Flags())
+//
+// 		b := mustGetBosun()
+//
+//
+// 		app := mustGetApp(b, args)
+//
+// 		script, err := b.GetScript(args[0])
+// 		if err != nil {
+// 			scriptFilePath := args[0]
+// 			var script bosun.Script
+// 			data, err := ioutil.ReadFile(scriptFilePath)
+// 			if err != nil {
+// 				return err
+// 			}
+//
+// 			err = yaml.Unmarshal(data, &script)
+// 			if err != nil {
+// 				return err
+// 			}
+// 		}
+//
+// 		err = b.Execute(script, scriptStepsSlice...)
+//
+// 		return err
+// 	},
+// })
 
 var appCloneCmd = addCommand(
 	appCmd,

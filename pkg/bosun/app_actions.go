@@ -153,7 +153,7 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 	}
 
 	y, _ := yaml.Marshal(vaultLayout)
-	ctx.Log.Debugf("Vault layout from %s:\n%s", a.Name, string(y))
+	ctx.Log.Debugf("Vault layout from %s:\n%s\n", a.Name, string(y))
 
 	if ctx.IsDryRun() {
 		return nil

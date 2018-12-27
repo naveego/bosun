@@ -69,7 +69,7 @@ func (a *App) CheckRepoCloned() error {
 
 func (a *App) CloneRepo(ctx BosunContext, githubDir string) error {
 	if a.IsRepoCloned() {
-		return errors.New("repo is already cloned")
+		return nil
 	}
 
 	dir := filepath.Join(githubDir, a.Repo)
@@ -428,7 +428,7 @@ func (a *App) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
 
-	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.getChartRef(), "--version", a.Version).
+	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.getChartRef(ctx), "--version", a.Version).
 		WithArgs(args...).
 		RunOut()
 
@@ -470,14 +470,14 @@ func (a *App) Rollback(ctx BosunContext) error {
 }
 
 func (a *App) Install(ctx BosunContext) error {
-	args := append([]string{"install", "--name", a.Name, a.getChartRef()}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"install", "--name", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	pkg.Log.Debug(out)
 	return err
 }
 
 func (a *App) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.Name, a.getChartRef()}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"upgrade", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	pkg.Log.Debug(out)
 	return err
@@ -496,9 +496,29 @@ func (a *App) GetStatus() (string, error) {
 }
 
 func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
-	values := Values{}.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version).
-		AddEnvAsPath(EnvPrefix, EnvAppBranch, a.GetBranch()).
-		AddEnvAsPath(EnvPrefix, EnvAppCommit, a.GetCommit())
+	values := Values{}
+	if err := values.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version); err != nil {
+		return nil, err
+	}
+	if err := values.AddEnvAsPath(EnvPrefix, EnvAppBranch, a.GetBranch()); err != nil {
+		return nil, err
+	}
+	if err := values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.GetCommit()); err != nil {
+		return nil, err
+	}
+
+	chart := a.getChartRef(ctx)
+	if chart != "" {
+		inspectResult, err := pkg.NewCommand("helm", "inspect", "values", chart).RunOut()
+		if err != nil {
+			return nil, errors.Errorf("error getting values by inspecting chart at %q: %s", chart, err)
+		}
+		chartValues, err := ReadValues([]byte(inspectResult))
+		if err != nil {
+			return nil, errors.Errorf("error getting values by inspecting chart at %q, parse failed: %s", chart, err)
+		}
+		values.Merge(chartValues)
+	}
 
 	if a.BranchForRelease {
 		if ctx.Release == nil || ctx.Release.Transient {
@@ -516,22 +536,35 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		values.MergeInto(vf)
+		values.Merge(vf)
 	}
 
 	for k, v := range valuesConfig.Set {
-		v.Resolve(ctx)
-		values.AddPath(k, v.GetValue())
+		value, err := v.Resolve(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err,"resolving set values from app")
+		}
+		err = values.AddPath(k, value)
+		if err != nil {
+			return nil, errors.Wrap(err,"applying set values from app")
+		}
 	}
 
 	for k, v := range ctx.GetParams().ValueOverrides {
-		values.AddPath(k, v)
+		err := values.AddPath(k, v)
+		if err != nil {
+			return nil, errors.Wrap(err, "applying overrides")
+		}
+
 	}
 
 	return values, nil
 }
 
-func (a *App) getChartRef() string {
+func (a *App) getChartRef(ctx BosunContext) string {
+	if ctx.Release  != nil && ctx.Release.Transient {
+		return a.ChartPath
+	}
 	if a.Chart != "" {
 		return a.Chart
 	}
@@ -852,6 +885,9 @@ func (a *App) BumpVersion(bump string) error {
 	}
 
 	m["version"] = a.Version
+	if a.BranchForRelease {
+		m["appVersion"] = a.Version
+	}
 	err = a.saveChart(m)
 	if err != nil {
 		return err

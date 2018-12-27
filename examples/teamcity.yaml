@@ -1,0 +1,13 @@
+imports:
+environments:
+  - name: green
+    cluster: green
+    domain: n5o.green
+    variables:
+      - name: VAULT_ADDR
+        from:
+          value: https://vault.n5o.green
+      - name: VAULT_TOKEN
+        from:
+          value: root
+    scripts:

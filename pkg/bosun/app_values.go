@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
@@ -95,24 +96,28 @@ func (v Values) Encode(w io.Writer) error {
 
 // AddPath adds value to Values at the provided path, which can be a compound name.
 // If there table missing from the path, they will be created.
-func (v Values) AddPath(path string, value interface{}) {
+func (v Values) AddPath(path string, value interface{}) error {
 	segs := strings.Split(path, ".")
-	v.addPath(segs, value)
+	err := v.addPath(segs, value)
+	if err != nil {
+		return errors.Errorf("error adding value at path %q: %s", path, err)
+	}
+	return nil
 }
 
 // AddEnvAsPath turns an environment variable (like BOSUN_APP_VERSION) into
 // a path (like app.version) by trimming the prefix, lower casing, and converting to dots,
 // then adds it to the Values.
-func (v Values) AddEnvAsPath(prefix, envName string, value interface{}) Values {
+func (v Values) AddEnvAsPath(prefix, envName string, value interface{}) error {
 	name := strings.TrimPrefix(envName, prefix)
 	name = strings.ToLower(name)
 	name = strings.Replace(name, "_", ".", -1)
-	v.AddPath(name, value)
-	return v
+	err := v.AddPath(name, value)
+	return err
 }
 
 
-func (v Values) addPath(path []string, value interface{}) {
+func (v Values) addPath(path []string, value interface{}) error {
 
 	if len(path) == 0{
 		panic("invalid path")
@@ -120,27 +125,47 @@ func (v Values) addPath(path []string, value interface{}) {
 	name := path[0]
 	if len(path) == 1 {
 		v[name] = value
-		return
+		return nil
 	}
-	child, ok := v[name].(Values)
+	child, ok := v[name]
 	if !ok {
 		child = Values{}
 		v[name] = child
 	}
 
-	child.addPath(path[1:], value)
+	switch c := child.(type) {
+	case Values:
+		err := c.addPath(path[1:], value)
+		if err != nil {
+			return errors.Errorf("%s.%s", name, err)
+		}
+	case map[interface{}]interface{}:
+		cv := Values{}
+		for k, v := range c {
+			cv[fmt.Sprintf("%v", k)] = v
+		}
+		err := cv.addPath(path[1:], value)
+		if err != nil {
+			return errors.Errorf("%s.%s", name, err)
+		}
+		v[name] = cv
+	default:
+		return errors.Errorf("%s is already occupied by value %[2]v %[2]T, cannot continue down path %v", name, c, path)
+	}
+
+	return nil
 }
 
-// MergeInto takes the properties in src and merges them into Values. Maps
+// Merge takes the properties in src and merges them into Values. Maps
 // are merged while values and arrays are replaced.
-func (v Values) MergeInto(src Values) {
+func (v Values) Merge(src Values) {
 	for key, srcVal := range src {
 		destVal, found := v[key]
 
 		if found && istable(srcVal) && istable(destVal) {
 			destMap := destVal.(map[string]interface{})
 			srcMap := srcVal.(map[string]interface{})
-			Values(destMap).MergeInto(Values(srcMap))
+			Values(destMap).Merge(Values(srcMap))
 		} else {
 			v[key] = srcVal
 		}
