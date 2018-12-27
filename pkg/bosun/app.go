@@ -695,7 +695,12 @@ func (a *App) PublishChart(ctx BosunContext, force bool) error {
 
 	branch := a.GetBranch()
 	if branch != "master" && !strings.HasPrefix(branch, "release/") {
-		ctx.Log.WithField("branch", branch).Warn("You should only publish the chart from the master or release branches.")
+		if ctx.GetParams().Force {
+			ctx.Log.WithField("branch", branch).Warn("You should only publish the chart from the master or release branches (overridden by --force).")
+		} else {
+			ctx.Log.WithField("branch", branch).Warn("You can only push charts from the master or release branches (override by setting the --force flag).")
+			return nil
+		}
 	}
 
 	err := helm.PublishChart(a.ChartPath, force)
@@ -725,7 +730,12 @@ func (a *App) PublishImage(ctx BosunContext) error {
 
 	branch := a.GetBranch()
 	if branch != "master" && !strings.HasPrefix(branch, "release/") {
-		ctx.Log.WithField("branch", branch).Warn("You should only push images from the master or release branches.")
+		if ctx.GetParams().Force {
+			ctx.Log.WithField("branch", branch).Warn("You should only push images from the master or release branches (overridden by --force).")
+		} else {
+			ctx.Log.WithField("branch", branch).Warn("You can only push images from the master or release branches (override by setting the --force flag).")
+			return nil
+		}
 	}
 
 	release := a.GetReleaseFromBranch()
