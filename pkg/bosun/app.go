@@ -497,16 +497,8 @@ func (a *App) GetStatus() (string, error) {
 
 func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	values := Values{}
-	if err := values.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version); err != nil {
-		return nil, err
-	}
-	if err := values.AddEnvAsPath(EnvPrefix, EnvAppBranch, a.GetBranch()); err != nil {
-		return nil, err
-	}
-	if err := values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.GetCommit()); err != nil {
-		return nil, err
-	}
 
+	// Load values from chart.
 	chart := a.getChartRef(ctx)
 	if chart != "" {
 		inspectResult, err := pkg.NewCommand("helm", "inspect", "values", chart).RunOut()
@@ -520,6 +512,19 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		values.Merge(chartValues)
 	}
 
+	// Make environment values available
+	if err := values.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version); err != nil {
+		return nil, err
+	}
+	if err := values.AddEnvAsPath(EnvPrefix, EnvAppBranch, a.GetBranch()); err != nil {
+		return nil, err
+	}
+	if err := values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.GetCommit()); err != nil {
+		return nil, err
+	}
+
+
+	// set the tag based on the release status, if we're doing a real release
 	if a.BranchForRelease {
 		if ctx.Release == nil || ctx.Release.Transient {
 			values["tag"] = a.Version
@@ -530,7 +535,10 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		values["tag"] = "latest"
 	}
 
+
 	valuesConfig := a.GetValuesConfig(ctx)
+
+	// Get the values from any files referenced from the app's config:
 	for _, f := range valuesConfig.Files {
 		vf, err := ReadValuesFile(f)
 		if err != nil {
@@ -539,6 +547,7 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		values.Merge(vf)
 	}
 
+	// Get the values defined using the `set` element in the app's config:
 	for k, v := range valuesConfig.Set {
 		value, err := v.Resolve(ctx)
 		if err != nil {
@@ -550,6 +559,7 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		}
 	}
 
+	// Finally, apply any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParams().ValueOverrides {
 		err := values.AddPath(k, v)
 		if err != nil {

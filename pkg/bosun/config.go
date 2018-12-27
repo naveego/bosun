@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 )
 
+const logConfigs = true
+
 type Config struct {
 	Path               string                     `yaml:"-"`
 	CurrentEnvironment string                     `yaml:"currentEnvironment"`
@@ -114,11 +116,15 @@ func (r *Config) importFromPaths(relativeTo string, paths []string) error {
 }
 
 func (r *Config) importFragmentFromPath(path string) error {
-	//log := pkg.Log.WithField("import_path", path)
-	//log.Debug("Importing mergedFragments...")
+	log := pkg.Log.WithField("import_path", path)
+	if logConfigs {
+		log.Debug("Importing mergedFragments...")
+	}
 
 	if r.ImportedFragments[path] != nil {
-	//	log.Debugf("Already imported.")
+		if logConfigs{
+			log.Debugf("Already imported.")
+		}
 		return nil
 	}
 
@@ -155,8 +161,9 @@ func (r *Config) importFragmentFromPath(path string) error {
 		return errors.Errorf("merge error loading %q: %s", path, err)
 	}
 
-	//log.Debug("Import complete.")
-
+	if logConfigs {
+		log.Debug("Import complete.")
+	}
 	r.ImportedFragments[path] = c
 
 	err = r.importFromPaths(c.FromPath, c.Imports)
