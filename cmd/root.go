@@ -90,8 +90,9 @@ const (
 	ArgBosunConfigFile = "config-file"
 	ArgGlobalCIMode    = "ci-mode"
 	ArgGlobalForce        = "force"
-
 )
+
+
 
 func init() {
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", configPath, "The config file for bosun.")
