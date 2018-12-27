@@ -15,29 +15,47 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 	"os"
 )
 
 func init() {
-	rootCmd.AddCommand(completionsCmd)
+	rootCmd.AddCommand(docsCmd)
 }
 
-var completionsCmd = &cobra.Command{
-	Use:   "completions",
-	Short: "Completion generators.",
+var docsCmd = &cobra.Command{
+	Use:   "docs",
+	ArgAliases:   []string{"doc"},
+	Short: "Completion and documentation generators.",
 }
 
-var _ = addCommand(completionsCmd, &cobra.Command{
-	Use:   "zsh",
-	Short: "Completion generator for zsh.",
-	Long: "To install, run bosun completions zsh > ~/.oh-my-zsh/custom/plugins/zsh-completions/_bosun",
-	Run: func(cmd *cobra.Command, args []string) {
-		rootCmd.GenZshCompletion(os.Stdout)
+var _ = addCommand(docsCmd, &cobra.Command{
+	Use:   "markdown [dir]",
+	Short: "Output documentation in markdown. Output dir defaults to ./docs",
+	RunE: func(cmd *cobra.Command, args []string) error{
+		dir := "./docs"
+		if len(args) > 0 {
+			dir = args[0]
+		}
+		err := doc.GenMarkdownTree(rootCmd, dir)
+		if err != nil {
+			fmt.Printf("Output to %q.\n", dir)
+		}
+		return err
 	},
 })
 
-var _ = addCommand(completionsCmd, &cobra.Command{
+var _ = addCommand(docsCmd, &cobra.Command{
+	Use:   "bash",
+	Short: "Completion generator for bash.",
+	Run: func(cmd *cobra.Command, args []string) {
+		rootCmd.GenBashCompletion(os.Stdout)
+	},
+})
+
+var _ = addCommand(docsCmd, &cobra.Command{
 	Use:   "bash",
 	Short: "Completion generator for bash.",
 	Run: func(cmd *cobra.Command, args []string) {

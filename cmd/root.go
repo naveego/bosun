@@ -40,7 +40,7 @@ var commit string
 var rootCmd = &cobra.Command{
 	Use:   "bosun",
 	Short: "Devops tool.",
-	Long: `This is a catchall for devops tooling. If you have some scripts for
+	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 
@@ -88,8 +88,8 @@ const (
 	ArgGlobalDomain    ="domain"
 	ArgGlobalValues    = "values"
 	ArgBosunConfigFile = "config-file"
-	ArgGlobalCIMode    = "ci-mode"
 	ArgGlobalForce        = "force"
+	ArgGlobalNoReport        = "no-report"
 )
 
 
@@ -99,13 +99,11 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&step, "step", -1, "The step we are on.")
 	rootCmd.PersistentFlags().MarkHidden("step")
 
-	rootCmd.PersistentFlags().Bool(ArgGlobalCIMode, false, "Operate in CI mode, reporting deployments and builds to github.")
-
-	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun.")
+	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
-
 	rootCmd.PersistentFlags().Bool(	ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
+	rootCmd.PersistentFlags().Bool(	ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
 
 	defaultCluster := ""
 	defaultDomain := ""

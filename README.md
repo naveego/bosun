@@ -1,5 +1,11 @@
 
 
+
+# Bosun
+
+CLI documentation is here: [./docs/bosun.md](./docs/bosun.md)
+
+
 ## Quick Start
 
 1. Install the dependencies below.

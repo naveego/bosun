@@ -43,7 +43,7 @@ func getBosun() (*bosun.Bosun, error) {
 	params := bosun.Parameters{
 		Verbose: viper.GetBool(ArgGlobalVerbose),
 		DryRun:  viper.GetBool(ArgGlobalDryRun),
-		CIMode: viper.GetBool(ArgGlobalCIMode),
+		NoReport: viper.GetBool(ArgGlobalNoReport),
 		Force: viper.GetBool(ArgGlobalForce),
 	}
 

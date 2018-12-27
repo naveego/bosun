@@ -26,11 +26,11 @@ type Bosun struct {
 }
 
 type Parameters struct {
-	Verbose bool
-	DryRun  bool
-	CIMode  bool
-	Force   bool
+	Verbose        bool
+	DryRun         bool
+	Force          bool
 	ValueOverrides map[string]string
+	NoReport       bool
 }
 
 func New(params Parameters, config *Config) (*Bosun, error) {

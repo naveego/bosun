@@ -357,6 +357,7 @@ func (a *App) Reconcile(ctx BosunContext) error {
 	params := ctx.GetParams()
 	env := ctx.Env
 	reportDeploy := !params.DryRun &&
+		!params.NoReport &&
 		a.DesiredState.Status == StatusDeployed &&
 		!env.IsLocal &&
 		a.ReportDeployment
