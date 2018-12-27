@@ -340,10 +340,7 @@ var appToggleCmd = &cobra.Command{
 
 		viper.BindPFlags(cmd.Flags())
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := mustGetBosun()
 		c := b.GetCurrentEnvironment()
 
 		if c.Name != "red" {
@@ -478,10 +475,7 @@ var appDeleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := mustGetBosun()
 
 		services, err := getApps(b, args)
 		if err != nil {
@@ -519,19 +513,15 @@ var appRunCmd = &cobra.Command{
 
 		viper.BindPFlags(cmd.Flags())
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := mustGetBosun()
 		c := b.GetCurrentEnvironment()
 
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to run apps.")
 		}
 
-		var apps []*bosun.App
 
-		apps, err = getApps(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
