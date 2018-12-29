@@ -63,7 +63,7 @@ func PublishChart(chart string, force bool) error {
 		helmArgs = append(helmArgs, "--force")
 	}
 
-	err = pkg.NewCommand("helm", helmArgs...).RunE()
+	err = pkg.NewCommand("helm", helmArgs...).WithEnvValue("AWS_DEFAULT_PROFILE", "black").RunE()
 
 	if err != nil {
 		return errors.Wrap(err, "could not publish chart")

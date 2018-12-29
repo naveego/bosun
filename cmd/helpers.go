@@ -18,6 +18,12 @@ import (
 	"runtime"
 )
 
+const (
+	OutputTable = "table"
+	OutputYaml = "yaml"
+
+)
+
 func mustGetBosun() *bosun.Bosun {
 	b, err := getBosun()
 	if err != nil {
@@ -41,6 +47,29 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	whitelist := viper.GetStringSlice(ArgReleaseIncludeApps)
+	if len(whitelist) > 0 {
+		toReleaseSet := map[string]bool{}
+		for _, r := range whitelist {
+			toReleaseSet[r] = true
+		}
+		for k, app := range r.Apps {
+			if !toReleaseSet[k] {
+				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgReleaseIncludeApps)
+				app.Excluded = true
+			}
+		}
+	}
+
+	blacklist := viper.GetStringSlice(ArgReleaseExcludeApps)
+	for _, name := range blacklist {
+		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgReleaseExcludeApps)
+		if app, ok :=  r.Apps[name]; ok {
+			app.Excluded = true
+		}
+	}
+
 	return r
 }
 
@@ -75,7 +104,7 @@ func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {
 	return apps[0]
 }
 
-func mustYaml(i interface{}) string {
+func MustYaml(i interface{}) string {
 	b, err := yaml.Marshal(i)
 	if err != nil {
 		panic(err)

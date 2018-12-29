@@ -152,9 +152,17 @@ func executeScript(script string, ctx BosunContext) (string, error) {
 
 	defer os.Remove(tmp.Name())
 
+	vars, err := ctx.Env.GetVariablesAsMap(ctx)
+	if err != nil {
+		return "", errors.Wrap(err, "resolve environment variables for script")
+	}
+
+	ctx.Log.Debugf("Running script:\n%s\n", script)
+
 	cmd := getCommandForScript(tmp.Name()).
 		WithDir(ctx.Dir).
 		IncludeEnv(ctx.GetValuesAsEnvVars()).
+		IncludeEnv(vars).
 		WithContext(ctx.Ctx())
 
 	o, err := cmd.RunOut()

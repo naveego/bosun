@@ -5,7 +5,6 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
-	"os"
 	"path/filepath"
 	"time"
 )
@@ -21,12 +20,8 @@ type BosunContext struct {
 	ctx             context.Context
 }
 
-func (c BosunContext) WithDir(dir string) BosunContext {
-	if stat, err := os.Stat(dir); err == nil {
-		if !stat.IsDir() {
-			dir = filepath.Dir(dir)
-		}
-	}
+func (c BosunContext) WithDir(dirOrFilePath string) BosunContext {
+	dir := getDirIfFile(dirOrFilePath)
 	c.Dir = dir
 	return c
 }

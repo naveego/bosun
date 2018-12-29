@@ -102,8 +102,9 @@ var appBumpCmd = &cobra.Command{
 
 		b := mustGetBosun()
 		app := mustGetApp(b, args)
+		ctx := b.NewContext()
 
-		err := app.BumpVersion(args[1])
+		err := app.BumpVersion(ctx, args[1])
 		if err != nil {
 			return err
 		}
@@ -125,7 +126,7 @@ var appAcceptActualCmd = &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		apps, err := getApps(b, args)
 		if err != nil {
@@ -240,7 +241,7 @@ var appListCmd = &cobra.Command{
 			viper.Set(ArgAppAll, true)
 		}
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 		env := b.GetCurrentEnvironment()
 
 		apps, err := getApps(b, args)
@@ -352,7 +353,7 @@ var appToggleCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		for _, app := range services {
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
@@ -395,14 +396,14 @@ var appDeployCmd = &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
 
-		ctx.Log.Debugf("Apps: \n%s\n", mustYaml(apps))
+		ctx.Log.Debugf("Apps: \n%s\n", MustYaml(apps))
 
 
 		sets := map[string]string{}
@@ -457,9 +458,13 @@ var appDeployCmd = &cobra.Command{
 		}
 
 
-		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", mustYaml(r))
+		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", MustYaml(r))
 
 		err = r.Deploy(ctx)
+
+		if err != nil {
+			return errors.Wrap(err, "deploy failed")
+		}
 
 		err = b.Save()
 
@@ -482,7 +487,7 @@ var appDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		for _, app := range services {
 			if viper.GetBool(ArgAppDeletePurge) {
@@ -533,7 +538,7 @@ var appRunCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		app.DesiredState.Routing = bosun.RoutingLocalhost
 
@@ -585,7 +590,7 @@ var appPublishChartCmd = addCommand(
 
 			b := mustGetBosun()
 			app := mustGetApp(b, args)
-			ctx := b.NewContext("")
+			ctx := b.NewContext()
 			err := app.PublishChart(ctx, viper.GetBool(ArgGlobalForce))
 			return err
 		},
@@ -611,7 +616,7 @@ SilenceUsage:  true,
 
 			b := mustGetBosun()
 			app := mustGetApp(b, args)
-			ctx := b.NewContext("")
+			ctx := b.NewContext()
 			err := app.PublishImage(ctx)
 			return err
 		},
@@ -627,7 +632,7 @@ var appPullCmd = addCommand(
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := mustGetBosun()
-			ctx := b.NewContext("")
+			ctx := b.NewContext()
 			apps, err := getApps(b, args)
 			if err != nil {
 				return err
@@ -731,7 +736,7 @@ var appCloneCmd = addCommand(
 				repos[app.Repo] = app
 			}
 
-			ctx := b.NewContext("")
+			ctx := b.NewContext()
 			for _, app := range repos {
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
 				log.Info("Cloning...")
@@ -758,7 +763,7 @@ var appCloneCmd = addCommand(
 func getStandardObjects(args []string) (*bosun.Bosun, *bosun.EnvironmentConfig, []*bosun.App, bosun.BosunContext) {
 	b := mustGetBosun()
 	env := b.GetCurrentEnvironment()
-	ctx := b.NewContext("")
+	ctx := b.NewContext()
 
 	apps, err := getApps(b, args)
 	if err != nil {

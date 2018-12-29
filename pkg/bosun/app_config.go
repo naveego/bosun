@@ -17,7 +17,6 @@ type AppConfig struct {
 	Version          string                 `yaml:"version,omitempty"`
 	Chart            string                 `yaml:"chart,omitempty"`
 	ChartPath        string                 `yaml:"chartPath,omitempty"`
-	VaultPaths       []string               `yaml:"vaultPaths,omitempty"`
 	RunCommand       []string               `yaml:"runCommand,omitempty"`
 	DependsOn        []Dependency           `yaml:"dependsOn,omitempty"`
 	Labels           []string               `yaml:"labels,omitempty"`
@@ -25,6 +24,8 @@ type AppConfig struct {
 	Scripts          []*Script              `yaml:"scripts,omitempty"`
 	Actions          []*AppAction           `yaml:"actions,omitempty"`
 	Fragment         *ConfigFragment        `yaml:"-"`
+	// Additional values provided by the release.
+	ReleaseValues AppValuesByEnvironment `yaml:"-"`
 }
 
 type Dependency struct {
@@ -83,14 +84,14 @@ func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 
 type AppValuesByEnvironment map[string]AppValuesConfig
 
-func (a *AppConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
+func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfig{
 	out := AppValuesConfig{}
 	name := ctx.Env.Name
 
 	// more precise values should override less precise values
 	priorities := make([][]AppValuesConfig, 10, 10)
 
-	for k, v := range a.Values {
+	for k, v := range a {
 		keys := strings.Split(k, ",")
 		for _, k2 := range keys {
 			if k2 == name {
@@ -106,7 +107,18 @@ func (a *AppConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	}
 
 	for i := range out.Files {
-		out.Files[i] = resolvePath(a.FromPath, out.Files[i])
+		out.Files[i] = resolvePath(ctx.Dir, out.Files[i])
+	}
+
+	return out
+}
+
+func (a *AppConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
+	out := a.Values.GetValuesConfig(ctx.WithDir(a.FromPath))
+
+	if a.ReleaseValues != nil {
+		release := a.ReleaseValues.GetValuesConfig(ctx)
+		out = out.Combine(release)
 	}
 
 	return out

@@ -7,8 +7,10 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
+	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 	"strings"
 )
 
@@ -78,13 +80,56 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		r := mustGetCurrentRelease(b)
 
-		t := tabby.New()
-		t.AddHeader("APP", "VERSION", "REPO", "BRANCH")
-		for _, app := range r.Apps {
-			t.AddLine(app.Name, app.Version, app.Repo, app.Branch)
-		}
-		t.Print()
+		switch viper.GetString(ArgGlobalOutput) {
+		case OutputYaml:
+			fmt.Println(MustYaml(r))
+		default:
 
+			t := tabby.New()
+			t.AddHeader("APP", "VERSION", "REPO", "BRANCH")
+			for _, app := range r.Apps {
+				t.AddLine(app.Name, app.Version, app.Repo, app.Branch)
+			}
+			t.Print()
+
+		}
+	},
+})
+
+var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "show-values {app}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Shows the values which will be used for a release.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		r := mustGetCurrentRelease(b)
+
+		appRelease := r.Apps[args[0]]
+		if appRelease == nil {
+			return errors.Errorf("app %q not in this release", args[0])
+		}
+
+		app := appRelease.App
+
+		if app == nil {
+			return errors.Errorf("app %q not available", args[0])
+		}
+
+		app.ReleaseValues = appRelease.Values
+		ctx := b.NewContext()
+		values, err := app.GetValuesMap(ctx)
+		if err != nil {
+			return err
+		}
+
+		yml, err := yaml.Marshal(values)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(string(yml))
+
+		return nil
 	},
 })
 
@@ -161,7 +206,7 @@ var releaseAddCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		for _, app := range apps {
 
@@ -199,25 +244,30 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		w := new(strings.Builder)
 		hasErrors := false
 
-		for _, app := range release.Apps {
+		apps := release.Apps.GetAppsSortedByName()
+		p := progressbar.New(len(apps))
 
-			colorHeader.Fprintf(w, "%s\n", app.Name)
+		for _, app := range apps {
+
+			colorHeader.Fprintf(w, "%s ", app.Name)
 			errs := app.Validate(ctx)
+
+			p.Add(1)
+
 			if len(errs) == 0 {
 				colorOK.Fprintf(w, "OK\n")
 			} else {
+				fmt.Fprintln(w)
 				for _, err := range errs {
 					hasErrors = true
-					colorError.Fprintf(w, "- %s\n", err)
+					colorError.Fprintf(w, " - %s\n", err)
 				}
 			}
-
-			fmt.Fprintln(w)
 		}
 
 		fmt.Println(w.String())
@@ -230,6 +280,24 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 })
 
+var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:           "sync",
+	Short:         "Pulls the latest commits for every app in the release, then updates the values in the release entry.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		b := mustGetBosun()
+		release := mustGetCurrentRelease(b)
+		ctx := b.NewContext()
+		err := release.Deploy(ctx)
+
+		return err
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to release. If not provided, all apps in the release are released.")
+})
+
 var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "deploy",
 	Short:         "Deploys the release.",
@@ -237,13 +305,20 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
+		ctx := b.NewContext()
 
-		ctx := b.NewContext("")
 
 		err := release.Deploy(ctx)
 
 		return err
 	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to include in release. If not provided, all apps in the release are released.")
+	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from the release.")
 })
+
+const ArgReleaseIncludeApps = "include"
+const ArgReleaseExcludeApps = "exclude"

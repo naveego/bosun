@@ -3,14 +3,15 @@ package bosun
 import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"sort"
 	"strings"
 )
 
 type Release struct {
-	Name     string                 `yaml:"name"`
-	FromPath string                 `yaml:"fromPath"`
-	Apps     map[string]*AppRelease `yaml:"apps"`
-	Fragment *ConfigFragment        `yaml:"-"`
+	Name     string          `yaml:"name"`
+	FromPath string          `yaml:"fromPath"`
+	Apps     AppReleaseMap   `yaml:"apps"`
+	Fragment *ConfigFragment `yaml:"-"`
 	// Indicates that this is not a real release which is stored on disk.
 	// If this is true:
 	// - release branch creation and checking is disabled
@@ -26,16 +27,46 @@ func (r *Release) SetFragment(f *ConfigFragment) {
 	}
 }
 
+type AppReleaseMap map[string]*AppRelease
+
+func (a AppReleaseMap) GetAppsSortedByName() AppReleasesSortedByName {
+	var out AppReleasesSortedByName
+	for _, app := range a {
+		out = append(out, app)
+	}
+
+	sort.Sort(out)
+	return out
+}
+
+type AppReleasesSortedByName []*AppRelease
+
+func (a AppReleasesSortedByName) Len() int {
+	return len(a)
+}
+
+func (a AppReleasesSortedByName) Less(i, j int) bool {
+	return strings.Compare(a[i].Name, a[j].Name) < 0
+}
+
+func (a AppReleasesSortedByName) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
 type AppRelease struct {
 	Name      string   `yaml:"name"`
 	Repo      string   `yaml:"repo"`
 	RepoPath  string   `yaml:"repoPath"`
 	BosunPath string   `yaml:"bosunPath"`
 	Branch    string   `yaml:"branch"`
+	Commit string `yaml:"commit"`
 	Version   string   `yaml:"version"`
 	ChartName string   `yaml:"chartName"`
 	App       *App     `yaml:"-"`
 	Release   *Release `yaml:"-"`
+	// Additional values to be merged in, specific to this release.
+	Values AppValuesByEnvironment `yaml:"values"`
+	Excluded bool `yaml:"-"`
 }
 
 func (r *AppRelease) Validate(ctx BosunContext) []error {
@@ -63,8 +94,19 @@ func (r *AppRelease) Validate(ctx BosunContext) []error {
 		errs = append(errs, errors.Errorf("image not found: %s", err))
 	}
 
-	return errs
+	if r.App.IsRepoCloned() {
+		appBranch := r.App.GetBranch()
+		if appBranch != r.Branch {
+			errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", r.Branch, appBranch))
+		}
 
+		appCommit := r.App.GetCommit()
+		if appCommit != r.Commit {
+			errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", r.Commit, appCommit))
+		}
+	}
+
+	return errs
 }
 
 func (r *Release) IncludeDependencies(ctx BosunContext) error {
@@ -132,7 +174,7 @@ func (r *Release) Deploy(ctx BosunContext) error {
 			if requestedAppNameSet[dep.Name] {
 				toDeploy = append(toDeploy, app)
 			} else {
-				pkg.Log.Debugf("Skipping dependency %q because it was not requested.", dep.Name)
+				ctx.Log.Debugf("Skipping dependency %q because it was not requested.", dep.Name)
 			}
 		}
 	}
@@ -140,14 +182,17 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	for _, app := range toDeploy {
 		requested := requestedAppNameSet[app.Name]
 		if requested {
-			pkg.Log.Infof("App %q will be deployed because it was requested.", app.Name)
+			ctx.Log.Infof("App %q will be deployed because it was requested.", app.Name)
 		} else {
-			pkg.Log.Infof("App %q will be deployed because it was a dependency of a requested app.", app.Name)
+			ctx.Log.Infof("App %q will be deployed because it was a dependency of a requested app.", app.Name)
 		}
 	}
 
-
 	for _, app := range toDeploy {
+
+		if appRelease, ok := r.Apps[app.Name]; ok {
+			app.ReleaseValues = appRelease.Values
+		}
 
 		app.DesiredState.Status = StatusDeployed
 		if app.DesiredState.Routing == "" {
@@ -160,6 +205,7 @@ func (r *Release) Deploy(ctx BosunContext) error {
 		if r.Transient && app.ChartPath != "" {
 			app.Chart = ""
 		}
+
 
 		err = app.Reconcile(ctx)
 

@@ -29,13 +29,13 @@ type ScriptStep struct {
 
 func (b *Bosun) Execute(s *Script, steps ...int) error {
 
-	log := pkg.Log.WithField("name", s.Name)
+	log := b.log.WithField("name", s.Name)
 
 	relativeDir := filepath.Dir(s.FromPath)
 
 	env := b.GetCurrentEnvironment()
 	var err error
-	ctx := b.NewContext("")
+	ctx := b.NewContext()
 
 	if err = env.Ensure(ctx); err != nil {
 		return errors.Wrap(err, "ensure environment")
@@ -76,7 +76,7 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 			return errors.Errorf("invalid step %d (there are %d steps)", i, len(s.Steps))
 		}
 		step := s.Steps[i]
-		log := pkg.Log.WithField("step", i).WithField("command", step.Command)
+		log := ctx.Log.WithField("step", i).WithField("command", step.Command)
 		if step.Name != "" {
 			log = log.WithField("name", step.Name)
 		}

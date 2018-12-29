@@ -274,7 +274,18 @@ func expandPath(relativeToFile, path string) []string {
 func resolvePath(relativeToFile, path string) string {
 	path = os.ExpandEnv(path)
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(filepath.Dir(relativeToFile), path)
+		relativeToDir := getDirIfFile(relativeToFile)
+		path = filepath.Join(relativeToDir, path)
+	}
+	return path
+}
+
+func getDirIfFile(path string) string {
+	if stat, err := os.Stat(path); err == nil {
+		if stat.IsDir(){
+			return path
+		}
+		return filepath.Dir(path)
 	}
 	return path
 }

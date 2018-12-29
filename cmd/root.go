@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
 	"strings"
@@ -40,6 +39,7 @@ var commit string
 var rootCmd = &cobra.Command{
 	Use:   "bosun",
 	Short: "Devops tool.",
+	SilenceErrors:true,
 	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -76,7 +76,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		colorError.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -90,6 +90,7 @@ const (
 	ArgBosunConfigFile = "config-file"
 	ArgGlobalForce        = "force"
 	ArgGlobalNoReport        = "no-report"
+	ArgGlobalOutput      = "output"
 )
 
 
@@ -100,6 +101,7 @@ func init() {
 	rootCmd.PersistentFlags().MarkHidden("step")
 
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
+	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o","table", "Output format. Options are `table` or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(	ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")

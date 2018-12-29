@@ -147,7 +147,7 @@ func (a *App) LoadActualState(diff bool, ctx BosunContext) error {
 
 	a.ActualState = AppState{}
 
-	log := pkg.Log.WithField("name", a.Name)
+	log := ctx.Log.WithField("name", a.Name)
 
 	if !a.HasChart() {
 		return nil
@@ -238,7 +238,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	actual, desired := a.ActualState, a.DesiredState
 
-	log := pkg.Log.WithField("name", a.Name)
+	log := ctx.Log.WithField("name", a.Name)
 
 	log.WithField("state", desired.String()).Debug("Desired state.")
 	log.WithField("state", actual.String()).Debug("Actual state.")
@@ -436,9 +436,9 @@ func (a *App) diff(ctx BosunContext) (string, error) {
 		return "", err
 	} else {
 		if msg == "" {
-			pkg.Log.Debug("Diff detected no changes.")
+			ctx.Log.Debug("Diff detected no changes.")
 		} else {
-			pkg.Log.Debugf("Diff result:\n%s\n", msg)
+			ctx.Log.Debugf("Diff result:\n%s\n", msg)
 
 		}
 	}
@@ -454,7 +454,7 @@ func (a *App) Delete(ctx BosunContext) error {
 	args = append(args, a.Name)
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	pkg.Log.Debug(out)
+	ctx.Log.Debug(out)
 	return err
 }
 
@@ -465,21 +465,21 @@ func (a *App) Rollback(ctx BosunContext) error {
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	pkg.Log.Debug(out)
+	ctx.Log.Debug(out)
 	return err
 }
 
 func (a *App) Install(ctx BosunContext) error {
 	args := append([]string{"install", "--name", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	pkg.Log.Debug(out)
+	ctx.Log.Debug(out)
 	return err
 }
 
 func (a *App) Upgrade(ctx BosunContext) error {
 	args := append([]string{"upgrade", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	pkg.Log.Debug(out)
+	ctx.Log.Debug(out)
 	return err
 }
 
@@ -523,7 +523,6 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-
 	// set the tag based on the release status, if we're doing a real release
 	if a.BranchForRelease {
 		if ctx.Release == nil || ctx.Release.Transient {
@@ -534,7 +533,6 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	} else {
 		values["tag"] = "latest"
 	}
-
 
 	valuesConfig := a.GetValuesConfig(ctx)
 
@@ -551,11 +549,11 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	for k, v := range valuesConfig.Set {
 		value, err := v.Resolve(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err,"resolving set values from app")
+			return nil, errors.Errorf( "resolving set values from app for key %q: %s", k, err)
 		}
 		err = values.AddPath(k, value)
 		if err != nil {
-			return nil, errors.Wrap(err,"applying set values from app")
+			return nil, errors.Errorf("applying set values from app for key %q: %s", k, err)
 		}
 	}
 
@@ -563,7 +561,7 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	for k, v := range ctx.GetParams().ValueOverrides {
 		err := values.AddPath(k, v)
 		if err != nil {
-			return nil, errors.Wrap(err, "applying overrides")
+			return nil, errors.Errorf( "applying overrides with path %q: %s", k, err)
 		}
 
 	}
@@ -576,7 +574,7 @@ func (a *App) GetAbsolutePathToChart() string {
 }
 
 func (a *App) getChartRef(ctx BosunContext) string {
-	if ctx.Release  != nil && ctx.Release.Transient {
+	if ctx.Release != nil && ctx.Release.Transient {
 		return a.GetAbsolutePathToChart()
 	}
 	if a.Chart != "" {
@@ -866,6 +864,7 @@ func (a *App) MakeAppRelease(release *Release) (*AppRelease, error) {
 		RepoPath:  a.RepoPath,
 		App:       a,
 		Branch:    a.GetBranch(),
+		Commit: a.GetCommit(),
 		ChartName: a.getChartName(),
 	}
 
@@ -877,7 +876,7 @@ func (a *App) MakeAppRelease(release *Release) (*AppRelease, error) {
 // and updating the chart. The `bump` parameter may be one of
 // major|minor|patch|major.minor.patch. If major.minor.patch is provided,
 // the version is set to that value.
-func (a *App) BumpVersion(bump string) error {
+func (a *App) BumpVersion(ctx BosunContext, bump string) error {
 	version, err := semver.NewVersion(bump)
 	if err == nil {
 		a.Version = version.String()
@@ -901,6 +900,17 @@ func (a *App) BumpVersion(bump string) error {
 			return errors.Errorf("invalid version component %q (want major, minor, or patch)", bump)
 		}
 		a.Version = v2.String()
+	}
+
+	packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
+	if _, err = os.Stat(packageJSONPath); err == nil {
+		ctx.Log.Info("package.json detected, its version will be updated.")
+		err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bump).
+			WithDir(filepath.Dir(a.FromPath)).
+			RunE()
+		if err != nil {
+			return errors.Errorf("failed to update version in package.json: %s", err)
+		}
 	}
 
 	m, err := a.getChartAsMap()
@@ -930,7 +940,7 @@ func (a *App) getChartAsMap() (map[string]interface{}, error) {
 		return nil, errors.New("chartPath not set")
 	}
 
-	path := filepath.Join(a.ChartPath, "Chart.yaml")
+	path := filepath.Join(a.GetAbsolutePathToChart(), "Chart.yaml")
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err

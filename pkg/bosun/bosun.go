@@ -7,6 +7,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
@@ -23,14 +24,16 @@ type Bosun struct {
 	vaultClient      *vault.Client
 	env              *EnvironmentConfig
 	clusterAvailable *bool
+	log *logrus.Entry
 }
 
 type Parameters struct {
 	Verbose        bool
 	DryRun         bool
 	Force          bool
-	ValueOverrides map[string]string
 	NoReport       bool
+	ValueOverrides map[string]string
+	FileOverrides []string
 }
 
 func New(params Parameters, config *Config) (*Bosun, error) {
@@ -39,7 +42,14 @@ func New(params Parameters, config *Config) (*Bosun, error) {
 		config:          config,
 		mergedFragments: config.MergedFragments,
 		apps:            make(map[string]*App),
+		log: pkg.Log,
 	}
+
+	if params.DryRun {
+		b.log = b.log.WithField("*DRYRUN*", "")
+		b.log.Info("DRY RUN")
+	}
+
 
 	for _, dep := range b.mergedFragments.AppRefs {
 		b.apps[dep.Name] = NewAppFromDependency(dep)
@@ -162,7 +172,7 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 		return nil, err
 	}
 
-	pkg.Log.WithField("path", path).Debug("New microservice found at path.")
+	b.log.WithField("path", path).Debug("New microservice found at path.")
 
 	imported := b.config.ImportedFragments[path]
 
@@ -181,7 +191,7 @@ func (b *Bosun) useEnvironment(env *EnvironmentConfig) error {
 	b.config.CurrentEnvironment = env.Name
 	b.env = env
 
-	err := b.env.Ensure(b.NewContext(""))
+	err := b.env.ForceEnsure(b.NewContext())
 	if err != nil {
 		return errors.Errorf("ensure environment %q: %s", b.env.Name, err)
 	}
@@ -256,7 +266,7 @@ func (b *Bosun) AddImport(file string) bool {
 func (b *Bosun) IsClusterAvailable() bool {
 	env := b.GetCurrentEnvironment()
 	if b.clusterAvailable == nil {
-		pkg.Log.Debugf("Checking if cluster %q is available...", env.Cluster)
+		b.log.Debugf("Checking if cluster %q is available...", env.Cluster)
 		resultCh := make(chan bool)
 		cmd := exec.Command("kubectl", "cluster-info")
 		go func() {
@@ -271,9 +281,9 @@ func (b *Bosun) IsClusterAvailable() bool {
 		select {
 		case result := <-resultCh:
 			b.clusterAvailable = &result
-			pkg.Log.Debugf("Cluster is available: %t", result)
+			b.log.Debugf("Cluster is available: %t", result)
 		case <-time.After(2 * time.Second):
-			pkg.Log.Warn("Cluster did not respond quickly, I will assume it is unavailable.")
+			b.log.Warn("Cluster did not respond quickly, I will assume it is unavailable.")
 			if cmd.Process != nil {
 				cmd.Process.Kill()
 			}
@@ -293,15 +303,18 @@ func (b *Bosun) GetEnvironment(name string) (*EnvironmentConfig, error) {
 	return nil, errors.Errorf("no environment named %q", name)
 }
 
-func (b *Bosun) NewContext(dir string) BosunContext {
-	if dir == "" {
-		dir, _ = os.Getwd()
-	}
+func (b *Bosun) GetEnvironments() []*EnvironmentConfig{
+	return b.mergedFragments.Environments
+}
+
+func (b *Bosun) NewContext() BosunContext {
+
+	dir, _ := os.Getwd()
 
 	return BosunContext{
 		Bosun: b,
 		Env:   b.GetCurrentEnvironment(),
-		Log:   pkg.Log,
+		Log:   b.log,
 	}.WithDir(dir).WithContext(context.Background())
 
 }
