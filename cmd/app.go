@@ -425,18 +425,10 @@ var appDeployCmd = &cobra.Command{
 		}
 		for _, app := range apps {
 			ctx.Log.WithField("app", app.Name).Debug("Including in release.")
-			err = r.IncludeApp(app)
+			err = r.IncludeApp(ctx, app)
 			if err != nil {
 				return errors.Errorf("error including app %q in release: %s", app.Name, err)
 			}
-		}
-
-		requestedAppNameSet := map[string]bool{}
-		for _, app := range apps {
-			if app == nil {
-				continue
-			}
-			requestedAppNameSet[app.Name] = true
 		}
 
 		if viper.GetBool(ArgAppDeployDeps) {
@@ -444,17 +436,6 @@ var appDeployCmd = &cobra.Command{
 			err = r.IncludeDependencies(ctx)
 			if err != nil {
 				return errors.Wrap(err, "include dependencies")
-			}
-		}
-
-		toDeploy := r.AppReleaseConfigs
-
-		for _, app := range toDeploy {
-			requested := requestedAppNameSet[app.Name]
-			if requested {
-				pkg.Log.Infof("AppRepo %q will be deployed because it was requested.", app.Name)
-			} else {
-				pkg.Log.Infof("AppRepo %q will be deployed because it was a dependency of a requested app.", app.Name)
 			}
 		}
 

@@ -37,15 +37,18 @@ func (c BosunContext) Ctx() context.Context {
 
 func (c BosunContext) WithRelease(r *Release) BosunContext {
 	c.Release = r
+	c.Log = c.Log.WithField("release", r.Name)
 	return c
 }
 
 func (c BosunContext) WithAppRepo(a *AppRepo) BosunContext {
 	c.AppRepo = a
+	c.Log = c.Log.WithField("repo", a.Name)
 	return c
 }
 func (c BosunContext) WithAppRelease(a *AppRelease) BosunContext {
 	c.AppRelease = a
+	c.Log = c.Log.WithField("app", a.Name)
 	return c
 }
 

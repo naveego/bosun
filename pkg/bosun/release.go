@@ -10,7 +10,7 @@ import (
 type ReleaseConfig struct {
 	Name              string                       `yaml:"name"`
 	FromPath          string                       `yaml:"fromPath"`
-	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"repos"`
+	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
 	Parent            *ConfigFragment              `yaml:"-"`
 }
 
@@ -101,6 +101,7 @@ func (r *AppRelease) Validate(ctx BosunContext) []error {
 }
 
 func (r *Release) IncludeDependencies(ctx BosunContext) error {
+	ctx = ctx.WithRelease(r)
 	allApps := ctx.Bosun.GetApps()
 	var appNames []string
 	for _, app := range r.AppReleaseConfigs {
@@ -121,7 +122,7 @@ func (r *Release) IncludeDependencies(ctx BosunContext) error {
 		} else {
 			if r.AppReleaseConfigs[app.Name] == nil {
 
-				err = r.IncludeApp(app)
+				err = r.IncludeApp(ctx, app)
 				if err != nil {
 					return errors.Errorf("could not include app %q: %s", app.Name, err)
 				}
@@ -180,10 +181,10 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	}
 
 	for _, app := range toDeploy {
-
-		if appRelease, ok := r.AppReleaseConfigs[app.Name]; ok {
-			app.ReleaseValues = appRelease.Values
-		}
+		//
+		// if appRelease, ok := r.AppReleaseConfigs[app.Name]; ok {
+		// 	app.ReleaseValues = appRelease.Values
+		// }
 
 		app.DesiredState.Status = StatusDeployed
 		if app.DesiredState.Routing == "" {
@@ -208,16 +209,21 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	return err
 }
 
-func (r *Release) IncludeApp(app *AppRepo) error {
+func (r *Release) IncludeApp(ctx BosunContext, app *AppRepo) error {
 
 	var err error
+	var config *AppReleaseConfig
 	if r.AppReleaseConfigs == nil {
 		r.AppReleaseConfigs = map[string]*AppReleaseConfig{}
 	}
-	r.AppReleaseConfigs[app.Name], err = app.MakeAppRelease(r)
+
+	config, err = app.GetAppReleaseConfig(r)
 	if err != nil {
 		return errors.Wrap(err, "make app release")
 	}
+	r.AppReleaseConfigs[app.Name] = config
+
+	r.AppReleases[app.Name], err = NewAppRelease(ctx, config)
 
 	return nil
 }

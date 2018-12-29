@@ -28,7 +28,7 @@ type ConfigFragment struct {
 	Imports      []string               `yaml:"imports,omitempty"`
 	Environments []*EnvironmentConfig   `yaml:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs"`
-	Apps         []*AppRepoConfig       `yaml:"repos"`
+	Apps         []*AppRepoConfig       `yaml:"apps"`
 	FromPath     string                 `yaml:"-"`
 	Config       *Config                `yaml:"-"`
 	Releases     []*ReleaseConfig       `yaml:"releases,omitempty"`

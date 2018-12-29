@@ -29,11 +29,11 @@ type AppReleaseConfig struct {
 	Version   string       `yaml:"version"`
 	SyncedAt  time.Time    `yaml:"syncedAt"`
 	Chart     string       `yaml:"chart"`
-	Image     string       `yaml:"image"`
+	Image string `yaml:"image"`
 	Actions   []*AppAction `yaml:"actions"`
 	// Additional values to be merged in, specific to this release.
-	Values       AppValuesByEnvironment `yaml:"values"`
-	ParentConfig *ReleaseConfig         `yaml:"-"`
+	Values AppValuesByEnvironment `yaml:"values"`
+	ParentConfig *ReleaseConfig `yaml:"-"`
 }
 
 func (r *AppReleaseConfig) SetParent(config *ReleaseConfig) {
@@ -42,14 +42,14 @@ func (r *AppReleaseConfig) SetParent(config *ReleaseConfig) {
 
 type AppRelease struct {
 	*AppReleaseConfig
-	AppRepo  *AppRepo `yaml:"-"`
-	Excluded bool     `yaml:"-"`
+	AppRepo   *AppRepo       `yaml:"-"`
+	Excluded bool `yaml:"-"`
 }
 
 func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, error) {
 	release := &AppRelease{
 		AppReleaseConfig: config,
-		AppRepo:          ctx.Bosun.GetApps()[config.Name],
+		AppRepo: ctx.Bosun.GetApps()[config.Name],
 	}
 
 	return release, nil

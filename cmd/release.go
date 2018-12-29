@@ -115,7 +115,7 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 			return errors.Errorf("app %q not available", args[0])
 		}
 
-		app.ReleaseValues = appRelease.Values
+		//app.ReleaseValues = appRelease.Values
 		ctx := b.NewContext()
 		values, err := app.GetValuesMap(ctx)
 		if err != nil {
@@ -217,7 +217,7 @@ var releaseAddCmd = &cobra.Command{
 				ctx.Log.Infof("Adding app %q", app.Name)
 			}
 
-			release.AppReleaseConfigs[app.Name], err = app.MakeAppRelease(release)
+			release.AppReleaseConfigs[app.Name], err = app.GetAppReleaseConfig(release)
 
 			if err != nil {
 				return errors.Errorf("could not make release for app %q: %s", app.Name, err)

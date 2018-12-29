@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"strings"
 )
 
@@ -24,8 +25,6 @@ type AppRepoConfig struct {
 	Scripts          []*Script              `yaml:"scripts,omitempty"`
 	Actions          []*AppAction           `yaml:"actions,omitempty"`
 	Fragment         *ConfigFragment        `yaml:"-"`
-	// Additional values provided by the release.
-	ReleaseValues AppValuesByEnvironment `yaml:"-"`
 }
 
 type Dependency struct {
@@ -44,7 +43,9 @@ func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 type AppValuesConfig struct {
 	Set   map[string]*DynamicValue `yaml:"set,omitempty"`
+	Dynamic   map[string]*DynamicValue `yaml:"dynamic,omitempty"`
 	Files []string                 `yaml:"files,omitempty"`
+	Static Values `yaml:"static"`
 }
 
 func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
@@ -101,20 +102,33 @@ func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfi
 		}
 	}
 
-	for i := range out.Files {
-		out.Files[i] = resolvePath(ctx.Dir, out.Files[i])
+	return out
+}
+
+// MakeSelfContained resolves all file system dependencies into static values
+// on this instance, then clears those dependencies.
+func (a AppValuesByEnvironment) MakeSelfContained(ctx BosunContext) error {
+	for env, vc := range a {
+		if vc.Static == nil {
+			vc.Static = Values{}
+		}
+
+		for _, file := range vc.Files {
+			file = resolvePath(ctx.Dir, file)
+			valuesFromFile, err := ReadValuesFile(file)
+			if err != nil {
+				return errors.Errorf("reading values file %q for env key %q: %s", file, env, err)
+			}
+			vc.Static.Merge(valuesFromFile)
+		}
+		vc.Files = nil
 	}
 
-	return out
+	return nil
 }
 
 func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	out := a.Values.GetValuesConfig(ctx.WithDir(a.FromPath))
-
-	if a.ReleaseValues != nil {
-		release := a.ReleaseValues.GetValuesConfig(ctx)
-		out = out.Combine(release)
-	}
 
 	return out
 }
