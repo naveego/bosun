@@ -571,14 +571,18 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	return values, nil
 }
 
+func (a *App) GetAbsolutePathToChart() string {
+	return resolvePath(a.FromPath, a.ChartPath)
+}
+
 func (a *App) getChartRef(ctx BosunContext) string {
 	if ctx.Release  != nil && ctx.Release.Transient {
-		return a.ChartPath
+		return a.GetAbsolutePathToChart()
 	}
 	if a.Chart != "" {
 		return a.Chart
 	}
-	return a.ChartPath
+	return a.GetAbsolutePathToChart()
 }
 
 func (a *App) getChartName() string {
@@ -703,7 +707,7 @@ func (a *App) PublishChart(ctx BosunContext, force bool) error {
 		}
 	}
 
-	err := helm.PublishChart(a.ChartPath, force)
+	err := helm.PublishChart(a.GetAbsolutePathToChart(), force)
 	return err
 }
 
@@ -942,7 +946,7 @@ func (a *App) saveChart(m map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(a.ChartPath, "Chart.yaml")
+	path := filepath.Join(a.GetAbsolutePathToChart(), "Chart.yaml")
 	stat, err := os.Stat(path)
 	if err != nil {
 		return err

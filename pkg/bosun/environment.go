@@ -7,7 +7,7 @@ import (
 )
 
 type EnvironmentConfig struct {
-	FromPath  string                 `yaml:"fromPath,omitempty"`
+	FromPath  string                 `yaml:"-"`
 	Name      string                 `yaml:name`
 	Cluster   string                 `yaml:"cluster"`
 	Domain    string                 `yaml:"domain"`

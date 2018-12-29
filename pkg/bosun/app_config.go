@@ -7,7 +7,7 @@ import (
 
 type AppConfig struct {
 	Name             string                 `yaml:"name"`
-	FromPath         string                 `yaml:"fromPath,omitempty"`
+	FromPath         string                 `yaml:"-"`
 	BranchForRelease bool                   `yaml:"branchForRelease,omitempty"`
 	ReportDeployment bool                   `yaml:"reportDeployment,omitempty"`
 	Namespace        string                 `yaml:"namespace,omitempty"`
@@ -61,12 +61,6 @@ func (a *AppConfig) SetFragment(fragment *ConfigFragment) {
 	}
 }
 
-func (a *AppConfig) ConfigureForEnvironment(ctx BosunContext) {
-
-	if a.ChartPath != "" {
-		a.ChartPath = resolvePath(a.FromPath, a.ChartPath)
-	}
-}
 
 // Combine returns a new AppValuesConfig with the values from
 // other added after (and/or overwriting) the values from this instance)

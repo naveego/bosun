@@ -76,14 +76,6 @@ func New(params Parameters, config *Config) (*Bosun, error) {
 		err = b.useEnvironment(env)
 	}
 
-	ctx := b.NewContext("")
-
-	// now that environment variables are all set
-	// we'll resolve all the paths in all our apps
-	for _, app := range b.apps {
-		app.ConfigureForEnvironment(ctx.WithDir(app.FromPath))
-	}
-
 	return b, nil
 }
 
