@@ -32,7 +32,7 @@ func init() {
 var releaseCmd = &cobra.Command{
 	Use:     "release",
 	Aliases: []string{"rel", "r"},
-	Short:   "Release commands.",
+	Short:   "ReleaseConfig commands.",
 }
 
 func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
@@ -54,10 +54,10 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 		current, _ := b.GetCurrentRelease()
 		t := tabby.New()
 		t.AddHeader("RELEASE", "PATH")
-		releases := b.GetReleases()
+		releases := b.GetReleaseConfigs()
 		for _, release := range releases {
 			name := release.Name
-			if release == current {
+			if release.Name == current.Name {
 				name = fmt.Sprintf("* %s", name)
 			}
 			t.AddLine(name, release.FromPath)
@@ -87,7 +87,7 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 
 			t := tabby.New()
 			t.AddHeader("APP", "VERSION", "REPO", "BRANCH")
-			for _, app := range r.Apps {
+			for _, app := range r.AppReleaseConfigs {
 				t.AddLine(app.Name, app.Version, app.Repo, app.Branch)
 			}
 			t.Print()
@@ -104,12 +104,12 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		r := mustGetCurrentRelease(b)
 
-		appRelease := r.Apps[args[0]]
+		appRelease := r.AppReleases[args[0]]
 		if appRelease == nil {
 			return errors.Errorf("app %q not in this release", args[0])
 		}
 
-		app := appRelease.App
+		app := appRelease.AppRepo
 
 		if app == nil {
 			return errors.Errorf("app %q not available", args[0])
@@ -155,8 +155,8 @@ var releaseCreateCmd = &cobra.Command{
 		name, path := args[0], args[1]
 		c := bosun.ConfigFragment{
 			FromPath: path,
-			Releases: []*bosun.Release{
-				&bosun.Release{
+			Releases: []*bosun.ReleaseConfig{
+				&bosun.ReleaseConfig{
 					Name: name,
 				},
 			},
@@ -210,14 +210,14 @@ var releaseAddCmd = &cobra.Command{
 
 		for _, app := range apps {
 
-			_, ok := release.Apps[app.Name]
+			_, ok := release.AppReleaseConfigs[app.Name]
 			if ok {
 				pkg.Log.Warnf("Overwriting existing app %q.", app.Name)
 			} else {
 				ctx.Log.Infof("Adding app %q", app.Name)
 			}
 
-			release.Apps[app.Name], err = app.MakeAppRelease(release)
+			release.AppReleaseConfigs[app.Name], err = app.MakeAppRelease(release)
 
 			if err != nil {
 				return errors.Errorf("could not make release for app %q: %s", app.Name, err)
@@ -229,7 +229,7 @@ var releaseAddCmd = &cobra.Command{
 			return err
 		}
 
-		err = release.Fragment.Save()
+		err = release.Parent.Save()
 		return err
 	},
 }
@@ -249,7 +249,7 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		w := new(strings.Builder)
 		hasErrors := false
 
-		apps := release.Apps.GetAppsSortedByName()
+		apps := release.AppReleases.GetAppsSortedByName()
 		p := progressbar.New(len(apps))
 
 		for _, app := range apps {
@@ -309,7 +309,6 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 		ctx := b.NewContext()
-
 
 		err := release.Deploy(ctx)
 

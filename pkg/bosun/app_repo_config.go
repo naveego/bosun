@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-type AppConfig struct {
+type AppRepoConfig struct {
 	Name             string                 `yaml:"name"`
 	FromPath         string                 `yaml:"-"`
 	BranchForRelease bool                   `yaml:"branchForRelease,omitempty"`
@@ -29,11 +29,11 @@ type AppConfig struct {
 }
 
 type Dependency struct {
-	Name     string `yaml:"name"`
-	FromPath string `yaml:"-"`
-	Repo     string `yaml:"repo,omitempty"`
-	App      *App   `yaml:"-"`
-	Version  string `yaml:"version,omitempty"`
+	Name     string   `yaml:"name"`
+	FromPath string   `yaml:"-"`
+	Repo     string   `yaml:"repo,omitempty"`
+	App      *AppRepo `yaml:"-"`
+	Version  string   `yaml:"version,omitempty"`
 }
 
 type Dependencies []Dependency
@@ -47,11 +47,7 @@ type AppValuesConfig struct {
 	Files []string                 `yaml:"files,omitempty"`
 }
 
-func NewAppValues() AppValuesConfig {
-	return AppValuesConfig{Set: make(map[string]*DynamicValue)}
-}
-
-func (a *AppConfig) SetFragment(fragment *ConfigFragment) {
+func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
 	a.FromPath = fragment.FromPath
 	a.Fragment = fragment
 	for i := range a.Scripts {
@@ -61,7 +57,6 @@ func (a *AppConfig) SetFragment(fragment *ConfigFragment) {
 		a.DependsOn[i].FromPath = a.FromPath
 	}
 }
-
 
 // Combine returns a new AppValuesConfig with the values from
 // other added after (and/or overwriting) the values from this instance)
@@ -84,7 +79,7 @@ func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 
 type AppValuesByEnvironment map[string]AppValuesConfig
 
-func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfig{
+func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	out := AppValuesConfig{}
 	name := ctx.Env.Name
 
@@ -113,7 +108,7 @@ func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfi
 	return out
 }
 
-func (a *AppConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
+func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	out := a.Values.GetValuesConfig(ctx.WithDir(a.FromPath))
 
 	if a.ReleaseValues != nil {

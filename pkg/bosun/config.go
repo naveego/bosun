@@ -28,10 +28,10 @@ type ConfigFragment struct {
 	Imports      []string               `yaml:"imports,omitempty"`
 	Environments []*EnvironmentConfig   `yaml:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs"`
-	Apps         []*AppConfig           `yaml:"apps"`
+	Apps         []*AppRepoConfig       `yaml:"repos"`
 	FromPath     string                 `yaml:"-"`
 	Config       *Config                `yaml:"-"`
-	Releases     []*Release             `yaml:"releases,omitempty"`
+	Releases     []*ReleaseConfig       `yaml:"releases,omitempty"`
 }
 
 type State struct {
@@ -122,7 +122,7 @@ func (r *Config) importFragmentFromPath(path string) error {
 	}
 
 	if r.ImportedFragments[path] != nil {
-		if logConfigs{
+		if logConfigs {
 			log.Debugf("Already imported.")
 		}
 		return nil
@@ -152,7 +152,7 @@ func (r *Config) importFragmentFromPath(path string) error {
 	}
 
 	for _, m := range c.Releases {
-		m.SetFragment(c)
+		m.SetParent(c)
 	}
 
 	err = r.MergedFragments.Merge(c)
@@ -206,7 +206,7 @@ func (c *ConfigFragment) Save() error {
 	return err
 }
 
-func (c *ConfigFragment) mergeApp(incoming *AppConfig) error {
+func (c *ConfigFragment) mergeApp(incoming *AppRepoConfig) error {
 	for _, app := range c.Apps {
 		if app.Name == incoming.Name {
 			return errors.Errorf("app %q imported from %q, but it was already imported frome %q", incoming.Name, incoming.FromPath, app.FromPath)
@@ -249,7 +249,7 @@ func (c *ConfigFragment) GetEnvironmentConfig(name string) *EnvironmentConfig {
 	panic(fmt.Sprintf("no environment named %q", name))
 }
 
-func (c *ConfigFragment) mergeRelease(release *Release) error {
+func (c *ConfigFragment) mergeRelease(release *ReleaseConfig) error {
 	for _, e := range c.Releases {
 		if e.Name == release.Name {
 			return errors.Errorf("already have a release named %q, from %q", release.Name, e.FromPath)
@@ -282,7 +282,7 @@ func resolvePath(relativeToFile, path string) string {
 
 func getDirIfFile(path string) string {
 	if stat, err := os.Stat(path); err == nil {
-		if stat.IsDir(){
+		if stat.IsDir() {
 			return path
 		}
 		return filepath.Dir(path)

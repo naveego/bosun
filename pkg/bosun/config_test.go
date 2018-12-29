@@ -14,8 +14,8 @@ func yamlize(y string) string {
 
 var _ = Describe("ConfigFragment", func() {
 
-	Describe("AppValuesByEnvironment", func(){
-		It("should merge values when unmarshalled", func(){
+	Describe("AppValuesByEnvironment", func() {
+		It("should merge values when unmarshalled", func() {
 
 			input := yamlize(
 				`name: app
@@ -38,11 +38,11 @@ values:
   	 	- redfile
 
 `)
-			var sut AppConfig
+			var sut AppRepoConfig
 
 			Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 
-			redValues := sut.GetValuesConfig(BosunContext{Env:&EnvironmentConfig{Name:"red"}})
+			redValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "red"}})
 
 			Expect(redValues).To(BeEquivalentTo(AppValuesConfig{
 				Set: map[string]*DynamicValue{
@@ -55,18 +55,18 @@ values:
 				},
 			}))
 
-			greenValues := sut.GetValuesConfig(BosunContext{Env:&EnvironmentConfig{Name:"green"}})
+			greenValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "green"}})
 
 			Expect(greenValues).To(BeEquivalentTo(AppValuesConfig{
-					Set:map[string]*DynamicValue{
-						"redgreen1":{Value:"c"},
-						"green1":{Value:"d"},
-					},
-					Files:[]string{
-						"redgreenfile",
-						"greenfile",
-					},
-				}))
+				Set: map[string]*DynamicValue{
+					"redgreen1": {Value: "c"},
+					"green1":    {Value: "d"},
+				},
+				Files: []string{
+					"redgreenfile",
+					"greenfile",
+				},
+			}))
 
 			b, err := yaml.Marshal(sut)
 			Expect(err).ToNot(HaveOccurred())

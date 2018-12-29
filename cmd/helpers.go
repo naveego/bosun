@@ -20,8 +20,7 @@ import (
 
 const (
 	OutputTable = "table"
-	OutputYaml = "yaml"
-
+	OutputYaml  = "yaml"
 )
 
 func mustGetBosun() *bosun.Bosun {
@@ -54,7 +53,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		for _, r := range whitelist {
 			toReleaseSet[r] = true
 		}
-		for k, app := range r.Apps {
+		for k, app := range r.AppReleases {
 			if !toReleaseSet[k] {
 				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgReleaseIncludeApps)
 				app.Excluded = true
@@ -65,7 +64,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 	blacklist := viper.GetStringSlice(ArgReleaseExcludeApps)
 	for _, name := range blacklist {
 		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgReleaseExcludeApps)
-		if app, ok :=  r.Apps[name]; ok {
+		if app, ok := r.AppReleases[name]; ok {
 			app.Excluded = true
 		}
 	}
@@ -80,17 +79,16 @@ func getBosun() (*bosun.Bosun, error) {
 	}
 
 	params := bosun.Parameters{
-		Verbose: viper.GetBool(ArgGlobalVerbose),
-		DryRun:  viper.GetBool(ArgGlobalDryRun),
+		Verbose:  viper.GetBool(ArgGlobalVerbose),
+		DryRun:   viper.GetBool(ArgGlobalDryRun),
 		NoReport: viper.GetBool(ArgGlobalNoReport),
-		Force: viper.GetBool(ArgGlobalForce),
+		Force:    viper.GetBool(ArgGlobalForce),
 	}
-
 
 	return bosun.New(params, config)
 }
 
-func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {
+func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
 	apps, err := getApps(b, names)
 	if err != nil {
 		log.Fatal(err)
@@ -116,9 +114,9 @@ func MustYaml(i interface{}) string {
 // are valid file paths, imports the file at that path.
 // if names is empty, tries to find a apps starting
 // from the current directory
-func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
+func getApps(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
 
-	var apps []*bosun.App
+	var apps []*bosun.AppRepo
 	var err error
 
 	all := b.GetAppsSortedByName()
@@ -143,7 +141,7 @@ func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 		return apps, nil
 	}
 
-	var app *bosun.App
+	var app *bosun.AppRepo
 	if len(names) > 0 {
 		for _, name := range names {
 			maybePath, _ := filepath.Abs(name)
@@ -155,7 +153,7 @@ func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 			}
 			if stat, err := os.Stat(maybePath); err == nil && !stat.IsDir() {
 				app, err = b.GetOrAddAppForPath(maybePath)
-				if err ==  nil {
+				if err == nil {
 					apps = append(apps, app)
 				}
 			}
@@ -186,7 +184,7 @@ func checkExecutableDependency(exe string) {
 	pkg.Log.WithFields(logrus.Fields{"exe": exe, "path": path}).Debug("Found dependency.")
 }
 
-func confirm(msg string, args ... string) bool {
+func confirm(msg string, args ...string) bool {
 
 	label := fmt.Sprintf(msg, args)
 
@@ -210,7 +208,7 @@ func confirm(msg string, args ... string) bool {
 	return true
 }
 
-func check(err error, msgAndArgs ... string) {
+func check(err error, msgAndArgs ...string) {
 	if err == nil {
 		return
 	}
@@ -319,7 +317,6 @@ func findFileInDirOrAncestors(dir string, filename string) (string, error) {
 		dir = filepath.Dir(dir)
 	}
 }
-
 
 var (
 	colorHeader = color.New(color.Bold)

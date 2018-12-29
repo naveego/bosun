@@ -16,8 +16,8 @@ import (
 	"strings"
 )
 
-type App struct {
-	*AppConfig
+type AppRepo struct {
+	*AppRepoConfig
 	HelmRelease  *HelmRelease
 	DesiredState AppState
 	ActualState  AppState
@@ -27,19 +27,19 @@ type App struct {
 	isCloned     bool
 }
 
-type AppsSortedByName []*App
+type ReposSortedByName []*AppRepo
 type DependenciesSortedByTopology []Dependency
 
-func NewApp(appConfig *AppConfig) *App {
-	return &App{
-		AppConfig: appConfig,
-		isCloned:  true,
+func NewApp(appConfig *AppRepoConfig) *AppRepo {
+	return &AppRepo{
+		AppRepoConfig: appConfig,
+		isCloned:      true,
 	}
 }
 
-func NewAppFromDependency(dep *Dependency) *App {
-	return &App{
-		AppConfig: &AppConfig{
+func NewRepoFromDependency(dep *Dependency) *AppRepo {
+	return &AppRepo{
+		AppRepoConfig: &AppRepoConfig{
 			Name:    dep.Name,
 			Version: dep.Version,
 			Repo:    dep.Repo,
@@ -48,26 +48,26 @@ func NewAppFromDependency(dep *Dependency) *App {
 	}
 }
 
-func (a AppsSortedByName) Len() int {
+func (a ReposSortedByName) Len() int {
 	return len(a)
 }
 
-func (a AppsSortedByName) Less(i, j int) bool {
+func (a ReposSortedByName) Less(i, j int) bool {
 	return strings.Compare(a[i].Name, a[j].Name) < 0
 }
 
-func (a AppsSortedByName) Swap(i, j int) {
+func (a ReposSortedByName) Swap(i, j int) {
 	a[i], a[j] = a[j], a[i]
 }
 
-func (a *App) CheckRepoCloned() error {
+func (a *AppRepo) CheckRepoCloned() error {
 	if !a.IsRepoCloned() {
 		return ErrNotCloned
 	}
 	return nil
 }
 
-func (a *App) CloneRepo(ctx BosunContext, githubDir string) error {
+func (a *AppRepo) CloneRepo(ctx BosunContext, githubDir string) error {
 	if a.IsRepoCloned() {
 		return nil
 	}
@@ -87,7 +87,7 @@ func (a *App) CloneRepo(ctx BosunContext, githubDir string) error {
 	return nil
 }
 
-func (a *App) PullRepo(ctx BosunContext) error {
+func (a *AppRepo) PullRepo(ctx BosunContext) error {
 	err := a.CheckRepoCloned()
 	if err != nil {
 		return err
@@ -99,7 +99,7 @@ func (a *App) PullRepo(ctx BosunContext) error {
 	return err
 }
 
-func (a *App) IsRepoCloned() bool {
+func (a *AppRepo) IsRepoCloned() bool {
 
 	if a.FromPath == "" {
 		return false
@@ -112,7 +112,7 @@ func (a *App) IsRepoCloned() bool {
 	return true
 }
 
-func (a *App) GetBranch() string {
+func (a *AppRepo) GetBranch() string {
 	if a.IsRepoCloned() {
 		if a.branch == "" {
 			g, _ := git.NewGitWrapper(a.FromPath)
@@ -122,7 +122,7 @@ func (a *App) GetBranch() string {
 	return a.branch
 }
 
-func (a *App) GetReleaseFromBranch() string {
+func (a *AppRepo) GetReleaseFromBranch() string {
 	b := a.GetBranch()
 	if b != "" && strings.HasPrefix(b, "release/") {
 		return strings.Replace(b, "release/", "", 1)
@@ -130,7 +130,7 @@ func (a *App) GetReleaseFromBranch() string {
 	return ""
 }
 
-func (a *App) GetCommit() string {
+func (a *AppRepo) GetCommit() string {
 	if a.IsRepoCloned() && a.commit == "" {
 		g, _ := git.NewGitWrapper(a.FromPath)
 		a.commit = strings.Trim(g.Commit(), "'")
@@ -138,11 +138,11 @@ func (a *App) GetCommit() string {
 	return a.commit
 }
 
-func (a *App) HasChart() bool {
+func (a *AppRepo) HasChart() bool {
 	return a.ChartPath != "" || a.Chart != ""
 }
 
-func (a *App) LoadActualState(diff bool, ctx BosunContext) error {
+func (a *AppRepo) LoadActualState(diff bool, ctx BosunContext) error {
 	ctx = ctx.WithDir(a.FromPath)
 
 	a.ActualState = AppState{}
@@ -200,11 +200,11 @@ func (a *App) LoadActualState(diff bool, ctx BosunContext) error {
 	return nil
 }
 
-func (a *App) Dir() string {
+func (a *AppRepo) Dir() string {
 	return filepath.Dir(a.FromPath)
 }
 
-func (a *App) GetRunCommand() (*exec.Cmd, error) {
+func (a *AppRepo) GetRunCommand() (*exec.Cmd, error) {
 
 	if a.RunCommand == nil || len(a.RunCommand) == 0 {
 		return nil, errors.Errorf("no runCommand in %q", a.FromPath)
@@ -226,7 +226,7 @@ type PlanStep struct {
 	Action      func(ctx BosunContext) error
 }
 
-func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
+func (a *AppRepo) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	ctx = ctx.WithDir(a.FromPath)
 
@@ -339,7 +339,7 @@ func (a *App) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 }
 
-func (a *App) Reconcile(ctx BosunContext) error {
+func (a *AppRepo) Reconcile(ctx BosunContext) error {
 	ctx = ctx.WithDir(a.FromPath).WithLog(ctx.Log.WithField("app", a.Name))
 
 	log := ctx.Log
@@ -424,7 +424,7 @@ func (a *App) Reconcile(ctx BosunContext) error {
 	return nil
 }
 
-func (a *App) diff(ctx BosunContext) (string, error) {
+func (a *AppRepo) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
 
@@ -446,7 +446,7 @@ func (a *App) diff(ctx BosunContext) (string, error) {
 	return msg, nil
 }
 
-func (a *App) Delete(ctx BosunContext) error {
+func (a *AppRepo) Delete(ctx BosunContext) error {
 	args := []string{"delete"}
 	if a.DesiredState.Status == StatusNotFound {
 		args = append(args, "--purge")
@@ -458,7 +458,7 @@ func (a *App) Delete(ctx BosunContext) error {
 	return err
 }
 
-func (a *App) Rollback(ctx BosunContext) error {
+func (a *AppRepo) Rollback(ctx BosunContext) error {
 	args := []string{"rollback"}
 	args = append(args, a.Name, a.HelmRelease.Revision)
 	args = append(args, a.getHelmNamespaceArgs(ctx)...)
@@ -469,21 +469,21 @@ func (a *App) Rollback(ctx BosunContext) error {
 	return err
 }
 
-func (a *App) Install(ctx BosunContext) error {
+func (a *AppRepo) Install(ctx BosunContext) error {
 	args := append([]string{"install", "--name", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
 	return err
 }
 
-func (a *App) Upgrade(ctx BosunContext) error {
+func (a *AppRepo) Upgrade(ctx BosunContext) error {
 	args := append([]string{"upgrade", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
 	return err
 }
 
-func (a *App) GetStatus() (string, error) {
+func (a *AppRepo) GetStatus() (string, error) {
 	release, err := a.GetHelmRelease(a.Name)
 	if err != nil {
 		return "", err
@@ -495,7 +495,7 @@ func (a *App) GetStatus() (string, error) {
 	return release.Status, nil
 }
 
-func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
+func (a *AppRepo) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	values := Values{}
 
 	// Load values from chart.
@@ -549,7 +549,7 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	for k, v := range valuesConfig.Set {
 		value, err := v.Resolve(ctx)
 		if err != nil {
-			return nil, errors.Errorf( "resolving set values from app for key %q: %s", k, err)
+			return nil, errors.Errorf("resolving set values from app for key %q: %s", k, err)
 		}
 		err = values.AddPath(k, value)
 		if err != nil {
@@ -561,7 +561,7 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	for k, v := range ctx.GetParams().ValueOverrides {
 		err := values.AddPath(k, v)
 		if err != nil {
-			return nil, errors.Errorf( "applying overrides with path %q: %s", k, err)
+			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
 		}
 
 	}
@@ -569,11 +569,11 @@ func (a *App) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
 	return values, nil
 }
 
-func (a *App) GetAbsolutePathToChart() string {
+func (a *AppRepo) GetAbsolutePathToChart() string {
 	return resolvePath(a.FromPath, a.ChartPath)
 }
 
-func (a *App) getChartRef(ctx BosunContext) string {
+func (a *AppRepo) getChartRef(ctx BosunContext) string {
 	if ctx.Release != nil && ctx.Release.Transient {
 		return a.GetAbsolutePathToChart()
 	}
@@ -583,7 +583,7 @@ func (a *App) getChartRef(ctx BosunContext) string {
 	return a.GetAbsolutePathToChart()
 }
 
-func (a *App) getChartName() string {
+func (a *AppRepo) getChartName() string {
 	if a.Chart != "" {
 		return a.Chart
 	}
@@ -591,7 +591,7 @@ func (a *App) getChartName() string {
 	return fmt.Sprintf("helm.n5o.black/%s", name)
 }
 
-func (a *App) makeHelmArgs(ctx BosunContext) []string {
+func (a *AppRepo) makeHelmArgs(ctx BosunContext) []string {
 
 	var args []string
 
@@ -627,14 +627,14 @@ func (a *App) makeHelmArgs(ctx BosunContext) []string {
 	return args
 }
 
-func (a *App) getHelmNamespaceArgs(ctx BosunContext) []string {
+func (a *AppRepo) getHelmNamespaceArgs(ctx BosunContext) []string {
 	if a.Namespace != "" && a.Namespace != "default" {
 		return []string{"--namespace", a.Namespace}
 	}
 	return []string{}
 }
 
-func (a *App) getHelmDryRunArgs(ctx BosunContext) []string {
+func (a *AppRepo) getHelmDryRunArgs(ctx BosunContext) []string {
 	if ctx.IsDryRun() {
 		return []string{"--dry-run", "--debug"}
 	}
@@ -654,7 +654,7 @@ type HelmRelease struct {
 	Namespace  string `yaml:"Namespace"`
 }
 
-func (a *App) GetHelmRelease(name string) (*HelmRelease, error) {
+func (a *AppRepo) GetHelmRelease(name string) (*HelmRelease, error) {
 
 	if a.HelmRelease == nil {
 		releases, err := a.GetHelmList(fmt.Sprintf(`^%s$`, name))
@@ -672,7 +672,7 @@ func (a *App) GetHelmRelease(name string) (*HelmRelease, error) {
 	return a.HelmRelease, nil
 }
 
-func (a *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
+func (a *AppRepo) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
 	data, err := pkg.NewCommand("helm", args...).RunOut()
@@ -690,7 +690,7 @@ func (a *App) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 	return result.Releases, err
 }
 
-func (a *App) PublishChart(ctx BosunContext, force bool) error {
+func (a *AppRepo) PublishChart(ctx BosunContext, force bool) error {
 	if err := a.CheckRepoCloned(); err != nil {
 		return err
 	}
@@ -709,7 +709,7 @@ func (a *App) PublishChart(ctx BosunContext, force bool) error {
 	return err
 }
 
-func (a *App) GetImageName(versionAndRelease ...string) string {
+func (a *AppRepo) GetImageName(versionAndRelease ...string) string {
 	project := "private"
 	if a.HarborProject != "" {
 		project = a.HarborProject
@@ -726,7 +726,7 @@ func (a *App) GetImageName(versionAndRelease ...string) string {
 	return name
 }
 
-func (a *App) PublishImage(ctx BosunContext) error {
+func (a *AppRepo) PublishImage(ctx BosunContext) error {
 
 	tags := []string{"latest", a.Version}
 
@@ -760,7 +760,7 @@ func (a *App) PublishImage(ctx BosunContext) error {
 	return nil
 }
 
-func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (DependenciesSortedByTopology, error) {
+func GetDependenciesInTopologicalOrder(apps map[string]*AppRepo, roots ...string) (DependenciesSortedByTopology, error) {
 
 	const target = "__TARGET__"
 
@@ -801,7 +801,7 @@ func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (D
 			continue
 		}
 
-		// exclude non-existent apps
+		// exclude non-existent repos
 		repo := repos[name]
 		dep := Dependency{
 			Name: name,
@@ -816,7 +816,7 @@ func GetDependenciesInTopologicalOrder(apps map[string]*App, roots ...string) (D
 	return result, nil
 }
 
-func (a *App) MakeAppRelease(release *Release) (*AppRelease, error) {
+func (a *AppRepo) MakeAppRelease(release *Release) (*AppReleaseConfig, error) {
 
 	if !release.Transient && a.BranchForRelease {
 
@@ -856,16 +856,20 @@ func (a *App) MakeAppRelease(release *Release) (*AppRelease, error) {
 		}
 	}
 
-	r := &AppRelease{
+	chart := a.Chart
+	if release.Transient {
+		chart = a.ChartPath
+	}
+
+	r := &AppReleaseConfig{
 		Name:      a.Name,
 		BosunPath: a.FromPath,
 		Version:   a.Version,
 		Repo:      a.Repo,
 		RepoPath:  a.RepoPath,
-		App:       a,
 		Branch:    a.GetBranch(),
-		Commit: a.GetCommit(),
-		ChartName: a.getChartName(),
+		Commit:    a.GetCommit(),
+		Chart:     chart,
 	}
 
 	return r, nil
@@ -876,7 +880,7 @@ func (a *App) MakeAppRelease(release *Release) (*AppRelease, error) {
 // and updating the chart. The `bump` parameter may be one of
 // major|minor|patch|major.minor.patch. If major.minor.patch is provided,
 // the version is set to that value.
-func (a *App) BumpVersion(ctx BosunContext, bump string) error {
+func (a *AppRepo) BumpVersion(ctx BosunContext, bump string) error {
 	version, err := semver.NewVersion(bump)
 	if err == nil {
 		a.Version = version.String()
@@ -930,7 +934,7 @@ func (a *App) BumpVersion(ctx BosunContext, bump string) error {
 	return a.Fragment.Save()
 }
 
-func (a *App) getChartAsMap() (map[string]interface{}, error) {
+func (a *AppRepo) getChartAsMap() (map[string]interface{}, error) {
 	err := a.CheckRepoCloned()
 	if err != nil {
 		return nil, err
@@ -951,7 +955,7 @@ func (a *App) getChartAsMap() (map[string]interface{}, error) {
 	return out, err
 }
 
-func (a *App) saveChart(m map[string]interface{}) error {
+func (a *AppRepo) saveChart(m map[string]interface{}) error {
 	b, err := yaml.Marshal(m)
 	if err != nil {
 		return err

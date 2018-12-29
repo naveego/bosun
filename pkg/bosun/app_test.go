@@ -6,30 +6,30 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("App", func() {
+var _ = Describe("AppRepo", func() {
 
-	It("should support topological sort", func(){
+	It("should support topological sort", func() {
 
-		apps := map[string]*App{
-			"a":{
-				AppConfig: &AppConfig{
+		apps := map[string]*AppRepo{
+			"a": {
+				AppRepoConfig: &AppRepoConfig{
 					Name: "a",
-					DependsOn:[]Dependency{
-						{Name:"b"},
-						{Name:"c"},
+					DependsOn: []Dependency{
+						{Name: "b"},
+						{Name: "c"},
 					},
 				},
 			},
-			"b":{
-				AppConfig: &AppConfig{
+			"b": {
+				AppRepoConfig: &AppRepoConfig{
 					Name: "b",
 				},
 			},
-			"c":{
-				AppConfig: &AppConfig{
+			"c": {
+				AppRepoConfig: &AppRepoConfig{
 					Name: "c",
-					DependsOn:[]Dependency{
-						{Name:"b"},
+					DependsOn: []Dependency{
+						{Name: "b"},
 					},
 				},
 			},

@@ -78,7 +78,7 @@ func init() {
 var appCmd = &cobra.Command{
 	Use:     "app",
 	Aliases: []string{"apps", "a"},
-	Short:   "App commands",
+	Short:   "AppRepo commands",
 }
 
 var appVersionCmd = &cobra.Command{
@@ -135,7 +135,7 @@ var appAcceptActualCmd = &cobra.Command{
 
 		p := progressbar.New(len(apps))
 
-		err = foreachAppConcurrent(apps, func(app *bosun.App) error {
+		err = foreachAppConcurrent(apps, func(app *bosun.AppRepo) error {
 			log := pkg.Log.WithField("name", app)
 			log.Debug("Getting actual state...")
 			err := app.LoadActualState(false, ctx)
@@ -159,7 +159,7 @@ var appAcceptActualCmd = &cobra.Command{
 	},
 }
 
-func foreachAppConcurrent(apps []*bosun.App, action func(app *bosun.App) error) error {
+func foreachAppConcurrent(apps []*bosun.AppRepo, action func(app *bosun.AppRepo) error) error {
 
 	wg := new(sync.WaitGroup)
 	wg.Add(len(apps))
@@ -172,7 +172,7 @@ func foreachAppConcurrent(apps []*bosun.App, action func(app *bosun.App) error) 
 			err := action(app)
 			if err != nil {
 				hadErr = true
-				pkg.Log.WithField("name", app.Name).WithError(err).Error("App action failed.")
+				pkg.Log.WithField("name", app.Name).WithError(err).Error("AppRepo action failed.")
 			}
 			wg.Done()
 		}()
@@ -255,7 +255,7 @@ var appListCmd = &cobra.Command{
 		skipActual := viper.GetBool(ArgAppListSkipActual)
 
 		if !skipActual {
-			err = foreachAppConcurrent(apps, func(app *bosun.App) error {
+			err = foreachAppConcurrent(apps, func(app *bosun.AppRepo) error {
 				err := app.LoadActualState(false, ctx)
 				p.Add(1)
 				return err
@@ -403,8 +403,7 @@ var appDeployCmd = &cobra.Command{
 			return err
 		}
 
-		ctx.Log.Debugf("Apps: \n%s\n", MustYaml(apps))
-
+		ctx.Log.Debugf("AppReleaseConfigs: \n%s\n", MustYaml(apps))
 
 		sets := map[string]string{}
 		for _, set := range viper.GetStringSlice(ArgAppDeploySet) {
@@ -417,9 +416,12 @@ var appDeployCmd = &cobra.Command{
 		}
 
 		ctx.Log.Debug("Creating transient release...")
-		r := &bosun.Release{
-			Name:time.Now().Format(time.RFC3339),
-			Transient:true,
+		rc := &bosun.ReleaseConfig{
+			Name: time.Now().Format(time.RFC3339),
+		}
+		r, err := bosun.NewRelease(ctx, rc)
+		if err != nil {
+			return err
 		}
 		for _, app := range apps {
 			ctx.Log.WithField("app", app.Name).Debug("Including in release.")
@@ -437,26 +439,24 @@ var appDeployCmd = &cobra.Command{
 			requestedAppNameSet[app.Name] = true
 		}
 
-
 		if viper.GetBool(ArgAppDeployDeps) {
-		ctx.Log.Debug("Including dependencies of all apps...")
+			ctx.Log.Debug("Including dependencies of all apps...")
 			err = r.IncludeDependencies(ctx)
 			if err != nil {
 				return errors.Wrap(err, "include dependencies")
 			}
 		}
 
-		toDeploy := r.Apps
+		toDeploy := r.AppReleaseConfigs
 
 		for _, app := range toDeploy {
 			requested := requestedAppNameSet[app.Name]
 			if requested {
-				pkg.Log.Infof("App %q will be deployed because it was requested.", app.Name)
+				pkg.Log.Infof("AppRepo %q will be deployed because it was requested.", app.Name)
 			} else {
-				pkg.Log.Infof("App %q will be deployed because it was a dependency of a requested app.", app.Name)
+				pkg.Log.Infof("AppRepo %q will be deployed because it was a dependency of a requested app.", app.Name)
 			}
 		}
-
 
 		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", MustYaml(r))
 
@@ -524,7 +524,6 @@ var appRunCmd = &cobra.Command{
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to run apps.")
 		}
-
 
 		apps, err := getApps(b, args)
 		if err != nil {
@@ -602,15 +601,15 @@ var appPublishChartCmd = addCommand(
 var appPublishImageCmd = addCommand(
 	appCmd,
 	&cobra.Command{
-		Use:           "publish-image [app]",
-		Args:          cobra.MaximumNArgs(1),
-		Short:         "Publishes the image for an app.",
-		Long:          `If app is not provided, the current directory is used.
+		Use:   "publish-image [app]",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Publishes the image for an app.",
+		Long: `If app is not provided, the current directory is used.
 The image will be published with the "latest" tag and with a tag for the current version.
 If the current branch is a release branch, the image will also be published with a tag formatted
 as "version-release".
 `,
-SilenceUsage:  true,
+		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -637,7 +636,7 @@ var appPullCmd = addCommand(
 			if err != nil {
 				return err
 			}
-			repos := map[string]*bosun.App{}
+			repos := map[string]*bosun.AppRepo{}
 			for _, app := range apps {
 				repos[app.Repo] = app
 			}
@@ -731,7 +730,7 @@ var appCloneCmd = addCommand(
 				return err
 			}
 
-			repos := map[string]*bosun.App{}
+			repos := map[string]*bosun.AppRepo{}
 			for _, app := range apps {
 				repos[app.Repo] = app
 			}
@@ -741,7 +740,7 @@ var appCloneCmd = addCommand(
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
 				log.Info("Cloning...")
 				if app.IsRepoCloned() {
-					pkg.Log.Infof("App already cloned to %q", app.FromPath)
+					pkg.Log.Infof("AppRepo already cloned to %q", app.FromPath)
 					continue
 				}
 
@@ -760,7 +759,7 @@ var appCloneCmd = addCommand(
 		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into.")
 	})
 
-func getStandardObjects(args []string) (*bosun.Bosun, *bosun.EnvironmentConfig, []*bosun.App, bosun.BosunContext) {
+func getStandardObjects(args []string) (*bosun.Bosun, *bosun.EnvironmentConfig, []*bosun.AppRepo, bosun.BosunContext) {
 	b := mustGetBosun()
 	env := b.GetCurrentEnvironment()
 	ctx := b.NewContext()

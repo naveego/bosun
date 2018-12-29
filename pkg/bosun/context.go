@@ -15,7 +15,9 @@ type BosunContext struct {
 	Dir             string
 	Log             *logrus.Entry
 	Values          Values
-	Release *Release
+	Release         *Release
+	AppRepo         *AppRepo
+	AppRelease      *AppRelease
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
 }
@@ -35,6 +37,15 @@ func (c BosunContext) Ctx() context.Context {
 
 func (c BosunContext) WithRelease(r *Release) BosunContext {
 	c.Release = r
+	return c
+}
+
+func (c BosunContext) WithAppRepo(a *AppRepo) BosunContext {
+	c.AppRepo = a
+	return c
+}
+func (c BosunContext) WithAppRelease(a *AppRelease) BosunContext {
+	c.AppRelease = a
 	return c
 }
 
