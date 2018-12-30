@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -42,10 +43,10 @@ func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[
 func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 type AppValuesConfig struct {
-	Set   map[string]*DynamicValue `yaml:"set,omitempty"`
-	Dynamic   map[string]*DynamicValue `yaml:"dynamic,omitempty"`
-	Files []string                 `yaml:"files,omitempty"`
-	Static Values `yaml:"static"`
+	Set     map[string]*DynamicValue `yaml:"set,omitempty"`
+	Dynamic map[string]*DynamicValue `yaml:"dynamic,omitempty"`
+	Files   []string                 `yaml:"files,omitempty"`
+	Static  Values                   `yaml:"static"`
 }
 
 func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
@@ -105,24 +106,28 @@ func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfi
 	return out
 }
 
-// MakeSelfContained resolves all file system dependencies into static values
+// LoadFiles resolves all file system dependencies into static values
 // on this instance, then clears those dependencies.
-func (a AppValuesByEnvironment) MakeSelfContained(ctx BosunContext) error {
-	for env, vc := range a {
-		if vc.Static == nil {
-			vc.Static = Values{}
-		}
+func (a AppValuesConfig) LoadFiles(ctx BosunContext) error {
 
-		for _, file := range vc.Files {
-			file = resolvePath(ctx.Dir, file)
-			valuesFromFile, err := ReadValuesFile(file)
-			if err != nil {
-				return errors.Errorf("reading values file %q for env key %q: %s", file, env, err)
-			}
-			vc.Static.Merge(valuesFromFile)
-		}
-		vc.Files = nil
+	if a.Static == nil {
+		a.Static = Values{}
 	}
+
+	for _, file := range a.Files {
+		file = ctx.ResolvePath(file)
+		valuesFromFile, err := ReadValuesFile(file)
+		if err != nil {
+			return errors.Errorf("reading values file %q for env key %q: %s", file, ctx.Env.Name, err)
+		}
+		// make sure any existing static values are merged OVER the values from the file
+		static := valuesFromFile
+		static.Merge(a.Static)
+		a.Static = static
+	}
+	a.Files = nil
+	a.Dynamic = a.Set
+	a.Set = nil
 
 	return nil
 }
@@ -130,7 +135,82 @@ func (a AppValuesByEnvironment) MakeSelfContained(ctx BosunContext) error {
 func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	out := a.Values.GetValuesConfig(ctx.WithDir(a.FromPath))
 
+	if out.Static == nil {
+		out.Static = Values{}
+	}
+	if out.Dynamic == nil {
+		out.Dynamic = map[string]*DynamicValue{}
+	}
+
 	return out
+}
+
+// ExportValues creates an AppValuesByEnvironment instance with all the values
+// for releasing this app, reified into their environments, including values from
+// files and from the default values.yaml file for the chart.
+func (a *AppRepo) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error) {
+	ctx = ctx.WithAppRepo(a)
+	var err error
+	envs := map[string]*EnvironmentConfig{}
+	for envNames := range a.Values {
+		for _, envName := range strings.Split(envNames, ",") {
+			if _, ok := envs[envName]; !ok {
+				envs[envName], err = ctx.Bosun.GetEnvironment(envName)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	chartRef := a.getAbsoluteChartPathOrChart(ctx)
+	valuesYaml, err := pkg.NewCommand(
+		"helm", "inspect", "values",
+		chartRef,
+		"--version", a.Version,
+	).RunOut()
+	if err != nil {
+		return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
+	}
+
+	defaultValues, err := ReadValues([]byte(valuesYaml))
+	if err != nil {
+		return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
+	}
+
+	out := AppValuesByEnvironment{}
+
+	for _, env := range envs {
+		envCtx := ctx.WithEnv(env)
+		valuesConfig := a.GetValuesConfig(envCtx)
+		err = valuesConfig.LoadFiles(envCtx)
+		if err != nil {
+			return nil, err
+		}
+		// make sure values from bosun app overwrite defaults from helm chart
+		static := defaultValues.Clone()
+		static.Merge(valuesConfig.Static)
+		valuesConfig.Static = static
+		valuesConfig.Files = nil
+		valuesConfig.Dynamic = valuesConfig.Set
+		valuesConfig.Set = nil
+		out[env.Name] = valuesConfig
+	}
+
+	return out, nil
+}
+
+func (a *AppRepo) ExportActions(ctx BosunContext) ([]*AppAction, error) {
+	var err error
+	var actions []*AppAction
+	for _, action := range a.Actions {
+		err = action.MakeSelfContained(ctx)
+		if err != nil {
+			return nil, errors.Errorf("prepare action %q for release: %s", action.Name, err)
+		}
+		actions = append(actions, action)
+	}
+
+	return actions, nil
 }
 
 type AppStatesByEnvironment map[string]AppStateMap
@@ -145,6 +225,7 @@ type AppState struct {
 	Diff    string `yaml:"-"`
 	Error   error  `yaml:"-"`
 	Force   bool   `yaml:"-"`
+	Unavailable bool `yaml:"-"`
 }
 
 func (a AppState) String() string {
@@ -166,6 +247,7 @@ const (
 	StatusDeleted        = "DELETED"
 	StatusFailed         = "FAILED"
 	StatusPendingUpgrade = "PENDING_UPGRADE"
+	StatusUnchanged = "UNCHANGED"
 )
 
 type Routing string

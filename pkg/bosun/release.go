@@ -26,6 +26,9 @@ type Release struct {
 
 func NewRelease(ctx BosunContext, r *ReleaseConfig) (*Release, error) {
 	var err error
+	if r.AppReleaseConfigs == nil {
+		r.AppReleaseConfigs = map[string]*AppReleaseConfig{}
+	}
 	release := &Release{
 		ReleaseConfig: r,
 		AppReleases:   map[string]*AppRelease{},
@@ -60,40 +63,40 @@ func (a AppReleaseMap) GetAppsSortedByName() AppReleasesSortedByName {
 	return out
 }
 
-func (r *AppRelease) Validate(ctx BosunContext) []error {
+func (a *AppRelease) Validate(ctx BosunContext) []error {
 
 	var errs []error
 
-	out, err := pkg.NewCommand("helm", "search", r.Chart, "-v", r.Version).RunOut()
+	out, err := pkg.NewCommand("helm", "search", a.Chart, "-v", a.Version).RunOut()
 	if err != nil {
-		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", r.Chart, r.Version, err))
+		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.Chart, a.Version, err))
 	}
-	if !strings.Contains(out, r.Chart) {
-		errs = append(errs, errors.Errorf("chart %s@%s not found", r.Chart, r.Version))
+	if !strings.Contains(out, a.Chart) {
+		errs = append(errs, errors.Errorf("chart %s@%s not found", a.Chart, a.Version))
 	}
 
-	if !r.AppRepo.BranchForRelease {
+	if !a.AppRepo.BranchForRelease {
 		return errs
 	}
 
 	// TODO: validate docker image presence more efficiently
 	err = pkg.NewCommand("docker", "pull",
-		r.AppRepo.GetImageName(r.Version, r.ParentConfig.Name)).
+		a.AppRepo.GetImageName(a.Version, a.ParentConfig.Name)).
 		RunE()
 
 	if err != nil {
 		errs = append(errs, errors.Errorf("image not found: %s", err))
 	}
 
-	if r.AppRepo.IsRepoCloned() {
-		appBranch := r.AppRepo.GetBranch()
-		if appBranch != r.Branch {
-			errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", r.Branch, appBranch))
+	if a.AppRepo.IsRepoCloned() {
+		appBranch := a.AppRepo.GetBranch()
+		if appBranch != a.Branch {
+			errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", a.Branch, appBranch))
 		}
 
-		appCommit := r.AppRepo.GetCommit()
-		if appCommit != r.Commit {
-			errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", r.Commit, appCommit))
+		appCommit := a.AppRepo.GetCommit()
+		if appCommit != a.Commit {
+			errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.Commit, appCommit))
 		}
 	}
 
@@ -102,26 +105,25 @@ func (r *AppRelease) Validate(ctx BosunContext) []error {
 
 func (r *Release) IncludeDependencies(ctx BosunContext) error {
 	ctx = ctx.WithRelease(r)
-	allApps := ctx.Bosun.GetApps()
+	deps := ctx.Bosun.GetAppDependencyMap()
 	var appNames []string
 	for _, app := range r.AppReleaseConfigs {
 		appNames = append(appNames, app.Name)
 	}
 
 	// this is inefficient but it gets us all the dependencies
-	topology, err := GetDependenciesInTopologicalOrder(allApps, appNames...)
+	topology, err := GetDependenciesInTopologicalOrder(deps, appNames...)
 
 	if err != nil {
 		return errors.Errorf("repos could not be sorted in dependency order: %s", err)
 	}
 
 	for _, dep := range topology {
-		app, ok := allApps[dep.Name]
-		if !ok {
-			return errors.Errorf("an app or dependency could not be found: %q from repo %q", dep.Name, dep.Repo)
-		} else {
-			if r.AppReleaseConfigs[app.Name] == nil {
-
+		if r.AppReleaseConfigs[dep] == nil {
+			app, err := ctx.Bosun.GetApp(dep)
+			if err != nil {
+				return errors.Errorf("an app or dependency %q could not be found: %s", dep, err)
+			} else {
 				err = r.IncludeApp(ctx, app)
 				if err != nil {
 					return errors.Errorf("could not include app %q: %s", app.Name, err)
@@ -137,66 +139,50 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	ctx = ctx.WithRelease(r)
 
 	var requestedAppNames []string
-	requestedAppNameSet := map[string]bool{}
+	 dependencies := map[string][]string{}
 	for _, app := range r.AppReleaseConfigs {
-		if app == nil {
-			continue
+		requestedAppNames = append(requestedAppNames, app.Name)
+		for _, dep := range app.DependsOn {
+			dependencies[app.Name] = append(dependencies[app.Name], dep)
 		}
-		requestedAppNameSet[app.Name] = true
-	}
-	for appName := range requestedAppNameSet {
-		requestedAppNames = append(requestedAppNames, appName)
 	}
 
-	allApps := ctx.Bosun.GetApps()
-
-	topology, err := GetDependenciesInTopologicalOrder(allApps, requestedAppNames...)
+	topology, err := GetDependenciesInTopologicalOrder(dependencies, requestedAppNames...)
 
 	if err != nil {
 		return errors.Errorf("repos could not be sorted in dependency order: %s", err)
 	}
 
-	var toDeploy []*AppRepo
+	var toDeploy []*AppRelease
 
 	for _, dep := range topology {
-		app, ok := allApps[dep.Name]
+		app, ok := r.AppReleases[dep]
 		if !ok {
-			return errors.Errorf("an app specifies a dependency that could not be found: %q from repo %q", dep.Name, dep.Repo)
-		} else {
-			if requestedAppNameSet[dep.Name] {
-				toDeploy = append(toDeploy, app)
-			} else {
-				ctx.Log.Debugf("Skipping dependency %q because it was not requested.", dep.Name)
+			if r.Transient {
+				continue
 			}
+
+			return errors.Errorf("an app specifies a dependency that could not be found: %q", dep)
 		}
+
+		if app.DesiredState.Status == StatusUnchanged {
+			ctx.WithAppRelease(app).Log.Info("Skipping deploy because desired state was %q.", StatusUnchanged)
+			continue
+		}
+
+		toDeploy = append(toDeploy, app)
 	}
 
 	for _, app := range toDeploy {
-		requested := requestedAppNameSet[app.Name]
-		if requested {
-			ctx.Log.Infof("AppRepo %q will be deployed because it was requested.", app.Name)
-		} else {
-			ctx.Log.Infof("AppRepo %q will be deployed because it was a dependency of a requested app.", app.Name)
-		}
-	}
-
-	for _, app := range toDeploy {
-		//
-		// if appRelease, ok := r.AppReleaseConfigs[app.Name]; ok {
-		// 	app.ReleaseValues = appRelease.Values
-		// }
 
 		app.DesiredState.Status = StatusDeployed
 		if app.DesiredState.Routing == "" {
 			app.DesiredState.Routing = RoutingCluster
 		}
 
-		app.DesiredState.Force = ctx.GetParams().Force
+		ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)
 
-		// for transient release, use local chart if available
-		if r.Transient && app.ChartPath != "" {
-			app.Chart = ""
-		}
+		app.DesiredState.Force = ctx.GetParams().Force
 
 		err = app.Reconcile(ctx)
 
@@ -217,7 +203,9 @@ func (r *Release) IncludeApp(ctx BosunContext, app *AppRepo) error {
 		r.AppReleaseConfigs = map[string]*AppReleaseConfig{}
 	}
 
-	config, err = app.GetAppReleaseConfig(r)
+	ctx = ctx.WithRelease(r)
+
+	config, err = app.GetAppReleaseConfig(ctx)
 	if err != nil {
 		return errors.Wrap(err, "make app release")
 	}

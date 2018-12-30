@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 const logConfigs = true
@@ -29,7 +30,7 @@ type ConfigFragment struct {
 	Environments []*EnvironmentConfig   `yaml:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs"`
 	Apps         []*AppRepoConfig       `yaml:"apps"`
-	FromPath     string                 `yaml:"-"`
+	FromPath     string                 `yaml:"fromPath"`
 	Config       *Config                `yaml:"-"`
 	Releases     []*ReleaseConfig       `yaml:"releases,omitempty"`
 }
@@ -202,9 +203,14 @@ func (c *ConfigFragment) Save() error {
 	if err != nil {
 		return err
 	}
+
+	b = stripFromPath.ReplaceAll(b, []byte{})
+
 	err = ioutil.WriteFile(c.FromPath, b, 0600)
 	return err
 }
+
+var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)
 
 func (c *ConfigFragment) mergeApp(incoming *AppRepoConfig) error {
 	for _, app := range c.Apps {

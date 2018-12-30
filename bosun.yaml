@@ -1,7 +1,7 @@
 apps:
-  - name: bosun
-    version: 0.1.0
-    scripts:
-      - name: publish
-        steps:
-          - literal: [mage, -v, publish]
+#  - name: bosun
+#    version: 0.1.0
+#    scripts:
+#      - name: publish
+#        steps:
+#          - literal: [mage, -v, publish]

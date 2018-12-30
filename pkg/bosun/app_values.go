@@ -172,6 +172,13 @@ func (v Values) Merge(src Values) {
 	}
 }
 
+func (v Values) Clone() Values {
+	out := Values{}
+	yml, _ := yaml.Marshal(v)
+	_ = yaml.Unmarshal(yml, &out)
+	return out
+}
+
 // istable is a special-purpose function to see if the present thing matches the definition of a YAML table.
 func istable(v interface{}) bool {
 	_, ok := v.(map[string]interface{})

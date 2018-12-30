@@ -24,11 +24,11 @@ const (
 type AppAction struct {
 	Name        string          `yaml:"name"`
 	Description string          `yaml:"description,omitempty"`
-	When        ActionSchedule  `yaml:"when"`
-	Where       string          `yaml:"where"`
+	When        ActionSchedule  `yaml:"when,omitempty"`
+	Where       string          `yaml:"where,omitempty"`
 	MaxAttempts int             `yaml:"maxAttempts,omitempty"`
-	Timeout     time.Duration   `yaml:"timeout"`
-	Interval    time.Duration   `yaml:"interval"`
+	Timeout     time.Duration   `yaml:"timeout,omitempty"`
+	Interval    time.Duration   `yaml:"interval,omitempty"`
 	Vault       *AppVaultAction `yaml:"vault,omitempty"`
 	Exec        *DynamicValue   `yaml:"exec,omitempty"`
 	Test        *AppTestAction  `yaml:"test,omitempty"`

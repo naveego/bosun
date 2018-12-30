@@ -2,10 +2,13 @@ package bosun
 
 import (
 	"context"
+	"fmt"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
+	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -14,7 +17,7 @@ type BosunContext struct {
 	Env             *EnvironmentConfig
 	Dir             string
 	Log             *logrus.Entry
-	Values          Values
+	ReleaseValues   *ReleaseValues
 	Release         *Release
 	AppRepo         *AppRepo
 	AppRelease      *AppRelease
@@ -38,29 +41,40 @@ func (c BosunContext) Ctx() context.Context {
 func (c BosunContext) WithRelease(r *Release) BosunContext {
 	c.Release = r
 	c.Log = c.Log.WithField("release", r.Name)
+	c.LogLine(1, "[Context] Changed Release.")
 	return c
 }
 
 func (c BosunContext) WithAppRepo(a *AppRepo) BosunContext {
+	if c.AppRepo == a {
+		return c
+	}
 	c.AppRepo = a
 	c.Log = c.Log.WithField("repo", a.Name)
-	return c
+	c.Log.Debug("")
+	c.LogLine(1, "[Context] Changed AppRepo.")
+	return c.WithDir(a.FromPath)
 }
+
 func (c BosunContext) WithAppRelease(a *AppRelease) BosunContext {
+	if c.AppRelease == a {
+		return c
+	}
 	c.AppRelease = a
 	c.Log = c.Log.WithField("app", a.Name)
+	c.LogLine(1, "[Context] Changed AppRelease.")
 	return c
 }
 
-func (c BosunContext) WithValues(v Values) BosunContext {
-	c.Values = v
+func (c BosunContext) WithReleaseValues(v *ReleaseValues) BosunContext {
+	c.ReleaseValues = v
 	c.valuesAsEnvVars = nil
 	return c
 }
 
 func (c BosunContext) GetValuesAsEnvVars() map[string]string {
-	if c.valuesAsEnvVars == nil && c.Values != nil {
-		c.valuesAsEnvVars = c.Values.ToEnv("BOSUN_")
+	if c.valuesAsEnvVars == nil && c.ReleaseValues != nil {
+		c.valuesAsEnvVars = c.ReleaseValues.Values.ToEnv("BOSUN_")
 	}
 	return c.valuesAsEnvVars
 }
@@ -88,11 +102,26 @@ func (c BosunContext) WithTimeout(timeout time.Duration) BosunContext {
 	return c.WithContext(ctx)
 }
 
+// ResolvePath resolves the path relative to the Dir in this context.
+// It will also expand some environment variables:
+// $ENVIRONMENT and $BOSUN_ENVIRONMENT => Env.Name
+// $DOMAIN AND BOSUN_DOMAIN => Env.Domain
 func (c BosunContext) ResolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
+	path = os.Expand(path, func(name string) string {
+		switch name {
+		case "ENVIRONMENT", "BOSUN_ENVIRONMENT":
+			return c.Env.Name
+		case "DOMAIN", "BOSUN_DOMAIN":
+			return c.Env.Domain
+		default:
+			return name
+		}
+	})
+
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(c.Dir, path)
 	}
-	return filepath.Join(c.Dir, path)
+	return path
 }
 
 func (c BosunContext) GetParams() Parameters {
@@ -103,14 +132,26 @@ func (c BosunContext) GetParams() Parameters {
 }
 
 func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
-	values := c.Values
-	values.AddPath("cluster", c.Env.Cluster)
-	values.AddPath("domain", c.Env.Domain)
-
-	templateArgs := pkg.TemplateValues{
+	tv := pkg.TemplateValues{
 		Cluster: c.Env.Cluster,
 		Domain:  c.Env.Domain,
-		Values:  values,
 	}
-	return templateArgs
+	if c.ReleaseValues != nil {
+		values := c.ReleaseValues.Values
+		values.AddPath("cluster", c.Env.Cluster)
+		values.AddPath("domain", c.Env.Domain)
+		tv.Values = values
+	}
+	return tv
+}
+
+func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
+	c.Env = env
+	c.Log = c.Log.WithField("env", env.Name)
+	return c
+}
+
+func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
+	_, file, line, _ := runtime.Caller(skip)
+	c.Log.WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
 }

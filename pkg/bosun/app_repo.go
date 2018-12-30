@@ -19,17 +19,15 @@ import (
 
 type AppRepo struct {
 	*AppRepoConfig
-	HelmRelease  *HelmRelease
-	DesiredState AppState
-	ActualState  AppState
-	branch       string
-	commit       string
-	gitTag       string
-	isCloned     bool
+	HelmRelease *HelmRelease
+	branch      string
+	commit      string
+	gitTag      string
+	isCloned    bool
 }
 
 type ReposSortedByName []*AppRepo
-type DependenciesSortedByTopology []Dependency
+type DependenciesSortedByTopology []string
 
 func NewApp(appConfig *AppRepoConfig) *AppRepo {
 	return &AppRepo{
@@ -113,6 +111,16 @@ func (a *AppRepo) IsRepoCloned() bool {
 	return true
 }
 
+func (a *AppRepo) GetRepo() string {
+	if a.Repo == "" {
+		repoPath, _ := git.GetRepoPath(a.FromPath)
+		org, repo := git.GetOrgAndRepoFromPath(repoPath)
+		a.Repo = fmt.Sprintf("%s/%s", org, repo)
+	}
+
+	return a.Repo
+}
+
 func (a *AppRepo) GetBranch() string {
 	if a.IsRepoCloned() {
 		if a.branch == "" {
@@ -143,64 +151,6 @@ func (a *AppRepo) HasChart() bool {
 	return a.ChartPath != "" || a.Chart != ""
 }
 
-func (a *AppRepo) LoadActualState(diff bool, ctx BosunContext) error {
-	ctx = ctx.WithDir(a.FromPath)
-
-	a.ActualState = AppState{}
-
-	log := ctx.Log.WithField("name", a.Name)
-
-	if !a.HasChart() {
-		return nil
-	}
-
-	if !ctx.Bosun.IsClusterAvailable() {
-		log.Debug("Cluster not available.")
-
-		a.ActualState.Status = "unknown"
-		a.ActualState.Routing = "unknown"
-		a.ActualState.Version = "unknown"
-
-		return nil
-	}
-
-	log.Debug("Getting actual state...")
-
-	release, err := a.GetHelmRelease(a.Name)
-
-	if err != nil || release == nil {
-		if release == nil || strings.Contains(err.Error(), "not found") {
-			a.ActualState.Status = StatusNotFound
-			a.ActualState.Routing = RoutingNA
-			a.ActualState.Version = ""
-		} else {
-			a.ActualState.Error = err
-		}
-		return nil
-	}
-
-	a.ActualState.Status = release.Status
-
-	releaseData, _ := pkg.NewCommand("helm", "get", a.Name).RunOut()
-
-	if strings.Contains(releaseData, "routeToHost: true") {
-		a.ActualState.Routing = RoutingLocalhost
-	} else {
-		a.ActualState.Routing = RoutingCluster
-	}
-
-	if diff {
-		if a.ActualState.Status == StatusDeployed {
-			a.ActualState.Diff, err = a.diff(ctx)
-			if err != nil {
-				return errors.Wrap(err, "diff")
-			}
-		}
-	}
-
-	return nil
-}
-
 func (a *AppRepo) Dir() string {
 	return filepath.Dir(a.FromPath)
 }
@@ -219,369 +169,15 @@ func (a *AppRepo) GetRunCommand() (*exec.Cmd, error) {
 	return c, nil
 }
 
-type Plan []PlanStep
-
-type PlanStep struct {
-	Name        string
-	Description string
-	Action      func(ctx BosunContext) error
-}
-
-func (a *AppRepo) PlanReconciliation(ctx BosunContext) (Plan, error) {
-
-	ctx = ctx.WithDir(a.FromPath)
-
-	if !ctx.Bosun.IsClusterAvailable() {
-		return nil, errors.New("cluster not available")
-	}
-
-	var steps []PlanStep
-
-	actual, desired := a.ActualState, a.DesiredState
-
-	log := ctx.Log.WithField("name", a.Name)
-
-	log.WithField("state", desired.String()).Debug("Desired state.")
-	log.WithField("state", actual.String()).Debug("Actual state.")
-
-	var (
-		needsDelete   bool
-		needsInstall  bool
-		needsRollback bool
-		needsUpgrade  bool
-	)
-
-	if desired.Status == StatusNotFound || desired.Status == StatusDeleted {
-		needsDelete = actual.Status != StatusDeleted && actual.Status != StatusNotFound
-	} else {
-		needsDelete = actual.Status == StatusFailed
-		needsDelete = needsDelete || actual.Status == StatusPendingUpgrade
-	}
-
-	if desired.Status == StatusDeployed {
-		switch actual.Status {
-		case StatusNotFound:
-			needsInstall = true
-		case StatusDeleted:
-			needsRollback = true
-			needsUpgrade = true
-		default:
-			needsUpgrade = actual.Status != StatusDeployed
-			needsUpgrade = needsUpgrade || actual.Routing != desired.Routing
-			needsUpgrade = needsUpgrade || actual.Version != desired.Version
-			needsUpgrade = needsUpgrade || actual.Diff != ""
-			needsUpgrade = needsUpgrade || desired.Force
-		}
-	}
-
-	if needsDelete {
-		steps = append(steps, PlanStep{
-			Name:        "Delete",
-			Description: "Delete release from kubernetes.",
-			Action:      a.Delete,
-		})
-	}
-
-	if desired.Status == StatusDeployed {
-		for i := range a.Actions {
-			action := a.Actions[i]
-			if strings.Contains(string(action.When), ActionBeforeDeploy) {
-				steps = append(steps, PlanStep{
-					Name:        action.Name,
-					Description: action.Description,
-					Action: func(ctx BosunContext) error {
-						return action.Execute(ctx)
-					},
-				})
-			}
-		}
-	}
-
-	if needsInstall {
-		steps = append(steps, PlanStep{
-			Name:        "Install",
-			Description: "Install chart to kubernetes.",
-			Action:      a.Install,
-		})
-	}
-
-	if needsRollback {
-		steps = append(steps, PlanStep{
-			Name:        "Rollback",
-			Description: "Rollback existing release in kubernetes to allow upgrade.",
-			Action:      a.Rollback,
-		})
-	}
-
-	if needsUpgrade {
-		steps = append(steps, PlanStep{
-			Name:        "Upgrade",
-			Description: "Upgrade existing release in kubernetes.",
-			Action:      a.Upgrade,
-		})
-	}
-
-	if desired.Status == StatusDeployed {
-		for i := range a.Actions {
-			action := a.Actions[i]
-			if strings.Contains(string(action.When), ActionAfterDeploy) {
-				steps = append(steps, PlanStep{
-					Name:        action.Name,
-					Description: action.Description,
-					Action: func(ctx BosunContext) error {
-						return action.Execute(ctx)
-					},
-				})
-			}
-		}
-	}
-
-	return steps, nil
-
-}
-
-func (a *AppRepo) Reconcile(ctx BosunContext) error {
-	ctx = ctx.WithDir(a.FromPath).WithLog(ctx.Log.WithField("app", a.Name))
-
-	log := ctx.Log
-
-	if !a.HasChart() {
-		log.Info("No chart defined for this app.")
-		return nil
-	}
-
-	err := a.LoadActualState(true, ctx)
-	if err != nil {
-		return errors.Errorf("error checking actual state for %q: %s", a.Name, err)
-	}
-
-	params := ctx.GetParams()
-	env := ctx.Env
-	reportDeploy := !params.DryRun &&
-		!params.NoReport &&
-		a.DesiredState.Status == StatusDeployed &&
-		!env.IsLocal &&
-		a.ReportDeployment
-
-	values, err := a.GetValuesMap(ctx)
-	if err != nil {
-		return errors.Errorf("create values map for app %q: %s", a.Name, err)
-	}
-
-	ctx = ctx.WithValues(values)
-
-	log.Info("Planning reconciliation...")
-
-	plan, err := a.PlanReconciliation(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	if len(plan) == 0 {
-		log.Info("No actions needed to reconcile state.")
-		return nil
-	}
-
-	if reportDeploy {
-		log.Info("Deploy progress will be reported to github.")
-		// create the deployment
-		deployID, err := git.CreateDeploy(ctx.Dir, env.Name)
-
-		// ensure that the deployment is updated when we return.
-		defer func() {
-			if err != nil {
-				git.UpdateDeploy(ctx.Dir, deployID, "failure")
-			} else {
-				git.UpdateDeploy(ctx.Dir, deployID, "success")
-			}
-		}()
-
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, step := range plan {
-		log.WithField("step", step.Name).WithField("description", step.Description).Info("Planned step.")
-	}
-
-	log.Info("Planning complete.")
-
-	log.Debug("Executing plan...")
-
-	for _, step := range plan {
-		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
-		stepCtx.Log.Info("Executing step...")
-		err := step.Action(stepCtx)
-		if err != nil {
-			return err
-		}
-		stepCtx.Log.Info("Step complete.")
-	}
-
-	log.Debug("Plan executed.")
-
-	return nil
-}
-
-func (a *AppRepo) diff(ctx BosunContext) (string, error) {
-
-	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
-
-	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.getChartRef(ctx), "--version", a.Version).
-		WithArgs(args...).
-		RunOut()
-
-	if err != nil {
-		return "", err
-	} else {
-		if msg == "" {
-			ctx.Log.Debug("Diff detected no changes.")
-		} else {
-			ctx.Log.Debugf("Diff result:\n%s\n", msg)
-
-		}
-	}
-
-	return msg, nil
-}
-
-func (a *AppRepo) Delete(ctx BosunContext) error {
-	args := []string{"delete"}
-	if a.DesiredState.Status == StatusNotFound {
-		args = append(args, "--purge")
-	}
-	args = append(args, a.Name)
-
-	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
-	return err
-}
-
-func (a *AppRepo) Rollback(ctx BosunContext) error {
-	args := []string{"rollback"}
-	args = append(args, a.Name, a.HelmRelease.Revision)
-	args = append(args, a.getHelmNamespaceArgs(ctx)...)
-	args = append(args, a.getHelmDryRunArgs(ctx)...)
-
-	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
-	return err
-}
-
-func (a *AppRepo) Install(ctx BosunContext) error {
-	args := append([]string{"install", "--name", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
-	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
-	return err
-}
-
-func (a *AppRepo) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.Name, a.getChartRef(ctx)}, a.makeHelmArgs(ctx)...)
-	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
-	return err
-}
-
-func (a *AppRepo) GetStatus() (string, error) {
-	release, err := a.GetHelmRelease(a.Name)
-	if err != nil {
-		return "", err
-	}
-	if release == nil {
-		return "NOTFOUND", nil
-	}
-
-	return release.Status, nil
-}
-
-func (a *AppRepo) GetValuesMap(ctx BosunContext) (map[string]interface{}, error) {
-	values := Values{}
-
-	// Load values from chart.
-	chart := a.getChartRef(ctx)
-	if chart != "" {
-		inspectResult, err := pkg.NewCommand("helm", "inspect", "values", chart).RunOut()
-		if err != nil {
-			return nil, errors.Errorf("error getting values by inspecting chart at %q: %s", chart, err)
-		}
-		chartValues, err := ReadValues([]byte(inspectResult))
-		if err != nil {
-			return nil, errors.Errorf("error getting values by inspecting chart at %q, parse failed: %s", chart, err)
-		}
-		values.Merge(chartValues)
-	}
-
-	// Make environment values available
-	if err := values.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version); err != nil {
-		return nil, err
-	}
-	if err := values.AddEnvAsPath(EnvPrefix, EnvAppBranch, a.GetBranch()); err != nil {
-		return nil, err
-	}
-	if err := values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.GetCommit()); err != nil {
-		return nil, err
-	}
-
-	// set the tag based on the release status, if we're doing a real release
-	if a.BranchForRelease {
-		if ctx.Release == nil || ctx.Release.Transient {
-			values["tag"] = a.Version
-		} else {
-			values["tag"] = fmt.Sprintf("%s-%s", a.Version, ctx.Release.Name)
-		}
-	} else {
-		values["tag"] = "latest"
-	}
-
-	valuesConfig := a.GetValuesConfig(ctx)
-
-	// Get the values from any files referenced from the app's config:
-	for _, f := range valuesConfig.Files {
-		vf, err := ReadValuesFile(f)
-		if err != nil {
-			return nil, err
-		}
-		values.Merge(vf)
-	}
-
-	// Get the values defined using the `set` element in the app's config:
-	for k, v := range valuesConfig.Set {
-		value, err := v.Resolve(ctx)
-		if err != nil {
-			return nil, errors.Errorf("resolving set values from app for key %q: %s", k, err)
-		}
-		err = values.AddPath(k, value)
-		if err != nil {
-			return nil, errors.Errorf("applying set values from app for key %q: %s", k, err)
-		}
-	}
-
-	// Finally, apply any overrides from parameters passed to this invocation of bosun.
-	for k, v := range ctx.GetParams().ValueOverrides {
-		err := values.AddPath(k, v)
-		if err != nil {
-			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
-		}
-
-	}
-
-	return values, nil
-}
-
 func (a *AppRepo) GetAbsolutePathToChart() string {
 	return resolvePath(a.FromPath, a.ChartPath)
 }
 
-func (a *AppRepo) getChartRef(ctx BosunContext) string {
-	if ctx.Release != nil && ctx.Release.Transient {
-		return a.GetAbsolutePathToChart()
+func (a *AppRepo) getAbsoluteChartPathOrChart(ctx BosunContext) string {
+	if a.ChartPath != "" {
+		return ctx.ResolvePath(a.ChartPath)
 	}
-	if a.Chart != "" {
-		return a.Chart
-	}
-	return a.GetAbsolutePathToChart()
+	return a.Chart
 }
 
 func (a *AppRepo) getChartName() string {
@@ -590,105 +186,6 @@ func (a *AppRepo) getChartName() string {
 	}
 	name := filepath.Base(a.ChartPath)
 	return fmt.Sprintf("helm.n5o.black/%s", name)
-}
-
-func (a *AppRepo) makeHelmArgs(ctx BosunContext) []string {
-
-	var args []string
-
-	args = append(args,
-		"--set", fmt.Sprintf("domain=%s", ctx.Env.Domain))
-
-	args = append(args, a.getHelmNamespaceArgs(ctx)...)
-
-	values := a.GetValuesConfig(ctx)
-	for k, v := range values.Set {
-		v.Resolve(ctx)
-		args = append(args, "--set", fmt.Sprintf("%s=%s", k, v.GetValue()))
-	}
-
-	for _, f := range values.Files {
-		args = append(args, "-f", f)
-
-	}
-
-	if ctx.Env.IsLocal {
-		args = append(args, "--set", "imagePullPolicy=IfNotPresent")
-		if a.DesiredState.Routing == RoutingLocalhost {
-			args = append(args, "--set", fmt.Sprintf("routeToHost=true"))
-		} else {
-			args = append(args, "--set", fmt.Sprintf("routeToHost=false"))
-		}
-	} else {
-		args = append(args, "--set", "routeToHost=false")
-	}
-
-	args = append(args, a.getHelmDryRunArgs(ctx)...)
-
-	return args
-}
-
-func (a *AppRepo) getHelmNamespaceArgs(ctx BosunContext) []string {
-	if a.Namespace != "" && a.Namespace != "default" {
-		return []string{"--namespace", a.Namespace}
-	}
-	return []string{}
-}
-
-func (a *AppRepo) getHelmDryRunArgs(ctx BosunContext) []string {
-	if ctx.IsDryRun() {
-		return []string{"--dry-run", "--debug"}
-	}
-	return []string{}
-}
-
-type HelmReleaseResult struct {
-	Releases []*HelmRelease `yaml:"Releases"`
-}
-type HelmRelease struct {
-	Name       string `yaml:"Name"`
-	Revision   string `yaml:"Revision"`
-	Updated    string `yaml:"Updated"`
-	Status     string `yaml:"Status"`
-	Chart      string `yaml:"Chart"`
-	AppVersion string `yaml:"AppVersion"`
-	Namespace  string `yaml:"Namespace"`
-}
-
-func (a *AppRepo) GetHelmRelease(name string) (*HelmRelease, error) {
-
-	if a.HelmRelease == nil {
-		releases, err := a.GetHelmList(fmt.Sprintf(`^%s$`, name))
-		if err != nil {
-			return nil, err
-		}
-
-		if len(releases) == 0 {
-			return nil, nil
-		}
-
-		a.HelmRelease = releases[0]
-	}
-
-	return a.HelmRelease, nil
-}
-
-func (a *AppRepo) GetHelmList(filter ...string) ([]*HelmRelease, error) {
-
-	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
-	data, err := pkg.NewCommand("helm", args...).RunOut()
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	var result HelmReleaseResult
-
-	err = yaml.Unmarshal([]byte(data), &result)
-
-	return result.Releases, err
 }
 
 func (a *AppRepo) PublishChart(ctx BosunContext, force bool) error {
@@ -766,11 +263,9 @@ func (a *AppRepo) PublishImage(ctx BosunContext) error {
 	return nil
 }
 
-func GetDependenciesInTopologicalOrder(apps map[string]*AppRepo, roots ...string) (DependenciesSortedByTopology, error) {
+func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string) (DependenciesSortedByTopology, error) {
 
 	const target = "__TARGET__"
-
-	repos := map[string]string{}
 
 	graph := topsort.NewGraph()
 
@@ -783,16 +278,12 @@ func GetDependenciesInTopologicalOrder(apps map[string]*AppRepo, roots ...string
 
 	// add our root node to the graph
 
-	for _, app := range apps {
-		graph.AddNode(app.Name)
-		for _, dep := range app.DependsOn {
-			if repos[dep.Name] == "" || dep.Repo != "" {
-				repos[dep.Name] = dep.Repo
-			}
-
+	for name, deps := range apps {
+		graph.AddNode(name)
+		for _, dep := range deps {
 			// make sure dep is in the graph
-			graph.AddNode(dep.Name)
-			graph.AddEdge(app.Name, dep.Name)
+			graph.AddNode(dep)
+			graph.AddEdge(name, dep)
 		}
 	}
 
@@ -807,32 +298,34 @@ func GetDependenciesInTopologicalOrder(apps map[string]*AppRepo, roots ...string
 			continue
 		}
 
-		// exclude non-existent repos
-		repo := repos[name]
-		dep := Dependency{
-			Name: name,
-			Repo: repo,
-		}
-		if dep.Repo == "" {
-			dep.Repo = "unknown"
-		}
-		result = append(result, dep)
+		result = append(result, name)
 	}
 
 	return result, nil
 }
 
 func (a *AppRepo) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, error) {
+	var err error
+	ctx = ctx.WithAppRepo(a)
 
-	release := ctx.Release
-	if !release.Transient && a.BranchForRelease {
+	isTransient := ctx.Release == nil || ctx.Release.Transient
+
+	r := &AppReleaseConfig{
+		Name:             a.Name,
+		Namespace:        a.Namespace,
+		Version:          a.Version,
+		ReportDeployment: a.ReportDeployment,
+		SyncedAt:         time.Now(),
+	}
+
+	if !isTransient && a.BranchForRelease {
 
 		g, err := git.NewGitWrapper(a.FromPath)
 		if err != nil {
 			return nil, err
 		}
 
-		branchName := fmt.Sprintf("release/%s", release.Name)
+		branchName := fmt.Sprintf("release/%s", ctx.Release.Name)
 
 		branches, err := g.Exec("branch", "-a")
 		if err != nil {
@@ -861,40 +354,40 @@ func (a *AppRepo) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, erro
 				return nil, err
 			}
 		}
+
+		r.Branch = a.GetBranch()
+		r.Repo = a.GetRepo()
+		r.Commit = a.GetCommit()
+
 	}
 
-	r := &AppReleaseConfig{
-		Name:      a.Name,
-		BosunPath: a.FromPath,
-		Version:   a.Version,
-		Repo:      a.Repo,
-		RepoPath:  a.RepoPath,
-		Branch:    a.GetBranch(),
-		Commit:    a.GetCommit(),
-		SyncedAt:  time.Now(),
-	}
-
-	if release.Transient {
-		r.Chart = a.ChartPath
-		r.Image = a.GetImageName()
+	if isTransient {
+		r.Chart = ctx.ResolvePath(a.ChartPath)
 	} else {
-		r.Chart = a.Chart
-		r.Image = a.GetImageName(r.Version, release.Name)
+		r.Chart = a.getChartName()
 	}
 
-	err := a.Values.MakeSelfContained()
-	if err != nil {
-		return nil, errors.Errorf("prepare values for release: %s", err)
-	}
-
-	r.Values = a.Values
-
-	for _, action := range a.Actions {
-		err = action.MakeSelfContained(ctx)
-		if err != nil {
-			return nil ,errors.Errorf("prepare action %q for release: %s", action.Name, err)
+	if a.BranchForRelease {
+		r.Image = strings.Split(a.GetImageName(), ":")[0]
+		if isTransient || ctx.Release == nil {
+			r.ImageTag = "latest"
+		} else {
+			r.ImageTag = fmt.Sprintf("%s-%s", r.Version, ctx.Release.Name)
 		}
-		r.Actions = append(r.Actions, action)
+	}
+
+	r.Values, err = a.ExportValues(ctx)
+	if err != nil {
+		return nil, errors.Errorf("export values for release: %s", err)
+	}
+
+	r.Actions, err = a.ExportActions(ctx)
+	if err != nil {
+		return nil, errors.Errorf("export actions for release: %s", err)
+	}
+
+	for _, dep := range a.DependsOn {
+		r.DependsOn = append(r.DependsOn, dep.Name)
 	}
 
 	return r, nil

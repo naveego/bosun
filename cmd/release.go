@@ -109,15 +109,10 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 			return errors.Errorf("app %q not in this release", args[0])
 		}
 
-		app := appRelease.AppRepo
-
-		if app == nil {
-			return errors.Errorf("app %q not available", args[0])
-		}
 
 		//app.ReleaseValues = appRelease.Values
 		ctx := b.NewContext()
-		values, err := app.GetValuesMap(ctx)
+		values, err := appRelease.GetReleaseValues(ctx)
 		if err != nil {
 			return err
 		}
@@ -140,6 +135,9 @@ var releaseUseCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		err := b.UseRelease(args[0])
+		if err != nil {
+			return err
+		}
 		if err == nil {
 			err = b.Save()
 		}
@@ -201,12 +199,12 @@ var releaseAddCmd = &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 
-		apps, err := getApps(b, args)
+		apps, err := getAppRepos(b, args)
 		if err != nil {
 			return err
 		}
 
-		ctx := b.NewContext()
+		ctx := b.NewContext().WithRelease(release)
 
 		for _, app := range apps {
 
@@ -217,7 +215,7 @@ var releaseAddCmd = &cobra.Command{
 				ctx.Log.Infof("Adding app %q", app.Name)
 			}
 
-			release.AppReleaseConfigs[app.Name], err = app.GetAppReleaseConfig(release)
+			release.AppReleaseConfigs[app.Name], err = app.GetAppReleaseConfig(ctx)
 
 			if err != nil {
 				return errors.Errorf("could not make release for app %q: %s", app.Name, err)
@@ -233,6 +231,29 @@ var releaseAddCmd = &cobra.Command{
 		return err
 	},
 }
+
+var releaseRemoveCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "remove [names...]",
+	Short: "Removes one or more apps to a release.",
+	Long:  "Provide app names or use labels.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		b := mustGetBosun()
+		release := mustGetCurrentRelease(b)
+
+		apps, err := getAppRepos(b, args)
+		if err != nil {
+			return err
+		}
+
+		for _, app := range apps {
+			delete(release.AppReleaseConfigs, app.Name)
+		}
+
+		err = release.Parent.Save()
+		return err
+	},
+})
 
 var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "validate",

@@ -105,8 +105,6 @@ func New(params Parameters, config *Config) (*Bosun, error) {
 func (b *Bosun) addApp(config *AppRepoConfig) *AppRepo {
 	app := NewApp(config)
 	b.repos[config.Name] = app
-	appStates := b.config.AppStates[b.config.CurrentEnvironment]
-	app.DesiredState = appStates[config.Name]
 
 	for _, d2 := range app.DependsOn {
 		if _, ok := b.repos[d2.Name]; !ok {
@@ -130,6 +128,18 @@ func (b *Bosun) GetAppsSortedByName() ReposSortedByName {
 func (b *Bosun) GetApps() map[string]*AppRepo {
 	return b.repos
 }
+
+func (b *Bosun) GetAppDependencyMap() map[string][]string {
+	deps := map[string][]string{}
+	for _, app := range b.GetApps() {
+		for _, dep := range app.DependsOn {
+			deps[app.Name] = append(deps[app.Name], dep.Name)
+		}
+	}
+	return deps
+}
+
+
 
 func (b *Bosun) GetVaultClient() (*vault.Client, error) {
 	var err error
@@ -230,23 +240,22 @@ func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 	return b.env
 }
 
+func (b *Bosun) SetDesiredState(app string, state AppState) {
+	env := b.env
+	if b.config.AppStates == nil {
+		b.config.AppStates = AppStatesByEnvironment{}
+	}
+	m, ok := b.config.AppStates[env.Name]
+	if !ok {
+		m = AppStateMap{}
+		b.config.AppStates[env.Name] = m
+	}
+	m[app] = state
+}
+
 func (b *Bosun) Save() error {
 
 	config := b.config
-
-	if config.AppStates == nil {
-		config.AppStates = AppStatesByEnvironment{}
-	}
-
-	env := b.env
-
-	appStates := AppStateMap{}
-	for _, app := range b.repos {
-		appStates[app.Name] = app.DesiredState
-	}
-
-	config.AppStates[env.Name] = appStates
-
 	data, err := yaml.Marshal(config)
 	if err != nil {
 		return errors.Wrap(err, "marshalling for save")

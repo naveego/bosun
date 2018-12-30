@@ -89,7 +89,7 @@ func getBosun() (*bosun.Bosun, error) {
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
-	apps, err := getApps(b, names)
+	apps, err := getAppRepos(b, names)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -110,11 +110,45 @@ func MustYaml(i interface{}) string {
 	return string(b)
 }
 
+func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.AppRepo) ([]*bosun.AppRelease, error) {
+	var appReleases []*bosun.AppRelease
+
+	for _, appRepo := range repos {
+		ctx := b.NewContext()
+		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, appRepo)
+		if err != nil {
+			return nil, errors.Errorf("error creating release for repo %q: %s", appRepo.Name, err)
+		}
+		appReleases = append(appReleases, appRelease)
+	}
+
+	return appReleases, nil
+}
+
+func mustGetAppRepos(b *bosun.Bosun, names []string) []*bosun.AppRepo {
+	repos, err := getAppRepos(b, names)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return repos
+}
+func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
+	repos, err := getAppRepos(b, names)
+	if err != nil {
+		log.Fatal(err)
+	}
+	releases, err := getAppReleasesFromApps(b, repos)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return releases
+}
+
 // gets one or more apps matching names, or if names
 // are valid file paths, imports the file at that path.
 // if names is empty, tries to find a apps starting
 // from the current directory
-func getApps(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
+func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
 
 	var apps []*bosun.AppRepo
 	var err error
