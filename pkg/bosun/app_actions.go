@@ -42,8 +42,8 @@ type AppVaultAction struct {
 
 type AppTestAction struct {
 	Exec *DynamicValue `yaml:"exec,omitempty"`
-	HTTP string        `yaml:"http,omitempty""`
-	TCP  string        `yaml:"tcp,omitempty""`
+	HTTP string        `yaml:"http,omitempty"`
+	TCP  string        `yaml:"tcp,omitempty"`
 }
 
 // MakeSelfContained removes imports all file dependencies into literals,
@@ -189,6 +189,12 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 }
 
 func (a *AppAction) executeTest(ctx BosunContext) error {
+
+	if ctx.GetParams().DryRun {
+		ctx.Log.Info("Skipping test because this is a dry run.")
+		return nil
+	}
+
 	t := a.Test
 
 	if t.Exec != nil {

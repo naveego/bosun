@@ -33,6 +33,7 @@ type Parameters struct {
 	DryRun         bool
 	Force          bool
 	NoReport       bool
+	ForceTests     bool
 	ValueOverrides map[string]string
 	FileOverrides  []string
 }

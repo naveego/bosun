@@ -88,6 +88,19 @@ func (d *DynamicValue) GetValue() string {
 	return d.Value
 }
 
+func (d *DynamicValue) String() string {
+	if specific, ok := d.OS[runtime.GOOS]; ok {
+		return specific.String()
+	} else if len(d.Command) != 0 {
+		return strings.Join(d.Command, "")
+	} else if len(d.Script) > 0 {
+		return d.Script
+	} else if len(d.Value) > 0 {
+		return d.Value
+	}
+	return ""
+}
+
 // Resolve sets the Value field by executing Script, Command, or an entry under OS.
 // If resolve has been called before, the value from that resolve is returned.
 func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
@@ -100,7 +113,7 @@ func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
 	d.resolved = true
 
 	if d.Value == "" {
-		d.Value, err = d.Execute(ctx)
+		d.Value, err = d.executeCore(ctx, false)
 	}
 
 	// trim whitespace, as script output may contain line breaks at the end
@@ -111,14 +124,26 @@ func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
 
 // Execute executes the DynamicValue, and treats the Value field as a script.
 func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
+
+	return d.executeCore(ctx, true)
+}
+
+func (d *DynamicValue) executeCore(ctx BosunContext, discardValue bool) (string, error) {
+
 	var err error
 	var value string
+
+	if ctx.GetParams().DryRun && discardValue {
+		// don't execute side-effect-only commands during dry run
+		ctx.Log.WithField("command", d.String()).Info("Skipping side-effecting command because this is a dry run.")
+		return "", nil
+	}
 
 	doneCh := make(chan struct{})
 
 	go func() {
 		if specific, ok := d.OS[runtime.GOOS]; ok {
-			value, err = specific.Execute(ctx)
+			value, err = specific.executeCore(ctx, discardValue)
 		} else if len(d.Command) != 0 {
 			value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.GetValuesAsEnvVars()).WithContext(ctx.Ctx()).RunOut()
 		} else if len(d.Script) > 0 {
@@ -137,6 +162,7 @@ func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
 
 	return value, err
 }
+
 
 func executeScript(script string, ctx BosunContext) (string, error) {
 	pattern := "bosun-script*"

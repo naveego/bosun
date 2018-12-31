@@ -173,6 +173,10 @@ func (v Values) Merge(src Values) {
 }
 
 func (v Values) Clone() Values {
+	if v == nil {
+		return Values{}
+	}
+
 	out := Values{}
 	yml, _ := yaml.Marshal(v)
 	_ = yaml.Unmarshal(yml, &out)

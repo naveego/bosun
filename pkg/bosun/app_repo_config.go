@@ -106,30 +106,33 @@ func (a AppValuesByEnvironment) GetValuesConfig(ctx BosunContext) AppValuesConfi
 	return out
 }
 
-// LoadFiles resolves all file system dependencies into static values
+// WithFilesLoaded resolves all file system dependencies into static values
 // on this instance, then clears those dependencies.
-func (a AppValuesConfig) LoadFiles(ctx BosunContext) error {
+func (a AppValuesConfig) WithFilesLoaded(ctx BosunContext) (AppValuesConfig, error) {
 
-	if a.Static == nil {
-		a.Static = Values{}
+	out := AppValuesConfig{
+		Static: a.Static.Clone(),
 	}
 
+	mergedValues := Values{}
+
+	// merge together values loaded from files
 	for _, file := range a.Files {
 		file = ctx.ResolvePath(file)
 		valuesFromFile, err := ReadValuesFile(file)
 		if err != nil {
-			return errors.Errorf("reading values file %q for env key %q: %s", file, ctx.Env.Name, err)
+			return out, errors.Errorf("reading values file %q for env key %q: %s", file, ctx.Env.Name, err)
 		}
-		// make sure any existing static values are merged OVER the values from the file
-		static := valuesFromFile
-		static.Merge(a.Static)
-		a.Static = static
+		mergedValues.Merge(valuesFromFile)
 	}
-	a.Files = nil
-	a.Dynamic = a.Set
-	a.Set = nil
 
-	return nil
+	// make sure any existing static values are merged OVER the values from the file
+	mergedValues.Merge(out.Static)
+	out.Static = mergedValues
+
+	out.Dynamic = out.Set
+
+	return out, nil
 }
 
 func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
@@ -182,7 +185,7 @@ func (a *AppRepo) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error)
 	for _, env := range envs {
 		envCtx := ctx.WithEnv(env)
 		valuesConfig := a.GetValuesConfig(envCtx)
-		err = valuesConfig.LoadFiles(envCtx)
+		valuesConfig, err = valuesConfig.WithFilesLoaded(envCtx)
 		if err != nil {
 			return nil, err
 		}
@@ -218,14 +221,14 @@ type AppStatesByEnvironment map[string]AppStateMap
 type AppStateMap map[string]AppState
 
 type AppState struct {
-	Branch  string `yaml:"branch,omitempty"`
-	Status  string `yaml:"deployment,omitempty"`
-	Routing string `yaml:"routing,omitempty"`
-	Version string `yaml:"version,omitempty"`
-	Diff    string `yaml:"-"`
-	Error   error  `yaml:"-"`
-	Force   bool   `yaml:"-"`
-	Unavailable bool `yaml:"-"`
+	Branch      string `yaml:"branch,omitempty"`
+	Status      string `yaml:"deployment,omitempty"`
+	Routing     string `yaml:"routing,omitempty"`
+	Version     string `yaml:"version,omitempty"`
+	Diff        string `yaml:"-"`
+	Error       error  `yaml:"-"`
+	Force       bool   `yaml:"-"`
+	Unavailable bool   `yaml:"-"`
 }
 
 func (a AppState) String() string {
@@ -247,7 +250,7 @@ const (
 	StatusDeleted        = "DELETED"
 	StatusFailed         = "FAILED"
 	StatusPendingUpgrade = "PENDING_UPGRADE"
-	StatusUnchanged = "UNCHANGED"
+	StatusUnchanged      = "UNCHANGED"
 )
 
 type Routing string

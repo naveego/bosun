@@ -311,12 +311,65 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 		ctx := b.NewContext()
-		err := release.Deploy(ctx)
+
+		appReleases := mustGetAppReleases(b, args)
+
+		for _, appRelease := range appReleases {
+			ctx = ctx.WithAppRelease(appRelease)
+			if appRelease.AppRepo == nil {
+				ctx.Log.Warn("AppRepo not found.")
+			}
+			ctx.Log.Info("Pulling latest...")
+			err := appRelease.AppRepo.PullRepo(ctx)
+			if err != nil {
+				ctx.Log.WithError(err).Error("Pull failed.")
+				continue
+			}
+			err = release.IncludeApp(ctx, appRelease.AppRepo)
+			if err != nil {
+				ctx.Log.WithError(err).Error("Update release failed.")
+			}
+		}
+
+		err := release.Parent.Save()
 
 		return err
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to release. If not provided, all apps in the release are released.")
+	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to sync. If not provided, all apps are synced.")
+	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from the sync.")
+})
+
+var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:           "test",
+	Short:         "Runs the tests for the apps in the release.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		b := mustGetBosun()
+		ctx := b.NewContext()
+
+		appReleases := mustGetAppReleases(b, args)
+
+		for _, appRelease := range appReleases {
+
+			ctx = ctx.WithAppRelease(appRelease)
+			for _, action := range appRelease.Actions {
+				if action.Test != nil {
+					err := action.Execute(ctx)
+					if err != nil {
+						ctx.Log.WithError(err).Error("Test failed.")
+					}
+				}
+			}
+		}
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to test. If not provided, all apps are tested.")
+	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from testing.")
 })
 
 var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
