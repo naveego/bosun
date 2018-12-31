@@ -348,7 +348,6 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 		return nil, err
 	}
 
-	r.Values["tag"] = a.ImageTag
 
 	importedValues := a.Values[ctx.Env.Name]
 	overrideValues := a.ValueOverrides[ctx.Env.Name]
@@ -369,6 +368,8 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 			}
 		}
 	}
+
+	r.Values["tag"] = a.ImageTag
 
 	// Finally, apply any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParams().ValueOverrides {
@@ -404,6 +405,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 
 	ctx = ctx.WithReleaseValues(values)
 
+
 	err = a.LoadActualState(ctx, true)
 	if err != nil {
 		return errors.Errorf("error checking actual state for %q: %s", a.Name, err)
@@ -414,6 +416,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 
 	reportDeploy := !params.DryRun &&
 		!params.NoReport &&
+		!ctx.Release.Transient &&
 		a.DesiredState.Status == StatusDeployed &&
 		!env.IsLocal &&
 		a.ReportDeployment
@@ -434,14 +437,14 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	if reportDeploy {
 		log.Info("Deploy progress will be reported to github.")
 		// create the deployment
-		deployID, err := git.CreateDeploy(ctx.Dir, env.Name)
+		deployID, err := git.CreateDeploy(a.Repo, a.Commit, env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {
 			if err != nil {
-				git.UpdateDeploy(ctx.Dir, deployID, "failure")
+				_ = git.UpdateDeploy(a.Repo, deployID, "failure")
 			} else {
-				git.UpdateDeploy(ctx.Dir, deployID, "success")
+				_ = git.UpdateDeploy(a.Repo, deployID, "success")
 			}
 		}()
 

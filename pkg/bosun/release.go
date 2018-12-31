@@ -1,8 +1,12 @@
 package bosun
 
 import (
+	"bufio"
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"io"
+	"os/exec"
 	"sort"
 	"strings"
 )
@@ -79,13 +83,11 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 		return errs
 	}
 
-	// TODO: validate docker image presence more efficiently
-	err = pkg.NewCommand("docker", "pull",
-		a.AppRepo.GetImageName(a.Version, a.ParentConfig.Name)).
-		RunE()
+	imageName := fmt.Sprintf("%s:%s", a.Image, a.ImageTag)
+	err = checkImageExists(imageName)
 
 	if err != nil {
-		errs = append(errs, errors.Errorf("image not found: %s", err))
+		errs = append(errs, errors.Errorf("image: %s", err))
 	}
 
 	if a.AppRepo.IsRepoCloned() {
@@ -101,6 +103,40 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 	}
 
 	return errs
+}
+
+func checkImageExists(name string) error {
+	cmd := exec.Command("docker", "pull", name)
+	stdout, err := cmd.StdoutPipe()
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	reader := io.MultiReader(stdout, stderr)
+	scanner := bufio.NewScanner(reader)
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	defer cmd.Process.Kill()
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "Pulling from") {
+			return nil
+		}
+		if strings.Contains(line, "Error") {
+			return errors.New(line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+
+	return nil
 }
 
 func (r *Release) IncludeDependencies(ctx BosunContext) error {
@@ -139,7 +175,7 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	ctx = ctx.WithRelease(r)
 
 	var requestedAppNames []string
-	 dependencies := map[string][]string{}
+	dependencies := map[string][]string{}
 	for _, app := range r.AppReleaseConfigs {
 		requestedAppNames = append(requestedAppNames, app.Name)
 		for _, dep := range app.DependsOn {
@@ -166,7 +202,7 @@ func (r *Release) Deploy(ctx BosunContext) error {
 		}
 
 		if app.DesiredState.Status == StatusUnchanged {
-			ctx.WithAppRelease(app).Log.Info("Skipping deploy because desired state was %q.", StatusUnchanged)
+			ctx.WithAppRelease(app).Log.Infof("Skipping deploy because desired state was %q.", StatusUnchanged)
 			continue
 		}
 

@@ -56,7 +56,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		for k, app := range r.AppReleases {
 			if !toReleaseSet[k] {
 				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgReleaseIncludeApps)
-				app.Excluded = true
+				app.DesiredState.Status = bosun.StatusUnchanged
 			}
 		}
 	}
@@ -65,7 +65,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 	for _, name := range blacklist {
 		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgReleaseExcludeApps)
 		if app, ok := r.AppReleases[name]; ok {
-			app.Excluded = true
+			app.DesiredState.Status = bosun.StatusUnchanged
 		}
 	}
 

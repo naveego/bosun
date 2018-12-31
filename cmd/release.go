@@ -7,7 +7,6 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
-	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -87,7 +86,7 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 
 			t := tabby.New()
 			t.AddHeader("APP", "VERSION", "REPO", "BRANCH")
-			for _, app := range r.AppReleaseConfigs {
+			for _, app := range r.AppReleases.GetAppsSortedByName() {
 				t.AddLine(app.Name, app.Version, app.Repo, app.Branch)
 			}
 			t.Print()
@@ -271,14 +270,17 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		hasErrors := false
 
 		apps := release.AppReleases.GetAppsSortedByName()
-		p := progressbar.New(len(apps))
+		p := NewProgressBar(len(apps))
 
 		for _, app := range apps {
 
-			colorHeader.Fprintf(w, "%s ", app.Name)
+			p.Add(0, app.Name)
+
 			errs := app.Validate(ctx)
 
-			p.Add(1)
+			p.Add(1, app.Name)
+
+			colorHeader.Fprintf(w, "%s ", app.Name)
 
 			if len(errs) == 0 {
 				colorOK.Fprintf(w, "OK\n")
@@ -291,6 +293,7 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 			}
 		}
 
+		fmt.Println()
 		fmt.Println(w.String())
 
 		if hasErrors {

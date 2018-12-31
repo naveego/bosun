@@ -4,31 +4,23 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
 	"os"
+	"strings"
 )
 
-func CreateDeploy(repoPath, environment string)(int64, error) {
-	var err error
-	repoPath, err = GetRepoPath(repoPath)
-	if err != nil {
-		return 0, err
-	}
-	sha := pkg.NewCommand("git", "-C", repoPath, "rev-parse", "HEAD").MustOut()
+func CreateDeploy(orgSlashRepo, ref, environment string)(int64, error) {
 
-
+	org, repo, err := parseOrgSlashRepo(orgSlashRepo)
 
 	deploymentRequest := &github.DeploymentRequest{
 		Description: github.String(fmt.Sprintf("Deployment to %s", environment)),
 		Environment: &environment,
-		Ref:         &sha,
+		Ref:         &ref,
 		Task:github.String("deploy"),
 		AutoMerge:github.Bool(false),
 	}
 
-
-
-	org, repo := GetOrgAndRepoFromPath(repoPath)
 	client := mustGetGitClient()
 
 	deployment, _, err := client.Repositories.CreateDeployment(context.Background(), org, repo, deploymentRequest)
@@ -41,13 +33,7 @@ func CreateDeploy(repoPath, environment string)(int64, error) {
 	return id, nil
 }
 
-func UpdateDeploy(repoPath string, deployID int64, state string) error {
-
-	var err error
-	repoPath, err = GetRepoPath(repoPath)
-	if err != nil {
-		return err
-	}
+func UpdateDeploy(orgSlashRepo string, deployID int64, state string) error {
 
 	req := &github.DeploymentStatusRequest{
 		State:&state,
@@ -58,10 +44,20 @@ func UpdateDeploy(repoPath string, deployID int64, state string) error {
 		req.LogURL = github.String(fmt.Sprintf("https://ci.n5o.black/viewLog.html?buildId=%s", buildID))
 	}
 
-	org, repo := GetOrgAndRepoFromPath(repoPath)
+	org, repo, err := parseOrgSlashRepo(orgSlashRepo)
 	client := mustGetGitClient()
 
 	_, _, err = client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deployID, req)
 
 	return err
+}
+
+func parseOrgSlashRepo(orgSlashRepo string) (org string, repo string, err error) {
+	segs := strings.Split(orgSlashRepo, "/")
+	if len(segs) != 2 {
+		return "", "", errors.Errorf("orgSlashRepo must be org/repo, not like %q", orgSlashRepo)
+	}
+	org, repo =  segs[0], segs[1]
+
+	return
 }

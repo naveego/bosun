@@ -6,6 +6,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -69,6 +70,11 @@ func (c BosunContext) WithAppRelease(a *AppRelease) BosunContext {
 func (c BosunContext) WithReleaseValues(v *ReleaseValues) BosunContext {
 	c.ReleaseValues = v
 	c.valuesAsEnvVars = nil
+
+	yml, _ := yaml.Marshal(v.Values)
+	c.LogLine(1, "[Context] Set release values:\n%s\n", string(yml))
+
+
 	return c
 }
 
