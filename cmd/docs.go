@@ -15,9 +15,8 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/spf13/cobra"
-	"github.com/spf13/cobra/doc"
+	// "github.com/spf13/cobra/doc"
 	"os"
 )
 
@@ -30,22 +29,22 @@ var docsCmd = &cobra.Command{
 	ArgAliases:   []string{"doc"},
 	Short: "Completion and documentation generators.",
 }
-
-var _ = addCommand(docsCmd, &cobra.Command{
-	Use:   "markdown [dir]",
-	Short: "Output documentation in markdown. Output dir defaults to ./docs",
-	RunE: func(cmd *cobra.Command, args []string) error{
-		dir := "./docs"
-		if len(args) > 0 {
-			dir = args[0]
-		}
-		err := doc.GenMarkdownTree(rootCmd, dir)
-		if err != nil {
-			fmt.Printf("Output to %q.\n", dir)
-		}
-		return err
-	},
-})
+//
+// var _ = addCommand(docsCmd, &cobra.Command{
+// 	Use:   "markdown [dir]",
+// 	Short: "Output documentation in markdown. Output dir defaults to ./docs",
+// 	RunE: func(cmd *cobra.Command, args []string) error{
+// 		dir := "./docs"
+// 		if len(args) > 0 {
+// 			dir = args[0]
+// 		}
+// 		err := doc.GenMarkdownTree(rootCmd, dir)
+// 		if err != nil {
+// 			fmt.Printf("Output to %q.\n", dir)
+// 		}
+// 		return err
+// 	},
+// })
 
 var _ = addCommand(docsCmd, &cobra.Command{
 	Use:   "bash",

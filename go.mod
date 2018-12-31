@@ -30,7 +30,6 @@ require (
 	github.com/circonus-labs/circonus-gometrics v2.2.4+incompatible // indirect
 	github.com/circonus-labs/circonusllhist v0.0.0-20180430145027-5eb751da55c6 // indirect
 	github.com/containerd/continuity v0.0.0-20181003075958-be9bd761db19 // indirect
-	github.com/cpuguy83/go-md2man v1.0.8 // indirect
 	github.com/denisenkom/go-mssqldb v0.0.0-20180901172138-1eb28afdf9b6 // indirect
 	github.com/dghubble/sling v1.1.0
 	github.com/docker/go-connections v0.4.0 // indirect
@@ -99,11 +98,9 @@ require (
 	github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910 // indirect
 	github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e
 	github.com/prometheus/procfs v0.0.0-20180920065004-418d78d0b9a7 // indirect
-	github.com/russross/blackfriday v1.5.1 // indirect
 	github.com/ryanuber/go-glob v0.0.0-20170128012129-256dc444b735 // indirect
 	github.com/schollz/progressbar v1.0.0
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.1.0
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.2.1
