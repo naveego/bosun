@@ -65,9 +65,13 @@ func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 	out := AppValuesConfig{
 		Dynamic: make(map[string]*DynamicValue),
+		Static: Values{},
 	}
 	out.Files = append(out.Files, a.Files...)
 	out.Files = append(out.Files, other.Files...)
+
+	out.Static.Merge(a.Static)
+	out.Static.Merge(other.Static)
 
 	// Set is deprecated, it should now be Dynamic,
 	// so we copy everything into Dynamic.
