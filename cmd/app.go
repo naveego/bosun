@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/cheynewallace/tabby"
+	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
@@ -672,11 +673,19 @@ var appCloneCmd = addCommand(
 
 			dir := viper.GetString(ArgAppCloneDir)
 			roots := b.GetGitRoots()
+			var err error
 			if dir == "" {
 				if len(roots) == 0 {
-					return errors.Errorf("gitRoots element is empty in config and --%s flag was not set", ArgAppCloneDir)
+					p := promptui.Prompt{
+						Label:"Provide git root (apps will be cloned to ./org/repo in the dir you specify)",
+					}
+					dir, err = p.Run()
+					if err != nil {
+						return err
+					}
+				} else {
+					dir = roots[0]
 				}
-				dir = roots[0]
 			}
 			rootExists := false
 			for _, root := range roots {
