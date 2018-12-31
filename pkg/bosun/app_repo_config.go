@@ -64,16 +64,24 @@ func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
 // other added after (and/or overwriting) the values from this instance)
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 	out := AppValuesConfig{
-		Set: make(map[string]*DynamicValue),
+		Dynamic: make(map[string]*DynamicValue),
 	}
 	out.Files = append(out.Files, a.Files...)
 	out.Files = append(out.Files, other.Files...)
 
+	// Set is deprecated, it should now be Dynamic,
+	// so we copy everything into Dynamic.
 	for k, v := range a.Set {
-		out.Set[k] = v
+		out.Dynamic[k] = v
+	}
+	for k, v := range a.Dynamic {
+		out.Dynamic[k] = v
 	}
 	for k, v := range other.Set {
-		out.Set[k] = v
+		out.Dynamic[k] = v
+	}
+	for k, v := range other.Dynamic {
+		out.Dynamic[k] = v
 	}
 
 	return out
@@ -130,7 +138,7 @@ func (a AppValuesConfig) WithFilesLoaded(ctx BosunContext) (AppValuesConfig, err
 	mergedValues.Merge(out.Static)
 	out.Static = mergedValues
 
-	out.Dynamic = out.Set
+	out.Dynamic = a.Dynamic
 
 	return out, nil
 }
@@ -194,8 +202,6 @@ func (a *AppRepo) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error)
 		static.Merge(valuesConfig.Static)
 		valuesConfig.Static = static
 		valuesConfig.Files = nil
-		valuesConfig.Dynamic = valuesConfig.Set
-		valuesConfig.Set = nil
 		out[env.Name] = valuesConfig
 	}
 

@@ -440,6 +440,7 @@ var appDeployCmd = &cobra.Command{
 	},
 }
 
+
 var appDeleteCmd = &cobra.Command{
 	Use:          "delete [name] [name...]",
 	Short:        "Deletes the specified apps.",

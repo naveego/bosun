@@ -44,6 +44,7 @@ require (
 	github.com/go-test/deep v1.0.1 // indirect
 	github.com/gocql/gocql v0.0.0-20180929150753-7ce14ecfedc6 // indirect
 	github.com/gogo/protobuf v1.1.1 // indirect
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
 	github.com/google/go-github v17.0.0+incompatible
@@ -94,6 +95,7 @@ require (
 	github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
+	github.com/pkg/browser v0.0.0-20180916011732-0a3d74bf9ce4
 	github.com/pkg/errors v0.8.0
 	github.com/prometheus/client_golang v0.8.0 // indirect
 	github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910 // indirect
