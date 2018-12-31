@@ -1,0 +1,3 @@
+currentEnvironment: test
+import:
+  - bosun.test.yaml

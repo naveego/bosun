@@ -1,0 +1,14 @@
+apps:
+  - name: bosun
+    version: 0.1.0
+    chartPath: chart/bosun
+    branchForRelease: false
+    reportDeployment: true
+    labels:
+      - microservice
+    values:
+      green:
+        set:
+      red:
+        set:
+
