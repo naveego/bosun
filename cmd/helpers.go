@@ -114,6 +114,9 @@ func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.AppRepo) ([]*bosun.Ap
 	var appReleases []*bosun.AppRelease
 
 	for _, appRepo := range repos {
+		if !appRepo.HasChart() {
+			continue
+		}
 		ctx := b.NewContext()
 		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, appRepo)
 		if err != nil {

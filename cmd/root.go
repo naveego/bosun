@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
 	"strings"
@@ -40,6 +41,10 @@ var rootCmd = &cobra.Command{
 	Use:   "bosun",
 	Short: "Devops tool.",
 	SilenceErrors:true,
+	Version: fmt.Sprintf(`Version: %s
+Timestamp: %s
+Commit: %s
+`, version, timestamp, commit),
 	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
