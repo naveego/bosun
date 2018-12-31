@@ -1,94 +1,166 @@
 package bosun
 
 import (
+	"bufio"
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"io"
+	"os/exec"
+	"sort"
 	"strings"
 )
 
+type ReleaseConfig struct {
+	Name              string                       `yaml:"name"`
+	FromPath          string                       `yaml:"fromPath"`
+	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
+	Parent            *ConfigFragment              `yaml:"-"`
+}
+
 type Release struct {
-	Name     string                 `yaml:"name"`
-	FromPath string                 `yaml:"fromPath"`
-	Apps     map[string]*AppRelease `yaml:"apps"`
-	Fragment *ConfigFragment        `yaml:"-"`
+	*ReleaseConfig
 	// Indicates that this is not a real release which is stored on disk.
 	// If this is true:
 	// - release branch creation and checking is disabled
 	// - local charts are used if available
-	Transient bool `yaml:"-"`
+	Transient   bool
+	AppReleases AppReleaseMap
 }
 
-func (r *Release) SetFragment(f *ConfigFragment) {
+func NewRelease(ctx BosunContext, r *ReleaseConfig) (*Release, error) {
+	var err error
+	if r.AppReleaseConfigs == nil {
+		r.AppReleaseConfigs = map[string]*AppReleaseConfig{}
+	}
+	release := &Release{
+		ReleaseConfig: r,
+		AppReleases:   map[string]*AppRelease{},
+	}
+	for name, config := range r.AppReleaseConfigs {
+		release.AppReleases[name], err = NewAppRelease(ctx, config)
+		if err != nil {
+			return nil, errors.Errorf("creating app release for config %q: %s", name, err)
+		}
+	}
+
+	return release, nil
+}
+
+func (r *ReleaseConfig) SetParent(f *ConfigFragment) {
 	r.FromPath = f.FromPath
-	r.Fragment = f
-	for _, app := range r.Apps {
-		app.Release = r
+	r.Parent = f
+	for _, app := range r.AppReleaseConfigs {
+		app.SetParent(r)
 	}
 }
 
-type AppRelease struct {
-	Name      string   `yaml:"name"`
-	Repo      string   `yaml:"repo"`
-	RepoPath  string   `yaml:"repoPath"`
-	BosunPath string   `yaml:"bosunPath"`
-	Branch    string   `yaml:"branch"`
-	Version   string   `yaml:"version"`
-	ChartName string   `yaml:"chartName"`
-	App       *App     `yaml:"-"`
-	Release   *Release `yaml:"-"`
+type AppReleaseMap map[string]*AppRelease
+
+func (a AppReleaseMap) GetAppsSortedByName() AppReleasesSortedByName {
+	var out AppReleasesSortedByName
+	for _, app := range a {
+		out = append(out, app)
+	}
+
+	sort.Sort(out)
+	return out
 }
 
-func (r *AppRelease) Validate(ctx BosunContext) []error {
+func (a *AppRelease) Validate(ctx BosunContext) []error {
 
 	var errs []error
 
-	out, err := pkg.NewCommand("helm", "search", r.ChartName, "-v", r.Version).RunOut()
+	out, err := pkg.NewCommand("helm", "search", a.Chart, "-v", a.Version).RunOut()
 	if err != nil {
-		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", r.ChartName, r.Version, err))
+		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.Chart, a.Version, err))
 	}
-	if !strings.Contains(out, r.ChartName) {
-		errs = append(errs, errors.Errorf("chart %s@%s not found", r.ChartName, r.Version))
+	if !strings.Contains(out, a.Chart) {
+		errs = append(errs, errors.Errorf("chart %s@%s not found", a.Chart, a.Version))
 	}
 
-	if !r.App.BranchForRelease {
+	if !a.AppRepo.BranchForRelease {
 		return errs
 	}
 
-	// TODO: validate docker image presence more efficiently
-	err = pkg.NewCommand("docker", "pull",
-		r.App.GetImageName(r.Version, r.Release.Name)).
-		RunE()
+	imageName := fmt.Sprintf("%s:%s", a.Image, a.ImageTag)
+	err = checkImageExists(imageName)
 
 	if err != nil {
-		errs = append(errs, errors.Errorf("image not found: %s", err))
+		errs = append(errs, errors.Errorf("image: %s", err))
+	}
+
+	if a.AppRepo.IsRepoCloned() {
+		appBranch := a.AppRepo.GetBranch()
+		if appBranch != a.Branch {
+			errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", a.Branch, appBranch))
+		}
+
+		appCommit := a.AppRepo.GetCommit()
+		if appCommit != a.Commit {
+			errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.Commit, appCommit))
+		}
 	}
 
 	return errs
+}
 
+func checkImageExists(name string) error {
+	cmd := exec.Command("docker", "pull", name)
+	stdout, err := cmd.StdoutPipe()
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	reader := io.MultiReader(stdout, stderr)
+	scanner := bufio.NewScanner(reader)
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	defer cmd.Process.Kill()
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "Pulling from") {
+			return nil
+		}
+		if strings.Contains(line, "Error") {
+			return errors.New(line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+
+	return nil
 }
 
 func (r *Release) IncludeDependencies(ctx BosunContext) error {
-	allApps := ctx.Bosun.GetApps()
+	ctx = ctx.WithRelease(r)
+	deps := ctx.Bosun.GetAppDependencyMap()
 	var appNames []string
-	for _, app := range r.Apps {
+	for _, app := range r.AppReleaseConfigs {
 		appNames = append(appNames, app.Name)
 	}
 
 	// this is inefficient but it gets us all the dependencies
-	topology, err := GetDependenciesInTopologicalOrder(allApps, appNames...)
+	topology, err := GetDependenciesInTopologicalOrder(deps, appNames...)
 
 	if err != nil {
-		return errors.Errorf("apps could not be sorted in dependency order: %s", err)
+		return errors.Errorf("repos could not be sorted in dependency order: %s", err)
 	}
 
 	for _, dep := range topology {
-		app, ok := allApps[dep.Name]
-		if !ok {
-			return errors.Errorf("an app or dependency could not be found: %q from repo %q", dep.Name, dep.Repo)
-		} else {
-			if r.Apps[app.Name] == nil {
-
-				err = r.IncludeApp(app)
+		if r.AppReleaseConfigs[dep] == nil {
+			app, err := ctx.Bosun.GetApp(dep)
+			if err != nil {
+				return errors.Errorf("an app or dependency %q could not be found: %s", dep, err)
+			} else {
+				err = r.IncludeApp(ctx, app)
 				if err != nil {
 					return errors.Errorf("could not include app %q: %s", app.Name, err)
 				}
@@ -103,49 +175,39 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	ctx = ctx.WithRelease(r)
 
 	var requestedAppNames []string
-	requestedAppNameSet := map[string]bool{}
-	for _, app := range r.Apps {
-		if app == nil {
-			continue
+	dependencies := map[string][]string{}
+	for _, app := range r.AppReleaseConfigs {
+		requestedAppNames = append(requestedAppNames, app.Name)
+		for _, dep := range app.DependsOn {
+			dependencies[app.Name] = append(dependencies[app.Name], dep)
 		}
-		requestedAppNameSet[app.Name] = true
-	}
-	for appName := range requestedAppNameSet {
-		requestedAppNames = append(requestedAppNames, appName)
 	}
 
-	allApps := ctx.Bosun.GetApps()
-
-	topology, err := GetDependenciesInTopologicalOrder(allApps, requestedAppNames...)
+	topology, err := GetDependenciesInTopologicalOrder(dependencies, requestedAppNames...)
 
 	if err != nil {
-		return errors.Errorf("apps could not be sorted in dependency order: %s", err)
+		return errors.Errorf("repos could not be sorted in dependency order: %s", err)
 	}
 
-	var toDeploy []*App
+	var toDeploy []*AppRelease
 
 	for _, dep := range topology {
-		app, ok := allApps[dep.Name]
+		app, ok := r.AppReleases[dep]
 		if !ok {
-			return errors.Errorf("an app specifies a dependency that could not be found: %q from repo %q", dep.Name, dep.Repo)
-		} else {
-			if requestedAppNameSet[dep.Name] {
-				toDeploy = append(toDeploy, app)
-			} else {
-				pkg.Log.Debugf("Skipping dependency %q because it was not requested.", dep.Name)
+			if r.Transient {
+				continue
 			}
-		}
-	}
 
-	for _, app := range toDeploy {
-		requested := requestedAppNameSet[app.Name]
-		if requested {
-			pkg.Log.Infof("App %q will be deployed because it was requested.", app.Name)
-		} else {
-			pkg.Log.Infof("App %q will be deployed because it was a dependency of a requested app.", app.Name)
+			return errors.Errorf("an app specifies a dependency that could not be found: %q", dep)
 		}
-	}
 
+		if app.DesiredState.Status == StatusUnchanged {
+			ctx.WithAppRelease(app).Log.Infof("Skipping deploy because desired state was %q.", StatusUnchanged)
+			continue
+		}
+
+		toDeploy = append(toDeploy, app)
+	}
 
 	for _, app := range toDeploy {
 
@@ -154,12 +216,9 @@ func (r *Release) Deploy(ctx BosunContext) error {
 			app.DesiredState.Routing = RoutingCluster
 		}
 
-		app.DesiredState.Force = ctx.GetParams().Force
+		ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)
 
-		// for transient release, use local chart if available
-		if r.Transient && app.ChartPath != "" {
-			app.Chart = ""
-		}
+		app.DesiredState.Force = ctx.GetParams().Force
 
 		err = app.Reconcile(ctx)
 
@@ -172,16 +231,23 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	return err
 }
 
-func (r *Release) IncludeApp(app *App) error {
+func (r *Release) IncludeApp(ctx BosunContext, app *AppRepo) error {
 
 	var err error
-	if r.Apps == nil {
-		r.Apps = map[string]*AppRelease{}
+	var config *AppReleaseConfig
+	if r.AppReleaseConfigs == nil {
+		r.AppReleaseConfigs = map[string]*AppReleaseConfig{}
 	}
-	r.Apps[app.Name], err = app.MakeAppRelease(r)
+
+	ctx = ctx.WithRelease(r)
+
+	config, err = app.GetAppReleaseConfig(ctx)
 	if err != nil {
 		return errors.Wrap(err, "make app release")
 	}
+	r.AppReleaseConfigs[app.Name] = config
+
+	r.AppReleases[app.Name], err = NewAppRelease(ctx, config)
 
 	return nil
 }

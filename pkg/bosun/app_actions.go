@@ -24,25 +24,44 @@ const (
 type AppAction struct {
 	Name        string          `yaml:"name"`
 	Description string          `yaml:"description,omitempty"`
-	When        ActionSchedule  `yaml:"when"`
-	Where       string          `yaml:"where"`
+	When        ActionSchedule  `yaml:"when,omitempty"`
+	Where       string          `yaml:"where,omitempty"`
 	MaxAttempts int             `yaml:"maxAttempts,omitempty"`
-	Timeout     time.Duration   `yaml:"timeout"`
-	Interval    time.Duration   `yaml:"interval"`
+	Timeout     time.Duration   `yaml:"timeout,omitempty"`
+	Interval    time.Duration   `yaml:"interval,omitempty"`
 	Vault       *AppVaultAction `yaml:"vault,omitempty"`
 	Exec        *DynamicValue   `yaml:"exec,omitempty"`
 	Test        *AppTestAction  `yaml:"test,omitempty"`
 }
 
 type AppVaultAction struct {
-	File   string           `yaml:"file,omitempty"`
-	Layout *pkg.VaultLayout `yaml:"layout,omitempty"`
+	File    string           `yaml:"file,omitempty"`
+	Layout  *pkg.VaultLayout `yaml:"layout,omitempty"`
+	Literal string           `yaml:"literal,omitempty"`
 }
 
 type AppTestAction struct {
 	Exec *DynamicValue `yaml:"exec,omitempty"`
-	HTTP string        `yaml:"http,omitempty""`
-	TCP  string        `yaml:"tcp,omitempty""`
+	HTTP string        `yaml:"http,omitempty"`
+	TCP  string        `yaml:"tcp,omitempty"`
+}
+
+// MakeSelfContained removes imports all file dependencies into literals,
+// then deletes those dependencies.
+func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
+	if a.Vault != nil {
+		if a.Vault.File != "" {
+			path := ctx.ResolvePath(a.Vault.File)
+			layoutBytes, err := ioutil.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			a.Vault.File = ""
+			a.Vault.Literal = string(layoutBytes)
+		}
+	}
+
+	return nil
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
@@ -141,6 +160,8 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 		if err != nil {
 			return err
 		}
+	} else if vaultAction.Literal != "" {
+		layoutBytes = []byte(vaultAction.Literal)
 	} else {
 		layoutBytes, _ = yaml.Marshal(vaultAction.Layout)
 	}
@@ -168,6 +189,12 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 }
 
 func (a *AppAction) executeTest(ctx BosunContext) error {
+
+	if ctx.GetParams().DryRun {
+		ctx.Log.Info("Skipping test because this is a dry run.")
+		return nil
+	}
+
 	t := a.Test
 
 	if t.Exec != nil {
@@ -178,7 +205,7 @@ func (a *AppAction) executeTest(ctx BosunContext) error {
 	if t.HTTP != "" {
 		target, err := renderTemplate(ctx, t.HTTP)
 		c := http.Client{
-			Transport:&http.Transport{
+			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},
 		}

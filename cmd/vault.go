@@ -170,13 +170,9 @@ var vaultSecretCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		g := globalParameters{}
-		err := g.init()
-		if err != nil {
-			return err
-		}
+		_ = mustGetBosun()
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
 		if err != nil {
 			return err
 		}

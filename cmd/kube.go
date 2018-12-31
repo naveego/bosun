@@ -15,19 +15,46 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
+	"regexp"
 	"strings"
+	"time"
 
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+var pullSecretForce bool
+
+const (
+	ArgKubePullSecretUsername          = "pull-secret-username"
+	ArgKubePullSecretPassword          = "pull-secret-password"
+	ArgKubePullSecretPasswordLpassPath = "pull-secret-password-path"
+	ArgKubeDashboardUrl                = "url"
+)
+
+func init() {
+	kubeCmd.AddCommand(dashboardTokenCmd)
+
+	pullSecretCmd.Flags().BoolVarP(&pullSecretForce, "force", "f", false, "Force create (overwrite) the secret even if it already exists.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretUsername, "", "User for pulling from docker harbor.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretPassword, "", "Secret password for pulling from docker harbor.")
+	pullSecretCmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "FromPath in LastPass for the password for pulling from docker harbor.")
+	kubeCmd.AddCommand(pullSecretCmd)
+
+	rootCmd.AddCommand(kubeCmd)
+}
 
 // kubeCmd represents the kube command
 var kubeCmd = &cobra.Command{
@@ -64,13 +91,39 @@ var dashboardTokenCmd = &cobra.Command{
 	},
 }
 
-var pullSecretForce bool
+var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:   "dashboard",
+	Short: "Opens dashboard for current cluster.",
+	Long:  `You must have the cluster set in kubectl.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
 
-const(
-	ArgKubePullSecretUsername = "pull-secret-username"
-	ArgKubePullSecretPassword = "pull-secret-password"
-	ArgKubePullSecretPasswordLpassPath = "pull-secret-password-path"
-)
+		ns := "kube-system"
+		svc := "kubernetes-dashboard"
+
+		p, hostPort, err := kubectlProxy()
+		if err != nil {
+			return errors.Wrap(err, "kubectl proxy")
+		}
+		url := dashboardURL(hostPort, ns, svc)
+
+		if viper.GetBool(ArgKubeDashboardUrl) {
+			fmt.Fprintln(os.Stdout, url)
+		} else {
+			fmt.Fprintln(os.Stdout, fmt.Sprintf("Opening %s in your default browser...", url))
+			if err = browser.OpenURL(url); err != nil {
+				fmt.Fprintf(os.Stderr, fmt.Sprintf("failed to open browser: %v", err))
+			}
+		}
+
+		if err = p.Wait(); err != nil {
+			return err
+		}
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().Bool(ArgKubeDashboardUrl, false, "Display dashboard URL instead of opening a browser")
+})
 
 var pullSecretCmd = &cobra.Command{
 	Use:   "pull-secret [username] [password]",
@@ -103,12 +156,12 @@ var pullSecretCmd = &cobra.Command{
 				dockerConfigPath = os.ExpandEnv("$HOME/.docker/config.json")
 			}
 			data, err := ioutil.ReadFile(dockerConfigPath)
-			if err != nil{
+			if err != nil {
 				return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, err)
 			}
 
 			err = json.Unmarshal(data, &dockerConfig)
-			if err != nil{
+			if err != nil {
 				return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
 			}
 
@@ -119,7 +172,7 @@ var pullSecretCmd = &cobra.Command{
 			}
 			authBase64, _ := entry["auth"].(string)
 			auth, err := base64.StdEncoding.DecodeString(authBase64)
-			if err != nil{
+			if err != nil {
 				return errors.Errorf("invalid docker.n5o.black entry in docker config, you should docker login first: %s", err)
 			}
 			segs := strings.Split(string(auth), ":")
@@ -138,8 +191,8 @@ var pullSecretCmd = &cobra.Command{
 			} else if viper.GetString(ArgKubePullSecretPassword) != "" {
 				password = viper.GetString(ArgKubePullSecretPassword)
 			} else if viper.GetString(ArgKubePullSecretPasswordLpassPath) != "" {
-				path :=  viper.GetString(ArgKubePullSecretPasswordLpassPath)
-				pkg.Log.WithField("path", path ).Info("Trying to get password from LastPass.")
+				path := viper.GetString(ArgKubePullSecretPasswordLpassPath)
+				pkg.Log.WithField("path", path).Info("Trying to get password from LastPass.")
 				password, err = pkg.NewCommand("lpass", "show", "--password", path).RunOut()
 				if err != nil {
 					return err
@@ -150,12 +203,12 @@ var pullSecretCmd = &cobra.Command{
 		}
 
 		err = pkg.NewCommand("kubectl",
-				"create", "secret", "docker-registry",
-				"docker-n5o-black",
-				"--docker-server=https://docker.n5o.black",
-				fmt.Sprintf("--docker-username=%s", username),
-				fmt.Sprintf("--docker-password=%s", password),
-				fmt.Sprintf("--docker-email=%s", username),
+			"create", "secret", "docker-registry",
+			"docker-n5o-black",
+			"--docker-server=https://docker.n5o.black",
+			fmt.Sprintf("--docker-username=%s", username),
+			fmt.Sprintf("--docker-password=%s", password),
+			fmt.Sprintf("--docker-email=%s", username),
 		).RunE()
 		if err != nil {
 			return err
@@ -165,14 +218,77 @@ var pullSecretCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	kubeCmd.AddCommand(dashboardTokenCmd)
+// kubectlProxy runs "kubectl proxy", returning host:port
+func kubectlProxy() (*exec.Cmd, string, error) {
+	path, err := exec.LookPath("kubectl")
+	if err != nil {
+		return nil, "", errors.Wrap(err, "kubectl not found in PATH")
+	}
 
-	pullSecretCmd.Flags().BoolVarP(&pullSecretForce, "force", "f", false, "Force create (overwrite) the secret even if it already exists.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretUsername, "", "User for pulling from docker harbor.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretPassword, "", "Secret password for pulling from docker harbor.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "FromPath in LastPass for the password for pulling from docker harbor.")
-	kubeCmd.AddCommand(pullSecretCmd)
+	// port=0 picks a random system port
+	// config.GetMachineName() respects the -p (profile) flag
+	cmd := exec.Command(path, "proxy", "--port=0")
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, "", errors.Wrap(err, "cmd stdout")
+	}
 
-	rootCmd.AddCommand(kubeCmd)
+	pkg.Log.Infof("Executing: %s %s", cmd.Path, cmd.Args)
+	if err := cmd.Start(); err != nil {
+		return nil, "", errors.Wrap(err, "proxy start")
+	}
+
+	pkg.Log.Infof("Waiting for kubectl to output host:port ...")
+	reader := bufio.NewReader(stdoutPipe)
+
+	var out []byte
+	for {
+		r, timedOut, err := readByteWithTimeout(reader, 5*time.Second)
+		if err != nil {
+			return cmd, "", fmt.Errorf("readByteWithTimeout: %v", err)
+		}
+		if r == byte('\n') {
+			break
+		}
+		if timedOut {
+			pkg.Log.Infof("timed out waiting for input: possibly due to an old kubectl version.")
+			break
+		}
+		out = append(out, r)
+	}
+	pkg.Log.Infof("proxy stdout: %s", string(out))
+	return cmd, hostPortRe.FindString(string(out)), nil
+}
+
+// Matches: 127.0.0.1:8001
+var hostPortRe = regexp.MustCompile(`127.0.0.1:\d{4,}`)
+
+// readByteWithTimeout returns a byte from a reader or an indicator that a timeout has occurred.
+func readByteWithTimeout(r io.ByteReader, timeout time.Duration) (byte, bool, error) {
+	bc := make(chan byte)
+	ec := make(chan error)
+	go func() {
+		b, err := r.ReadByte()
+		if err != nil {
+			ec <- err
+		} else {
+			bc <- b
+		}
+		close(bc)
+		close(ec)
+	}()
+	select {
+	case b := <-bc:
+		return b, false, nil
+	case err := <-ec:
+		return byte(' '), false, err
+	case <-time.After(timeout):
+		return byte(' '), true, nil
+	}
+}
+
+// dashboardURL generates a URL for accessing the dashboard service
+func dashboardURL(proxy string, ns string, svc string) string {
+	// Reference: https://github.com/kubernetes/dashboard/wiki/Accessing-Dashboard---1.7.X-and-above
+	return fmt.Sprintf("http://%s/api/v1/namespaces/%s/services/http:%s:/proxy/", proxy, ns, svc)
 }

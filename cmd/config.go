@@ -43,7 +43,7 @@ var configDumpCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			data, _ := yaml.Marshal(app.AppConfig)
+			data, _ := yaml.Marshal(app.AppRepoConfig)
 			fmt.Println(string(data))
 			return nil
 		}

@@ -155,7 +155,6 @@ error if the chart has already been published.
 	},
 }
 
-
 var versionExtractor = regexp.MustCompile("version: (.*)")
 
 var (
@@ -166,7 +165,6 @@ func init() {
 	helmPublishCmd.Flags().BoolVarP(&helmPublishForce, ArgPublishChartForce, "f", false, "Force helm to publish the chart even if the version already exists.")
 
 	helmCmd.AddCommand(helmPublishCmd)
-
 
 	rootCmd.AddCommand(helmCmd)
 }

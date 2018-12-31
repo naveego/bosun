@@ -96,7 +96,7 @@ echo %testVar%
 			})
 
 			It("should include env values", func() {
-				ctx := BosunContext{}.WithValues(Values{
+				ctx := BosunContext{}.WithReleaseValues(Values{
 					"test": Values{
 						"nested": "value",
 					},

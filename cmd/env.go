@@ -28,16 +28,6 @@ func init() {
 	rootCmd.AddCommand(envCmd)
 }
 
-var envNameCmd = &cobra.Command{
-	Use:   "name",
-	Short: "Prints the name of the current environment.",
-	Run: func(cmd *cobra.Command, args []string) {
-		b := mustGetBosun()
-		e := b.GetCurrentEnvironment()
-		fmt.Println(e.Name)
-	},
-}
-
 // envCmd represents the env command
 var envCmd = &cobra.Command{
 	Use:   "env {environment}",
@@ -60,7 +50,7 @@ var envCmd = &cobra.Command{
 
 		env := b.GetCurrentEnvironment()
 
-		ctx := b.NewContext("")
+		ctx := b.NewContext()
 
 		err = env.ForceEnsure(ctx)
 		if err != nil {
@@ -87,3 +77,24 @@ var envCmd = &cobra.Command{
 		return nil
 	},
 }
+
+var envNameCmd = &cobra.Command{
+	Use:   "name",
+	Short: "Prints the name of the current environment.",
+	Run: func(cmd *cobra.Command, args []string) {
+		b := mustGetBosun()
+		e := b.GetCurrentEnvironment()
+		fmt.Println(e.Name)
+	},
+}
+
+var envListCmd = addCommand(envCmd,&cobra.Command{
+	Use:   "list",
+	Short: "Lists environments.",
+	Run: func(cmd *cobra.Command, args []string) {
+		b := mustGetBosun()
+		for _, e := range b.GetEnvironments(){
+			fmt.Println(e.Name)
+		}
+	},
+})

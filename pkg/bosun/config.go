@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 const logConfigs = true
@@ -28,10 +29,10 @@ type ConfigFragment struct {
 	Imports      []string               `yaml:"imports,omitempty"`
 	Environments []*EnvironmentConfig   `yaml:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs"`
-	Apps         []*AppConfig           `yaml:"apps"`
-	FromPath     string                 `yaml:"-"`
+	Apps         []*AppRepoConfig       `yaml:"apps"`
+	FromPath     string                 `yaml:"fromPath"`
 	Config       *Config                `yaml:"-"`
-	Releases     []*Release             `yaml:"releases,omitempty"`
+	Releases     []*ReleaseConfig       `yaml:"releases,omitempty"`
 }
 
 type State struct {
@@ -122,7 +123,7 @@ func (r *Config) importFragmentFromPath(path string) error {
 	}
 
 	if r.ImportedFragments[path] != nil {
-		if logConfigs{
+		if logConfigs {
 			log.Debugf("Already imported.")
 		}
 		return nil
@@ -152,7 +153,7 @@ func (r *Config) importFragmentFromPath(path string) error {
 	}
 
 	for _, m := range c.Releases {
-		m.SetFragment(c)
+		m.SetParent(c)
 	}
 
 	err = r.MergedFragments.Merge(c)
@@ -202,11 +203,16 @@ func (c *ConfigFragment) Save() error {
 	if err != nil {
 		return err
 	}
+
+	b = stripFromPath.ReplaceAll(b, []byte{})
+
 	err = ioutil.WriteFile(c.FromPath, b, 0600)
 	return err
 }
 
-func (c *ConfigFragment) mergeApp(incoming *AppConfig) error {
+var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)
+
+func (c *ConfigFragment) mergeApp(incoming *AppRepoConfig) error {
 	for _, app := range c.Apps {
 		if app.Name == incoming.Name {
 			return errors.Errorf("app %q imported from %q, but it was already imported frome %q", incoming.Name, incoming.FromPath, app.FromPath)
@@ -249,7 +255,7 @@ func (c *ConfigFragment) GetEnvironmentConfig(name string) *EnvironmentConfig {
 	panic(fmt.Sprintf("no environment named %q", name))
 }
 
-func (c *ConfigFragment) mergeRelease(release *Release) error {
+func (c *ConfigFragment) mergeRelease(release *ReleaseConfig) error {
 	for _, e := range c.Releases {
 		if e.Name == release.Name {
 			return errors.Errorf("already have a release named %q, from %q", release.Name, e.FromPath)
@@ -274,7 +280,18 @@ func expandPath(relativeToFile, path string) []string {
 func resolvePath(relativeToFile, path string) string {
 	path = os.ExpandEnv(path)
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(filepath.Dir(relativeToFile), path)
+		relativeToDir := getDirIfFile(relativeToFile)
+		path = filepath.Join(relativeToDir, path)
+	}
+	return path
+}
+
+func getDirIfFile(path string) string {
+	if stat, err := os.Stat(path); err == nil {
+		if stat.IsDir() {
+			return path
+		}
+		return filepath.Dir(path)
 	}
 	return path
 }
