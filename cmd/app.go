@@ -338,6 +338,8 @@ var appToggleCmd = &cobra.Command{
 		ctx := b.NewContext()
 
 		for _, app := range apps {
+			ctx = ctx.WithAppRelease(app)
+
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
 			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
 			if wantsLocalhost {
@@ -353,15 +355,31 @@ var appToggleCmd = &cobra.Command{
 				default:
 					app.DesiredState.Routing = bosun.RoutingCluster
 				}
-
 			}
 
-			app.DesiredState.Status = bosun.StatusDeployed
+			if app.DesiredState.Routing == bosun.RoutingLocalhost {
 
-			err = app.Reconcile(ctx)
+				err = app.RouteToLocalhost(ctx)
+				if err != nil {
+					return err
+				}
+			} else {
+				// force upgrade the app to restore it to its normal state.
+				ctx.Log.Info("Deleting app.")
+				app.DesiredState.Status = bosun.StatusNotFound
+				err = app.Reconcile(ctx)
+				if err != nil {
+					return err
+				}
 
-			if err != nil {
-				return err
+				ctx.Log.Info("Re-deploying app.")
+				app.DesiredState.Status = bosun.StatusDeployed
+
+				err = app.Reconcile(ctx)
+
+				if err != nil {
+					return err
+				}
 			}
 		}
 

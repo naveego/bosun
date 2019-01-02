@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -405,6 +406,9 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 
 	ctx = ctx.WithReleaseValues(values)
 
+	// clear helm release cache after work is done
+	defer func(){ a.helmRelease = nil }()
+
 
 	err = a.LoadActualState(ctx, true)
 	if err != nil {
@@ -529,6 +533,9 @@ func (a *AppRelease) Install(ctx BosunContext) error {
 
 func (a *AppRelease) Upgrade(ctx BosunContext) error {
 	args := append([]string{"upgrade", a.Name, a.Chart}, a.makeHelmArgs(ctx)...)
+	if a.DesiredState.Force {
+		args = append(args, "--force")
+	}
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
 	return err
@@ -544,6 +551,72 @@ func (a *AppRelease) GetStatus() (string, error) {
 	}
 
 	return release.Status, nil
+}
+
+func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
+
+	ctx = ctx.WithAppRelease(a)
+
+	ctx.Log.Info("Configuring app to route traffic to localhost.")
+
+	if a.AppRepo.Minikube == nil {
+		return errors.New("no minikube config in app")
+	}
+
+	hostIP := ctx.Bosun.config.HostIPInMinikube
+	if hostIP == "" {
+		return errors.New("hostIPInMinikube is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
+	}
+
+	for _, routableService := range a.AppRepo.Minikube.RoutableServices {
+		log := ctx.Log.WithField("routable_service", routableService.Name)
+
+		log.Info("Updating service...")
+
+		realSvcYaml, err := pkg.NewCommand("kubectl", "get", "svc", routableService.Name, "-o", "yaml").RunOut()
+		if err != nil {
+			return errors.Errorf("getting service config for %q: %s", routableService.Name, err)
+		}
+
+		routedSvc, err := ReadValues([]byte(realSvcYaml))
+		if err != nil {
+			return err
+		}
+		routedSvc.AddPath("spec.clusterIP", "")
+		routedSvc.AddPath("spec.type", "ExternalName")
+		routedSvc.AddPath("spec.externalName", hostIP)
+		routedSvc.AddPath("spec.ports",[]Values{
+			{
+				"port":       routableService.InternalPort,
+				"targetPort": routableService.ExternalPort,
+				"protocol":   "TCP",
+				"name":       routableService.PortName,
+			},
+		})
+
+		routedSvcYaml, _ := routedSvc.YAML()
+
+		{
+			tmp, err := util.NewTempFile("routed-service", []byte(routedSvcYaml))
+			if err != nil {
+				return errors.Wrap(err, "create service file")
+			}
+			defer tmp.CleanUp()
+
+			err = pkg.NewCommand("kubectl", "delete", "service", routableService.Name).RunE()
+			if err != nil {
+				return errors.Wrap(err, "delete service")
+			}
+			err = pkg.NewCommand("kubectl", "apply", "-f", tmp.Path).RunE()
+			if err != nil {
+				return errors.Errorf("error applying service\n%s\n---\n%s", routedSvcYaml, err)
+			}
+		}
+
+		log.Info("Updated service.")
+	}
+
+	return nil
 }
 
 func (a *AppRelease) makeHelmArgs(ctx BosunContext) []string {

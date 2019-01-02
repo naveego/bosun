@@ -19,6 +19,7 @@ type Config struct {
 	Imports            []string                   `yaml:"imports,omitempty"`
 	GitRoots           []string                   `yaml:"gitRoots"`
 	Release            string                     `yaml:"release"`
+	HostIPInMinikube string `yaml:"hostIPInMinikube"`
 	AppStates          AppStatesByEnvironment     `yaml:"appStates"`
 	MergedFragments    *ConfigFragment            `yaml:"-"`
 	ImportedFragments  map[string]*ConfigFragment `yaml:"-"`
