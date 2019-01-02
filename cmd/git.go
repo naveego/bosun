@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -193,7 +194,7 @@ var gitTaskCmd = &cobra.Command{
 		issueNumber := *issue.Number
 		pkg.Log.WithField("issue", issueNumber).Info("Created issue.")
 
-		slug := strings.Replace(strings.ToLower(taskName), " ", "-", -1)
+		slug := regexp.MustCompile(`\W+`).ReplaceAllString(strings.ToLower(taskName), "-")
 		branchName := fmt.Sprintf("issue/#%d/%s", issueNumber, slug)
 		pkg.Log.WithField("branch", branchName).Info("Creating branch.")
 		err = pkg.NewCommand("git", "checkout", "-b", branchName).RunE()

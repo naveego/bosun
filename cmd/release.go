@@ -108,8 +108,6 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 			return errors.Errorf("app %q not in this release", args[0])
 		}
 
-
-		//app.ReleaseValues = appRelease.Values
 		ctx := b.NewContext()
 		values, err := appRelease.GetReleaseValues(ctx)
 		if err != nil {

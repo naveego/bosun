@@ -28,6 +28,11 @@ type Release struct {
 	AppReleases AppReleaseMap
 }
 
+// IsTransient returns true if r is nil or has Transient set to true.
+func (r *Release) IsTransient() bool {
+	return r == nil || r.Transient
+}
+
 func NewRelease(ctx BosunContext, r *ReleaseConfig) (*Release, error) {
 	var err error
 	if r.AppReleaseConfigs == nil {

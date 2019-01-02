@@ -24,8 +24,8 @@ type Config struct {
 	ImportedFragments  map[string]*ConfigFragment `yaml:"-"`
 }
 
+
 type ConfigFragment struct {
-	Repo         string                 `yaml:"repo,omitempty"`
 	Imports      []string               `yaml:"imports,omitempty"`
 	Environments []*EnvironmentConfig   `yaml:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs"`

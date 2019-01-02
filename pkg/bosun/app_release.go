@@ -416,7 +416,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 
 	reportDeploy := !params.DryRun &&
 		!params.NoReport &&
-		!ctx.Release.Transient &&
+		!ctx.Release.IsTransient() &&
 		a.DesiredState.Status == StatusDeployed &&
 		!env.IsLocal &&
 		a.ReportDeployment

@@ -25,6 +25,12 @@ type AppRepoConfig struct {
 	Values           AppValuesByEnvironment `yaml:"values,omitempty"`
 	Scripts          []*Script              `yaml:"scripts,omitempty"`
 	Actions          []*AppAction           `yaml:"actions,omitempty"`
+	// The ports which should be made exposed through nodePorts
+	// when running on minikube.
+	MinikubePorts []int `yaml:"minikubePorts,omitempty"`
+	// The services which should be replaced when toggling an
+	// app to run on the host.
+	MinikubeService string `yaml:"minikubeService,omitempty"`
 	Fragment         *ConfigFragment        `yaml:"-"`
 }
 
