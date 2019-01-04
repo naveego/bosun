@@ -180,16 +180,27 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				return "", errors.New("cluster parameter was not set")
 			}
 
-			b64, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority-data}'`, cluster)).RunOut()
+			data, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority-data}`, cluster)).RunOut()
 
 			if err != nil {
 				return "", err
 			}
 
-			b64 = strings.Trim(b64, "\"'")
-			cert, err := base64.StdEncoding.DecodeString(b64)
-			if err != nil {
-				return "", errors.Errorf("could not decode %q: %s", b64, err)
+			var cert []byte
+			if data == "" {
+				data, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority}`, cluster)).RunOut()
+				if err != nil {
+					return "", err
+				}
+				cert, err = ioutil.ReadFile(data)
+				if err != nil {
+					return "", errors.Wrap(err, "get cert")
+				}
+			} else {
+				cert, err = base64.StdEncoding.DecodeString(data)
+				if err != nil {
+					return "", errors.Errorf("could not decode %q: %s", data, err)
+				}
 			}
 
 			return string(cert), nil

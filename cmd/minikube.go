@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"gopkg.in/eapache/go-resiliency.v1/retrier"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -49,7 +50,35 @@ var minikubeUpCmd = &cobra.Command{
 			return err
 		}
 
-		_, err = pkg.NewCommand("helm", "init").RunOut()
+		r := retrier.New(retrier.ConstantBackoff(5, 5 * time.Second), nil)
+
+		err = r.Run(func()error {
+			pkg.Log.Info("Initializing helm...")
+			_, err = pkg.NewCommand("helm", "init").RunOut()
+			if err != nil {
+				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
+			}
+			return err
+		})
+
+		if err != nil {
+			return errors.Wrap(err, "helm init")
+		}
+
+		pkg.Log.Info("Helm initialized.")
+
+		err = r.Run(func()error {
+			pkg.Log.Info("Initializing helm...")
+			_, err = pkg.NewCommand("helm", "init").RunOut()
+			if err != nil {
+				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
+			}
+			return err
+		})
+
+
+
+
 
 		return err
 	},

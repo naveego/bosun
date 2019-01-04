@@ -35,6 +35,7 @@ func (m *MinikubeCmd) Up() error {
 			"--kubernetes-version=v1.10.0",
 			"--vm-driver=virtualbox",
 			"--extra-config=apiserver.service-node-port-range=80-32000",
+			//"-v=7",
 		).RunE()
 	}
 
