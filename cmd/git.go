@@ -127,6 +127,72 @@ var gitDeployUpdateCmd = &cobra.Command{
 	},
 }
 
+var ArgPullRequestReviewers = "reviewer"
+var ArgPullRequestTitle = "title"
+var ArgPullRequestBody = "body"
+
+var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
+
+var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
+	Use:   "pull-request",
+	Aliases:[]string{"pr"},
+	Short: "Opens a pull request.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		client := getGitClient()
+
+		org, repo := getOrgAndRepo()
+		wd, _ := os.Getwd()
+		g, _ := git.NewGitWrapper(wd)
+		branch := g.Branch()
+		m := issueNumberRE.FindStringSubmatch(branch)
+		if len(m) == 0 {
+			return errors.Errorf("could not find issue number in branch %q", branch)
+		}
+
+		issueNumber := m[1]
+
+		title := viper.GetString(ArgPullRequestTitle)
+		if title == "" {
+			title =fmt.Sprintf("Merge %s", branch)
+		}
+		body := fmt.Sprintf("%s\nCloses #%s", viper.GetString(ArgPullRequestBody), issueNumber)
+
+		req := &github.NewPullRequest{
+			Title: &title,
+			Body: &body,
+			Base: github.String("master"),
+			Head: &branch,
+		}
+
+		issue, _, err := client.PullRequests.Create(context.Background(), org, repo, req)
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Created PR #%d.\n", *issue.ID)
+
+		reviewers := viper.GetStringSlice(ArgPullRequestReviewers)
+		if len(reviewers) > 0 {
+			revRequest := github.ReviewersRequest{
+				Reviewers: reviewers,
+			}
+			_, _, err = client.PullRequests.RequestReviewers(context.Background(), org, repo, *issue.Number, revRequest)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringSlice(ArgPullRequestReviewers, []string{}, "Reviewers to request.")
+	cmd.Flags().String(ArgPullRequestTitle, "", "Title of PR")
+	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
+})
+
 var gitTaskCmd = &cobra.Command{
 	Use:   "task {parent-number} {task name}",
 	Args:  cobra.ExactArgs(2),

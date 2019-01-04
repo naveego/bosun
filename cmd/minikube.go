@@ -68,17 +68,18 @@ var minikubeUpCmd = &cobra.Command{
 		pkg.Log.Info("Helm initialized.")
 
 		err = r.Run(func()error {
-			pkg.Log.Info("Initializing helm...")
-			_, err = pkg.NewCommand("helm", "init").RunOut()
+			pkg.Log.Info("Checking tiller...")
+			status, err := pkg.NewCommand("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o",`jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
 			if err != nil {
-				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
+				pkg.Log.WithError(err).Error("Getting tiller status failed, may retry.")
+				return err
 			}
-			return err
+			if !strings.Contains(status, "True") {
+				return errors.Errorf("Wanted Ready status to be True but it was %q", status)
+			}
+			pkg.Log.Info("Tiller running.")
+			return nil
 		})
-
-
-
-
 
 		return err
 	},
