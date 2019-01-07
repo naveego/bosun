@@ -20,6 +20,18 @@ type ErrNoValue error
 // Values represents a collection of chart values.
 type Values map[string]interface{}
 
+func (v *Values) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	m := map[string]interface{}(*v)
+	err := unmarshal(&m)
+	if err != nil {
+		return err
+	}
+	*v = m
+	v.cleanUp()
+
+	return nil
+}
+
 // YAML encodes the Values into a YAML string.
 func (v Values) YAML() (string, error) {
 	b, err := yaml.Marshal(v)
@@ -162,10 +174,16 @@ func (v Values) Merge(src Values) {
 	for key, srcVal := range src {
 		destVal, found := v[key]
 
-		if found && istable(srcVal) && istable(destVal) {
-			destMap := destVal.(map[string]interface{})
-			srcMap := srcVal.(map[string]interface{})
-			Values(destMap).Merge(Values(srcMap))
+		srcType := fmt.Sprintf("%T", srcVal)
+		destType := fmt.Sprintf("%T", destVal)
+		match := srcType == destType
+		validSrc :=istable(srcVal)
+		validDest :=istable(destVal)
+
+		if found &&match  && validSrc  && validDest  {
+			destMap := destVal.(Values)
+			srcMap := srcVal.(Values)
+			destMap.Merge(srcMap)
 		} else {
 			v[key] = srcVal
 		}
@@ -186,6 +204,9 @@ func (v Values) Clone() Values {
 // istable is a special-purpose function to see if the present thing matches the definition of a YAML table.
 func istable(v interface{}) bool {
 	_, ok := v.(map[string]interface{})
+	if !ok {
+		_, ok = v.(Values)
+	}
 	return ok
 }
 
@@ -217,7 +238,8 @@ func ReadValues(data []byte) (vals Values, err error) {
 	if len(vals) == 0 {
 		vals = Values{}
 	}
-	return
+	vals.cleanUp()
+	return vals, err
 }
 
 // ReadValuesFile will parse a YAML file into a map of values.
@@ -227,4 +249,23 @@ func ReadValuesFile(filename string) (Values, error) {
 		return map[string]interface{}{}, err
 	}
 	return ReadValues(data)
+}
+
+func (v Values) cleanUp(){
+	for k, child := range v {
+		switch c := child.(type) {
+		case map[interface{}]interface{}:
+			cv := Values{}
+			for k2, v2 := range c {
+				cv[fmt.Sprint(k2)] = v2
+			}
+			cv.cleanUp()
+			v[k] = cv
+		case map[string]interface{}:
+			cv := Values(c)
+			cv.cleanUp()
+			v[k] = cv
+		default:
+		}
+	}
 }
