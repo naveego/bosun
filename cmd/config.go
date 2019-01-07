@@ -58,16 +58,26 @@ var configDumpCmd = &cobra.Command{
 }
 
 var configImportCmd = &cobra.Command{
-	Use:     "import {file}",
+	Use:     "import [file]",
 	Aliases: []string{"include", "add"},
-	Args:    cobra.ExactArgs(1),
-	Short:   "Includes the file in the user's bosun.yaml.",
+	Args:    cobra.MaximumNArgs(1),
+	Short:   "Includes the file in the user's bosun.yaml. If file is not provided, searches for a bosun.yaml file in this or a parent directory.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		filename, err := filepath.Abs(args[0])
+		var filename string
+		var err error
+		switch len(args) {
+		case 0:
+			wd, _ := os.Getwd()
+			filename, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+		case 1:
+			filename, err = filepath.Abs(args[0])
+		}
+
 		if err != nil {
 			return err
 		}
+
 		_, err = os.Stat(filename)
 		if err != nil {
 			return err
