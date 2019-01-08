@@ -121,9 +121,12 @@ var appBumpCmd = &cobra.Command{
 }
 
 var appAddHostsCmd = addCommand(appCmd, &cobra.Command{
-	Use:   "add-hosts {minikube-ip} [name...]",
-	Args:cobra.MinimumNArgs(1),
-	Short: "Adds apps to the hosts file with the provided IP and the current domain.",
+	Use:   "add-hosts [name...]",
+	Short: "Writes out what the hosts file apps to the hosts file would look like if the requested apps were bound to the minikube IP.",
+	Long: `Writes out what the hosts file apps to the hosts file would look like if the requested apps were bound to the minikube IP.
+
+The current domain and the minikube IP are used to populate the output. To update the hosts file, pipe to sudo tee /etc/hosts.`,
+	Example: "bosun apps add-hosts --all | sudo tee /etc/hosts",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
@@ -170,16 +173,17 @@ var appAddHostsCmd = addCommand(appCmd, &cobra.Command{
 			lines = append(lines, line)
 		}
 
-		out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		for _, line := range lines {
-			_, err = fmt.Fprintf(out, "%s\n", line.String())
-			if err != nil {
-				return err
+		for _, h := range lines {
+			if h.IP != "" && h.Host != "" {
+				fmt.Fprintf(os.Stdout, "%s\t%s    ", h.IP, h.Host)
 			}
+			if h.Comment != "" {
+				fmt.Fprintf(os.Stdout, "# %s", strings.TrimSpace(h.Comment))
+				if h.IP == "" && h.Host == "" {
+					fmt.Fprint(os.Stdout, "\t\t")
+				}
+			}
+			fmt.Fprintln(os.Stdout)
 		}
 
 		return err
@@ -252,10 +256,10 @@ type hostLine struct {
 func (h hostLine) String() string{
 	w := new(strings.Builder)
 	if h.IP != "" && h.Host != "" {
-		fmt.Fprintf(w, "%s %s ", h.IP, h.Host)
+		fmt.Fprintf(w, "%s\t%s\t", h.IP, h.Host)
 	}
 	if h.Comment != "" {
-		fmt.Fprintf(w, "# %s", h.Comment)
+		fmt.Fprintf(w, "# %s", strings.TrimSpace(h.Comment))
 	}
 	return w.String()
 }
