@@ -132,7 +132,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 		b := mustGetBosun()
 		apps := mustGetAppRepos(b, args)
 		env := b.GetCurrentEnvironment()
-		ip := args[0]
+		ip := pkg.NewCommand("minikube", "ip").MustOut()
 
 		toAdd := map[string]hostLine{}
 		for _, app := range apps {
