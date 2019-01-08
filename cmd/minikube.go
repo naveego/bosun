@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"github.com/spf13/viper"
 	"gopkg.in/eapache/go-resiliency.v1/retrier"
 	"os"
 	"os/exec"
@@ -29,6 +30,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+
+var portForwards []string
+
+func init() {
+
+	minikubePortForward.Flags().StringSliceVarP(&portForwards, "services", "s", []string{}, "Services to forward.")
+
+	minikubeCmd.AddCommand(minikubePortForward)
+
+	rootCmd.AddCommand(minikubeCmd)
+}
+
+
 // minikubeCmd represents the minikube command
 var minikubeCmd = &cobra.Command{
 	Use:   "minikube",
@@ -37,12 +51,14 @@ var minikubeCmd = &cobra.Command{
 	Long:  `You must have the cluster set in kubectl.`,
 }
 
-var minikubeUpCmd = &cobra.Command{
+var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 	Use:   "up",
 	Short: "Brings up minikube if it's not currently running.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		c := pkg.MinikubeCmd{}
+		c := pkg.MinikubeCmd{
+			Driver:viper.GetString("driver"),
+		}
 
 		err := c.Up()
 
@@ -83,7 +99,9 @@ var minikubeUpCmd = &cobra.Command{
 
 		return err
 	},
-}
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String("driver", "virtualbox", "The driver to use for minikube.")
+})
 
 var minikubePortForward = &cobra.Command{
 	Use:   "forward",
@@ -183,16 +201,4 @@ var minikubePortForward = &cobra.Command{
 		}
 
 	},
-}
-
-var portForwards []string
-
-func init() {
-	minikubeCmd.AddCommand(minikubeUpCmd)
-
-	minikubePortForward.Flags().StringSliceVarP(&portForwards, "services", "s", []string{}, "Services to forward.")
-
-	minikubeCmd.AddCommand(minikubePortForward)
-
-	rootCmd.AddCommand(minikubeCmd)
 }

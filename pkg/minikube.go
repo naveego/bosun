@@ -3,6 +3,8 @@ package pkg
 import "runtime"
 
 type MinikubeCmd struct {
+	//
+	Driver string
 }
 
 func (m *MinikubeCmd) Up() error {
@@ -11,6 +13,10 @@ func (m *MinikubeCmd) Up() error {
 	if err == nil {
 		Log.Info("minikube already running")
 		return nil
+	}
+
+	if m.Driver == "" {
+		m.Driver = "virtualbox"
 	}
 
 	Log.Info("minikube not running, starting minikube...")
@@ -33,7 +39,7 @@ func (m *MinikubeCmd) Up() error {
 			"--memory=16000",
 			"--cpus=2",
 			"--kubernetes-version=v1.10.0",
-			"--vm-driver=virtualbox",
+			"--vm-driver", m.Driver,
 			"--extra-config=apiserver.service-node-port-range=80-32000",
 			//"-v=7",
 		).RunE()
