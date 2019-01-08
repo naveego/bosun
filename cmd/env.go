@@ -23,16 +23,21 @@ import (
 
 func init() {
 
-	envCmd.AddCommand(envNameCmd)
 
-	rootCmd.AddCommand(envCmd)
+
 }
 
+const(
+	ArgEnvCurrent = "current"
+)
+
+
 // envCmd represents the env command
-var envCmd = &cobra.Command{
-	Use:   "env {environment}",
+var envCmd = addCommand(rootCmd, &cobra.Command{
+	Use:   "env [environment]",
 	Args:  cobra.ExactArgs(1),
 	Short: "Sets the environment, and outputs a script which will set environment variables in the environment. Should be called using $() so that the shell will apply the script.",
+	Long: "The special environment name `current` will emit the script for the current environment without changing anything.",
 	Example: "$(bosun env {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -42,10 +47,11 @@ var envCmd = &cobra.Command{
 		}
 
 		envName := args[0]
-
-		err = b.UseEnvironment(envName)
-		if err != nil {
-			return err
+		if envName != "current" {
+			err = b.UseEnvironment(envName)
+			if err != nil {
+				return err
+			}
 		}
 
 		env := b.GetCurrentEnvironment()
@@ -76,7 +82,9 @@ var envCmd = &cobra.Command{
 
 		return nil
 	},
-}
+}, func(cmd *cobra.Command) {
+	cmd.Flags().Bool(ArgEnvCurrent, false, "Write script for setting current environment.")
+})
 
 var envNameCmd = &cobra.Command{
 	Use:   "name",

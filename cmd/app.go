@@ -24,8 +24,10 @@ import (
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"io/ioutil"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -116,6 +118,146 @@ var appBumpCmd = &cobra.Command{
 		return err
 
 	},
+}
+
+var appAddHostsCmd = addCommand(appCmd, &cobra.Command{
+	Use:   "add-hosts {minikube-ip} [name...]",
+	Args:cobra.MinimumNArgs(1),
+	Short: "Adds apps to the hosts file with the provided IP and the current domain.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := mustGetBosun()
+		apps := mustGetAppRepos(b, args)
+		env := b.GetCurrentEnvironment()
+		ip := args[0]
+
+		toAdd := map[string]hostLine{}
+		for _, app := range apps {
+			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
+			toAdd[host] = hostLine{
+				IP:ip,
+				Host:host,
+				Comment: fmt.Sprintf("bosun"),
+			}
+		}
+
+		hosts, err := ioutil.ReadFile("/etc/hosts")
+		if err != nil {
+			return err
+		}
+
+		var lines []hostLine
+		for _, line := range strings.Split(string(hosts), "\n") {
+			segs := hostLineRE.FindStringSubmatch(line)
+			hostLine := hostLine{}
+			if len(segs) == 0 {
+				hostLine.Comment = strings.TrimPrefix(line, "#")
+			}
+			if len(segs) >= 3{
+				hostLine.IP = segs[1]
+				hostLine.Host = segs[2]
+			}
+			if len(segs) >= 4 {
+				hostLine.Comment = segs[3]
+			}
+
+			delete(toAdd, hostLine.Host)
+
+			lines = append(lines, hostLine)
+		}
+
+		for _, line := range toAdd {
+			lines = append(lines, line)
+		}
+
+		out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		for _, line := range lines {
+			_, err = fmt.Fprintf(out, "%s\n", line.String())
+			if err != nil {
+				return err
+			}
+		}
+
+		return err
+	},
+})
+
+var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
+	Use:   "remove-hosts [name...]",
+	Short: "Removes apps with the current domain from the hosts file.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := mustGetBosun()
+		apps := mustGetAppRepos(b, args)
+		env := b.GetCurrentEnvironment()
+
+		toRemove := map[string]bool{}
+		for _, app := range apps {
+			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
+			toRemove[host] = true
+		}
+
+		hosts, err := ioutil.ReadFile("/etc/hosts")
+		if err != nil {
+			return err
+		}
+
+		var lines []hostLine
+		for _, line := range strings.Split(string(hosts), "\n") {
+			segs := hostLineRE.FindStringSubmatch(line)
+			hostLine := hostLine{}
+			if len(segs) == 0 {
+				hostLine.Comment = strings.TrimPrefix(line, "#")
+			}
+			if len(segs) >= 3{
+				hostLine.IP = segs[1]
+				hostLine.Host = segs[2]
+			}
+			if len(segs) >= 4 {
+				hostLine.Comment = segs[3]
+			}
+			lines = append(lines, hostLine)
+		}
+
+		out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		for _, line := range lines {
+			if !toRemove[line.Host] {
+				_, err = fmt.Fprintf(out, "%s\n", line.String())
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		return err
+	},
+})
+
+var hostLineRE = regexp.MustCompile(`^\s*([A-Fa-f\d\.:]+)\s+(\S+) *#? *(.*)`)
+
+type hostLine struct {
+	IP string
+	Host string
+	Comment string
+}
+
+func (h hostLine) String() string{
+	w := new(strings.Builder)
+	if h.IP != "" && h.Host != "" {
+		fmt.Fprintf(w, "%s %s ", h.IP, h.Host)
+	}
+	if h.Comment != "" {
+		fmt.Fprintf(w, "# %s", h.Comment)
+	}
+	return w.String()
 }
 
 var appAcceptActualCmd = &cobra.Command{
