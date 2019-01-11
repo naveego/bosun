@@ -559,8 +559,14 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 
 	ctx.Log.Info("Configuring app to route traffic to localhost.")
 
-	if a.AppRepo.Minikube == nil {
-		return errors.New("no minikube config in app")
+	if a.AppRepo.Minikube == nil || len(a.AppRepo.Minikube.RoutableServices) == 0{
+		return errors.New(`to route to localhost, app must have a minikube entry like this:
+  minikube:
+    routableServices:
+    - name: # the name of the service that your ingress points at
+      portName: http # name of the port the ingress points at      
+      localhostPort: # port that your service runs on when its running on your localhost
+`)
 	}
 
 	hostIP := ctx.Bosun.config.HostIPInMinikube
@@ -582,13 +588,18 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 		if err != nil {
 			return err
 		}
+
+		localhostPort := routableService.LocalhostPort
+		if localhostPort == 0 {
+			localhostPort = routableService.ExternalPort
+		}
+
 		routedSvc.AddPath("spec.clusterIP", "")
 		routedSvc.AddPath("spec.type", "ExternalName")
 		routedSvc.AddPath("spec.externalName", hostIP)
 		routedSvc.AddPath("spec.ports",[]Values{
 			{
-				"port":       routableService.InternalPort,
-				"targetPort": routableService.ExternalPort,
+				"port":       localhostPort,
 				"protocol":   "TCP",
 				"name":       routableService.PortName,
 			},

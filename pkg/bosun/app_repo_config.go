@@ -41,8 +41,9 @@ type AppMinikubeConfig struct {
 type AppRoutableService struct {
 	Name string	`yaml:"name"`
 	PortName string `yaml:"portName"`
-	InternalPort int `yaml:"internalPort"`
+	// Deprecated, use localhostPort instead
 	ExternalPort int `yaml:"externalPort"`
+	LocalhostPort int `yaml:"localhostPort"`
 }
 
 type Dependency struct {
