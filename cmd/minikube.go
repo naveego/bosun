@@ -83,6 +83,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 
 		pkg.Log.Info("Helm initialized.")
 
+		r = retrier.New(retrier.ConstantBackoff(10, 6 * time.Second), nil)
 		err = r.Run(func()error {
 			pkg.Log.Info("Checking tiller...")
 			status, err := pkg.NewCommand("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o",`jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
