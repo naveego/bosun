@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,13 +30,16 @@ type ScriptStep struct {
 
 func (b *Bosun) Execute(s *Script, steps ...int) error {
 
-	log := b.log.WithField("name", s.Name)
-
 	relativeDir := filepath.Dir(s.FromPath)
 
-	env := b.GetCurrentEnvironment()
+	ctx := b.NewContext().WithDir(relativeDir).WithLog(b.log.WithField("script", s.Name))
+
+	return b.ExecuteContext(ctx, s, steps...)
+}
+
+func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error {
 	var err error
-	ctx := b.NewContext()
+	env := ctx.Env
 
 	if err = env.Ensure(ctx); err != nil {
 		return errors.Wrap(err, "ensure environment")
@@ -47,7 +51,10 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 
 	if s.Literal != nil {
 		log.Debug("Executing literal script, not bosun script.")
-		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)))
+		_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), DynamicValueOpts{StreamOutput:true})
+		if err != nil {
+			return err
+		}
 		return err
 	}
 
@@ -87,7 +94,7 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 		if step.Literal != nil {
 			log.Info("Step is a literal script, not a bosun action.")
 
-			_, err = step.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)))
+			_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), DynamicValueOpts{StreamOutput:true})
 			if err != nil {
 				return err
 			}
@@ -132,7 +139,7 @@ func (b *Bosun) Execute(s *Script, steps ...int) error {
 
 		log.WithField("args", stepArgs).Info("Executing step")
 
-		err = pkg.NewCommand(exe, stepArgs...).WithDir(relativeDir).RunE()
+		err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Dir).RunE()
 		if err != nil {
 			log.WithField("flags", step.Flags).WithField("args", step.Args).Error("Step failed.")
 			return errors.Errorf("script %q abended on step %q (%d): %s", s.Name, step.Name, i, err)

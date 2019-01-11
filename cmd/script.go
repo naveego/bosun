@@ -67,6 +67,7 @@ var scriptListCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
+
 		b, err := getBosun()
 		if err != nil {
 			return err

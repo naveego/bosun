@@ -789,41 +789,62 @@ var appPullCmd = addCommand(
 		},
 	})
 
-// var appScriptCmd = addCommand(appCmd, &cobra.Command{
-// 	Use:          "script [app] {name}",
-// 	Args:         cobra.RangeArgs(1, 2),
-// 	Aliases:[]string{"scripts"},
-// 	Short:        "Run a scripted sequence of commands.",
-// 	Long:         `If app is not provided, the current directory is used.`,
-// 	SilenceUsage: true,
-// 	RunE: func(cmd *cobra.Command, args []string) error {
-// 		viper.BindPFlags(cmd.Flags())
-//
-// 		b := mustGetBosun()
-//
-//
-// 		app := mustGetApp(b, args)
-//
-// 		script, err := b.GetScript(args[0])
-// 		if err != nil {
-// 			scriptFilePath := args[0]
-// 			var script bosun.Script
-// 			data, err := ioutil.ReadFile(scriptFilePath)
-// 			if err != nil {
-// 				return err
-// 			}
-//
-// 			err = yaml.Unmarshal(data, &script)
-// 			if err != nil {
-// 				return err
-// 			}
-// 		}
-//
-// 		err = b.Execute(script, scriptStepsSlice...)
-//
-// 		return err
-// 	},
-// })
+var appScriptCmd = addCommand(appCmd, &cobra.Command{
+	Use:          "script [app] {name}",
+	Args:         cobra.RangeArgs(1, 2),
+	Aliases:[]string{"scripts"},
+	Short:        "Run a scripted sequence of commands.",
+	Long:         `If app is not provided, the current directory is used.`,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		b := mustGetBosun()
+
+		var app *bosun.AppRepo
+		var scriptName string
+		switch len(args) {
+		case 1:
+			app = mustGetApp(b, []string{})
+			scriptName = args[0]
+		case 2:
+			app = mustGetApp(b, args[:1])
+			scriptName = args[1]
+		}
+
+
+		var script *bosun.Script
+		var scriptNames []string
+		for _, s := range app.Scripts{
+			scriptNames = append(scriptNames, s.Name)
+			if strings.EqualFold(s.Name, scriptName){
+				script = s
+			}
+		}
+		if script == nil {
+			return errors.Errorf("no script named %q in app %q\navailable scripts:\n-%s", scriptName, app.Name, strings.Join(scriptNames, "\n-"))
+		}
+
+		ctx := b.NewContext()
+
+		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
+		if err != nil {
+			return err
+		}
+
+		values, err := appRelease.GetReleaseValues(ctx)
+		if err != nil {
+			return err
+		}
+				ctx = ctx.WithReleaseValues(values)
+
+		err = b.ExecuteContext(ctx, script, scriptStepsSlice...)
+
+		return err
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().IntSliceVar(&scriptStepsSlice, ArgScriptSteps, []int{}, "Steps to run (defaults to all steps)")
+})
 
 var appCloneCmd = addCommand(
 	appCmd,

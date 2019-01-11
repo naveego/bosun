@@ -30,7 +30,7 @@ func (d *DynamicValue) MarshalYAML() (interface{}, error) {
 		return d.Value, nil
 	}
 
-	if len(d.Command) > 0{
+	if len(d.Command) > 0 {
 		return d.Command, nil
 	}
 
@@ -44,7 +44,6 @@ func (d *DynamicValue) MarshalYAML() (interface{}, error) {
 
 	return nil, nil
 }
-
 
 func (d *DynamicValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
@@ -113,7 +112,7 @@ func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
 	d.resolved = true
 
 	if d.Value == "" {
-		d.Value, err = d.executeCore(ctx, false)
+		d.Value, err = d.executeCore(ctx, DynamicValueOpts{})
 	}
 
 	// trim whitespace, as script output may contain line breaks at the end
@@ -122,18 +121,28 @@ func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
 	return d.Value, err
 }
 
-// Execute executes the DynamicValue, and treats the Value field as a script.
-func (d *DynamicValue) Execute(ctx BosunContext) (string, error) {
-
-	return d.executeCore(ctx, true)
+type DynamicValueOpts struct {
+	DiscardValue bool
+	StreamOutput bool
 }
 
-func (d *DynamicValue) executeCore(ctx BosunContext, discardValue bool) (string, error) {
+// Execute executes the DynamicValue, and treats the Value field as a script.
+func (d *DynamicValue) Execute(ctx BosunContext, opts ...DynamicValueOpts) (string, error) {
+	var opt DynamicValueOpts
+	if len(opts) == 0 {
+		opt = DynamicValueOpts{}
+	} else {
+		opt = opts[0]
+	}
+	return d.executeCore(ctx, opt)
+}
+
+func (d *DynamicValue) executeCore(ctx BosunContext, opt DynamicValueOpts) (string, error) {
 
 	var err error
 	var value string
 
-	if ctx.GetParams().DryRun && discardValue {
+	if ctx.GetParams().DryRun && opt.DiscardValue {
 		// don't execute side-effect-only commands during dry run
 		ctx.Log.WithField("command", d.String()).Info("Skipping side-effecting command because this is a dry run.")
 		return "", nil
@@ -143,13 +152,18 @@ func (d *DynamicValue) executeCore(ctx BosunContext, discardValue bool) (string,
 
 	go func() {
 		if specific, ok := d.OS[runtime.GOOS]; ok {
-			value, err = specific.executeCore(ctx, discardValue)
+			value, err = specific.executeCore(ctx, opt)
 		} else if len(d.Command) != 0 {
-			value, err = pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.GetValuesAsEnvVars()).WithContext(ctx.Ctx()).RunOut()
+			cmd := pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.GetValuesAsEnvVars()).WithContext(ctx.Ctx())
+			if opt.StreamOutput {
+				value, err = cmd.RunOutLog()
+			} else {
+				value, err = cmd.RunOut()
+			}
 		} else if len(d.Script) > 0 {
-			value, err = executeScript(d.Script, ctx)
+			value, err = executeScript(d.Script, ctx, opt)
 		} else if len(d.Value) > 0 {
-			value, err = executeScript(d.Value, ctx)
+			value, err = executeScript(d.Value, ctx, opt)
 		}
 		close(doneCh)
 	}()
@@ -163,8 +177,7 @@ func (d *DynamicValue) executeCore(ctx BosunContext, discardValue bool) (string,
 	return value, err
 }
 
-
-func executeScript(script string, ctx BosunContext) (string, error) {
+func executeScript(script string, ctx BosunContext, opt DynamicValueOpts) (string, error) {
 	pattern := "bosun-script*"
 	if runtime.GOOS == "windows" {
 		pattern = "bosun-script*.bat"
@@ -191,10 +204,16 @@ func executeScript(script string, ctx BosunContext) (string, error) {
 		IncludeEnv(vars).
 		WithContext(ctx.Ctx())
 
-	o, err := cmd.RunOut()
+	var output string
+	if opt.StreamOutput {
+		output, err = cmd.RunOutLog()
+	} else {
+		output, err = cmd.RunOut()
+	}
+
 	if err != nil {
 		return "", err
 	}
 
-	return string(o), nil
+	return output, nil
 }
