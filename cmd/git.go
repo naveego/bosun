@@ -25,18 +25,8 @@ var gitCmd = &cobra.Command{
 	Short: "Git commands.",
 }
 
-const (
-	ArgGitBody           = "body"
-	ArgGitTaskParentOrg  = "parent-org"
-	ArgGitTaskParentRepo = "parent-repo"
-)
 
 func init() {
-
-	gitCmd.AddCommand(gitTaskCmd)
-	gitTaskCmd.Flags().StringP(ArgGitBody, "m", "", "Issue body.")
-	gitTaskCmd.Flags().String(ArgGitTaskParentOrg, "naveegoinc", "Parent org.")
-	gitTaskCmd.Flags().String(ArgGitTaskParentRepo, "stories", "Parent repo.")
 
 
 	gitDeployCmd.AddCommand(gitDeployStartCmd)
@@ -193,11 +183,12 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
 })
 
-var gitTaskCmd = &cobra.Command{
-	Use:   "task {parent-number} {task name}",
-	Args:  cobra.ExactArgs(2),
-	Short: "Creates a task in the current repo for the story, and a branch for that task.",
-	Long:  "Requires github hub tool to be installed (https://hub.github.com/).",
+
+var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
+	Use:   "task {task name}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Creates a task in the current repo, and a branch for that task. Optionally attaches task to a story, if flags are set.",
+	Long:  `Requires github hub tool to be installed (https://hub.github.com/).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		var err error
@@ -206,49 +197,57 @@ var gitTaskCmd = &cobra.Command{
 
 		org, repo := git.GetCurrentOrgAndRepo()
 
-		parentOrg := viper.GetString(ArgGitTaskParentOrg)
-		parentRepo := viper.GetString(ArgGitTaskParentRepo)
-
-		storyNumber, err := strconv.Atoi(strings.Trim(args[0], "#"))
-		taskName := args[1]
-		if err != nil {
-			return errors.Wrap(err, "issue number must be a number")
-		}
-
-		client := getGitClient()
-
-		ctx := context.Background()
-
-		story, _, err := client.Issues.Get(ctx, parentOrg, parentRepo, storyNumber)
-		if err != nil {
-			return errors.Wrap(err, "get issue")
-		}
-
-		dumpJSON("story", story)
 
 		body := viper.GetString(ArgGitBody)
+		taskName := args[0]
+		client := getGitClient()
 		issueRequest := &github.IssueRequest{
 			Title: github.String(taskName),
-			Body:  github.String(fmt.Sprintf("%s\n\nrequired by %s/%s#%d", body, parentOrg, parentRepo, storyNumber)),
 		}
-		if story.Assignee != nil {
-			issueRequest.Assignee = story.Assignee.Name
-		}
-		if story.Milestone != nil {
-			milestones, _, err := client.Issues.ListMilestones(ctx, org, repo, nil)
-			dumpJSON("milestones", milestones)
+		ctx := context.Background()
 
+		storyNumber := viper.GetInt(ArgGitTaskStory)
+		if storyNumber > 0 {
+
+			parentOrg := viper.GetString(ArgGitTaskParentOrg)
+			parentRepo := viper.GetString(ArgGitTaskParentRepo)
+
+			storyNumber, err := strconv.Atoi(strings.Trim(args[0], "#"))
 			if err != nil {
-				return err
+				return errors.Wrap(err, "issue number must be a number")
 			}
-			for _, m := range milestones {
-				if *m.Title == *story.Milestone.Title {
-					pkg.Log.WithField("title", *m.Title).Info("Attaching milestone.")
-					issueRequest.Milestone = m.Number
-					break
+
+
+			story, _, err := client.Issues.Get(ctx, parentOrg, parentRepo, storyNumber)
+			if err != nil {
+				return errors.Wrap(err, "get issue")
+			}
+
+			body = fmt.Sprintf("%s\n\nrequired by %s/%s#%d", body, parentOrg, parentRepo, storyNumber)
+			// dumpJSON("story", story)
+
+			if story.Assignee != nil {
+				issueRequest.Assignee = story.Assignee.Name
+			}
+			if story.Milestone != nil {
+				milestones, _, err := client.Issues.ListMilestones(ctx, org, repo, nil)
+				dumpJSON("milestones", milestones)
+
+				if err != nil {
+					return err
+				}
+				for _, m := range milestones {
+					if *m.Title == *story.Milestone.Title {
+						pkg.Log.WithField("title", *m.Title).Info("Attaching milestone.")
+						issueRequest.Milestone = m.Number
+						break
+					}
 				}
 			}
 		}
+
+		issueRequest.Body = &body
+
 
 		dumpJSON("creating issue", issueRequest)
 
@@ -276,7 +275,20 @@ var gitTaskCmd = &cobra.Command{
 
 		return nil
 	},
-}
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringP(ArgGitBody, "m", "", "Issue body.")
+	cmd.Flags().String(ArgGitTaskParentOrg, "naveegoinc", "Story org.")
+	cmd.Flags().String(ArgGitTaskParentRepo, "stories", "Story repo.")
+	cmd.Flags().Int(ArgGitTaskStory, 0, "Number of the story to use as a parent.")
+})
+
+
+const (
+	ArgGitBody           = "body"
+	ArgGitTaskStory  = "story"
+	ArgGitTaskParentOrg  = "parent-org"
+	ArgGitTaskParentRepo = "parent-repo"
+)
 
 func getOrgAndRepo() (string,string){
 	currentDir, _ := os.Getwd()
