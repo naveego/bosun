@@ -1,0 +1,7 @@
+# This file is used to define the collections and data of a MongoDB database.
+
+collections:
+  person:
+    isCapped: true
+    maxBytes: 1024
+    dataFile: "./person.json"

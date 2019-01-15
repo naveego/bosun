@@ -4,63 +4,59 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/mgo.v2"
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 )
 
 type disposeFunc func()
 
-// Import defines data to be imported into the target mongo database.
+// Database defines data to be imported into the target mongo database.
 // It is the combination of a connection, collection definition, and data.
-type Import struct {
-	Database    string       `json"db" yaml:"db"`
-	Connection  Connection   `json:"connection" yaml:"connection"`
-	Collections []Collection `json:"collections" yaml:"collections"`
+type Database struct {
+	Collections map[string]CollectionInfo `json:"collections" yaml:"collections"`
 }
 
-// Collection defines a collection in Mongo.  For creating a capped collection
+// CollectionInfo defines a collection in Mongo.  For creating a capped collection
 // you can specify a size.
-type Collection struct {
-	Name         string                   `json:"name" yaml:"name"`
-	IsCapped     *bool                    `json:"isCapped,omitempty" yaml:"isCapped,omitempty"`
-	MaxBytes     *int                     `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
-	MaxDocuments *int                     `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
-	Data         []map[string]interface{} `json:"data,omitempty" yaml:",flow,omitempty"`
+type CollectionInfo struct {
+	IsCapped     bool    `json:"isCapped" yaml:"isCapped"`
+	MaxBytes     *int    `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
+	MaxDocuments *int    `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
+	Data         *string `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
 }
 
 // Connection defines a mongo connection. It also has support for access mongo databases
 // running inside a kubernetes cluster using the `port-forward` command, as well as
 // credential support using vault.
 type Connection struct {
-	Host        *string             `json:"host,omitempty" yaml:"host,omitempty"`
-	Port        *int                `json:"port,omitempty" yaml:"port,omitempty""`
-	KubePort    *KubePortForward    `json:"kubePort,omitempty" yaml:"kubePort,omitempty"`
-	Credentials *CredentialProvider `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+	DBName      string
+	Host        string
+	Port        string
+	KubePort    KubePortForward
+	Credentials CredentialProvider
 }
 
 // CredentialProvider defines how the connection should obtain its credentials
 type CredentialProvider struct {
-	Type       string  `json:"type" yaml:"type"`
-	Username   *string `json:"username,omitempty" yaml:"username,omitempty"`
-	Password   *string `json:"password,omitempty" yaml:"password,omitempty"`
-	VaultPath  *string `json:"vaultPath,omitempty" yaml:"vaultPath,omitempty"`
-	AuthSource *string `json:"authSource,omitempty" yaml:"authSource,omitempty"`
+	Type       string
+	Username   string
+	Password   string
+	VaultPath  string
+	AuthSource string
 }
 
 // KubePortForward defines whether or not we need to tunnel into Kuberetes, and what port to use.
 type KubePortForward struct {
-	Forward     bool    `json:"forward" yaml:"forward"`
-	ServiceName *string `json:"serviceName,omitempty" yaml:"serviceName,omitempty"`
-	Port        *int    `json:"port,omitempty" yaml:"port,omitempty"`
+	Forward     bool
+	ServiceName string
+	Port        int
 }
 
-// ImportData imports data into a database
-func ImportData(i Import) error {
-	session, dispose, err := getMongoConnection(i.Database, i.Connection)
+// ImportDatabase imports a collection into a database
+func ImportDatabase(conn Connection, db Database, dataDir string) error {
+	wrapper, dispose, err := getMongoWrapper(dataDir, conn)
 	if err != nil {
 		return fmt.Errorf("error connecting to mongo: %v", err)
 	}
@@ -68,25 +64,17 @@ func ImportData(i Import) error {
 		defer dispose()
 	}
 
-	wrapper := &mongoWrapper{session}
-
-	for _, col := range i.Collections {
-		err = wrapper.DropCollection(col.Name)
+	for colName, col := range db.Collections {
+		err = wrapper.Import(colName, col)
 		if err != nil {
-			return fmt.Errorf("error dropping collection '%s': %v", col.Name, err)
-		}
-
-		err = wrapper.InsertData(col.Name, col.Data)
-		if err != nil {
-			return fmt.Errorf("error inserting data into collection '%s': %v", col.Name, err)
+			logrus.Warnf("could not import collection %s: %v", colName, err)
 		}
 	}
 
 	return nil
 }
 
-func getMongoConnection(dbName string, c Connection) (*mgo.Session, disposeFunc, error) {
-	var session *mgo.Session
+func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, error) {
 	var portFwdCmd *exec.Cmd
 	var err error
 	var cleanUp disposeFunc
@@ -101,17 +89,17 @@ func getMongoConnection(dbName string, c Connection) (*mgo.Session, disposeFunc,
 	}()
 
 	// check to see if we need to port forward the connection
-	if c.KubePort != nil && c.KubePort.Forward {
+	if c.KubePort.Forward {
 		logrus.Debug("using kubectl port-forward for connection to MongoDB")
 
 		svcName := "svc/mongodb"
-		if c.KubePort.ServiceName != nil {
-			svcName = *c.KubePort.ServiceName
+		if c.KubePort.ServiceName != "" {
+			svcName = c.KubePort.ServiceName
 		}
 
 		svcPort := 27017
-		if c.KubePort.Port != nil {
-			svcPort = *c.KubePort.Port
+		if c.KubePort.Port >= 0 {
+			svcPort = c.KubePort.Port
 		}
 		portFwdCmd = exec.Command("kubectl", "port-forward", svcName, fmt.Sprintf("%d", svcPort))
 
@@ -135,54 +123,31 @@ func getMongoConnection(dbName string, c Connection) (*mgo.Session, disposeFunc,
 
 	username := ""
 	password := ""
-	authSource := "admin"
 
-	// resolve credentials if necessary
-	if c.Credentials != nil {
-		credType := strings.ToLower(c.Credentials.Type)
-		switch credType {
-		case "":
-		case "password":
-			username, password, err = getPasswordCredentials(c.Credentials)
-		case "vault":
-			username, password, err = getVaultCredentials(c.Credentials)
-		default:
-			return nil, nil, fmt.Errorf("the type '%s' is not a supported credential type, must be 'vault' or 'password'", credType)
-		}
-
-		if err != nil {
-			return nil, nil, fmt.Errorf("could not get credentials: %v", err)
-		}
-
-		if c.Credentials.AuthSource != nil {
-			authSource = *c.Credentials.AuthSource
-		}
+	switch c.Credentials.Type {
+	case "password":
+		username, password, err = getPasswordCredentials(c.Credentials)
+	case "vault":
+		username, password, err = getVaultCredentials(c.Credentials)
+	default:
+		return nil, nil, fmt.Errorf("the type '%s' is not a supported credential type, must be 'vault' or 'password'", c.Credentials.Type)
 	}
 
-	host := "127.0.0.1"
-	port := 27017
-
-	if c.Host != nil {
-		host = *c.Host
-	}
-
-	if c.Port != nil {
-		port = *c.Port
-	}
-
-	hostAndPort := fmt.Sprintf("%s:%d", host, port)
-	dialInfo := &mgo.DialInfo{
-		Database: dbName,
-		Addrs:    []string{hostAndPort},
-		Direct:   true,
-		Source:   authSource,
-		Username: username,
-		Password: password,
-	}
-
-	session, err = mgo.DialWithInfo(dialInfo)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not connect to mongodb: %v", err)
+		return nil, nil, fmt.Errorf("could not get credentials: %v", err)
+	}
+
+	wrapper, err := newMongoWrapper(
+		c.Host,
+		c.Port,
+		c.DBName,
+		username,
+		password,
+		c.Credentials.AuthSource,
+		dataDir)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not get mongo wrapper: %v", err)
 	}
 
 	cleanUp = func() {
@@ -192,19 +157,17 @@ func getMongoConnection(dbName string, c Connection) (*mgo.Session, disposeFunc,
 				os.Stderr.WriteString(e.Error())
 			}
 		}
-
-		session.Close()
 	}
 
-	return session, cleanUp, nil
+	return wrapper, cleanUp, nil
 }
 
-func getPasswordCredentials(c *CredentialProvider) (string, string, error) {
+func getPasswordCredentials(c CredentialProvider) (string, string, error) {
 	logrus.Debug("getting mongo credentials using 'password' type")
-	return *c.Username, *c.Password, nil
+	return c.Username, c.Password, nil
 }
 
-func getVaultCredentials(c *CredentialProvider) (username string, password string, err error) {
+func getVaultCredentials(c CredentialProvider) (username string, password string, err error) {
 	logrus.Debug("getting mongo credentials using 'vault' type")
 	username = ""
 	password = ""
@@ -219,8 +182,8 @@ func getVaultCredentials(c *CredentialProvider) (username string, password strin
 		return
 	}
 
-	logrus.Debugf("getting credentials from vault using path '%s'", *c.VaultPath)
-	loginSecret, err := vault.Logical().Read(*c.VaultPath)
+	logrus.Debugf("getting credentials from vault using path '%s'", c.VaultPath)
+	loginSecret, err := vault.Logical().Read(c.VaultPath)
 	if err != nil {
 		return
 	}
