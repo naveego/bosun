@@ -270,6 +270,10 @@ func (b *Bosun) Save() error {
 	return nil
 }
 
+func (b *Bosun) GetRootConfig() Config {
+	return *b.config
+}
+
 func (b *Bosun) GetMergedConfig() ConfigFragment {
 
 	return *b.mergedFragments

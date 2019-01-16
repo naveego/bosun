@@ -29,9 +29,55 @@ var configCmd = &cobra.Command{
 	Short: "Root command for configuring bosun.",
 }
 
-var configDumpCmd = &cobra.Command{
+
+func init() {
+	rootCmd.AddCommand(configCmd)
+}
+
+var configShowCmd = addCommand(configCmd, &cobra.Command{
+	Use:"show",
+	Short:"Shows various config components.",
+})
+
+var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
+	Use:   "imports",
+	Short: "Prints the imports config from ~/.bosun.yaml and other files.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+
+		c := b.GetRootConfig()
+		for _, i := range c.Imports {
+			fmt.Println(i)
+		}
+
+		return nil
+	},
+})
+
+var configDumpImports = addCommand(configShowCmd, &cobra.Command{
+	Use:   "root",
+	Short: "Prints the root config from ~/.bosun.yaml.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+
+		c := b.GetRootConfig()
+		data, _ := yaml.Marshal(c)
+
+		fmt.Println(string(data))
+
+		return nil
+	},
+})
+
+var configDumpCmd = addCommand(configCmd, &cobra.Command{
 	Use:   "dump [app]",
-	Short: "Prints current merged config.",
+	Short: "Prints current merged config, or the config of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, err := getBosun()
 		if err != nil {
@@ -55,9 +101,9 @@ var configDumpCmd = &cobra.Command{
 
 		return nil
 	},
-}
+})
 
-var configImportCmd = &cobra.Command{
+var configImportCmd = addCommand(configCmd, &cobra.Command{
 	Use:     "import [file]",
 	Aliases: []string{"include", "add"},
 	Args:    cobra.MaximumNArgs(1),
@@ -103,12 +149,4 @@ var configImportCmd = &cobra.Command{
 
 		return err
 	},
-}
-
-func init() {
-
-	configCmd.AddCommand(configImportCmd)
-	configCmd.AddCommand(configDumpCmd)
-
-	rootCmd.AddCommand(configCmd)
-}
+})

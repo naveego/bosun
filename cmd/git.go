@@ -212,11 +212,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			parentOrg := viper.GetString(ArgGitTaskParentOrg)
 			parentRepo := viper.GetString(ArgGitTaskParentRepo)
 
-			storyNumber, err := strconv.Atoi(strings.Trim(args[0], "#"))
-			if err != nil {
-				return errors.Wrap(err, "issue number must be a number")
-			}
-
+			storyNumber := viper.GetInt(ArgGitTaskStory)
 
 			story, _, err := client.Issues.Get(ctx, parentOrg, parentRepo, storyNumber)
 			if err != nil {
