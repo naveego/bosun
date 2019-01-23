@@ -23,6 +23,7 @@ const (
 	ArgMongoKubePortForward = "kube-port-forward"
 	ArgMongoKubePort        = "kube-port"
 	ArgMongoKubeSvcName     = "kube-service-name"
+	ArgMongoRebuildDb       = "rebuild-db"
 )
 
 // mongoCmd represents the git command
@@ -41,7 +42,8 @@ func init() {
 	mongoImportCmd.Flags().String(ArgMongoUsername, "", "The username to use when connecting to Mongo")
 	mongoImportCmd.Flags().String(ArgMongoPassword, "", "The password to use when connecting to Mongo")
 	mongoImportCmd.Flags().String(ArgMongoAuthSource, "admin", "The authSource to use when validating the credentials")
-	mongoImportCmd.Flags().Bool(ArgMongoKubePortForward, false, "Whether or not to use kubectl port-forward command")
+	mongoImportCmd.Flags().Bool(ArgMongoKubePortForward, false, "Tunnels communication to Mongo using the kubectl port-forward")
+	mongoImportCmd.Flags().Bool(ArgMongoRebuildDb, false, "Forces a rebuild of the database by dropping and re-creating all collections")
 	mongoImportCmd.Flags().Int(ArgMongoKubePort, 27017, "The port to use for mapping kubectl port-forward to your local host. Only used with --kube-port-forward")
 	mongoImportCmd.Flags().String(ArgMongoKubeSvcName, "svc/mongodb", "Sets the kubernetes service name to use for forwarding. Only used with --kube-port-foward")
 
@@ -77,7 +79,7 @@ var mongoImportCmd = &cobra.Command{
 		conn := getConnection(dataFileName)
 
 		logrus.Debug("importing file")
-		return mongo.ImportDatabase(conn, db, dataDir)
+		return mongo.ImportDatabase(conn, db, dataDir, viper.GetBool(ArgMongoRebuildDb))
 	},
 }
 

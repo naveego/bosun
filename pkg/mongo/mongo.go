@@ -15,13 +15,14 @@ type disposeFunc func()
 // Database defines data to be imported into the target mongo database.
 // It is the combination of a connection, collection definition, and data.
 type Database struct {
-	Collections map[string]CollectionInfo `json:"collections" yaml:"collections"`
+	Collections map[string]*CollectionInfo `json:"collections" yaml:"collections"`
 }
 
 // CollectionInfo defines a collection in Mongo.  For creating a capped collection
 // you can specify a size.
 type CollectionInfo struct {
 	IsCapped     bool    `json:"isCapped" yaml:"isCapped"`
+	Drop         bool    `json:"drop" yaml:"drop"`
 	MaxBytes     *int    `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
 	MaxDocuments *int    `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
 	Data         *string `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
@@ -55,7 +56,7 @@ type KubePortForward struct {
 }
 
 // ImportDatabase imports a collection into a database
-func ImportDatabase(conn Connection, db Database, dataDir string) error {
+func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool) error {
 	wrapper, dispose, err := getMongoWrapper(dataDir, conn)
 	if err != nil {
 		return fmt.Errorf("error connecting to mongo: %v", err)
@@ -65,7 +66,13 @@ func ImportDatabase(conn Connection, db Database, dataDir string) error {
 	}
 
 	for colName, col := range db.Collections {
-		err = wrapper.Import(colName, col)
+		// if we are forcing a rebuild of the database
+		// then we need to set the Drop flag.
+		if rebuildDb {
+			col.Drop = true
+		}
+
+		err = wrapper.Import(colName, *col)
 		if err != nil {
 			logrus.Warnf("could not import collection %s: %v", colName, err)
 		}
@@ -90,7 +97,7 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 
 	// check to see if we need to port forward the connection
 	if c.KubePort.Forward {
-		logrus.Debug("using kubectl port-forward for connection to MongoDB")
+		logrus.Info("using kubectl port-forward for connection to MongoDB")
 
 		svcName := "svc/mongodb"
 		if c.KubePort.ServiceName != "" {
@@ -185,6 +192,11 @@ func getVaultCredentials(c CredentialProvider) (username string, password string
 	logrus.Debugf("getting credentials from vault using path '%s'", c.VaultPath)
 	loginSecret, err := vault.Logical().Read(c.VaultPath)
 	if err != nil {
+		return
+	}
+
+	if loginSecret == nil {
+		err = fmt.Errorf("could not get credentials from vault, try running 'vault read %s' for more information", c.VaultPath)
 		return
 	}
 
