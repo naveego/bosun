@@ -60,19 +60,22 @@ func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir
 }
 
 func (mw *mongoWrapper) Import(colName string, col CollectionInfo) error {
-	err := mw.dropCollection(colName)
-	if err != nil {
-		return fmt.Errorf("error dropping collection '%s': %v", colName, err)
-	}
 
-	logrus.Infof("Creating collection '%s'", colName)
-	err = mw.createCollection(colName, col)
-	if err != nil {
-		return fmt.Errorf("error creating collection '%s': %v", colName, err)
+	if col.Drop {
+		logrus.Infof("Dropping and re-creating collection '%s'", colName)
+		err := mw.dropCollection(colName)
+		if err != nil {
+			return fmt.Errorf("error dropping collection '%s': %v", colName, err)
+		}
+
+		err = mw.createCollection(colName, col)
+		if err != nil {
+			return fmt.Errorf("error creating collection '%s': %v", colName, err)
+		}
 	}
 
 	if col.Data != nil && *col.Data != "" {
-		err = mw.importData(colName, *col.Data)
+		err := mw.importData(colName, *col.Data)
 		if err != nil {
 			return fmt.Errorf("error inserting data into collection '%s': %v", colName, err)
 		}
