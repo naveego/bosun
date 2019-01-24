@@ -21,11 +21,19 @@ type Database struct {
 // CollectionInfo defines a collection in Mongo.  For creating a capped collection
 // you can specify a size.
 type CollectionInfo struct {
-	IsCapped     bool    `json:"isCapped" yaml:"isCapped"`
-	Drop         bool    `json:"drop" yaml:"drop"`
-	MaxBytes     *int    `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
-	MaxDocuments *int    `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
-	Data         *string `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
+	IsCapped     bool                 `json:"isCapped" yaml:"isCapped"`
+	Drop         bool                 `json:"drop" yaml:"drop"`
+	MaxBytes     *int                 `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
+	MaxDocuments *int                 `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
+	Indexes      map[string]IndexInfo `json:"indexes,omitempty" yaml:"indexes,omitempty"`
+	Data         *string              `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
+}
+
+type IndexInfo struct {
+	Unique      bool           `json:"unique" yaml:"unique"`
+	Sparse      bool           `json:"sparse" yaml:"sparse"`
+	ExpireAfter *int           `json:"expireAfter" yaml:"expireAfter"`
+	Fields      map[string]int `json:"fields" yaml:"fields"`
 }
 
 // Connection defines a mongo connection. It also has support for access mongo databases

@@ -9,6 +9,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type mongoWrapper struct {
@@ -71,6 +72,16 @@ func (mw *mongoWrapper) Import(colName string, col CollectionInfo) error {
 		err = mw.createCollection(colName, col)
 		if err != nil {
 			return fmt.Errorf("error creating collection '%s': %v", colName, err)
+		}
+	}
+
+	if col.Indexes != nil {
+		for n, i := range col.Indexes {
+			logrus.Debugf("ensuring index '%s' on collection '%s'", n, colName)
+			err := mw.ensureIndex(colName, n, i)
+			if err != nil {
+				logrus.Warnf("could not ensure index '%s' on collection '%s': %v", n, colName, err)
+			}
 		}
 	}
 
@@ -157,6 +168,33 @@ func (mw *mongoWrapper) createCollection(colName string, col CollectionInfo) err
 	}
 
 	return s.DB("").C(colName).Create(info)
+}
+
+func (mw *mongoWrapper) ensureIndex(colName, indexName string, index IndexInfo) error {
+	s := mw.session.Copy()
+	defer s.Close()
+
+	var keys []string
+	for k, v := range index.Fields {
+		if v == 1 {
+			keys = append(keys, k)
+		} else {
+			keys = append(keys, "-"+k)
+		}
+	}
+
+	i := mgo.Index{
+		Name:   indexName,
+		Sparse: index.Sparse,
+		Unique: index.Unique,
+		Key:    keys,
+	}
+
+	if index.ExpireAfter != nil {
+		i.ExpireAfter = time.Duration(*index.ExpireAfter) * time.Second
+	}
+
+	return s.DB("").C(colName).EnsureIndex(i)
 }
 
 func (mw *mongoWrapper) getToolOptions(colName string) *options.ToolOptions {
