@@ -1,0 +1,18 @@
+# This file is used to define the collections and data of a MongoDB database.
+
+collections:
+  person:
+    isCapped: true
+    maxBytes: 1024
+    indexes:
+      _name_:
+        unique: false
+        sparse: false
+        fields:
+          first_name: 1
+      _exp_:
+        expireAfter: 3600
+        fields:
+          ts: 1
+
+    dataFile: "./person.json"
