@@ -413,9 +413,7 @@ func (a *AppRepo) BumpVersion(ctx BosunContext, bump string) error {
 	version, err := semver.NewVersion(bump)
 	if err == nil {
 		a.Version = version.String()
-	}
-
-	if err != nil {
+	} else {
 		version, err = semver.NewVersion(a.Version)
 		if err != nil {
 			return errors.Errorf("app has invalid version %q: %s", a.Version, err)

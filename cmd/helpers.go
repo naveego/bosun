@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -248,9 +249,20 @@ func confirm(msg string, args ...string) bool {
 	return true
 }
 
-func check(err error, msgAndArgs ...string) {
+type handledError struct {
+	msg string
+}
+func (h handledError) Error() string {
+	return h.msg
+}
+
+func checkHandleMsg(msg string, err error) error {
+	return checkHandle(err, msg)
+}
+
+func checkHandle(err error, msgAndArgs ...string) error {
 	if err == nil {
-		return
+		return nil
 	}
 	var msg string
 	switch len(msgAndArgs) {
@@ -262,15 +274,27 @@ func check(err error, msgAndArgs ...string) {
 		msg = fmt.Sprintf(msgAndArgs[0], msgAndArgs[1:])
 	}
 
-	color.Red(msg)
-	color.Yellow(err.Error())
+	w := new(strings.Builder)
+
+	fmt.Fprintln(w, color.RedString(msg))
+	fmt.Fprintln(w, color.YellowString(err.Error()))
 
 	_, file, line, ok := runtime.Caller(1)
 	if ok {
-		color.Blue("@ %s : line %d", file, line)
+		fmt.Fprintln(w, color.BlueString("@ %s : line %d", file, line))
 	}
+	return handledError{msg:w.String()}
+}
 
-	os.Exit(1)
+func check(err error, msgAndArgs ...string) {
+	if checkHandle(err, msgAndArgs...) != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func checkMsg(msg string, err error) {
+	check(err, msg)
 }
 
 var marketingReleaseFormat = regexp.MustCompile(`\d\d\d\d\.\d+\.\d+`)
