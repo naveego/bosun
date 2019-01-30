@@ -162,7 +162,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("Created PR #%d.\n", *issue.ID)
+		fmt.Printf("Created PR #%d.\n", *issue.Number)
 
 		reviewers := viper.GetStringSlice(ArgPullRequestReviewers)
 		if len(reviewers) > 0 {
