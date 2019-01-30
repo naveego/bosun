@@ -321,13 +321,13 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			}
 			fmt.Println(out)
 
-			pkg.Log.Infof("Tagging master with (%s)...", finalVersion)
+			pkg.Log.Infof("Tagging merge with (%s)...", finalVersion)
 			if err = checkHandleMsg(g.Exec("tag", finalVersion, "--force")); err != nil {
 				return err
 			}
 
 			pkg.Log.Info("Pushing tagged merge...")
-			if err = checkHandleMsg(g.Exec("push", "--tags")); err != nil {
+			if err = checkHandleMsg(g.Exec("push", "origin", mergeBranch, "--tags")); err != nil {
 				return err
 			}
 		}
@@ -344,7 +344,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		pkg.Log.Info("Pushing master...")
-		if err = checkHandleMsg(g.Exec("push", "origin", "master", "--tags")); err != nil {
+		if err = checkHandleMsg(g.Exec("push", "origin", "master")); err != nil {
 			return err
 		}
 
