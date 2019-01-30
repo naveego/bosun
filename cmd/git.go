@@ -322,13 +322,17 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 				finalVersion = app.Version
 			}
 
-			if err = checkHandleMsg(g.Exec("add", ".")); err != nil {
-				return err
+			out, err := g.Exec("add", ".")
+			if err != nil {
+				return checkHandle(err)
 			}
+			fmt.Println(out)
 
-			if err = checkHandleMsg(g.Exec("commit", "-m", fmt.Sprintf("Bumping version to %s while approving PR %d", finalVersion, number))); err != nil {
-				return err
+			out, err = g.Exec("commit", "-m", fmt.Sprintf("Bumping version to %s while approving PR %d", finalVersion, number))
+			if err != nil{
+				return checkHandle(err)
 			}
+			fmt.Println(out)
 
 			pkg.Log.Infof("Tagging master with (%s)...", finalVersion)
 			if err = checkHandleMsg(g.Exec("tag", finalVersion, "--force")); err != nil {
