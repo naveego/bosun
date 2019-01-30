@@ -328,10 +328,10 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			}
 		}
 
-		pkg.Log.Info("Pushing master...")
-		if err = checkHandleMsg(g.Exec("push", "origin", "master", "--tags")); err != nil {
-			return err
-		}
+		// pkg.Log.Info("Pushing master...")
+		// if err = checkHandleMsg(g.Exec("push", "origin", "master", "--tags")); err != nil {
+		// 	return err
+		// }
 
 		pkg.Log.Info("Merge completed.")
 
