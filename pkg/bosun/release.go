@@ -95,17 +95,17 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 		errs = append(errs, errors.Errorf("image: %s", err))
 	}
 
-	if a.AppRepo.IsRepoCloned() {
-		appBranch := a.AppRepo.GetBranch()
-		if appBranch != a.Branch {
-			errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", a.Branch, appBranch))
-		}
-
-		appCommit := a.AppRepo.GetCommit()
-		if appCommit != a.Commit {
-			errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.Commit, appCommit))
-		}
-	}
+	// if a.AppRepo.IsRepoCloned() {
+	// 	appBranch := a.AppRepo.GetBranch()
+	// 	if appBranch != a.Branch {
+	// 		errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", a.Branch, appBranch))
+	// 	}
+	//
+	// 	appCommit := a.AppRepo.GetCommit()
+	// 	if appCommit != a.Commit {
+	// 		errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.Commit, appCommit))
+	// 	}
+	// }
 
 	return errs
 }

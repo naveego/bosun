@@ -5,6 +5,8 @@
 
 CLI documentation is here: [./docs/bosun.md](./docs/bosun.md)
 
+A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/bosun.yaml)
+
 
 ## Quick Start
 

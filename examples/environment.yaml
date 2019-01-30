@@ -1,0 +1,17 @@
+currentEnvironment: red
+imports:
+  - $HOME/src/github.com/naveegoinc/devops/deploy/red.bosun.yaml
+environments:
+  - name: red
+    cluster: minikube
+    domain: n5o.red
+    variables:
+      - fromPath: $HOME/.bosun/bosun.yaml
+        name: AWS_DEFAULT_PROFILE
+        value: black
+      - fromPath: $HOME/.bosun/bosun.yaml
+        name: VAULT_ADDR
+        value: http://vault.n5o.red
+      - fromPath: $HOME/.bosun/bosun.yaml
+        name: VAULT_TOKEN
+        value: root

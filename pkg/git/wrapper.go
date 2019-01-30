@@ -50,3 +50,15 @@ func (g GitWrapper) Pull() error {
 	return err
 
 }
+
+func (g GitWrapper) Fetch() error {
+	err := pkg.NewCommand("git", "-C", g.dir, "fetch").RunE()
+	return err
+}
+
+func (g GitWrapper) Log(args ...string) ([]string, error) {
+	args = append([]string{"-C", g.dir, "log"}, args...)
+	out, err := pkg.NewCommand("git", args...).RunOut()
+	lines := strings.Split(out, "\n")
+	return lines, err
+}

@@ -57,6 +57,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 			if !toReleaseSet[k] {
 				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgReleaseIncludeApps)
 				app.DesiredState.Status = bosun.StatusUnchanged
+				app.Excluded = true
 			}
 		}
 	}
@@ -66,6 +67,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgReleaseExcludeApps)
 		if app, ok := r.AppReleases[name]; ok {
 			app.DesiredState.Status = bosun.StatusUnchanged
+			app.Excluded = true
 		}
 	}
 

@@ -98,6 +98,18 @@ func (a *AppRepo) PullRepo(ctx BosunContext) error {
 	return err
 }
 
+func (a *AppRepo) FetchRepo(ctx BosunContext) error {
+	err := a.CheckRepoCloned()
+	if err != nil {
+		return err
+	}
+
+	g, _ := git.NewGitWrapper(a.FromPath)
+	err = g.Pull()
+
+	return err
+}
+
 func (a *AppRepo) IsRepoCloned() bool {
 
 	if a.FromPath == "" {

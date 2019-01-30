@@ -605,6 +605,32 @@ var appDeployCmd = &cobra.Command{
 	},
 }
 
+var appRecycleCmd = addCommand(appCmd, &cobra.Command{
+	Use:          "recycle [name] [name...]",
+	Short:        "Recycles the requested app(s) by deleting their pods.",
+	Long:         "If app is not specified, the first app in the nearest bosun.yaml file is used.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		viper.BindPFlags(cmd.Flags())
+
+		b := mustGetBosun()
+		ctx := b.NewContext()
+
+		releases := mustGetAppReleases(b, args)
+
+		for _, appRelease := range releases {
+			ctx := ctx.WithAppRelease(appRelease)
+			err := appRelease.Recycle(ctx)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	},
+})
+
 
 var appDeleteCmd = &cobra.Command{
 	Use:          "delete [name] [name...]",

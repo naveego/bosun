@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
@@ -65,7 +66,7 @@ func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, err
 	release := &AppRelease{
 		AppReleaseConfig: config,
 		AppRepo:          ctx.Bosun.GetApps()[config.Name],
-		DesiredState: ctx.Bosun.config.AppStates[ctx.Env.Name][config.Name],
+		DesiredState:     ctx.Bosun.config.AppStates[ctx.Env.Name][config.Name],
 	}
 
 	return release, nil
@@ -349,7 +350,6 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 		return nil, err
 	}
 
-
 	importedValues := a.Values[ctx.Env.Name]
 	overrideValues := a.ValueOverrides[ctx.Env.Name]
 
@@ -407,8 +407,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	ctx = ctx.WithReleaseValues(values)
 
 	// clear helm release cache after work is done
-	defer func(){ a.helmRelease = nil }()
-
+	defer func() { a.helmRelease = nil }()
 
 	err = a.LoadActualState(ctx, true)
 	if err != nil {
@@ -559,7 +558,7 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 
 	ctx.Log.Info("Configuring app to route traffic to localhost.")
 
-	if a.AppRepo.Minikube == nil || len(a.AppRepo.Minikube.RoutableServices) == 0{
+	if a.AppRepo.Minikube == nil || len(a.AppRepo.Minikube.RoutableServices) == 0 {
 		return errors.New(`to route to localhost, app must have a minikube entry like this:
   minikube:
     routableServices:
@@ -597,11 +596,11 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 		routedSvc.AddPath("spec.clusterIP", "")
 		routedSvc.AddPath("spec.type", "ExternalName")
 		routedSvc.AddPath("spec.externalName", hostIP)
-		routedSvc.AddPath("spec.ports",[]Values{
+		routedSvc.AddPath("spec.ports", []Values{
 			{
-				"port":       localhostPort,
-				"protocol":   "TCP",
-				"name":       routableService.PortName,
+				"port":     localhostPort,
+				"protocol": "TCP",
+				"name":     routableService.PortName,
 			},
 		})
 
@@ -669,6 +668,56 @@ func (a *AppRelease) getHelmDryRunArgs(ctx BosunContext) []string {
 		return []string{"--dry-run", "--debug"}
 	}
 	return []string{}
+}
+
+func (a *AppRelease) Recycle(ctx BosunContext) error {
+	ctx = ctx.WithAppRelease(a)
+	ctx.Log.Info("Deleting pods...")
+	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.AppRepo.Namespace, "pods", "--selector=release="+a.AppRepo.Name).RunE()
+	if err != nil {
+		return err
+	}
+	ctx.Log.Info("Pods deleted, waiting for recreated pods to be ready.")
+
+	for {
+		podsReady := true
+		out, err := pkg.NewCommand("kubectl", "get", "pods", "--namespace", a.AppRepo.Namespace, "--selector=release="+a.AppRepo.Name,
+			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
+		if err != nil {
+			return err
+		}
+		pods := strings.Split(out, ";")
+		for _, pod := range pods {
+			segs := strings.Split(pod, ":")
+			if len(segs) != 2 {
+				continue
+			}
+			podName, rawReady := segs[0], segs[1]
+			if rawReady == "True" {
+				color.Green("%s: Ready\n", podName)
+			} else {
+				color.Red("%s: Not ready\n", podName)
+			}
+			podsReady = podsReady && (rawReady == "True")
+		}
+		if podsReady {
+			break
+		}
+
+		color.White("...")
+
+		wait := 5*time.Second
+		ctx.Log.Debugf("Waiting %s to check readiness again...", wait)
+		select {
+		case <-time.After(wait):
+		case <-ctx.Ctx().Done():
+			return ctx.Ctx().Err()
+		}
+	}
+
+	ctx.Log.Info("Recycle complete.")
+
+	return nil
 }
 
 func getTagFromImage(image string) string {

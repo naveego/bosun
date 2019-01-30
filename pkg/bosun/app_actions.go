@@ -99,7 +99,7 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 
 		attempts--
 
-		ctx.Log.WithError(err).WithField("attempts_remaining", attempts).Error("Test failed.")
+		ctx.Log.WithError(err).WithField("attempts_remaining", attempts).Error("Action failed.")
 
 		if attempts == 0 {
 			return err
