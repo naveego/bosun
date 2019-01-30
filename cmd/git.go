@@ -315,6 +315,9 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 				}
 
 				err = appBump(b, app, bump)
+				if err != nil {
+					return err
+				}
 
 				finalVersion = app.Version
 			}
