@@ -208,6 +208,9 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Errorf("could not get pull request %d: %s", number, err)
 		}
 
+		j, _ := json.MarshalIndent(pr, "","  ")
+		fmt.Println(string(j))
+
 		wd, _ := os.Getwd()
 		g, _ := git.NewGitWrapper(wd)
 
@@ -215,16 +218,16 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Errorf("already closed at %s", *pr.ClosedAt)
 		}
 
-		if g.IsDirty() {
-			return errors.New("current working tree is dirty, stash or commit your changes before accepting this pull request")
-		}
+		// if g.IsDirty() {
+		// 	return errors.New("current working tree is dirty, stash or commit your changes before accepting this pull request")
+		// }
 
 		mergeBranch := fmt.Sprintf("merge/%d", number)
 
 		check(g.Fetch())
 
 		if !pr.GetMerged() {
-			out, err = g.Exec("checkout", "-b", mergeBranch, "origin/" + pr.GetBase().GetLabel())
+			out, err = g.Exec("checkout", "-b", mergeBranch, "origin/" + pr.GetBase().GetRef())
 			check(err, out)
 
 			out, err = g.Exec("merge", "master")
