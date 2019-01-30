@@ -269,7 +269,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			out, err = g.Exec("merge", "master")
 
 			if !pr.GetMergeable() || err != nil {
-				return errors.New("merge conflicts exist, please resolve before trying again")
+				return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
 			}
 
 			pkg.Log.Info("Checking out master...")
@@ -280,7 +280,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			pkg.Log.Info("Merging...")
 			out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("Merge of PR #%d", number))
 			if err != nil {
-				return errors.New("merge conflicts exist, please resolve before trying again")
+				return errors.New("could not merge into master")
 			}
 		}
 
@@ -340,10 +340,10 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			}
 		}
 
-		// pkg.Log.Info("Pushing master...")
-		// if err = checkHandleMsg(g.Exec("push", "origin", "master", "--tags")); err != nil {
-		// 	return err
-		// }
+		pkg.Log.Info("Pushing master...")
+		if err = checkHandleMsg(g.Exec("push", "origin", "master", "--tags")); err != nil {
+			return err
+		}
 
 		pkg.Log.Info("Merge completed.")
 
