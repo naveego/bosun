@@ -1,7 +1,15 @@
+environments: []
+appRefs: {}
 apps:
-  - name: bosun
-    version: 0.2.0
-    scripts:
-      - name: publish
-        steps:
-          - literal: [mage, -v, publish]
+- name: bosun
+  version: 0.2.1
+  scripts:
+  - name: publish
+    steps:
+    - command: ""
+      args: []
+      flags: {}
+      literal:
+      - mage
+      - -v
+      - publish
