@@ -142,8 +142,8 @@ The current domain and the minikube IP are used to populate the output. To updat
 		for _, app := range apps {
 			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
 			toAdd[host] = hostLine{
-				IP:ip,
-				Host:host,
+				IP:      ip,
+				Host:    host,
 				Comment: fmt.Sprintf("bosun"),
 			}
 		}
@@ -160,7 +160,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 			if len(segs) == 0 {
 				hostLine.Comment = strings.TrimPrefix(line, "#")
 			}
-			if len(segs) >= 3{
+			if len(segs) >= 3 {
 				hostLine.IP = segs[1]
 				hostLine.Host = segs[2]
 			}
@@ -221,7 +221,7 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 			if len(segs) == 0 {
 				hostLine.Comment = strings.TrimPrefix(line, "#")
 			}
-			if len(segs) >= 3{
+			if len(segs) >= 3 {
 				hostLine.IP = segs[1]
 				hostLine.Host = segs[2]
 			}
@@ -252,12 +252,12 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 var hostLineRE = regexp.MustCompile(`^\s*([A-Fa-f\d\.:]+)\s+(\S+) *#? *(.*)`)
 
 type hostLine struct {
-	IP string
-	Host string
+	IP      string
+	Host    string
 	Comment string
 }
 
-func (h hostLine) String() string{
+func (h hostLine) String() string {
 	w := new(strings.Builder)
 	if h.IP != "" && h.Host != "" {
 		fmt.Fprintf(w, "%s\t%s\t", h.IP, h.Host)
@@ -308,10 +308,9 @@ var appAcceptActualCmd = &cobra.Command{
 	},
 }
 
-
 var appListCmd = &cobra.Command{
 	Use:          "list",
-	Aliases:[]string{"ls"},
+	Aliases:      []string{"ls"},
 	Short:        "Lists the static config of all known apps.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -407,10 +406,10 @@ var appStatusCmd = &cobra.Command{
 
 		t := tabby.New()
 		t.AddHeader(fmtTableEntry("APP"),
-				fmtTableEntry("STATUS"),
-				fmtTableEntry("ROUTE"),
-				fmtTableEntry("DIFF"),
-				fmtTableEntry("LABELS"))
+			fmtTableEntry("STATUS"),
+			fmtTableEntry("ROUTE"),
+			fmtTableEntry("DIFF"),
+			fmtTableEntry("LABELS"))
 		for _, m := range appReleases {
 
 			actual, desired := m.ActualState, m.DesiredState
@@ -621,10 +620,25 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 		b := mustGetBosun()
 		ctx := b.NewContext()
 
+		env := b.GetCurrentEnvironment()
+
 		releases := mustGetAppReleases(b, args)
+
+		pullLatest := viper.GetBool(ArgAppRecyclePullLatest)
 
 		for _, appRelease := range releases {
 			ctx := ctx.WithAppRelease(appRelease)
+
+			if env.IsLocal && pullLatest {
+				ctx.Log.Info("Pulling latest version of image on minikube...")
+				image := fmt.Sprintf("%s:latest", appRelease.Image)
+				err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", image)).RunE()
+				if err != nil {
+					return err
+				}
+			}
+
+			ctx.Log.Info("Recycling app...")
 			err := appRelease.Recycle(ctx)
 			if err != nil {
 				return err
@@ -633,8 +647,11 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 
 		return nil
 	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().Bool(ArgAppRecyclePullLatest, false, "Pull the latest image before recycling (only works in minikube).")
 })
 
+const ArgAppRecyclePullLatest = "pull-latest"
 
 var appDeleteCmd = &cobra.Command{
 	Use:          "delete [name] [name...]",
@@ -822,7 +839,7 @@ var appPullCmd = addCommand(
 var appScriptCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "script [app] {name}",
 	Args:         cobra.RangeArgs(1, 2),
-	Aliases:[]string{"scripts"},
+	Aliases:      []string{"scripts"},
 	Short:        "Run a scripted sequence of commands.",
 	Long:         `If app is not provided, the current directory is used.`,
 	SilenceUsage: true,
@@ -842,12 +859,11 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			scriptName = args[1]
 		}
 
-
 		var script *bosun.Script
 		var scriptNames []string
-		for _, s := range app.Scripts{
+		for _, s := range app.Scripts {
 			scriptNames = append(scriptNames, s.Name)
-			if strings.EqualFold(s.Name, scriptName){
+			if strings.EqualFold(s.Name, scriptName) {
 				script = s
 			}
 		}
@@ -866,7 +882,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-				ctx = ctx.WithReleaseValues(values)
+		ctx = ctx.WithReleaseValues(values)
 
 		err = b.ExecuteContext(ctx, script, scriptStepsSlice...)
 
@@ -892,7 +908,7 @@ var appCloneCmd = addCommand(
 			if dir == "" {
 				if len(roots) == 0 {
 					p := promptui.Prompt{
-						Label:"Provide git root (apps will be cloned to ./org/repo in the dir you specify)",
+						Label: "Provide git root (apps will be cloned to ./org/repo in the dir you specify)",
 					}
 					dir, err = p.Run()
 					if err != nil {
