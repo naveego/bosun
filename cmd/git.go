@@ -183,12 +183,12 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 })
 
 var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
-	Use:     "accept-pull-request [number] [major|minor|patch|major.minor.patch]",
-	Aliases: []string{"accept-pr", "accept"},
-	Args:    cobra.RangeArgs(1, 2),
-	SilenceUsage:true,
-	SilenceErrors:true,
-	Short:   "Accepts a pull request and merges it into master, optionally bumping the version and tagging the master branch.",
+	Use:           "accept-pull-request [number] [major|minor|patch|major.minor.patch]",
+	Aliases:       []string{"accept-pr", "accept"},
+	Args:          cobra.RangeArgs(1, 2),
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	Short:         "Accepts a pull request and merges it into master, optionally bumping the version and tagging the master branch.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -241,47 +241,34 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		if !pr.GetMerged() {
-			mergeBranch := fmt.Sprintf("merge/%d", number)
+		mergeBranch := fmt.Sprintf("merge/%d", number)
 
-			out, err := g.Exec("branch")
-			if err = checkHandle(err); err != nil {
+		out, err = g.Exec("branch")
+		if err = checkHandle(err); err != nil {
+			return err
+		}
+		if strings.Contains(out, mergeBranch) {
+			pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
+			if err = checkHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
 				return err
 			}
-			if strings.Contains(out, mergeBranch) {
-				pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
-				if err = checkHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
-					return err
-				}
-			} else {
-				pkg.Log.Infof("Creating and checking out merge branch %q", mergeBranch)
-				if err = checkHandleMsg(g.Exec("checkout", "-b", mergeBranch, "origin/"+pr.GetBase().GetRef())); err != nil {
-					return err
-				}
-			}
-
-			defer func() {
-				pkg.Log.Infof("Cleaning up merge branch %q", mergeBranch)
-				g.Exec("branch", "-d", mergeBranch)
-			}()
-
-			pkg.Log.Info("Merging...")
-			out, err = g.Exec("merge", "master")
-
-			if !pr.GetMergeable() || err != nil {
-				return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
-			}
-
-			pkg.Log.Info("Checking out master...")
-			if err = checkHandleMsg(g.Exec("checkout", "master")); err != nil {
+		} else {
+			pkg.Log.Infof("Creating and checking out merge branch %q", mergeBranch)
+			if err = checkHandleMsg(g.Exec("checkout", "-b", mergeBranch, "origin/"+pr.GetBase().GetRef())); err != nil {
 				return err
 			}
+		}
 
-			pkg.Log.Info("Merging...")
-			out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("Merge of PR #%d", number))
-			if err != nil {
-				return errors.New("could not merge into master")
-			}
+		defer func() {
+			pkg.Log.Infof("Cleaning up merge branch %q", mergeBranch)
+			g.Exec("branch", "-d", mergeBranch)
+		}()
+
+		pkg.Log.Info("Merging...")
+		out, err = g.Exec("merge", "master")
+
+		if !pr.GetMergeable() || err != nil {
+			return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
 		}
 
 		if len(args) > 1 {
@@ -329,7 +316,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			fmt.Println(out)
 
 			out, err = g.Exec("commit", "-m", fmt.Sprintf("Bumping version to %s while approving PR %d", finalVersion, number))
-			if err != nil{
+			if err != nil {
 				return checkHandle(err)
 			}
 			fmt.Println(out)
@@ -338,6 +325,22 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			if err = checkHandleMsg(g.Exec("tag", finalVersion, "--force")); err != nil {
 				return err
 			}
+
+			pkg.Log.Info("Pushing tagged merge...")
+			if err = checkHandleMsg(g.Exec("push", "--tags")); err != nil {
+				return err
+			}
+		}
+
+		pkg.Log.Info("Checking out master...")
+		if err = checkHandleMsg(g.Exec("checkout", "master")); err != nil {
+			return err
+		}
+
+		pkg.Log.Info("Merging...")
+		out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("Merge of PR #%d", number))
+		if err != nil {
+			return errors.New("could not merge into master")
 		}
 
 		pkg.Log.Info("Pushing master...")
