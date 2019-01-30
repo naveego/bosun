@@ -241,7 +241,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		mergeBranch := fmt.Sprintf("merge/%d", number)
+		mergeBranch := pr.GetHead().GetRef()
 
 		out, err = g.Exec("branch")
 		if err = checkHandle(err); err != nil {
