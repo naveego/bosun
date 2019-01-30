@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -25,9 +26,7 @@ var gitCmd = &cobra.Command{
 	Short: "Git commands.",
 }
 
-
 func init() {
-
 
 	gitDeployCmd.AddCommand(gitDeployStartCmd)
 	gitDeployCmd.AddCommand(gitDeployUpdateCmd)
@@ -71,11 +70,11 @@ var gitDeployStartCmd = &cobra.Command{
 		isProd := cluster == "blue"
 
 		deploymentRequest := &github.DeploymentRequest{
-			Description: github.String(fmt.Sprintf("Deployment to %s", cluster)),
-			Environment: &cluster,
-			Ref:         &sha,
+			Description:           github.String(fmt.Sprintf("Deployment to %s", cluster)),
+			Environment:           &cluster,
+			Ref:                   &sha,
 			ProductionEnvironment: &isProd,
-			Task:github.String("deploy"),
+			Task:                  github.String("deploy"),
 		}
 
 		org, repo := getOrgAndRepo()
@@ -106,7 +105,7 @@ var gitDeployUpdateCmd = &cobra.Command{
 		}
 
 		req := &github.DeploymentStatusRequest{
-			State:&args[1],
+			State: &args[1],
 		}
 
 		_, _, err = client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deploymentID, req)
@@ -124,9 +123,9 @@ var ArgPullRequestBody = "body"
 var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
-	Use:   "pull-request",
-	Aliases:[]string{"pr"},
-	Short: "Opens a pull request.",
+	Use:     "pull-request",
+	Aliases: []string{"pr"},
+	Short:   "Opens a pull request.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -145,15 +144,15 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		title := viper.GetString(ArgPullRequestTitle)
 		if title == "" {
-			title =fmt.Sprintf("Merge %s", branch)
+			title = fmt.Sprintf("Merge %s", branch)
 		}
 		body := fmt.Sprintf("%s\nCloses #%s", viper.GetString(ArgPullRequestBody), issueNumber)
 
 		req := &github.NewPullRequest{
 			Title: &title,
-			Body: &body,
-			Base: github.String("master"),
-			Head: &branch,
+			Body:  &body,
+			Base:  github.String("master"),
+			Head:  &branch,
 		}
 
 		issue, _, err := client.PullRequests.Create(context.Background(), org, repo, req)
@@ -184,10 +183,12 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 })
 
 var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
-	Use:   "accept-pull-request [number] [major|minor|patch|major.minor.patch]",
-	Aliases:[]string{"accept-pr", "accept"},
-	Args:cobra.RangeArgs(1, 2),
-	Short: "Accepts a pull request and merges it into master, optionally bumping the version and tagging the master branch.",
+	Use:     "accept-pull-request [number] [major|minor|patch|major.minor.patch]",
+	Aliases: []string{"accept-pr", "accept"},
+	Args:    cobra.RangeArgs(1, 2),
+	SilenceUsage:true,
+	SilenceErrors:true,
+	Short:   "Accepts a pull request and merges it into master, optionally bumping the version and tagging the master branch.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -208,8 +209,8 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Errorf("could not get pull request %d: %s", number, err)
 		}
 
-		j, _ := json.MarshalIndent(pr, "","  ")
-		fmt.Println(string(j))
+		// j, _ := json.MarshalIndent(pr, "", "  ")
+		// fmt.Println(string(j))
 
 		wd, _ := os.Getwd()
 		g, _ := git.NewGitWrapper(wd)
@@ -218,28 +219,66 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Errorf("already closed at %s", *pr.ClosedAt)
 		}
 
-		// if g.IsDirty() {
-		// 	return errors.New("current working tree is dirty, stash or commit your changes before accepting this pull request")
-		// }
+		stashed := false
+		if g.IsDirty() {
+			stashed = true
+			pkg.Log.Info("Stashing changes before merge...")
+			out, err = g.Exec("stash")
+			check(err, "tried to stash before merge, but: %s", out)
+		}
 
-		mergeBranch := fmt.Sprintf("merge/%d", number)
+		currentBranch := g.Branch()
+		defer func() {
+			pkg.Log.Info("Returning to branch you were on before merging...")
+			checkMsg(g.Exec("checkout", currentBranch))
+			if stashed {
+				pkg.Log.Info("Applying stashed changes...")
+				checkMsg(g.Exec("stash", "apply"))
+			}
+		}()
 
-		check(g.Fetch())
+		if err = checkHandle(g.Fetch()); err != nil {
+			return err
+		}
 
 		if !pr.GetMerged() {
-			out, err = g.Exec("checkout", "-b", mergeBranch, "origin/" + pr.GetBase().GetRef())
-			check(err, out)
+			mergeBranch := fmt.Sprintf("merge/%d", number)
 
+			out, err := g.Exec("branch")
+			if err = checkHandle(err); err != nil {
+				return err
+			}
+			if strings.Contains(out, mergeBranch) {
+				pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
+				if err = checkHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
+					return err
+				}
+			} else {
+				pkg.Log.Infof("Creating and checking out merge branch %q", mergeBranch)
+				if err = checkHandleMsg(g.Exec("checkout", "-b", mergeBranch, "origin/"+pr.GetBase().GetRef())); err != nil {
+					return err
+				}
+			}
+
+			defer func() {
+				pkg.Log.Infof("Cleaning up merge branch %q", mergeBranch)
+				g.Exec("branch", "-d", mergeBranch)
+			}()
+
+			pkg.Log.Info("Merging...")
 			out, err = g.Exec("merge", "master")
 
 			if !pr.GetMergeable() || err != nil {
 				return errors.New("merge conflicts exist, please resolve before trying again")
 			}
 
-			out, err = g.Exec("checkout", "master")
-			check(err, out)
+			pkg.Log.Info("Checking out master...")
+			if err = checkHandleMsg(g.Exec("checkout", "master")); err != nil {
+				return err
+			}
 
-			out, err = g.Exec("merge", "--no-ff", mergeBranch)
+			pkg.Log.Info("Merging...")
+			out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("Merge of PR #%d", number))
 			if err != nil {
 				return errors.New("merge conflicts exist, please resolve before trying again")
 			}
@@ -247,25 +286,59 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		if len(args) > 1 {
 			b := mustGetBosun()
-			app := mustGetApp(b, []string{})
-			err = appBump(b, app.Name, args[1])
+			var finalVersion string
+			bump := args[1]
+			appsToVersion := viper.GetStringSlice(ArgGitAcceptPRAppVersion)
 
-			// reload to get current version
-			b = mustGetBosun()
-			app = mustGetApp(b, []string{})
+			if len(appsToVersion) == 0 {
+				allApps := b.GetApps()
+				var appsInRepo []*bosun.AppRepo
 
-			out, err = g.Exec("tag", app.Version, "--force")
-			check(err, out)
+				for _, app := range allApps {
+					if strings.HasPrefix(app.FromPath, wd) && app.BranchForRelease {
+						appsInRepo = append(appsInRepo, app)
+					}
+				}
+				if len(appsInRepo) != 1 {
+					return errors.Errorf("found %d apps in repo, please provided the --app flag to indicate which app(s) to version", len(appsInRepo))
+				}
+
+				appsToVersion = []string{appsInRepo[0].Name}
+			}
+
+			for _, appName := range appsToVersion {
+
+				pkg.Log.Infof("Bumping version (%s) for %s...", bump, appName)
+				app, err := b.GetApp(appName)
+				if err != nil {
+					return err
+				}
+
+				err = appBump(b, app, bump)
+
+				finalVersion = app.Version
+			}
+
+			pkg.Log.Infof("Tagging master with (%s)...", finalVersion)
+			if err = checkHandleMsg(g.Exec("tag", finalVersion, "--force")); err != nil {
+				return err
+			}
 		}
 
-		out, err = g.Exec("push", "origin", "master", "--tags")
+		pkg.Log.Info("Pushing master...")
+		if err = checkHandleMsg(g.Exec("push", "origin", "master", "--tags")); err != nil {
+			return err
+		}
+
+		pkg.Log.Info("Merge completed.")
 
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-
+	cmd.Flags().StringSlice(ArgGitAcceptPRAppVersion, []string{}, "Apps to apply version bump to.")
 })
 
+const ArgGitAcceptPRAppVersion = "app"
 
 var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	Use:   "task {task name}",
@@ -279,7 +352,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		org, repo := git.GetCurrentOrgAndRepo()
-
 
 		body := viper.GetString(ArgGitBody)
 		taskName := args[0]
@@ -327,7 +399,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 
 		issueRequest.Body = &body
 
-
 		dumpJSON("creating issue", issueRequest)
 
 		issue, _, err := client.Issues.Create(ctx, org, repo, issueRequest)
@@ -361,15 +432,14 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().Int(ArgGitTaskStory, 0, "Number of the story to use as a parent.")
 })
 
-
 const (
 	ArgGitBody           = "body"
-	ArgGitTaskStory  = "story"
+	ArgGitTaskStory      = "story"
 	ArgGitTaskParentOrg  = "parent-org"
 	ArgGitTaskParentRepo = "parent-repo"
 )
 
-func getOrgAndRepo() (string,string){
+func getOrgAndRepo() (string, string) {
 	currentDir, _ := os.Getwd()
 	repo := filepath.Base(currentDir)
 	org := filepath.Base(filepath.Dir(currentDir))

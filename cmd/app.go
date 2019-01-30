@@ -103,13 +103,13 @@ var appBumpCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		return appBump(b, args[0], args[1])
+		app := mustGetApp(b, args)
+		return appBump(b, app, args[1])
 	},
 }
 
 // appBump is the implementation of appBumpCmd
-func appBump(b *bosun.Bosun, appName string, bump string) error {
-	app := mustGetApp(b, []string{bump})
+func appBump(b *bosun.Bosun, app *bosun.AppRepo, bump string) error {
 	ctx := b.NewContext()
 
 	err := app.BumpVersion(ctx, bump)

@@ -81,7 +81,13 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		colorError.Fprintln(os.Stderr, err)
+		switch e := err.(type){
+		case handledError:
+			fmt.Println(e.Error())
+		default:
+			colorError.Fprintln(os.Stderr, err)
+		}
+
 		os.Exit(1)
 	}
 }
