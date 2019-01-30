@@ -103,21 +103,25 @@ var appBumpCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		app := mustGetApp(b, args)
-		ctx := b.NewContext()
-
-		err := app.BumpVersion(ctx, args[1])
-		if err != nil {
-			return err
-		}
-
-		err = app.Fragment.Save()
-		if err == nil {
-			fmt.Printf("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Fragment.FromPath)
-		}
-		return err
-
+		return appBump(b, args[0], args[1])
 	},
+}
+
+// appBump is the implementation of appBumpCmd
+func appBump(b *bosun.Bosun, appName string, bump string) error {
+	app := mustGetApp(b, []string{bump})
+	ctx := b.NewContext()
+
+	err := app.BumpVersion(ctx, bump)
+	if err != nil {
+		return err
+	}
+
+	err = app.Fragment.Save()
+	if err == nil {
+		fmt.Printf("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Fragment.FromPath)
+	}
+	return err
 }
 
 var appAddHostsCmd = addCommand(appCmd, &cobra.Command{

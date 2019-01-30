@@ -56,6 +56,20 @@ func (g GitWrapper) Fetch() error {
 	return err
 }
 
+func (g GitWrapper) IsDirty() bool {
+	out, err := pkg.NewCommand("git", "-C", g.dir, "diff", "HEAD").RunOut()
+	if len(out) > 0 || err != nil {
+		return true
+	}
+	out, err = pkg.NewCommand("git", "-C", g.dir, "status", "--short").RunOut()
+	if len(out) > 0 || err != nil {
+		return true
+	}
+
+	return false
+}
+
+
 func (g GitWrapper) Log(args ...string) ([]string, error) {
 	args = append([]string{"-C", g.dir, "log"}, args...)
 	out, err := pkg.NewCommand("git", args...).RunOut()

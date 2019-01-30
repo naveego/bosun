@@ -183,6 +183,86 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
 })
 
+var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
+	Use:   "accept-pull-request [number] [major|minor|patch|major.minor.patch]",
+	Aliases:[]string{"accept-pr", "accept"},
+	Args:cobra.RangeArgs(1, 2),
+	Short: "Accepts a pull request and merges it into master, optionally bumping the version and tagging the master branch.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		var err error
+		var out string
+
+		client := getGitClient()
+
+		number, err := strconv.Atoi(args[0])
+		if err != nil {
+			return errors.Errorf("invalid pull request number %s: %s", args[0], err)
+		}
+
+		org, repo := getOrgAndRepo()
+
+		pr, _, err := client.PullRequests.Get(context.Background(), org, repo, number)
+		if err != nil {
+			return errors.Errorf("could not get pull request %d: %s", number, err)
+		}
+
+		wd, _ := os.Getwd()
+		g, _ := git.NewGitWrapper(wd)
+
+		if pr.ClosedAt != nil {
+			return errors.Errorf("already closed at %s", *pr.ClosedAt)
+		}
+
+		if g.IsDirty() {
+			return errors.New("current working tree is dirty, stash or commit your changes before accepting this pull request")
+		}
+
+		mergeBranch := fmt.Sprintf("merge/%d", number)
+
+		check(g.Fetch())
+
+		if !pr.GetMerged() {
+			out, err = g.Exec("checkout", "-b", mergeBranch, "origin/" + pr.GetBase().GetLabel())
+			check(err, out)
+
+			out, err = g.Exec("merge", "master")
+
+			if !pr.GetMergeable() || err != nil {
+				return errors.New("merge conflicts exist, please resolve before trying again")
+			}
+
+			out, err = g.Exec("checkout", "master")
+			check(err, out)
+
+			out, err = g.Exec("merge", "--no-ff", mergeBranch)
+			if err != nil {
+				return errors.New("merge conflicts exist, please resolve before trying again")
+			}
+		}
+
+		if len(args) > 1 {
+			b := mustGetBosun()
+			app := mustGetApp(b, []string{})
+			err = appBump(b, app.Name, args[1])
+
+			// reload to get current version
+			b = mustGetBosun()
+			app = mustGetApp(b, []string{})
+
+			out, err = g.Exec("tag", app.Version, "--force")
+			check(err, out)
+		}
+
+		out, err = g.Exec("push", "origin", "master", "--tags")
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+
+})
+
 
 var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	Use:   "task {task name}",
