@@ -322,7 +322,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 				finalVersion = app.Version
 			}
 
-			if err = checkHandleMsg(g.Exec("add", "-A")); err != nil {
+			if err = checkHandleMsg(g.Exec("add", ".")); err != nil {
 				return err
 			}
 
