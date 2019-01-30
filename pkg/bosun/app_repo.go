@@ -444,18 +444,20 @@ func (a *AppRepo) BumpVersion(ctx BosunContext, bump string) error {
 		}
 	}
 
-	m, err := a.getChartAsMap()
-	if err != nil {
-		return err
-	}
+	if a.HasChart() {
+		m, err := a.getChartAsMap()
+		if err != nil {
+			return err
+		}
 
-	m["version"] = a.Version
-	if a.BranchForRelease {
-		m["appVersion"] = a.Version
-	}
-	err = a.saveChart(m)
-	if err != nil {
-		return err
+		m["version"] = a.Version
+		if a.BranchForRelease {
+			m["appVersion"] = a.Version
+		}
+		err = a.saveChart(m)
+		if err != nil {
+			return err
+		}
 	}
 
 	return a.Fragment.Save()

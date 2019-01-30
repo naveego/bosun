@@ -119,7 +119,7 @@ func appBump(b *bosun.Bosun, app *bosun.AppRepo, bump string) error {
 
 	err = app.Fragment.Save()
 	if err == nil {
-		fmt.Printf("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Fragment.FromPath)
+		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Fragment.FromPath)
 	}
 	return err
 }
