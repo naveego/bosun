@@ -5,16 +5,23 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	"runtime"
 	"strings"
 )
 
 type container struct {
-	DV *DynamicValue `yaml:"dv"`
+	DV *CommandValue `yaml:"dv"`
 }
 
-var _ = Describe("DynamicValue", func() {
+var _ = Describe("CommandValue", func() {
+
+	var ctx BosunContext
+
+	BeforeEach(func(){
+		ctx = BosunContext{Log:logrus.NewEntry(logrus.StandardLogger())}
+	})
 
 	Describe("marshalling", func() {
 
@@ -42,7 +49,7 @@ dv: some-value
 			var sut container
 			Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 
-			Expect(*sut.DV).To(BeEquivalentTo(DynamicValue{
+			Expect(*sut.DV).To(BeEquivalentTo(CommandValue{
 				Value: "some-value",
 			}))
 		})
@@ -54,8 +61,10 @@ dv: [some,command]
 			var sut container
 			Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 
-			Expect(*sut.DV).To(BeEquivalentTo(DynamicValue{
-				Command: []string{"some", "command"},
+			Expect(*sut.DV).To(BeEquivalentTo(CommandValue{
+				Command: Command{
+					Command: []string{"some", "command"},
+				},
 			}))
 		})
 
@@ -68,10 +77,11 @@ dv: |
 			var sut container
 			Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 
-			Expect(*sut.DV).To(BeEquivalentTo(DynamicValue{
-				Script: `some
+			Expect(*sut.DV).To(BeEquivalentTo(CommandValue{
+				Command: Command{Script: `some
 script
 `,
+				},
 			}))
 		})
 
@@ -89,21 +99,24 @@ echo %testVar%
 `
 				}
 
-				sut := &DynamicValue{
-					Script: script,
-				}
-				Expect(sut.Execute(BosunContext{})).To(Equal("test string"))
+				sut := &CommandValue{
+					Command: Command{
+						Script: script,
+					}}
+				Expect(sut.Execute(ctx)).To(Equal("test string"))
 			})
 
 			It("should include env values", func() {
-				ctx := BosunContext{}.WithReleaseValues(Values{
-					"test": Values{
-						"nested": "value",
+				ctx = ctx.WithReleaseValues(&ReleaseValues{
+					Values: Values{
+						"test": Values{
+							"nested": "value",
+						},
+						"APP_VERSION": "1.2.3",
 					},
-					"APP_VERSION": "1.2.3",
 				})
-				sut := &DynamicValue{
-					Command: []string{"env"},
+				sut := &CommandValue{
+					Command: Command{Command: []string{"env"}},
 				}
 				result, err := sut.Execute(ctx)
 				Expect(err).ToNot(HaveOccurred())

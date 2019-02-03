@@ -10,29 +10,13 @@ var _ = Describe("AppRepo", func() {
 
 	It("should support topological sort", func() {
 
-		apps := map[string]*AppRepo{
+		apps := map[string][]string{
 			"a": {
-				AppRepoConfig: &AppRepoConfig{
-					Name: "a",
-					DependsOn: []Dependency{
-						{Name: "b"},
-						{Name: "c"},
-					},
-				},
+				"b",
+				"c",
 			},
-			"b": {
-				AppRepoConfig: &AppRepoConfig{
-					Name: "b",
-				},
-			},
-			"c": {
-				AppRepoConfig: &AppRepoConfig{
-					Name: "c",
-					DependsOn: []Dependency{
-						{Name: "b"},
-					},
-				},
-			},
+			"b": {},
+			"c": {"b"},
 		}
 
 		sorted, err := GetDependenciesInTopologicalOrder(apps, "a")
@@ -41,7 +25,7 @@ var _ = Describe("AppRepo", func() {
 
 		var names []string
 		for _, app := range sorted {
-			names = append(names, app.Name)
+			names = append(names, app)
 		}
 
 		Expect(names).To(BeEquivalentTo([]string{"b", "c", "a"}))

@@ -22,11 +22,11 @@ type AppRepoConfig struct {
 	RunCommand       []string               `yaml:"runCommand,omitempty"`
 	DependsOn        []Dependency           `yaml:"dependsOn,omitempty"`
 	Labels           []string               `yaml:"labels,omitempty"`
-	Minikube *AppMinikubeConfig `yaml:"minikube,omitempty"`
+	Minikube *AppMinikubeConfig             `yaml:"minikube,omitempty"`
 	Values           AppValuesByEnvironment `yaml:"values,omitempty"`
 	Scripts          []*Script              `yaml:"scripts,omitempty"`
 	Actions          []*AppAction           `yaml:"actions,omitempty"`
-	Fragment         *ConfigFragment        `yaml:"-"`
+	Fragment         *File                  `yaml:"-"`
 }
 
 type AppMinikubeConfig struct {
@@ -61,13 +61,13 @@ func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[
 func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 type AppValuesConfig struct {
-	Set     map[string]*DynamicValue `yaml:"set,omitempty"`
-	Dynamic map[string]*DynamicValue `yaml:"dynamic,omitempty"`
+	Set     map[string]*CommandValue `yaml:"set,omitempty"`
+	Dynamic map[string]*CommandValue `yaml:"dynamic,omitempty"`
 	Files   []string                 `yaml:"files,omitempty"`
 	Static  Values                   `yaml:"static"`
 }
 
-func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
+func (a *AppRepoConfig) SetFragment(fragment *File) {
 	a.FromPath = fragment.FromPath
 	a.Fragment = fragment
 	for i := range a.Scripts {
@@ -82,7 +82,7 @@ func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
 // other added after (and/or overwriting) the values from this instance)
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 	out := AppValuesConfig{
-		Dynamic: make(map[string]*DynamicValue),
+		Dynamic: make(map[string]*CommandValue),
 		Static: Values{},
 	}
 	out.Files = append(out.Files, a.Files...)
@@ -172,7 +172,7 @@ func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 		out.Static = Values{}
 	}
 	if out.Dynamic == nil {
-		out.Dynamic = map[string]*DynamicValue{}
+		out.Dynamic = map[string]*CommandValue{}
 	}
 
 	return out

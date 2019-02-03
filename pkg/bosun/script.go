@@ -13,19 +13,19 @@ import (
 
 type Script struct {
 	Name     string       `yaml:"name"`
-	FromPath string `yaml:"fromPath,omitempty"`
-	Description string `yaml:"description,omitempty"`
+	FromPath string       `yaml:"fromPath,omitempty"`
+	Description string    `yaml:"description,omitempty"`
 	Steps    []ScriptStep `yaml:"steps,omitempty"`
-	Literal *DynamicValue `yaml:"literal,omitempty"`
+	Literal *Command `yaml:"literal,omitempty"`
 }
 
 type ScriptStep struct {
-	Name string `yaml:"name,omitempty"`
-	Description string `yaml:"description,omitempty"`
-	Command string `yaml:"command"`
-	Args    []string `yaml:"args"`
+	Name string                    `yaml:"name,omitempty"`
+	Description string             `yaml:"description,omitempty"`
+	Command string                 `yaml:"command"`
+	Args    []string               `yaml:"args"`
 	Flags   map[string]interface{} `yaml:"flags"`
-	Literal *DynamicValue `yaml:"literal,omitempty"`
+	Literal *CommandValue          `yaml:"literal,omitempty"`
 }
 
 func (b *Bosun) Execute(s *Script, steps ...int) error {
@@ -51,7 +51,7 @@ func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error 
 
 	if s.Literal != nil {
 		log.Debug("Executing literal script, not bosun script.")
-		_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), DynamicValueOpts{StreamOutput:true})
+		_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput:true})
 		if err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error 
 		if step.Literal != nil {
 			log.Info("Step is a literal script, not a bosun action.")
 
-			_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), DynamicValueOpts{StreamOutput:true})
+			_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput:true})
 			if err != nil {
 				return err
 			}

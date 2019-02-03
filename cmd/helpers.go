@@ -76,7 +76,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 }
 
 func getBosun() (*bosun.Bosun, error) {
-	config, err := bosun.LoadConfig(viper.GetString(ArgBosunConfigFile))
+	config, err := bosun.LoadWorkspace(viper.GetString(ArgBosunConfigFile))
 	if err != nil {
 		return nil, err
 	}

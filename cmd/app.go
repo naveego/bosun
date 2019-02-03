@@ -638,7 +638,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 				}
 			}
 
-			ctx.Log.Info("Recycling app...")
+			ctx.Log.Info("Recycling apppOOPING...")
 			err := appRelease.Recycle(ctx)
 			if err != nil {
 				return err

@@ -22,18 +22,31 @@ import (
 	"path/filepath"
 )
 
-// configCmd represents the config command
-var configCmd = &cobra.Command{
-	Use:   "config {c}",
-	Args:  cobra.ExactArgs(1),
-	Short: "Root command for configuring bosun.",
-}
+
 
 func init() {
-	rootCmd.AddCommand(configCmd)
+
+
+
 }
 
-var configShowCmd = addCommand(configCmd, &cobra.Command{
+
+var workspaceCmd = addCommand(rootCmd, &cobra.Command{
+	Use:   "workspace",
+	Aliases:[]string{"ws", "config"},
+	Short: "Workspace commands configure and manipulate the bindings between app repos and your local machine.",
+	Long: `A workspace contains the core configuration that is used when bosun is run.
+It stores the current environment, the current release (if any), a listing of imported bosun files,
+the apps discovered in them, and the current state of those apps in the workspace.
+The app state includes the location of the app on the file system (for apps which have been cloned)
+and the minikube deploy status of the app.
+
+A workspace is based on a workspace config file. The default location is $HOME/.bosun/bosun.yaml,
+but it can be overridden by setting the BOSUN_CONFIG environment variable or passing the --config-file flag.`,
+})
+
+
+var configShowCmd = addCommand(workspaceCmd, &cobra.Command{
 	Use:   "show",
 	Short: "Shows various config components.",
 })
@@ -74,7 +87,7 @@ var configDumpImports = addCommand(configShowCmd, &cobra.Command{
 	},
 })
 
-var configDumpCmd = addCommand(configCmd, &cobra.Command{
+var configDumpCmd = addCommand(workspaceCmd, &cobra.Command{
 	Use:   "dump [app]",
 	Short: "Prints current merged config, or the config of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,7 +115,7 @@ var configDumpCmd = addCommand(configCmd, &cobra.Command{
 	},
 })
 
-var configImportCmd = addCommand(configCmd, &cobra.Command{
+var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 	Use:     "import [file]",
 	Aliases: []string{"include", "add"},
 	Args:    cobra.MaximumNArgs(1),
