@@ -17,6 +17,7 @@ type Workspace struct {
 	Release            string                 `yaml:"release"`
 	HostIPInMinikube   string                 `yaml:"hostIPInMinikube"`
 	AppStates          AppStatesByEnvironment `yaml:"appStates"`
+	ClonePaths         map[string]string      `yaml:"clonePaths"`
 	MergedBosunFile    *File                  `yaml:"-"`
 	ImportedBosunFiles map[string]*File       `yaml:"-"`
 }

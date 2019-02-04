@@ -25,18 +25,25 @@ var _ = Describe("CommandValue", func() {
 
 	Describe("marshalling", func() {
 
-		DescribeTable("should roundtrip", func(yml string) {
+		DescribeTable("should roundtrip", func(in string, expectedValue CommandValue, expectedYaml string) {
 			var sut container
-			Expect(yaml.Unmarshal([]byte(yml), &sut)).To(Succeed())
+			Expect(yaml.Unmarshal([]byte(in), &sut)).To(Succeed())
 			out, err := yaml.Marshal(sut)
 			Expect(err).ToNot(HaveOccurred())
 			actual := strings.TrimSpace(string(out))
-			Expect(actual).To(Equal(yml))
+			Expect(sut.DV).To(BeEquivalentTo(expectedValue))
+			Expect(actual).To(Equal(expectedYaml))
 		},
-			Entry("value", "dv: some-value"),
+			Entry("value", "dv: some-value", CommandValue{Value:"some-value"}, "dv: some-value"),
+			Entry("value explicit", `dv: 
+  value: some-value`),
 			Entry("command", `dv:
 - some
 - command`),
+			Entry("command explicit", `dv:
+  command: 
+  - some
+  - command`),
 			Entry("script", `dv: |-
   some
   value`),

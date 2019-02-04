@@ -6,7 +6,7 @@ import (
 )
 
 type CommandValue struct {
-	Value    string
+	Value    string `yaml:"value"`
 	Command `yaml:"-"`
 	OS       map[string]*CommandValue `yaml:"os,omitempty"`
 
@@ -47,7 +47,7 @@ func (c *CommandValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		} else {
 			u.Value = s
 		}
-	} else if err = unmarshal(&u); err == nil && len(u.OS) > 0{
+	} else if err = unmarshal(&u); err == nil && (len(u.OS) > 0 || u.Value != ""){
 
 	} else if err = unmarshal(&cmd); err == nil {
 		u.Command = cmd

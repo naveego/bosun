@@ -20,21 +20,17 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
+	"strings"
 )
-
-
 
 func init() {
 
-
-
 }
 
-
 var workspaceCmd = addCommand(rootCmd, &cobra.Command{
-	Use:   "workspace",
-	Aliases:[]string{"ws", "config"},
-	Short: "Workspace commands configure and manipulate the bindings between app repos and your local machine.",
+	Use:     "workspace",
+	Aliases: []string{"ws", "config"},
+	Short:   "Workspace commands configure and manipulate the bindings between app repos and your local machine.",
 	Long: `A workspace contains the core configuration that is used when bosun is run.
 It stores the current environment, the current release (if any), a listing of imported bosun files,
 the apps discovered in them, and the current state of those apps in the workspace.
@@ -45,7 +41,6 @@ A workspace is based on a workspace config file. The default location is $HOME/.
 but it can be overridden by setting the BOSUN_CONFIG environment variable or passing the --config-file flag.`,
 })
 
-
 var configShowCmd = addCommand(workspaceCmd, &cobra.Command{
 	Use:   "show",
 	Short: "Shows various config components.",
@@ -53,16 +48,45 @@ var configShowCmd = addCommand(workspaceCmd, &cobra.Command{
 
 var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 	Use:   "imports",
-	Short: "Prints the imports config from ~/.bosun.yaml and other files.",
+	Short: "Prints the imports.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, err := getBosun()
 		if err != nil {
 			return err
 		}
 
-		c := b.GetRootConfig()
-		for _, i := range c.Imports {
-			fmt.Println(i)
+		c := b.Getworkspace()
+		visited := map[string]bool{}
+
+		var visit func(path string, depth int, last bool)
+		visit = func(path string, depth int, last bool) {
+			if file, ok := c.ImportedBosunFiles[path]; ok {
+				symbol := "├─"
+				if last {
+					symbol = "└─"
+				}
+				fmt.Printf("%s%s%s\n", strings.Repeat(" ", depth), symbol, path)
+
+				if visited[path] {
+					return
+				}
+
+				visited[path] = true
+
+				for i, importPath := range file.Imports {
+					if !filepath.IsAbs(importPath) {
+						importPath = filepath.Join(filepath.Dir(path), importPath)
+					}
+					visit(importPath, depth+1, i + 1 >= len(file.Imports))
+				}
+			} else {
+
+			}
+		}
+
+		fmt.Println(c.Path)
+		for i, path := range c.Imports {
+			visit(path, 0, i + 1 == len(c.Imports))
 		}
 
 		return nil
@@ -70,15 +94,16 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 })
 
 var configDumpImports = addCommand(configShowCmd, &cobra.Command{
-	Use:   "root",
-	Short: "Prints the root config from ~/.bosun.yaml.",
+	Use:     "workspace",
+	Aliases: []string{"ws"},
+	Short:   "Prints the workspace config.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, err := getBosun()
 		if err != nil {
 			return err
 		}
 
-		c := b.GetRootConfig()
+		c := b.Getworkspace()
 		data, _ := yaml.Marshal(c)
 
 		fmt.Println(string(data))
@@ -160,5 +185,15 @@ var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 		fmt.Printf("Added %s to imports in user config.\n", filename)
 
 		return err
+	},
+})
+
+var wsSyncRepoPathsCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:   "sync-repo-paths",
+	Short: "Syncs up the repo paths in the workspace based on available apps.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		b.SyncClonePaths()
+		return b.Save()
 	},
 })

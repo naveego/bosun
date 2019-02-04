@@ -939,19 +939,14 @@ var appCloneCmd = addCommand(
 				return err
 			}
 
-			repos := map[string]*bosun.AppRepo{}
-			for _, app := range apps {
-				repos[app.Repo] = app
-			}
-
 			ctx := b.NewContext()
-			for _, app := range repos {
+			for _, app := range apps {
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
-				log.Info("Cloning...")
 				if app.IsRepoCloned() {
 					pkg.Log.Infof("AppRepo already cloned to %q", app.FromPath)
 					continue
 				}
+				log.Info("Cloning...")
 
 				err := app.CloneRepo(ctx, dir)
 				if err != nil {

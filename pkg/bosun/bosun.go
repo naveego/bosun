@@ -6,6 +6,7 @@ import (
 	"github.com/google/go-github/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
@@ -256,13 +257,13 @@ func (b *Bosun) SetDesiredState(app string, state AppState) {
 
 func (b *Bosun) Save() error {
 
-	config := b.ws
-	data, err := yaml.Marshal(config)
+	ws := b.ws
+	data, err := yaml.Marshal(ws)
 	if err != nil {
 		return errors.Wrap(err, "marshalling for save")
 	}
 
-	err = ioutil.WriteFile(config.Path, data, 0700)
+	err = ioutil.WriteFile(ws.Path, data, 0700)
 	if err != nil {
 		return errors.Wrap(err, "writing for save")
 	}
@@ -270,7 +271,7 @@ func (b *Bosun) Save() error {
 	return nil
 }
 
-func (b *Bosun) GetRootConfig() Workspace {
+func (b *Bosun) Getworkspace() Workspace {
 	return *b.ws
 }
 
@@ -388,4 +389,15 @@ func (b *Bosun) GetGitRoots() []string {
 
 func (b *Bosun) AddGitRoot(s string) {
 	b.ws.GitRoots = append(b.ws.GitRoots, s)
+}
+
+
+// SyncClonePaths updates the ClonePaths in the workspace based on the apps found in the imported files.
+func (b *Bosun) SyncClonePaths() {
+	clonePaths := make(map[string]string)
+	apps := b.GetApps()
+	for _, app := range apps {
+		path, _ := git.GetRepoPath( app.FromPath)
+		clonePaths[app.Repo] = path
+	}
 }

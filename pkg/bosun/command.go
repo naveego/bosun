@@ -11,8 +11,8 @@ import (
 )
 
 type Command struct {
-	Command  []string                 `yaml:"command,omitempty"`
-	Script   string                   `yaml:"script,omitempty"`
+	Command  []string            `yaml:"command,omitempty,flow"`
+	Script   string              `yaml:"script,omitempty"`
 	OS       map[string]*Command `yaml:"os,omitempty"`
 	resolved bool
 }
@@ -63,7 +63,6 @@ Convert:
 	return err
 }
 
-
 func (d *Command) String() string {
 	if specific, ok := d.OS[runtime.GOOS]; ok {
 		return specific.String()
@@ -74,7 +73,6 @@ func (d *Command) String() string {
 	}
 	return ""
 }
-
 
 type CommandOpts struct {
 	// If true, echo output to stdout while running.
