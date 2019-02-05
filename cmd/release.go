@@ -35,14 +35,6 @@ var releaseCmd = &cobra.Command{
 	Short:   "ReleaseConfig commands.",
 }
 
-func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
-	for _, fn := range flags {
-		fn(child)
-	}
-	parent.AddCommand(child)
-
-	return child
-}
 
 var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:     "list",

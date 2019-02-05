@@ -13,6 +13,7 @@ import (
 
 type ReleaseConfig struct {
 	Name              string                       `yaml:"name"`
+	Description       string                       `yaml:"description"`
 	FromPath          string                       `yaml:"fromPath"`
 	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
 	Parent            *ConfigFragment              `yaml:"-"`
@@ -139,7 +140,6 @@ func checkImageExists(name string) error {
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-
 
 	return nil
 }

@@ -14,7 +14,6 @@ type AppRepoConfig struct {
 	ReportDeployment bool                   `yaml:"reportDeployment,omitempty"`
 	Namespace        string                 `yaml:"namespace,omitempty"`
 	Repo             string                 `yaml:"repo,omitempty"`
-	RepoPath         string                 `yaml:"repoPath,omitempty"`
 	HarborProject    string                 `yaml:"harborProject,omitempty"`
 	Version          string                 `yaml:"version,omitempty"`
 	Chart            string                 `yaml:"chart,omitempty"`
