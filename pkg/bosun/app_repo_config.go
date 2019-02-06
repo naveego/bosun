@@ -16,12 +16,14 @@ type AppRepoConfig struct {
 	Repo             string                 `yaml:"repo,omitempty"`
 	HarborProject    string                 `yaml:"harborProject,omitempty"`
 	Version          string                 `yaml:"version,omitempty"`
+	// The location of a standard go version file for this app.
+	GoVersionFile    string                 `yaml:"goVersionFile,omitempty"`
 	Chart            string                 `yaml:"chart,omitempty"`
 	ChartPath        string                 `yaml:"chartPath,omitempty"`
 	RunCommand       []string               `yaml:"runCommand,omitempty"`
 	DependsOn        []Dependency           `yaml:"dependsOn,omitempty"`
 	Labels           []string               `yaml:"labels,omitempty"`
-	Minikube *AppMinikubeConfig `yaml:"minikube,omitempty"`
+	Minikube         *AppMinikubeConfig     `yaml:"minikube,omitempty"`
 	Values           AppValuesByEnvironment `yaml:"values,omitempty"`
 	Scripts          []*Script              `yaml:"scripts,omitempty"`
 	Actions          []*AppAction           `yaml:"actions,omitempty"`
@@ -38,10 +40,10 @@ type AppMinikubeConfig struct {
 }
 
 type AppRoutableService struct {
-	Name string	`yaml:"name"`
+	Name     string `yaml:"name"`
 	PortName string `yaml:"portName"`
 	// Deprecated, use localhostPort instead
-	ExternalPort int `yaml:"externalPort"`
+	ExternalPort  int `yaml:"externalPort"`
 	LocalhostPort int `yaml:"localhostPort"`
 }
 
@@ -82,7 +84,7 @@ func (a *AppRepoConfig) SetFragment(fragment *ConfigFragment) {
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 	out := AppValuesConfig{
 		Dynamic: make(map[string]*DynamicValue),
-		Static: Values{},
+		Static:  Values{},
 	}
 	out.Files = append(out.Files, a.Files...)
 	out.Files = append(out.Files, other.Files...)

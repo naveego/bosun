@@ -460,6 +460,13 @@ func (a *AppRepo) BumpVersion(ctx BosunContext, bump string) error {
 		}
 	}
 
+	if a.GoVersionFile != "" {
+
+
+
+	}
+
+
 	return a.Fragment.Save()
 }
 

@@ -127,8 +127,11 @@ func checkImageExists(name string) error {
 
 	defer cmd.Process.Kill()
 
+	var lines []string
+
 	for scanner.Scan() {
 		line := scanner.Text()
+		lines = append(lines, line)
 		if strings.Contains(line, "Pulling from") {
 			return nil
 		}
@@ -139,6 +142,17 @@ func checkImageExists(name string) error {
 
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+
+	cmd.Process.Kill()
+
+	state, err := cmd.Process.Wait()
+	if err != nil {
+		return err
+	}
+
+	if !state.Success() {
+		return errors.Errorf("Pull failed: %s\n%s", state.String(), strings.Join(lines, "\n"))
 	}
 
 	return nil

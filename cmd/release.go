@@ -35,7 +35,6 @@ var releaseCmd = &cobra.Command{
 	Short:   "ReleaseConfig commands.",
 }
 
-
 var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
