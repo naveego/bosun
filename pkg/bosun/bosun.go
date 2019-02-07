@@ -140,8 +140,6 @@ func (b *Bosun) GetAppDependencyMap() map[string][]string {
 	return deps
 }
 
-
-
 func (b *Bosun) GetVaultClient() (*vault.Client, error) {
 	var err error
 	if b.vaultClient == nil {
@@ -364,8 +362,13 @@ func (b *Bosun) GetReleaseConfigs() []*ReleaseConfig {
 func (b *Bosun) UseRelease(name string) error {
 	var rc *ReleaseConfig
 	var err error
+
+	logrus.Debugf("looking for release with name: %s", name)
+
 	for _, rc = range b.mergedFragments.Releases {
+		logrus.Debugf("found release fragment %s", rc.Name)
 		if rc.Name == name {
+			logrus.Debugf("found release")
 			break
 		}
 	}

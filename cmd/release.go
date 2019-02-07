@@ -48,7 +48,7 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 		releases := b.GetReleaseConfigs()
 		for _, release := range releases {
 			name := release.Name
-			if release.Name == current.Name {
+			if current != nil && release.Name == current.Name {
 				name = fmt.Sprintf("* %s", name)
 			}
 			t.AddLine(name, release.FromPath)
