@@ -19,6 +19,7 @@ func CreateDeploy(orgSlashRepo, ref, environment string)(int64, error) {
 		Ref:         &ref,
 		Task:github.String("deploy"),
 		AutoMerge:github.Bool(false),
+		RequiredContexts: &[]string{},
 	}
 
 	client := mustGetGitClient()
