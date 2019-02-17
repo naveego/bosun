@@ -440,7 +440,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	if reportDeploy {
 		log.Info("Deploy progress will be reported to github.")
 		// create the deployment
-		deployID, err := git.CreateDeploy(a.Repo, a.Commit, env.Name)
+		deployID, err := git.CreateDeploy(a.Repo, a.Branch, env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {

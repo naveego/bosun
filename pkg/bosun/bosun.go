@@ -141,8 +141,6 @@ func (b *Bosun) GetAppDependencyMap() map[string][]string {
 	return deps
 }
 
-
-
 func (b *Bosun) GetVaultClient() (*vault.Client, error) {
 	var err error
 	if b.vaultClient == nil {
@@ -367,6 +365,7 @@ func (b *Bosun) UseRelease(name string) error {
 	var err error
 	for _, rc = range b.file.Releases {
 		if rc.Name == name {
+			logrus.Debugf("found release")
 			break
 		}
 	}

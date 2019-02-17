@@ -58,6 +58,8 @@ func PublishChart(chart string, force bool) error {
 	f := strings.Fields(out)
 	packagePath := f[len(f)-1]
 
+	defer os.Remove(packagePath)
+
 	helmArgs := []string{"s3", "push", packagePath, "helm.n5o.black"}
 	if force {
 		helmArgs = append(helmArgs, "--force")

@@ -20,6 +20,7 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
@@ -83,6 +84,8 @@ var appCmd = &cobra.Command{
 	Short:   "AppRepo commands",
 }
 
+var _ = addCommand(appCmd, configImportCmd)
+
 var appVersionCmd = &cobra.Command{
 	Use:     "version [name]",
 	Aliases: []string{"v"},
@@ -95,6 +98,22 @@ var appVersionCmd = &cobra.Command{
 		return nil
 	},
 }
+
+var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
+	Use:     "repo-path [name]",
+	Args:    cobra.RangeArgs(0, 1),
+	Short:   "Outputs the path where the app is cloned on the local system.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		app := mustGetApp(b, args)
+		if !app.IsRepoCloned() {
+			return errors.New("repo is not cloned")
+		}
+		path, err := git.GetRepoPath(app.FromPath)
+		fmt.Println(path)
+		return err
+	},
+})
 
 var appBumpCmd = &cobra.Command{
 	Use:   "bump {name} {major|minor|patch|major.minor.patch}",

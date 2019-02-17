@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"log"
@@ -23,6 +24,16 @@ const (
 	OutputTable = "table"
 	OutputYaml  = "yaml"
 )
+
+
+func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
+	for _, fn := range flags {
+		fn(child)
+	}
+	parent.AddCommand(child)
+
+	return child
+}
 
 func mustGetBosun() *bosun.Bosun {
 	b, err := getBosun()
