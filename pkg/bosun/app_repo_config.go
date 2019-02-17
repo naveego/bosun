@@ -85,7 +85,7 @@ func (a *AppRepoConfig) SetFragment(fragment *File) {
 // other added after (and/or overwriting) the values from this instance)
 func (a AppValuesConfig) Combine(other AppValuesConfig) AppValuesConfig {
 	out := AppValuesConfig{
-		Dynamic: make(map[string]*DynamicValue),
+		Dynamic: make(map[string]*CommandValue),
 		Static:  Values{},
 	}
 	out.Files = append(out.Files, a.Files...)

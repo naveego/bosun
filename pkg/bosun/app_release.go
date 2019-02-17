@@ -86,7 +86,7 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 
 	a.ActualState = AppState{}
 
-	log := ctx.Log.WithField("name", a.Name)
+	log := ctx.Log
 
 	if !ctx.Bosun.IsClusterAvailable() {
 		log.Debug("Cluster not available.")
@@ -112,13 +112,22 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 	}
 
 	a.ActualState.Status = release.Status
+	a.ActualState.Routing = RoutingCluster
 
-	releaseData, _ := pkg.NewCommand("helm", "get", a.Name).RunOut()
-
-	if strings.Contains(releaseData, "routeToHost: true") {
-		a.ActualState.Routing = RoutingLocalhost
-	} else {
-		a.ActualState.Routing = RoutingCluster
+	// check if the app has a service with an ExternalName; if it does, it must have been
+	// creating using `app toggle` and is routed to localhost.
+	if ctx.Env.IsLocal && a.AppRepo.Minikube != nil {
+		for _, routableService := range a.AppRepo.Minikube.RoutableServices {
+			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.AppRepo.Namespace, routableService.Name, "-o", "yaml").RunOut()
+			if err != nil {
+				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
+				continue
+			}
+			if strings.Contains(svcYaml, "ExternalName") {
+				a.ActualState.Routing = RoutingLocalhost
+				break
+			}
+		}
 	}
 
 	if diff {

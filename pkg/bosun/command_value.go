@@ -6,57 +6,76 @@ import (
 )
 
 type CommandValue struct {
-	Value    string `yaml:"value"`
+	Value   string `yaml:"value"`
 	Command `yaml:"-"`
-	OS       map[string]*CommandValue `yaml:"os,omitempty"`
+	OS      map[string]*CommandValue `yaml:"os,omitempty"`
 
 	resolved bool
 }
 
-type commandValueMarshalling CommandValue
+type commandValueMarshalling struct {
+	Value   string                              `yaml:"value,omitempty"`
+	Command []string                            `yaml:"command,omitempty,flow"`
+	Script  string                              `yaml:"script,omitempty"`
+	OS      map[string]*commandValueMarshalling `yaml:"os,omitempty"`
+}
+
+func (c *CommandValue) toMarshalling() *commandValueMarshalling {
+	m := commandValueMarshalling{
+		Value:   c.Value,
+		Command: c.Command.Command,
+		Script:  c.Script,
+	}
+	if len(c.OS) > 0 {
+		m.OS = map[string]*commandValueMarshalling{}
+		for k, v := range c.OS {
+			m.OS[k] = v.toMarshalling()
+		}
+	}
+	return &m
+}
+
+func (c commandValueMarshalling) apply(to *CommandValue) {
+	to.Value = c.Value
+	to.Command.Command = c.Command
+	to.Script = c.Script
+	if len(c.OS) > 0 {
+		to.OS = map[string]*CommandValue{}
+		for k, v := range c.OS {
+			o := &CommandValue{}
+			v.apply(o)
+			to.OS[k] = o
+		}
+	}
+}
 
 func (c *CommandValue) MarshalYAML() (interface{}, error) {
 
-	if c == nil {
-		return nil, nil
-	}
-
-	if len(c.Value) > 0 {
-		return c.Value, nil
-	}
-
-	if len(c.OS) > 0 {
-		return c.OS, nil
-	}
-
-	child := &c.Command
-
-	return child, nil
+	return c.toMarshalling(), nil
 }
 
 func (c *CommandValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	var s string
-	var cmd Command
+	var cmd []string
 	var u commandValueMarshalling
 	var err error
 
-	if err = unmarshal(&s) ; err == nil {
+	if err = unmarshal(&s); err == nil {
 		if isMultiline(s) {
-			u.Command.Script = s
+			u.Script = s
 		} else {
 			u.Value = s
 		}
-	} else if err = unmarshal(&u); err == nil && (len(u.OS) > 0 || u.Value != ""){
+	} else if err = unmarshal(&u); err == nil && (len(u.OS) > 0 || u.Value != "") {
 
 	} else if err = unmarshal(&cmd); err == nil {
 		u.Command = cmd
 	}
 
-	x := CommandValue(u)
-	*c = x
+	u.apply(c)
 
-	return err
+	return nil
 }
 
 func isMultiline(s string) bool {
@@ -94,7 +113,7 @@ func (c *CommandValue) Resolve(ctx BosunContext) (string, error) {
 	c.resolved = true
 
 	if c.Value == "" {
-		c.Value, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun:true})
+		c.Value, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true})
 	}
 
 	// trim whitespace, as script output may contain line breaks at the end

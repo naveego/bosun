@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
@@ -188,12 +189,24 @@ var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 	},
 })
 
-var wsSyncRepoPathsCmd = addCommand(workspaceCmd, &cobra.Command{
-	Use:   "sync-repo-paths",
-	Short: "Syncs up the repo paths in the workspace based on available apps.",
+var wsTidyPathsCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:   "tidy",
+	Short: "Cleans up workspace.",
+	Long: `Cleans up workspace by:
+- Removing redundant imports.
+- Finding apps which have been cloned into registered git roots.
+- Other things as we think of them...
+`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+
 		b := mustGetBosun()
-		b.SyncClonePaths()
+		b.TidyWorkspace()
+
+		if viper.GetBool(ArgGlobalDryRun) {
+			b.NewContext().Log.Warn("Detected dry run flag, no changes will be saved.")
+			return nil
+		}
+
 		return b.Save()
 	},
 })

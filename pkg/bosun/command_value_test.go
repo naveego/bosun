@@ -1,6 +1,7 @@
 package bosun_test
 
 import (
+	"fmt"
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -19,8 +20,8 @@ var _ = Describe("CommandValue", func() {
 
 	var ctx BosunContext
 
-	BeforeEach(func(){
-		ctx = BosunContext{Log:logrus.NewEntry(logrus.StandardLogger())}
+	BeforeEach(func() {
+		ctx = BosunContext{Log: logrus.NewEntry(logrus.StandardLogger())}
 	})
 
 	Describe("marshalling", func() {
@@ -31,22 +32,43 @@ var _ = Describe("CommandValue", func() {
 			out, err := yaml.Marshal(sut)
 			Expect(err).ToNot(HaveOccurred())
 			actual := strings.TrimSpace(string(out))
-			Expect(sut.DV).To(BeEquivalentTo(expectedValue))
-			Expect(actual).To(Equal(expectedYaml))
+			Expect(*sut.DV).To(BeEquivalentTo(expectedValue))
+			Expect(fmt.Sprintf("%q", actual)).To(Equal(fmt.Sprintf("%q", expectedYaml)))
 		},
-			Entry("value", "dv: some-value", CommandValue{Value:"some-value"}, "dv: some-value"),
-			Entry("value explicit", `dv: 
+			Entry("value",
+				"dv: some-value",
+				CommandValue{Value: "some-value"},
+				`dv:
   value: some-value`),
-			Entry("command", `dv:
-- some
-- command`),
-			Entry("command explicit", `dv:
+			Entry("value explicit",
+				`dv:
+  value: some-value`,
+				CommandValue{Value: "some-value"},
+				`dv:
+  value: some-value`),
+			Entry("command implicit",
+				`dv:
   command: 
   - some
-  - command`),
-			Entry("script", `dv: |-
+  - command`,
+				CommandValue{Command: Command{Command: []string{"some", "command"}}},
+				`dv:
+  command: [some, command]`),
+			Entry("command explicit",
+				`dv:
+  - some
+  - command`,
+				CommandValue{Command: Command{Command: []string{"some", "command"}}},
+				`dv:
+  command: [some, command]`),
+			Entry("script",
+				`dv: |-
   some
-  value`),
+  value`, CommandValue{Command: Command{Script: `some
+value`}}, `dv:
+  script: |-
+    some
+    value`),
 		)
 
 		It("should assign string to Value", func() {

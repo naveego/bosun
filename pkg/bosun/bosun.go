@@ -6,13 +6,13 @@ import (
 	"github.com/google/go-github/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"time"
 )
@@ -129,6 +129,10 @@ func (b *Bosun) GetAppsSortedByName() ReposSortedByName {
 
 func (b *Bosun) GetApps() map[string]*AppRepo {
 	return b.repos
+}
+
+func (b *Bosun) GetAppDesiredStates() map[string]AppState {
+	return b.ws.AppStates[b.env.Name]
 }
 
 func (b *Bosun) GetAppDependencyMap() map[string][]string {
@@ -390,13 +394,55 @@ func (b *Bosun) AddGitRoot(s string) {
 	b.ws.GitRoots = append(b.ws.GitRoots, s)
 }
 
+// TidyWorkspace updates the ClonePaths in the workspace based on the apps found in the imported files.
+func (b *Bosun) TidyWorkspace() {
+	ctx := b.NewContext()
+	log := ctx.Log
+	var importMap = map[string]struct{}{}
 
-// SyncClonePaths updates the ClonePaths in the workspace based on the apps found in the imported files.
-func (b *Bosun) SyncClonePaths() {
-	clonePaths := make(map[string]string)
-	apps := b.GetApps()
-	for _, app := range apps {
-		path, _ := git.GetRepoPath( app.FromPath)
-		clonePaths[app.Repo] = path
+	for _, app := range b.GetApps() {
+		if app.IsRepoCloned() {
+			importMap[app.FromPath] = struct{}{}
+			log.Debugf("App %s found at %s", app.Name, app.FromPath)
+			continue
+		}
+		log.Debugf("Found app with no cloned repo: %s from %s", app.Name, app.Repo)
+		for _, root := range b.ws.GitRoots {
+			clonedFolder := filepath.Join(root, app.Repo)
+			if _, err := os.Stat(clonedFolder); err != nil {
+				if os.IsNotExist(err) {
+					log.Debugf("App %s not found at %s", app.Name, clonedFolder)
+				} else {
+					log.Warnf("Error looking for app %s: %s", app.Name, err)
+				}
+			}
+			bosunFilePath := filepath.Join(clonedFolder, "bosun.yaml")
+			if _, err := os.Stat(bosunFilePath); err != nil {
+				if os.IsNotExist(err) {
+					log.Warnf("App %s seems to be cloned to %s, but there is no bosun.yaml file in that folder", app.Name, clonedFolder)
+				} else {
+					log.Warnf("Error looking for bosun.yaml for app %s: %s", app.Name, err)
+				}
+			} else {
+				log.Infof("Found bosun.yaml for app ref %s at %s, will add to imports.", app.Name, bosunFilePath)
+				b.AddImport(bosunFilePath)
+				break
+			}
+		}
 	}
+
+
+	for _, importPath := range b.ws.Imports {
+		if _, err := os.Stat(importPath); os.IsNotExist(err) {
+			log.Infof("Import path %s points to a file which no longer exists. It will be removed.", importPath)
+		} else {
+			importMap[importPath] = struct{}{}
+		}
+	}
+	var imports []string
+	for k := range importMap {
+		imports = append(imports, k)
+	}
+
+	b.ws.Imports = imports
 }
