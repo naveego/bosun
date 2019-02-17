@@ -11,6 +11,8 @@ type AppRepoConfig struct {
 	Name             string                 `yaml:"name"`
 	FromPath         string                 `yaml:"-"`
 	BranchForRelease bool                   `yaml:"branchForRelease,omitempty"`
+	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
+	ContractsOnly bool                   `yaml:"contractsOnly,omitempty"`
 	ReportDeployment bool                   `yaml:"reportDeployment,omitempty"`
 	Namespace        string                 `yaml:"namespace,omitempty"`
 	Repo             string                 `yaml:"repo,omitempty"`

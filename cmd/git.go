@@ -282,7 +282,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 				var appsInRepo []*bosun.AppRepo
 
 				for _, app := range allApps {
-					if strings.HasPrefix(app.FromPath, wd) && app.BranchForRelease {
+					if strings.HasPrefix(app.FromPath, wd) && (app.BranchForRelease || app.ContractsOnly) {
 						appsInRepo = append(appsInRepo, app)
 					}
 				}
