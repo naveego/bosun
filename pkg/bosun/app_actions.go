@@ -30,7 +30,7 @@ type AppAction struct {
 	Timeout     time.Duration   `yaml:"timeout,omitempty"`
 	Interval    time.Duration   `yaml:"interval,omitempty"`
 	Vault       *AppVaultAction `yaml:"vault,omitempty"`
-	Exec        *DynamicValue   `yaml:"exec,omitempty"`
+	Exec        *CommandValue   `yaml:"exec,omitempty"`
 	Test        *AppTestAction  `yaml:"test,omitempty"`
 }
 
@@ -41,7 +41,7 @@ type AppVaultAction struct {
 }
 
 type AppTestAction struct {
-	Exec *DynamicValue `yaml:"exec,omitempty"`
+	Exec *CommandValue `yaml:"exec,omitempty"`
 	HTTP string        `yaml:"http,omitempty"`
 	TCP  string        `yaml:"tcp,omitempty"`
 }

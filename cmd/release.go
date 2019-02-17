@@ -140,7 +140,7 @@ var releaseCreateCmd = &cobra.Command{
 	Short: "Creates a new release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, path := args[0], args[1]
-		c := bosun.ConfigFragment{
+		c := bosun.File{
 			FromPath: path,
 			Releases: []*bosun.ReleaseConfig{
 				&bosun.ReleaseConfig{

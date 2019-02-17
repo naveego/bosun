@@ -44,7 +44,7 @@ var editCmd = addCommand(rootCmd, &cobra.Command{
 			}
 			targetPath = app.FromPath
 		} else {
-			targetPath = b.GetRootConfig().Path
+			targetPath = b.Getworkspace().Path
 		}
 
 		editor, ok := os.LookupEnv("EDITOR")

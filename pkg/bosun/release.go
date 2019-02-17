@@ -16,7 +16,7 @@ type ReleaseConfig struct {
 	Description       string                       `yaml:"description"`
 	FromPath          string                       `yaml:"fromPath"`
 	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
-	Parent            *ConfigFragment              `yaml:"-"`
+	Parent            *File                        `yaml:"-"`
 }
 
 type Release struct {
@@ -53,7 +53,7 @@ func NewRelease(ctx BosunContext, r *ReleaseConfig) (*Release, error) {
 	return release, nil
 }
 
-func (r *ReleaseConfig) SetParent(f *ConfigFragment) {
+func (r *ReleaseConfig) SetParent(f *File) {
 	r.FromPath = f.FromPath
 	r.Parent = f
 	for _, app := range r.AppReleaseConfigs {

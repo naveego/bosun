@@ -12,7 +12,7 @@ func yamlize(y string) string {
 	return strings.Replace(y, "\t", "  ", -1)
 }
 
-var _ = Describe("ConfigFragment", func() {
+var _ = Describe("File", func() {
 
 	Describe("AppValuesByEnvironment", func() {
 		It("should merge values when unmarshalled", func() {
@@ -45,7 +45,7 @@ values:
 			redValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "red"}})
 
 			Expect(redValues).To(BeEquivalentTo(AppValuesConfig{
-				Set: map[string]*DynamicValue{
+				Dynamic: map[string]*CommandValue{
 					"redgreen1": {Value: "a"},
 					"red1":      {Value: "b"},
 				},
@@ -53,12 +53,13 @@ values:
 					"redgreenfile",
 					"redfile",
 				},
+				Static:Values{},
 			}))
 
 			greenValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "green"}})
 
 			Expect(greenValues).To(BeEquivalentTo(AppValuesConfig{
-				Set: map[string]*DynamicValue{
+				Dynamic: map[string]*CommandValue{
 					"redgreen1": {Value: "c"},
 					"green1":    {Value: "d"},
 				},
@@ -66,6 +67,7 @@ values:
 					"redgreenfile",
 					"greenfile",
 				},
+				Static:Values{},
 			}))
 
 			b, err := yaml.Marshal(sut)

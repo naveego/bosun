@@ -20,14 +20,14 @@ type EnvironmentConfig struct {
 type EnvironmentVariable struct {
 	FromPath string        `yaml:"fromPath,omitempty"`
 	Name     string        `yaml:"name"`
-	From     *DynamicValue `yaml:"from"`
+	From     *CommandValue `yaml:"from"`
 	Value    string        `yaml:"-"`
 }
 
 type EnvironmentCommand struct {
 	FromPath string        `yaml:"fromPath,omitempty"`
 	Name     string        `yaml:"name"`
-	Exec     *DynamicValue `yaml:"exec,omitempty"`
+	Exec     *CommandValue `yaml:"exec,omitempty"`
 }
 
 func (e *EnvironmentConfig) SetFromPath(path string) {
@@ -43,7 +43,7 @@ func (e *EnvironmentConfig) SetFromPath(path string) {
 	}
 }
 
-// Ensure sets Value using the From DynamicValue.
+// Ensure sets Value using the From CommandValue.
 func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
 	ctx = ctx.WithDir(e.FromPath)
 	log := ctx.Log.WithField("name", e.Name).WithField("fromPath", e.FromPath)

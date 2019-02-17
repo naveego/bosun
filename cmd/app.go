@@ -304,11 +304,18 @@ var appAcceptActualCmd = &cobra.Command{
 		p := progressbar.New(len(apps))
 
 		for _, app := range apps {
-			ctx := b.NewContext()
+			if !app.HasChart() {
+				continue
+			}
+			ctx := b.NewContext().WithAppRepo(app)
 			appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
+			if err != nil {
+				ctx.Log.WithError(err).Error("Error creating app release for current state analysis.")
+				continue
+			}
 			ctx = ctx.WithAppRelease(appRelease)
 
-			log := pkg.Log.WithField("name", app)
+			log := ctx.Log
 			log.Debug("Getting actual state...")
 			err = appRelease.LoadActualState(ctx, false)
 			p.Add(1)
@@ -318,7 +325,6 @@ var appAcceptActualCmd = &cobra.Command{
 			}
 			b.SetDesiredState(app.Name, appRelease.ActualState)
 			log.Debug("Updated.")
-			return nil
 		}
 
 		err = b.Save()
@@ -343,7 +349,7 @@ var appListCmd = &cobra.Command{
 		}
 
 		t := tabby.New()
-		t.AddHeader("APP", "AVAILABLE", "VERSION", "PATH or REPO", "BRANCH")
+		t.AddHeader("APP", "CLONED", "VERSION", "PATH or REPO", "BRANCH")
 		for _, app := range apps {
 			var check, pathrepo, branch, version string
 
@@ -506,8 +512,8 @@ var appToggleCmd = &cobra.Command{
 		ctx := b.NewContext()
 
 		for _, app := range apps {
-			ctx = ctx.WithAppRelease(app)
 
+			ctx = ctx.WithAppRelease(app)
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
 			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
 			if wantsLocalhost {
@@ -549,6 +555,8 @@ var appToggleCmd = &cobra.Command{
 					return err
 				}
 			}
+
+			b.SetDesiredState(app.Name, app.DesiredState)
 		}
 
 		err = b.Save()
@@ -657,7 +665,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 				}
 			}
 
-			ctx.Log.Info("Recycling app...")
+			ctx.Log.Info("Recycling apppOOPING...")
 			err := appRelease.Recycle(ctx)
 			if err != nil {
 				return err
@@ -958,19 +966,14 @@ var appCloneCmd = addCommand(
 				return err
 			}
 
-			repos := map[string]*bosun.AppRepo{}
-			for _, app := range apps {
-				repos[app.Repo] = app
-			}
-
 			ctx := b.NewContext()
-			for _, app := range repos {
+			for _, app := range apps {
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
-				log.Info("Cloning...")
 				if app.IsRepoCloned() {
 					pkg.Log.Infof("AppRepo already cloned to %q", app.FromPath)
 					continue
 				}
+				log.Info("Cloning...")
 
 				err := app.CloneRepo(ctx, dir)
 				if err != nil {

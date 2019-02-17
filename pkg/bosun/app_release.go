@@ -66,7 +66,7 @@ func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, err
 	release := &AppRelease{
 		AppReleaseConfig: config,
 		AppRepo:          ctx.Bosun.GetApps()[config.Name],
-		DesiredState:     ctx.Bosun.config.AppStates[ctx.Env.Name][config.Name],
+		DesiredState:     ctx.Bosun.ws.AppStates[ctx.Env.Name][config.Name],
 	}
 
 	return release, nil
@@ -86,7 +86,7 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 
 	a.ActualState = AppState{}
 
-	log := ctx.Log.WithField("name", a.Name)
+	log := ctx.Log
 
 	if !ctx.Bosun.IsClusterAvailable() {
 		log.Debug("Cluster not available.")
@@ -112,13 +112,22 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 	}
 
 	a.ActualState.Status = release.Status
+	a.ActualState.Routing = RoutingCluster
 
-	releaseData, _ := pkg.NewCommand("helm", "get", a.Name).RunOut()
-
-	if strings.Contains(releaseData, "routeToHost: true") {
-		a.ActualState.Routing = RoutingLocalhost
-	} else {
-		a.ActualState.Routing = RoutingCluster
+	// check if the app has a service with an ExternalName; if it does, it must have been
+	// creating using `app toggle` and is routed to localhost.
+	if ctx.Env.IsLocal && a.AppRepo.Minikube != nil {
+		for _, routableService := range a.AppRepo.Minikube.RoutableServices {
+			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.AppRepo.Namespace, routableService.Name, "-o", "yaml").RunOut()
+			if err != nil {
+				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
+				continue
+			}
+			if strings.Contains(svcYaml, "ExternalName") {
+				a.ActualState.Routing = RoutingLocalhost
+				break
+			}
+		}
 	}
 
 	if diff {
@@ -389,7 +398,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	log := ctx.Log
 
 	if a.DesiredState.Status == StatusUnchanged {
-		log.Info("Desired state is %q, nothing to do here.", StatusUnchanged)
+		log.Infof("Desired state is %q, nothing to do here.", StatusUnchanged)
 		return nil
 	}
 
@@ -568,7 +577,7 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 `)
 	}
 
-	hostIP := ctx.Bosun.config.HostIPInMinikube
+	hostIP := ctx.Bosun.ws.HostIPInMinikube
 	if hostIP == "" {
 		return errors.New("hostIPInMinikube is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
 	}

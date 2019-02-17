@@ -10,25 +10,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-type DynamicValue struct {
-	Value    string                   `yaml:"value,omitempty"`
-	Command  []string                 `yaml:"command,omitempty"`
-	Script   string                   `yaml:"script,omitempty"`
-	OS       map[string]*DynamicValue `yaml:"os,omitempty"`
+type Command struct {
+	Command  []string            `yaml:"command,omitempty,flow"`
+	Script   string              `yaml:"script,omitempty"`
+	OS       map[string]*Command `yaml:"os,omitempty"`
 	resolved bool
 }
 
-type dynamicValueMarshalling DynamicValue
+type commandMarshalling Command
 
-func (d *DynamicValue) MarshalYAML() (interface{}, error) {
-
-	if d == nil {
-		return nil, nil
-	}
-
-	if len(d.Value) > 0 {
-		return d.Value, nil
-	}
+func (d Command) MarshalYAML() (interface{}, error) {
 
 	if len(d.Command) > 0 {
 		return d.Command, nil
@@ -45,20 +36,15 @@ func (d *DynamicValue) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
-func (d *DynamicValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (d *Command) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	var s string
 	var c []string
-	var u dynamicValueMarshalling
+	var u commandMarshalling
 
 	err := unmarshal(&s)
 	if err == nil {
-		multiline := len(strings.Split(s, "\n")) > 1
-		if multiline {
-			u.Script = s
-		} else {
-			u.Value = s
-		}
+		u.Script = s
 		goto Convert
 	}
 
@@ -71,78 +57,47 @@ func (d *DynamicValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err = unmarshal(&u)
 
 Convert:
-	x := DynamicValue(u)
+	x := Command(u)
 	*d = x
 
 	return err
 }
 
-func (d *DynamicValue) GetValue() string {
-	if d == nil {
-		return ""
-	}
-	if !d.resolved {
-		panic("value accessed before Resolve called")
-	}
-	return d.Value
-}
-
-func (d *DynamicValue) String() string {
+func (d *Command) String() string {
 	if specific, ok := d.OS[runtime.GOOS]; ok {
 		return specific.String()
 	} else if len(d.Command) != 0 {
-		return strings.Join(d.Command, "")
+		return strings.Join(d.Command, " ")
 	} else if len(d.Script) > 0 {
 		return d.Script
-	} else if len(d.Value) > 0 {
-		return d.Value
 	}
 	return ""
 }
 
-// Resolve sets the Value field by executing Script, Command, or an entry under OS.
-// If resolve has been called before, the value from that resolve is returned.
-func (d *DynamicValue) Resolve(ctx BosunContext) (string, error) {
-	var err error
-
-	if d.resolved {
-		return d.Value, nil
-	}
-
-	d.resolved = true
-
-	if d.Value == "" {
-		d.Value, err = d.executeCore(ctx, DynamicValueOpts{})
-	}
-
-	// trim whitespace, as script output may contain line breaks at the end
-	d.Value = strings.TrimSpace(d.Value)
-
-	return d.Value, err
-}
-
-type DynamicValueOpts struct {
-	DiscardValue bool
+type CommandOpts struct {
+	// If true, echo output to stdout while running.
 	StreamOutput bool
+	// If true, execute even if --dry-run was passed.
+	IgnoreDryRun bool
 }
 
-// Execute executes the DynamicValue, and treats the Value field as a script.
-func (d *DynamicValue) Execute(ctx BosunContext, opts ...DynamicValueOpts) (string, error) {
-	var opt DynamicValueOpts
+// Execute executes the Command, and treats the Value field as a script.
+func (d *Command) Execute(ctx BosunContext, opts ...CommandOpts) (string, error) {
+	var opt CommandOpts
 	if len(opts) == 0 {
-		opt = DynamicValueOpts{}
+		opt = CommandOpts{}
 	} else {
 		opt = opts[0]
 	}
 	return d.executeCore(ctx, opt)
 }
 
-func (d *DynamicValue) executeCore(ctx BosunContext, opt DynamicValueOpts) (string, error) {
+func (d *Command) executeCore(ctx BosunContext, opt CommandOpts) (string, error) {
 
 	var err error
 	var value string
 
-	if ctx.GetParams().DryRun && opt.DiscardValue {
+	if ctx.GetParams().DryRun && !opt.IgnoreDryRun {
 		// don't execute side-effect-only commands during dry run
 		ctx.Log.WithField("command", d.String()).Info("Skipping side-effecting command because this is a dry run.")
 		return "", nil
@@ -162,9 +117,8 @@ func (d *DynamicValue) executeCore(ctx BosunContext, opt DynamicValueOpts) (stri
 			}
 		} else if len(d.Script) > 0 {
 			value, err = executeScript(d.Script, ctx, opt)
-		} else if len(d.Value) > 0 {
-			value, err = executeScript(d.Value, ctx, opt)
 		}
+
 		close(doneCh)
 	}()
 
@@ -177,7 +131,7 @@ func (d *DynamicValue) executeCore(ctx BosunContext, opt DynamicValueOpts) (stri
 	return value, err
 }
 
-func executeScript(script string, ctx BosunContext, opt DynamicValueOpts) (string, error) {
+func executeScript(script string, ctx BosunContext, opt CommandOpts) (string, error) {
 	pattern := "bosun-script*"
 	if runtime.GOOS == "windows" {
 		pattern = "bosun-script*.bat"
@@ -191,9 +145,12 @@ func executeScript(script string, ctx BosunContext, opt DynamicValueOpts) (strin
 
 	defer os.Remove(tmp.Name())
 
-	vars, err := ctx.Env.GetVariablesAsMap(ctx)
-	if err != nil {
-		return "", errors.Wrap(err, "resolve environment variables for script")
+	var vars map[string]string
+	if ctx.Env != nil {
+		vars, err = ctx.Env.GetVariablesAsMap(ctx)
+		if err != nil {
+			return "", errors.Wrap(err, "resolve environment variables for script")
+		}
 	}
 
 	ctx.Log.Debugf("Running script:\n%s\n", script)

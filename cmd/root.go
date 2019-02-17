@@ -141,6 +141,9 @@ func init() {
 
 	viper.AutomaticEnv()
 
+	viper.BindEnv(ArgBosunConfigFile, "BOSUN_CONFIG")
+
+
 	cobra.OnInitialize(initConfig)
 }
 
