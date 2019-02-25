@@ -26,6 +26,7 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
    
 ### Dependencies
 
+- Go (https://golang.org/doc/install)
 - Virtualbox (https://www.virtualbox.org/wiki/Downloads) 
 - Minikube (https://github.com/kubernetes/minikube)
 - Kubernetes (https://kubernetes.io/)
