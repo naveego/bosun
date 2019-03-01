@@ -357,6 +357,9 @@ func (p *globalParameters) init() error {
 		p.vaultToken = "root"
 	}
 	if p.vaultToken == "" {
+		p.vaultToken = os.Getenv("VAULT_TOKEN")
+	}
+	if p.vaultToken == "" {
 		return errors.New("vault token not set (try setting VAULT_TOKEN)")
 	}
 

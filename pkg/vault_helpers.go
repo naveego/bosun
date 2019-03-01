@@ -306,7 +306,7 @@ func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
 
 	vaultConfig := api.DefaultConfig()
 	vaultConfig.Address = vaultAddr
-	vaultConfig.Timeout = 5*time.Second
+	vaultConfig.Timeout = 60*time.Second
 	vaultConfig.MaxRetries = 6
 
 	err := vaultConfig.ReadEnvironment()

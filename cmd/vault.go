@@ -278,7 +278,6 @@ const (
 	ArgVaultSecretDefault = "default"
 )
 
-
 func init() {
 
 	sub := "admin"
