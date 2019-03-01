@@ -657,11 +657,13 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 			ctx := ctx.WithAppRelease(appRelease)
 
 			if env.IsLocal && pullLatest {
-				ctx.Log.Info("Pulling latest version of image on minikube...")
-				image := fmt.Sprintf("%s:latest", appRelease.Image)
-				err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", image)).RunE()
-				if err != nil {
-					return err
+				ctx.Log.Info("Pulling latest version of image(s) on minikube...")
+				for _, imageName := range appRelease.ImageNames {
+					image := fmt.Sprintf("%s:latest", imageName)
+					err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", image)).RunE()
+					if err != nil {
+						return err
+					}
 				}
 			}
 
@@ -810,6 +812,7 @@ var appPublishImageCmd = addCommand(
 	appCmd,
 	&cobra.Command{
 		Use:   "publish-image [app]",
+		Aliases:[]string{"publish-images"},
 		Args:  cobra.MaximumNArgs(1),
 		Short: "Publishes the image for an app.",
 		Long: `If app is not provided, the current directory is used.
@@ -824,7 +827,26 @@ as "version-release".
 			b := mustGetBosun()
 			app := mustGetApp(b, args)
 			ctx := b.NewContext()
-			err := app.PublishImage(ctx)
+			err := app.PublishImages(ctx)
+			return err
+		},
+	})
+
+var appBuildImageCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:   "build-image [app]",
+		Aliases:[]string{"build-images"},
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Builds the image(s) for an app.",
+		Long: `If app is not provided, the current directory is used. The image(s) will be built with the "latest" tag.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			b := mustGetBosun()
+			app := mustGetApp(b, args)
+			ctx := b.NewContext()
+			err := app.BuildImages(ctx)
 			return err
 		},
 	})

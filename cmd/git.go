@@ -14,7 +14,6 @@ import (
 	"golang.org/x/oauth2"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -131,7 +130,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		client := getGitClient()
 
-		org, repo := getOrgAndRepo()
+		org, repo := git.GetCurrentOrgAndRepo()
 		wd, _ := os.Getwd()
 		g, _ := git.NewGitWrapper(wd)
 		branch := g.Branch()
@@ -202,7 +201,12 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Errorf("invalid pull request number %s: %s", args[0], err)
 		}
 
-		org, repo := getOrgAndRepo()
+		wd, _ := os.Getwd()
+		repoDir, err := git.GetRepoPath(wd)
+		if err != nil {
+			return err
+		}
+		org, repo := git.GetOrgAndRepoFromPath(repoDir)
 
 		pr, _, err := client.PullRequests.Get(context.Background(), org, repo, number)
 		if err != nil {
@@ -212,8 +216,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		// j, _ := json.MarshalIndent(pr, "", "  ")
 		// fmt.Println(string(j))
 
-		wd, _ := os.Getwd()
-		g, _ := git.NewGitWrapper(wd)
+		g, _ := git.NewGitWrapper(repoDir)
 
 		if pr.ClosedAt != nil {
 			return errors.Errorf("already closed at %s", *pr.ClosedAt)
@@ -282,7 +285,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 				var appsInRepo []*bosun.AppRepo
 
 				for _, app := range allApps {
-					if strings.HasPrefix(app.FromPath, wd) && (app.BranchForRelease || app.ContractsOnly) {
+					if strings.HasPrefix(app.FromPath, repoDir) && (app.BranchForRelease || app.ContractsOnly) {
 						appsInRepo = append(appsInRepo, app)
 					}
 				}
@@ -458,10 +461,7 @@ const (
 )
 
 func getOrgAndRepo() (string, string) {
-	currentDir, _ := os.Getwd()
-	repo := filepath.Base(currentDir)
-	org := filepath.Base(filepath.Dir(currentDir))
-	return org, repo
+	return git.GetCurrentOrgAndRepo()
 }
 
 func dumpJSON(label string, data interface{}) {

@@ -89,11 +89,13 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 		return errs
 	}
 
-	imageName := fmt.Sprintf("%s:%s", a.Image, a.ImageTag)
-	err = checkImageExists(imageName)
+	for _, imageName := range a.ImageNames {
+		imageName = fmt.Sprintf("%s:%s", imageName, a.ImageTag)
+		err = checkImageExists(imageName)
 
-	if err != nil {
-		errs = append(errs, errors.Errorf("image: %s", err))
+		if err != nil {
+			errs = append(errs, errors.Errorf("image %q: %s", imageName, err))
+		}
 	}
 
 	// if a.AppRepo.IsRepoCloned() {

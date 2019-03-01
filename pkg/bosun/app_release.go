@@ -37,7 +37,7 @@ type AppReleaseConfig struct {
 	Version          string       `yaml:"version"`
 	SyncedAt         time.Time    `yaml:"syncedAt"`
 	Chart            string       `yaml:"chart"`
-	Image            string       `yaml:"image,omitempty"`
+	ImageNames       []string     `yaml:"images,omitempty"`
 	ImageTag         string       `yaml:"imageTag,omitempty"`
 	ReportDeployment bool         `yaml:"reportDeployment"`
 	DependsOn        []string     `yaml:"dependsOn"`
@@ -715,7 +715,7 @@ func (a *AppRelease) Recycle(ctx BosunContext) error {
 
 		color.White("...")
 
-		wait := 5*time.Second
+		wait := 5 * time.Second
 		ctx.Log.Debugf("Waiting %s to check readiness again...", wait)
 		select {
 		case <-time.After(wait):

@@ -8,28 +8,40 @@ import (
 )
 
 type AppRepoConfig struct {
-	Name             string                 `yaml:"name"`
-	FromPath         string                 `yaml:"-"`
-	BranchForRelease bool                   `yaml:"branchForRelease,omitempty"`
+	Name             string `yaml:"name"`
+	FromPath         string `yaml:"-"`
+	BranchForRelease bool   `yaml:"branchForRelease,omitempty"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
-	ContractsOnly bool                   `yaml:"contractsOnly,omitempty"`
-	ReportDeployment bool                   `yaml:"reportDeployment,omitempty"`
-	Namespace        string                 `yaml:"namespace,omitempty"`
-	Repo             string                 `yaml:"repo,omitempty"`
-	HarborProject    string                 `yaml:"harborProject,omitempty"`
-	Version          string                 `yaml:"version,omitempty"`
+	ContractsOnly    bool   `yaml:"contractsOnly,omitempty"`
+	ReportDeployment bool   `yaml:"reportDeployment,omitempty"`
+	Namespace        string `yaml:"namespace,omitempty"`
+	Repo             string `yaml:"repo,omitempty"`
+	HarborProject    string `yaml:"harborProject,omitempty"`
+	Version          string `yaml:"version,omitempty"`
 	// The location of a standard go version file for this app.
-	GoVersionFile    string                 `yaml:"goVersionFile,omitempty"`
-	Chart            string                 `yaml:"chart,omitempty"`
-	ChartPath        string                 `yaml:"chartPath,omitempty"`
-	RunCommand       []string               `yaml:"runCommand,omitempty"`
-	DependsOn        []Dependency           `yaml:"dependsOn,omitempty"`
-	Labels           []string               `yaml:"labels,omitempty"`
-	Minikube         *AppMinikubeConfig     `yaml:"minikube,omitempty"`
-	Values           AppValuesByEnvironment `yaml:"values,omitempty"`
-	Scripts          []*Script              `yaml:"scripts,omitempty"`
-	Actions          []*AppAction           `yaml:"actions,omitempty"`
-	Fragment         *File                  `yaml:"-"`
+	GoVersionFile string                 `yaml:"goVersionFile,omitempty"`
+	Chart         string                 `yaml:"chart,omitempty"`
+	ChartPath     string                 `yaml:"chartPath,omitempty"`
+	RunCommand    []string               `yaml:"runCommand,omitempty,flow"`
+	DependsOn     []Dependency           `yaml:"dependsOn,omitempty"`
+	Labels        []string               `yaml:"labels,omitempty"`
+	Minikube      *AppMinikubeConfig     `yaml:"minikube,omitempty"`
+	Images 		  []AppImageConfig              `yaml:"images"`
+	Values        AppValuesByEnvironment `yaml:"values,omitempty"`
+	Scripts       []*Script              `yaml:"scripts,omitempty"`
+	Actions       []*AppAction           `yaml:"actions,omitempty"`
+	Fragment      *File                  `yaml:"-"`
+}
+
+type AppImageConfig struct {
+	ImageName string `yaml:"imageName"`
+	ProjectName string `yaml:"projectName,omitempty"`
+	Dockerfile string `yaml:"dockerfile,omitempty"`
+	ContextPath string `yaml:"contextPath,omitempty"`
+}
+
+func (a AppImageConfig) GetPrefixedName() string {
+	return fmt.Sprintf("docker.n5o.black/%s/%s", a.ProjectName, a.ImageName)
 }
 
 type AppMinikubeConfig struct {
