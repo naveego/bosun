@@ -35,12 +35,11 @@ var version string
 var timestamp string
 var commit string
 
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "bosun",
-	Short: "Devops tool.",
-	SilenceErrors:true,
+	Use:           "bosun",
+	Short:         "Devops tool.",
+	SilenceErrors: true,
 	Version: fmt.Sprintf(`Version: %s
 Timestamp: %s
 Commit: %s
@@ -73,6 +72,11 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			cmd.SilenceUsage = true
 		}
 
+		conditions := viper.GetStringSlice(ArgAppIf)
+		if len(conditions) > 0 {
+
+		}
+
 		return nil
 	},
 }
@@ -81,7 +85,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		switch e := err.(type){
+		switch e := err.(type) {
 		case handledError:
 			fmt.Println(e.Error())
 		default:
@@ -95,16 +99,14 @@ func Execute() {
 const (
 	ArgGlobalVerbose   = "verbose"
 	ArgGlobalDryRun    = "dry-run"
-	ArgGlobalCluster   ="cluster"
-	ArgGlobalDomain    ="domain"
+	ArgGlobalCluster   = "cluster"
+	ArgGlobalDomain    = "domain"
 	ArgGlobalValues    = "values"
 	ArgBosunConfigFile = "config-file"
-	ArgGlobalForce        = "force"
-	ArgGlobalNoReport        = "no-report"
-	ArgGlobalOutput      = "output"
+	ArgGlobalForce     = "force"
+	ArgGlobalNoReport  = "no-report"
+	ArgGlobalOutput    = "output"
 )
-
-
 
 func init() {
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", configPath, "The config file for bosun.")
@@ -112,11 +114,11 @@ func init() {
 	rootCmd.PersistentFlags().MarkHidden("step")
 
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
-	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o","table", "Output format. Options are `table` or `yaml`. Only respected by a some commands.")
+	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "table", "Output format. Options are `table` or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
-	rootCmd.PersistentFlags().Bool(	ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
-	rootCmd.PersistentFlags().Bool(	ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
+	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
+	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
 
 	defaultCluster := ""
 	defaultDomain := ""
@@ -135,14 +137,12 @@ func init() {
 	rootCmd.PersistentFlags().StringSlice(ArgGlobalValues, []string{}, "Any number of key=value values which will be available under the .Values token in templates.")
 	rootCmd.PersistentFlags().MarkHidden(ArgGlobalValues)
 
-
 	viper.RegisterAlias("debug", "verbose")
 	viper.BindPFlags(rootCmd.PersistentFlags())
 
 	viper.AutomaticEnv()
 
 	viper.BindEnv(ArgBosunConfigFile, "BOSUN_CONFIG")
-
 
 	cobra.OnInitialize(initConfig)
 }

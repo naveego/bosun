@@ -147,8 +147,12 @@ func mustGetAppRepos(b *bosun.Bosun, names []string) []*bosun.AppRepo {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if len(repos) == 0 {
+		color.Red("No apps found (provided names: %v).", names)
+	}
 	return repos
 }
+
 func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
 	repos, err := getAppRepos(b, names)
 	if err != nil {
@@ -167,6 +171,14 @@ func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
 // if names is empty, tries to find a apps starting
 // from the current directory
 func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
+	apps, err := getAppReposUnfiltered(b, names)
+	if err == nil {
+		apps = filterApps(apps)
+	}
+	return apps, err
+}
+
+func getAppReposUnfiltered(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
 
 	var apps []*bosun.AppRepo
 	var err error
@@ -401,3 +413,50 @@ var (
 	colorError  = color.New(color.FgRed)
 	colorOK     = color.New(color.FgGreen, color.Bold)
 )
+
+func filterApps(apps []*bosun.AppRepo) []*bosun.AppRepo {
+	var out []*bosun.AppRepo
+	for _, app := range apps {
+		if passesConditions(app) {
+			out = append(out, app)
+		}
+	}
+	if len(apps) > 0 && len(out) == 0 && len(viper.GetStringSlice(ArgAppIf)) > 0 {
+		color.Yellow("All apps excluded by conditions.")
+		os.Exit(0)
+	}
+	return out
+}
+
+
+func passesConditions(app *bosun.AppRepo) bool {
+	conditions := viper.GetStringSlice(ArgAppIf)
+	if len(conditions) == 0 {
+		return true
+	}
+
+	for _, cs := range conditions {
+
+		segs := strings.Split(cs, "=")
+		if len(segs) != 2 {
+			check(errors.Errorf("invalid condition %q (should be x=y)", cs))
+		}
+		kind, arg := segs[0], segs[1]
+
+		switch kind {
+		case "branch":
+			re, err := regexp.Compile(arg)
+			check(errors.Wrapf(err, "branch must be regex (was %q)", arg))
+			branch := app.GetBranch()
+			if !re.MatchString(branch) {
+				color.Yellow("Skipping command for app %s because it did not match condition %q", app.Name, cs)
+				return false
+			}
+			return true
+		default:
+			check(errors.Errorf("invalid condition %q (should be branch=y)", cs))
+		}
+	}
+
+	return true
+}

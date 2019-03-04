@@ -45,11 +45,13 @@ const (
 	ArgAppDeployDeps      = "deploy-deps"
 	ArgAppDeletePurge     = "purge"
 	ArgAppCloneDir        = "dir"
+	ArgAppIf              = "if"
 )
 
 func init() {
 	appCmd.PersistentFlags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
 	appCmd.PersistentFlags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
+	appCmd.PersistentFlags().StringSlice(ArgAppIf, []string{}, `Skips execution for an app if the condition is false for that app. Currently supports "branch={regex}".`)
 
 	appCmd.AddCommand(appToggleCmd)
 	appToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
@@ -115,7 +117,7 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 	},
 })
 
-var appBumpCmd = &cobra.Command{
+var appBumpCmd = addCommand(appCmd, &cobra.Command{
 	Use:   "bump {name} {major|minor|patch|major.minor.patch}",
 	Args:  cobra.ExactArgs(2),
 	Short: "Updates the version of an app.",
@@ -123,9 +125,41 @@ var appBumpCmd = &cobra.Command{
 
 		b := mustGetBosun()
 		app := mustGetApp(b, args)
-		return appBump(b, app, args[1])
+
+		g, err := git.NewGitWrapper(app.FromPath)
+		if err != nil {
+			return err
+		}
+
+		wantsTag := viper.GetBool(ArgAppBumpTag)
+		if  wantsTag {
+			if g.IsDirty() {
+				return errors.New("cannot bump version and tag when workspace is dirty")
+			}
+		}
+
+		err =  appBump(b, app, args[1])
+		if err != nil {
+			return err
+		}
+
+
+		if wantsTag{
+			_, err = g.Exec("tag", app.Version)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	},
-}
+}, func(cmd *cobra.Command) {
+		cmd.Flags().Bool(ArgAppBumpTag, false, "Create and push a git tag for the version.")
+})
+
+const (
+	ArgAppBumpTag = "tag"
+)
 
 // appBump is the implementation of appBumpCmd
 func appBump(b *bosun.Bosun, app *bosun.AppRepo, bump string) error {
