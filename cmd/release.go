@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+	"regexp"
 	"strings"
 )
 
@@ -44,14 +45,14 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 
 		current, _ := b.GetCurrentRelease()
 		t := tabby.New()
-		t.AddHeader("RELEASE", "PATH")
+		t.AddHeader("RELEASE", "VERSION", "PATH")
 		releases := b.GetReleaseConfigs()
 		for _, release := range releases {
 			name := release.Name
 			if current != nil && release.Name == current.Name {
 				name = fmt.Sprintf("* %s", name)
 			}
-			t.AddLine(name, release.FromPath)
+			t.AddLine(name, release.Version, release.FromPath)
 		}
 		t.Print()
 
@@ -64,9 +65,9 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:     "show",
-	Aliases: []string{"ls"},
-	Short:   "Lists known releases.",
+	Use:     "list-apps",
+	Aliases: []string{"la"},
+	Short:   "Lists the apps in the current release.",
 	Run: func(cmd *cobra.Command, args []string) {
 		b := mustGetBosun()
 		r := mustGetCurrentRelease(b)
@@ -77,9 +78,9 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 		default:
 
 			t := tabby.New()
-			t.AddHeader("APP", "VERSION", "REPO", "BRANCH")
+			t.AddHeader("APP", "VERSION", "REPO")
 			for _, app := range r.AppReleases.GetAppsSortedByName() {
-				t.AddLine(app.Name, app.Version, app.Repo, app.Branch)
+				t.AddLine(app.Name, app.Version, app.Repo)
 			}
 			t.Print()
 
@@ -138,13 +139,24 @@ var releaseCreateCmd = &cobra.Command{
 	Use:   "create {name} {path}",
 	Args:  cobra.ExactArgs(2),
 	Short: "Creates a new release.",
+	Long:`The name will be used to refer to the release.
+The release file will be stored at the path.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, path := args[0], args[1]
+
+		semverRaw := regexp.MustCompile(`[^\.0-9]`).ReplaceAllString(name, "")
+		semverSegs := strings.Split(semverRaw, ".")
+		if len(semverSegs) < 3 {
+			semverSegs = append(semverSegs, "0")
+		}
+		version = strings.Join(semverSegs, ".")
+
 		c := bosun.File{
 			FromPath: path,
 			Releases: []*bosun.ReleaseConfig{
 				&bosun.ReleaseConfig{
 					Name: name,
+					Version: version,
 				},
 			},
 		}
@@ -197,6 +209,7 @@ var releaseAddCmd = &cobra.Command{
 
 		for _, app := range apps {
 
+			delete(release.Exclude, app.Name)
 			_, ok := release.AppReleaseConfigs[app.Name]
 			if ok {
 				pkg.Log.Warnf("Overwriting existing app %q.", app.Name)
@@ -223,7 +236,7 @@ var releaseAddCmd = &cobra.Command{
 
 var releaseRemoveCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "remove [names...]",
-	Short: "Removes one or more apps to a release.",
+	Short: "Removes one or more apps from a release.",
 	Long:  "Provide app names or use labels.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
@@ -237,6 +250,33 @@ var releaseRemoveCmd = addCommand(releaseCmd, &cobra.Command{
 
 		for _, app := range apps {
 			delete(release.AppReleaseConfigs, app.Name)
+		}
+
+		err = release.Parent.Save()
+		return err
+	},
+})
+
+var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "exclude [names...]",
+	Short: "Excludes and removes one or more apps from a release.",
+	Long: "Provide app names or use labels. The matched apps will be removed " +
+		"from the release and will not be re-added even if apps which depend on " +
+		"them are added or synced. If the app is explicitly added it will be " +
+		"removed from the exclude list.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		b := mustGetBosun()
+		release := mustGetCurrentRelease(b)
+
+		apps, err := getAppRepos(b, args)
+		if err != nil {
+			return err
+		}
+
+		for _, app := range apps {
+			delete(release.AppReleaseConfigs, app.Name)
+			release.Exclude[app.Name] = struct{}{}
 		}
 
 		err = release.Parent.Save()
@@ -360,7 +400,7 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 					return errors.Wrap(err, "check out release branch")
 				}
 
-				_, err = g.Exec("merge", fmt.Sprintf("origin/%s",appRelease.Branch))
+				_, err = g.Exec("merge", fmt.Sprintf("origin/%s", appRelease.Branch))
 				if err != nil {
 					return errors.Wrap(err, "merge release branch")
 				}
@@ -462,7 +502,6 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 				return err
 			}
 		}
-
 
 		err := release.Deploy(ctx)
 

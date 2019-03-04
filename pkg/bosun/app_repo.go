@@ -40,9 +40,10 @@ func NewApp(appConfig *AppRepoConfig) *AppRepo {
 func NewRepoFromDependency(dep *Dependency) *AppRepo {
 	return &AppRepo{
 		AppRepoConfig: &AppRepoConfig{
-			Name:    dep.Name,
-			Version: dep.Version,
-			Repo:    dep.Repo,
+			FromPath: dep.FromPath,
+			Name:     dep.Name,
+			Version:  dep.Version,
+			Repo:     dep.Repo,
 		},
 		isCloned: false,
 	}
@@ -113,7 +114,7 @@ func (a *AppRepo) FetchRepo(ctx BosunContext) error {
 
 func (a *AppRepo) IsRepoCloned() bool {
 
-	if a.FromPath == "" {
+	if a.FromPath == "" || a.IsRef {
 		return false
 	}
 
@@ -220,14 +221,14 @@ func (a *AppRepo) PublishChart(ctx BosunContext, force bool) error {
 	return err
 }
 
-func (a *AppRepo) GetImages() []AppImageConfig{
+func (a *AppRepo) GetImages() []AppImageConfig {
 	images := a.Images
 	defaultProjectName := "private"
 	if a.HarborProject != "" {
 		defaultProjectName = a.HarborProject
 	}
 	if len(images) == 0 {
-		images = []AppImageConfig{{ImageName:a.Name}}
+		images = []AppImageConfig{{ImageName: a.Name}}
 	}
 
 	var formattedImages []AppImageConfig
@@ -274,7 +275,6 @@ func (a *AppRepo) GetTaggedImageNames(versionAndRelease ...string) []string {
 }
 
 func (a *AppRepo) BuildImages(ctx BosunContext) error {
-
 
 	var report []string
 	for _, image := range a.GetImages() {
@@ -432,6 +432,7 @@ func (a *AppRepo) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, erro
 			return nil, err
 		}
 		if strings.Contains(branches, branchName) {
+			ctx.Log.Info("Checking out release branch...")
 			_, err := g.Exec("checkout", branchName)
 			if err != nil {
 				return nil, err
@@ -441,6 +442,16 @@ func (a *AppRepo) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, erro
 				return nil, err
 			}
 		} else {
+			ctx.Log.Info("Creating release branch...")
+			_, err = g.Exec("checkout", "master")
+			if err != nil {
+				return nil, errors.Wrap(err, "checkout master")
+			}
+			_, err = g.Exec("pull")
+			if err != nil {
+				return nil, errors.Wrap(err, "pull master")
+			}
+
 			_, err = g.Exec("branch", branchName, "origin/master")
 			if err != nil {
 				return nil, err

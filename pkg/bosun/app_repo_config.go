@@ -31,6 +31,8 @@ type AppRepoConfig struct {
 	Scripts       []*Script              `yaml:"scripts,omitempty"`
 	Actions       []*AppAction           `yaml:"actions,omitempty"`
 	Fragment      *File                  `yaml:"-"`
+	// If true, this app repo is only a ref, not a real cloned repo.
+	IsRef bool `yaml:"-"`
 }
 
 type AppImageConfig struct {

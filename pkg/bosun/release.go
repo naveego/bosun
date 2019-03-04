@@ -13,10 +13,23 @@ import (
 
 type ReleaseConfig struct {
 	Name              string                       `yaml:"name"`
+	Version           string                       `yaml:"version"`
 	Description       string                       `yaml:"description"`
 	FromPath          string                       `yaml:"fromPath"`
 	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
+	Exclude           map[string]struct{}          `yaml:"exclude,omitempty"`
 	Parent            *File                        `yaml:"-"`
+}
+
+func (r *ReleaseConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type rcm ReleaseConfig
+	var proxy rcm
+	err := unmarshal(&proxy)
+	if err == nil {
+		proxy.Exclude = map[string]struct{}{}
+		*r = ReleaseConfig(proxy)
+	}
+	return err
 }
 
 type Release struct {
@@ -177,6 +190,11 @@ func (r *Release) IncludeDependencies(ctx BosunContext) error {
 
 	for _, dep := range topology {
 		if r.AppReleaseConfigs[dep] == nil {
+			if _, ok := r.Exclude[dep]; ok {
+				ctx.Log.Warnf("Dependency %q is not being added because it is in the exclude list. " +
+					"Add it using the `add` command if want to override this exclusion.")
+				continue
+			}
 			app, err := ctx.Bosun.GetApp(dep)
 			if err != nil {
 				return errors.Errorf("an app or dependency %q could not be found: %s", dep, err)

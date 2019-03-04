@@ -383,9 +383,9 @@ var appListCmd = &cobra.Command{
 		}
 
 		t := tabby.New()
-		t.AddHeader("APP", "CLONED", "VERSION", "PATH or REPO", "BRANCH")
+		t.AddHeader("APP", "CLONED", "VERSION", "PATH or REPO", "BRANCH", "IMPORTED BY")
 		for _, app := range apps {
-			var check, pathrepo, branch, version string
+			var check, pathrepo, branch, version, importedBy string
 
 			if app.IsRepoCloned() {
 				check = "✔"
@@ -397,9 +397,10 @@ var appListCmd = &cobra.Command{
 				pathrepo = app.Repo
 				branch = ""
 				version = app.Version
-
+				importedBy = app.FromPath
 			}
-			t.AddLine(app.Name, check, version, pathrepo, branch)
+
+			t.AddLine(app.Name, check, version, pathrepo, branch, importedBy)
 		}
 
 		t.Print()
