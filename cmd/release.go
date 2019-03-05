@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 func init() {
@@ -26,6 +27,8 @@ func init() {
 
 	releaseCmd.AddCommand(releaseAddCmd)
 
+	releaseCmd.PersistentFlags().StringSlice(ArgInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
+	releaseCmd.PersistentFlags().StringSlice(ArgExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 	rootCmd.AddCommand(releaseCmd)
 }
 
@@ -88,6 +91,83 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 })
 
+var releaseDiffCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "diff",
+	Short: "Reports on the changes deploying the release will inflict on the current environment.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		r := mustGetCurrentRelease(b)
+		if len(viper.GetStringSlice(ArgAppLabels)) == 0 && len(args) == 0 {
+			viper.Set(ArgAppAll, true)
+		}
+
+		apps, err := getAppRepos(b, args)
+		if err != nil {
+			return err
+		}
+		requestedApps := map[string]bool{}
+		for _, app := range apps {
+			requestedApps[app.Name] = true
+		}
+
+		total := len(requestedApps)
+		complete := 0
+
+		appReleases := r.AppReleases
+		wg := new(sync.WaitGroup)
+		wg.Add(len(appReleases))
+		for _, appRelease := range appReleases {
+			if !requestedApps[appRelease.Name] {
+				continue
+			}
+			go func(appRelease *bosun.AppRelease) {
+				defer wg.Done()
+
+				ctx := b.NewContext().WithAppRelease(appRelease)
+				values, err := appRelease.GetReleaseValues(ctx)
+				if err != nil {
+					ctx.Log.WithError(err).Error("Could not create values map for app release.")
+					return
+				}
+
+				ctx = ctx.WithReleaseValues(values)
+				err = appRelease.LoadActualState(ctx, true)
+				if err != nil {
+					ctx.Log.WithError(err).Error("Could not load actual state.")
+					return
+				}
+				complete += 1
+				color.White("Loaded %s (%d/%d)", appRelease.Name, complete, total)
+				wg.Done()
+			}(appRelease)
+		}
+		wg.Wait()
+
+		for _, appRelease := range appReleases {
+			color.Blue("%s\n", appRelease.Name)
+			if appRelease.ActualState.Diff == "" {
+				color.White("No diff detected.")
+			} else {
+				color.Yellow("Diff:\n")
+				fmt.Println(appRelease.ActualState.Diff)
+				fmt.Println()
+			}
+		}
+
+		color.Blue("SUMMARY:\n")
+		for _, appRelease := range appReleases {
+			color.Blue(appRelease.Name)
+			if appRelease.ActualState.Diff == "" {
+				color.White("No diff detected.\n")
+			} else {
+				fmt.Println("Has changes (see above).")
+			}
+		}
+
+		return nil
+	},
+})
+
 var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "show-values {app}",
 	Args:  cobra.ExactArgs(1),
@@ -139,7 +219,7 @@ var releaseCreateCmd = &cobra.Command{
 	Use:   "create {name} {path}",
 	Args:  cobra.ExactArgs(2),
 	Short: "Creates a new release.",
-	Long:`The name will be used to refer to the release.
+	Long: `The name will be used to refer to the release.
 The release file will be stored at the path.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, path := args[0], args[1]
@@ -155,7 +235,7 @@ The release file will be stored at the path.`,
 			FromPath: path,
 			Releases: []*bosun.ReleaseConfig{
 				&bosun.ReleaseConfig{
-					Name: name,
+					Name:    name,
 					Version: version,
 				},
 			},
@@ -276,7 +356,7 @@ var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
 
 		for _, app := range apps {
 			delete(release.AppReleaseConfigs, app.Name)
-			release.Exclude[app.Name] = struct{}{}
+			release.Exclude[app.Name] = true
 		}
 
 		err = release.Parent.Save()
@@ -299,9 +379,6 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 
 		return validateRelease(b, ctx, release)
 	},
-}, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to include in release. If not provided, all apps in the release are released.")
-	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from the release.")
 })
 
 func validateRelease(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Release) error {
@@ -422,9 +499,6 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 
 		return err
 	},
-}, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to sync. If not provided, all apps are synced.")
-	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from the sync.")
 })
 
 func processAppReleases(b *bosun.Bosun, ctx bosun.BosunContext, appReleases []*bosun.AppRelease, fn func(a *bosun.AppRelease) error) error {
@@ -475,9 +549,6 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 
 		return nil
 	},
-}, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to test. If not provided, all apps are tested.")
-	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from testing.")
 })
 
 var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
@@ -508,11 +579,36 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 		return err
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgReleaseIncludeApps, []string{}, "Whitelist of apps to include in release. If not provided, all apps in the release are released.")
-	cmd.Flags().StringSlice(ArgReleaseExcludeApps, []string{}, "Blacklist of apps to exclude from the release.")
 	cmd.Flags().Bool(ArgReleaseSkipValidate, false, "Skips running validation before deploying the release.")
 })
 
-const ArgReleaseIncludeApps = "include"
-const ArgReleaseExcludeApps = "exclude"
+var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:           "merge [apps...]",
+	Short:         "Merges the release branch back to master for each app in the release (or the listed apps)",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+		b := mustGetBosun()
+		ctx := b.NewContext()
+
+		appReleases := mustGetAppReleases(b, args)
+
+		for _, appRelease := range appReleases {
+
+			ctx = ctx.WithAppRelease(appRelease)
+			for _, action := range appRelease.Actions {
+				if action.Test != nil {
+					err := action.Execute(ctx)
+					if err != nil {
+						ctx.Log.WithError(err).Error("Test failed.")
+					}
+				}
+			}
+		}
+
+		return nil
+	},
+})
+
 const ArgReleaseSkipValidate = "skip-validation"

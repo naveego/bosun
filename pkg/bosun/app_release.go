@@ -60,7 +60,26 @@ type AppRelease struct {
 	ActualState  AppState
 	DesiredState AppState
 	helmRelease  *HelmRelease
+	labels map[string]string
 }
+
+
+func (a *AppRelease) Labels() map[string]string {
+	if a.labels == nil {
+		a.labels = map[string]string{
+			string(FilterKeyName): a.Name,
+			string(FilterKeyPath):a.AppRepo.FromPath,
+			string(FilterKeyBranch):a.Branch,
+			string(FilterKeyCommit):a.Commit,
+			string(FilterKeyVersion):a.Version,
+		}
+		for k, v := range a.AppRepo.AppLabels {
+			a.labels[k] = v
+		}
+	}
+	return a.labels
+}
+
 
 func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, error) {
 	release := &AppRelease{

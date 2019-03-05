@@ -45,13 +45,15 @@ const (
 	ArgAppDeployDeps      = "deploy-deps"
 	ArgAppDeletePurge     = "purge"
 	ArgAppCloneDir        = "dir"
-	ArgAppIf              = "if"
+	ArgInclude            = "include"
+	ArgExclude            = "exclude"
 )
 
 func init() {
 	appCmd.PersistentFlags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
 	appCmd.PersistentFlags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
-	appCmd.PersistentFlags().StringSlice(ArgAppIf, []string{}, `Skips execution for an app if the condition is false for that app. Currently supports "branch={regex}".`)
+	appCmd.PersistentFlags().StringSlice(ArgInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
+	appCmd.PersistentFlags().StringSlice(ArgExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 
 	appCmd.AddCommand(appToggleCmd)
 	appToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
@@ -418,13 +420,9 @@ var appStatusCmd = &cobra.Command{
 
 		b := mustGetBosun()
 
-		if len(viper.GetStringSlice(ArgAppLabels)) == 0 && len(args) == 0 {
-			viper.Set(ArgAppAll, true)
-		}
-
 		env := b.GetCurrentEnvironment()
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoMatchGetAll:true})
 		if err != nil {
 			return err
 		}
@@ -496,7 +494,7 @@ var appStatusCmd = &cobra.Command{
 				fmtDesiredActual(desired.Status, actual.Status),
 				routing,
 				fmtTableEntry(diffStatus),
-				fmtTableEntry(strings.Join(m.AppRepo.Labels, ", ")))
+				fmtTableEntry(fmt.Sprintf("%#v", m.AppRepo.AppLabels)))
 		}
 
 		t.Print()
@@ -880,7 +878,7 @@ var appBuildImageCmd = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := mustGetBosun()
 			app := mustGetApp(b, args)
-			ctx := b.NewContext()
+			ctx := b.NewContext().WithAppRepo(app)
 			err := app.BuildImages(ctx)
 			return err
 		},

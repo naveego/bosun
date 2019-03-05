@@ -72,7 +72,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			cmd.SilenceUsage = true
 		}
 
-		conditions := viper.GetStringSlice(ArgAppIf)
+		conditions := viper.GetStringSlice(ArgInclude)
 		if len(conditions) > 0 {
 
 		}

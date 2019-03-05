@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 )
+
 
 type BosunContext struct {
 	Bosun           *Bosun
@@ -160,4 +162,14 @@ func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
 func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
 	_, file, line, _ := runtime.Caller(skip)
 	c.Log.WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
+}
+
+var useMinikubeForDockerOnce = new(sync.Once)
+
+func (c BosunContext) UseMinikubeForDockerIfAvailable() {
+	useMinikubeForDockerOnce.Do(func() {
+		if err := pkg.NewCommand("minikube", "ip").RunE(); err == nil {
+
+		}
+	})
 }

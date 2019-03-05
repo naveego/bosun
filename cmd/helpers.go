@@ -59,7 +59,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		log.Fatal(err)
 	}
 
-	whitelist := viper.GetStringSlice(ArgReleaseIncludeApps)
+	whitelist := viper.GetStringSlice(ArgInclude)
 	if len(whitelist) > 0 {
 		toReleaseSet := map[string]bool{}
 		for _, r := range whitelist {
@@ -67,16 +67,16 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		}
 		for k, app := range r.AppReleases {
 			if !toReleaseSet[k] {
-				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgReleaseIncludeApps)
+				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgInclude)
 				app.DesiredState.Status = bosun.StatusUnchanged
 				app.Excluded = true
 			}
 		}
 	}
 
-	blacklist := viper.GetStringSlice(ArgReleaseExcludeApps)
+	blacklist := viper.GetStringSlice(ArgExclude)
 	for _, name := range blacklist {
-		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgReleaseExcludeApps)
+		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgExclude)
 		if app, ok := r.AppReleases[name]; ok {
 			app.DesiredState.Status = bosun.StatusUnchanged
 			app.Excluded = true
@@ -165,81 +165,90 @@ func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
 	return releases
 }
 
+type getAppReposOptions struct {
+	ifNoFiltersGetAll bool
+	ifNoMatchGetAll bool
+	ifNoMatchGetCurrent bool
+}
+
+// gets one or more apps matching names, or if names
+// are valid file paths, imports the file at that path.
+// if names is empty, tries to find a apps starting
+// from the current directory
+func getAppReposOpt (b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*bosun.AppRepo, error) {
+
+	apps := b.GetAppsSortedByName()
+
+	includeFilters := getIncludeFilters(names)
+	excludeFilters := getExcludeFilters()
+
+	if opt.ifNoFiltersGetAll && len(includeFilters) == 0 && len(excludeFilters) == 0 {
+		return apps, nil
+	}
+
+	filtered:= bosun.ApplyFilter(apps, true, includeFilters).(bosun.ReposSortedByName)
+	filtered = bosun.ApplyFilter(filtered, false, excludeFilters).(bosun.ReposSortedByName)
+
+	if len(filtered) > 0 {
+		return filtered, nil
+	}
+
+	if opt.ifNoMatchGetAll {
+		return apps,nil
+	}
+
+	var err error
+
+	if opt.ifNoMatchGetCurrent {
+		var bosunFile string
+
+		wd, _ := os.Getwd()
+		bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+		if err != nil {
+			return nil, err
+		}
+
+		app, err := b.GetOrAddAppForPath(bosunFile)
+		if err != nil {
+			return nil, err
+		}
+		apps = append(apps, app)
+	}
+
+	return apps, err
+}
 
 // gets one or more apps matching names, or if names
 // are valid file paths, imports the file at that path.
 // if names is empty, tries to find a apps starting
 // from the current directory
 func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
-	apps, err := getAppReposUnfiltered(b, names)
-	if err == nil {
-		apps = filterApps(apps)
-	}
-	return apps, err
+	return getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent:true})
 }
 
-func getAppReposUnfiltered(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
-
-	var apps []*bosun.AppRepo
-	var err error
-
-	all := b.GetAppsSortedByName()
-
+func getIncludeFilters(names []string) []bosun.Filter {
 	if viper.GetBool(ArgAppAll) {
-		return all, nil
+		return bosun.FilterMatchAll()
 	}
+
+	out := bosun.FiltersFromNames(names...)
 
 	labels := viper.GetStringSlice(ArgAppLabels)
 	if len(labels) > 0 {
-		for _, label := range labels {
-			for _, svc := range all {
-				for _, svcLabel := range svc.Labels {
-					if svcLabel == label {
-						apps = append(apps, svc)
-						break
-					}
-				}
-			}
-		}
-
-		return apps, nil
+		out = append(out, bosun.FiltersFromAppLabels(labels...)...)
 	}
 
-	var app *bosun.AppRepo
-	if len(names) > 0 {
-		for _, name := range names {
-			maybePath, _ := filepath.Abs(name)
-			for _, svc := range all {
-				if svc.Name == name || svc.FromPath == maybePath {
-					apps = append(apps, svc)
-					continue
-				}
-			}
-			if stat, err := os.Stat(maybePath); err == nil && !stat.IsDir() {
-				app, err = b.GetOrAddAppForPath(maybePath)
-				if err == nil {
-					apps = append(apps, app)
-				}
-			}
-		}
-		return apps, nil
+	conditions := viper.GetStringSlice(ArgInclude)
+	if len(conditions) > 0 {
+		out = append(out, bosun.FiltersFromArgs(conditions...)...)
 	}
 
-	var bosunFile string
+	return out
+}
 
-	wd, _ := os.Getwd()
-	bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
-	if err != nil {
-		return nil, err
-	}
-
-	app, err = b.GetOrAddAppForPath(bosunFile)
-	if err != nil {
-		return nil, err
-	}
-	apps = append(apps, app)
-
-	return apps, nil
+func getExcludeFilters() []bosun.Filter {
+	conditions := viper.GetStringSlice(ArgExclude)
+	return bosun.FiltersFromArgs(conditions...)
 }
 
 func checkExecutableDependency(exe string) {
@@ -421,7 +430,7 @@ func filterApps(apps []*bosun.AppRepo) []*bosun.AppRepo {
 			out = append(out, app)
 		}
 	}
-	if len(apps) > 0 && len(out) == 0 && len(viper.GetStringSlice(ArgAppIf)) > 0 {
+	if len(apps) > 0 && len(out) == 0 && len(viper.GetStringSlice(ArgInclude)) > 0 {
 		color.Yellow("All apps excluded by conditions.")
 		os.Exit(0)
 	}
@@ -430,7 +439,7 @@ func filterApps(apps []*bosun.AppRepo) []*bosun.AppRepo {
 
 
 func passesConditions(app *bosun.AppRepo) bool {
-	conditions := viper.GetStringSlice(ArgAppIf)
+	conditions := viper.GetStringSlice(ArgInclude)
 	if len(conditions) == 0 {
 		return true
 	}

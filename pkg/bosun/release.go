@@ -17,7 +17,7 @@ type ReleaseConfig struct {
 	Description       string                       `yaml:"description"`
 	FromPath          string                       `yaml:"fromPath"`
 	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
-	Exclude           map[string]struct{}          `yaml:"exclude,omitempty"`
+	Exclude           map[string]bool          `yaml:"exclude,omitempty"`
 	Parent            *File                        `yaml:"-"`
 }
 
@@ -26,7 +26,9 @@ func (r *ReleaseConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var proxy rcm
 	err := unmarshal(&proxy)
 	if err == nil {
-		proxy.Exclude = map[string]struct{}{}
+		if proxy.Exclude == nil {
+			proxy.Exclude = map[string]bool{}
+		}
 		*r = ReleaseConfig(proxy)
 	}
 	return err
@@ -104,7 +106,7 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 
 	for _, imageName := range a.ImageNames {
 		imageName = fmt.Sprintf("%s:%s", imageName, a.ImageTag)
-		err = checkImageExists(imageName)
+		err = checkImageExists(ctx, imageName)
 
 		if err != nil {
 			errs = append(errs, errors.Errorf("image %q: %s", imageName, err))
@@ -126,7 +128,11 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 	return errs
 }
 
-func checkImageExists(name string) error {
+func checkImageExists(ctx BosunContext, name string) error {
+
+	ctx.UseMinikubeForDockerIfAvailable()
+
+
 	cmd := exec.Command("docker", "pull", name)
 	stdout, err := cmd.StdoutPipe()
 	stderr, err := cmd.StderrPipe()
@@ -192,7 +198,7 @@ func (r *Release) IncludeDependencies(ctx BosunContext) error {
 		if r.AppReleaseConfigs[dep] == nil {
 			if _, ok := r.Exclude[dep]; ok {
 				ctx.Log.Warnf("Dependency %q is not being added because it is in the exclude list. " +
-					"Add it using the `add` command if want to override this exclusion.")
+					"Add it using the `add` command if want to override this exclusion.", dep)
 				continue
 			}
 			app, err := ctx.Bosun.GetApp(dep)
@@ -236,8 +242,11 @@ func (r *Release) Deploy(ctx BosunContext) error {
 			if r.Transient {
 				continue
 			}
+			if excluded := r.Exclude[dep]; excluded {
+				continue
+			}
 
-			return errors.Errorf("an app specifies a dependency that could not be found: %q", dep)
+			return errors.Errorf("an app specifies a dependency that could not be found: %q (excluded: %v)", dep, r.Exclude)
 		}
 
 		if app.DesiredState.Status == StatusUnchanged {

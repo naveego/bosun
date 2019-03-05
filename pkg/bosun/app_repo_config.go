@@ -24,9 +24,9 @@ type AppRepoConfig struct {
 	ChartPath     string                 `yaml:"chartPath,omitempty"`
 	RunCommand    []string               `yaml:"runCommand,omitempty,flow"`
 	DependsOn     []Dependency           `yaml:"dependsOn,omitempty"`
-	Labels        []string               `yaml:"labels,omitempty"`
+	AppLabels     Labels               `yaml:"labels,omitempty"`
 	Minikube      *AppMinikubeConfig     `yaml:"minikube,omitempty"`
-	Images 		  []AppImageConfig              `yaml:"images"`
+	Images        []AppImageConfig       `yaml:"images"`
 	Values        AppValuesByEnvironment `yaml:"values,omitempty"`
 	Scripts       []*Script              `yaml:"scripts,omitempty"`
 	Actions       []*AppAction           `yaml:"actions,omitempty"`
