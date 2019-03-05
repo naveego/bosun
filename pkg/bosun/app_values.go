@@ -106,11 +106,18 @@ func (v Values) Encode(w io.Writer) error {
 	return err
 }
 
-// AddPath adds value to Values at the provided path, which can be a compound name.
+// SetAtPath adds value to Values at the provided path, which can be a compound name.
 // If there table missing from the path, they will be created.
-func (v Values) AddPath(path string, value interface{}) error {
+func (v Values) GetAtPath(path string) (interface{},error) {
 	segs := strings.Split(path, ".")
-	err := v.addPath(segs, value)
+	return v.getAtPath(segs)
+}
+
+// SetAtPath adds value to Values at the provided path, which can be a compound name.
+// If there table missing from the path, they will be created.
+func (v Values) SetAtPath(path string, value interface{}) error {
+	segs := strings.Split(path, ".")
+	err := v.setAtPath(segs, value)
 	if err != nil {
 		return errors.Errorf("error adding value at path %q: %s", path, err)
 	}
@@ -124,12 +131,50 @@ func (v Values) AddEnvAsPath(prefix, envName string, value interface{}) error {
 	name := strings.TrimPrefix(envName, prefix)
 	name = strings.ToLower(name)
 	name = strings.Replace(name, "_", ".", -1)
-	err := v.AddPath(name, value)
+	err := v.SetAtPath(name, value)
 	return err
 }
 
 
-func (v Values) addPath(path []string, value interface{}) error {
+func (v Values) getAtPath(path []string) (interface{}, error) {
+
+	if len(path) == 0 {
+		panic("invalid path")
+	}
+	name := path[0]
+	if len(path) == 1 {
+		return v[name], nil
+	}
+	child, ok := v[name]
+	if !ok {
+		return nil, errors.Errorf("%s: no child", name)
+	}
+	var out interface{}
+	var err error
+	switch c := child.(type) {
+	case Values:
+		out, err = c.getAtPath(path[1:])
+		if err != nil {
+			return nil, errors.Errorf("%s.%s", name, err)
+		}
+	case map[interface{}]interface{}:
+		cv := Values{}
+		for k, v := range c {
+			cv[fmt.Sprintf("%v", k)] = v
+		}
+		out, err = cv.getAtPath(path[1:])
+		if err != nil {
+			return nil, errors.Errorf("%s.%s", name, err)
+		}
+	default:
+		return nil, errors.Errorf("%s: invalid value %T", name, child)
+	}
+
+	return out, nil
+
+}
+
+func (v Values) setAtPath(path []string, value interface{}) error {
 
 	if len(path) == 0{
 		panic("invalid path")
@@ -147,7 +192,7 @@ func (v Values) addPath(path []string, value interface{}) error {
 
 	switch c := child.(type) {
 	case Values:
-		err := c.addPath(path[1:], value)
+		err := c.setAtPath(path[1:], value)
 		if err != nil {
 			return errors.Errorf("%s.%s", name, err)
 		}
@@ -156,7 +201,7 @@ func (v Values) addPath(path []string, value interface{}) error {
 		for k, v := range c {
 			cv[fmt.Sprintf("%v", k)] = v
 		}
-		err := cv.addPath(path[1:], value)
+		err := cv.setAtPath(path[1:], value)
 		if err != nil {
 			return errors.Errorf("%s.%s", name, err)
 		}

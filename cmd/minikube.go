@@ -17,8 +17,8 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
-	"github.com/spf13/viper"
 	"gopkg.in/eapache/go-resiliency.v1/retrier"
 	"os"
 	"os/exec"
@@ -56,11 +56,10 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 	Short: "Brings up minikube if it's not currently running.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		c := pkg.MinikubeCmd{
-			Driver:viper.GetString("driver"),
-		}
 
-		err := c.Up()
+		b := mustGetBosun()
+		ctx := b.NewContext()
+		err := bosun.MinikubeUp(ctx)
 
 		if err != nil {
 			return err

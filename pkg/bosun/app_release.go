@@ -391,7 +391,7 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 			if err != nil {
 				return nil, errors.Errorf("resolving dynamic values for app %q for key %q: %s", a.Name, k, err)
 			}
-			err = r.Values.AddPath(k, value)
+			err = r.Values.SetAtPath(k, value)
 			if err != nil {
 				return nil, errors.Errorf("merging dynamic values for app %q for key %q: %s", a.Name, k, err)
 			}
@@ -402,7 +402,7 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 
 	// Finally, apply any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParams().ValueOverrides {
-		err := r.Values.AddPath(k, v)
+		err := r.Values.SetAtPath(k, v)
 		if err != nil {
 			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
 		}
@@ -596,9 +596,9 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 `)
 	}
 
-	hostIP := ctx.Bosun.ws.HostIPInMinikube
+	hostIP := ctx.Bosun.ws.Minikube.HostIP
 	if hostIP == "" {
-		return errors.New("hostIPInMinikube is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
+		return errors.New("minikube.hostIP is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
 	}
 
 	for _, routableService := range a.AppRepo.Minikube.RoutableServices {
@@ -621,10 +621,10 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 			localhostPort = routableService.ExternalPort
 		}
 
-		routedSvc.AddPath("spec.clusterIP", "")
-		routedSvc.AddPath("spec.type", "ExternalName")
-		routedSvc.AddPath("spec.externalName", hostIP)
-		routedSvc.AddPath("spec.ports", []Values{
+		routedSvc.SetAtPath("spec.clusterIP", "")
+		routedSvc.SetAtPath("spec.type", "ExternalName")
+		routedSvc.SetAtPath("spec.externalName", hostIP)
+		routedSvc.SetAtPath("spec.ports", []Values{
 			{
 				"port":     localhostPort,
 				"protocol": "TCP",

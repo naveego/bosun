@@ -20,6 +20,33 @@ type Workspace struct {
 	ClonePaths         map[string]string      `yaml:"clonePaths"`
 	MergedBosunFile    *File                  `yaml:"-"`
 	ImportedBosunFiles map[string]*File       `yaml:"-"`
+	Minikube MinikubeConfig `yaml:"minikube"`
+}
+
+func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxyType Workspace
+	var proxy proxyType
+	if r != nil {
+		proxy = proxyType(*r)
+	}
+	err := unmarshal(&proxy)
+	if err != nil {
+		return err
+	}
+
+	// migrate to using MinikubeConfig property:
+	if proxy.HostIPInMinikube != "" {
+		proxy.Minikube.HostIP = proxy.HostIPInMinikube
+		proxy.HostIPInMinikube = ""
+	}
+
+	*r = Workspace(proxy)
+	return nil
+}
+
+type MinikubeConfig struct {
+	HostIP string `yaml:"hostIP"`
+	Driver string `yaml:"driver"`
 }
 
 type State struct {

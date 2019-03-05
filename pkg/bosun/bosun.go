@@ -265,7 +265,7 @@ func (b *Bosun) Save() error {
 		return errors.Wrap(err, "marshalling for save")
 	}
 
-	err = ioutil.WriteFile(ws.Path, data, 0700)
+	err = ioutil.WriteFile(ws.Path, data, 0600)
 	if err != nil {
 		return errors.Wrap(err, "writing for save")
 	}
@@ -273,14 +273,57 @@ func (b *Bosun) Save() error {
 	return nil
 }
 
-func (b *Bosun) Getworkspace() Workspace {
+func (b *Bosun) SetInWorkspace(path string, value interface{}) error {
+
+	ws := b.ws
+	data, err := yaml.Marshal(ws)
+	if err != nil {
+		return errors.Wrap(err, "marshalling for save")
+	}
+	v, err := ReadValues(data)
+	if err != nil {
+		panic(err)
+	}
+
+	err = v.SetAtPath(path, value)
+	if err != nil {
+		return err
+	}
+
+	yml, err := v.YAML()
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(ws.Path, []byte(yml), 0600)
+	if err != nil {
+		return errors.Wrap(err, "writing for save")
+	}
+
+	return nil
+}
+
+func (b *Bosun) GetInWorkspace(path string) (interface{}, error) {
+
+	ws := b.ws
+	data, err := yaml.Marshal(ws)
+	if err != nil {
+		return Values{}, errors.Wrap(err, "marshalling for save")
+	}
+	v, err := ReadValues(data)
+	if err != nil {
+		panic(err)
+	}
+
+	return v.GetAtPath(path)
+}
+
+func (b *Bosun) GetWorkspace() Workspace {
 	return *b.ws
 }
 
 func (b *Bosun) GetMergedConfig() File {
-
 	return *b.file
-
 }
 
 func (b *Bosun) AddImport(file string) bool {

@@ -146,8 +146,8 @@ func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
 	}
 	if c.ReleaseValues != nil {
 		values := c.ReleaseValues.Values
-		values.AddPath("cluster", c.Env.Cluster)
-		values.AddPath("domain", c.Env.Domain)
+		values.SetAtPath("cluster", c.Env.Cluster)
+		values.SetAtPath("domain", c.Env.Domain)
 		tv.Values = values
 	}
 	return tv

@@ -56,7 +56,7 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 			return err
 		}
 
-		c := b.Getworkspace()
+		c := b.GetWorkspace()
 		visited := map[string]bool{}
 
 		var visit func(path string, depth int, last bool)
@@ -94,22 +94,33 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 	},
 })
 
-var configDumpImports = addCommand(configShowCmd, &cobra.Command{
-	Use:     "workspace",
-	Aliases: []string{"ws"},
-	Short:   "Prints the workspace config.",
+var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:     "get {path}",
+	Args: cobra.ExactArgs(1),
+	Short:   "Gets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b, err := getBosun()
+		b := mustGetBosun()
+		v, err := b.GetInWorkspace(args[0])
 		if err != nil {
 			return err
 		}
-
-		c := b.Getworkspace()
-		data, _ := yaml.Marshal(c)
-
-		fmt.Println(string(data))
-
+		yml, err := yaml.Marshal(v)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(yml))
 		return nil
+	},
+})
+
+var configSetImports = addCommand(workspaceCmd, &cobra.Command{
+	Use:     "set {path} {value}",
+	Args: cobra.ExactArgs(2),
+	Short:   "Sets a value in the workspace config. Use a dotted path to reference the value.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		err := b.SetInWorkspace(args[0], args[1])
+		return err
 	},
 })
 
