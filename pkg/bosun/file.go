@@ -71,7 +71,7 @@ var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)
 func (c *File) mergeApp(incoming *AppRepoConfig) error {
 	for _, app := range c.Apps {
 		if app.Name == incoming.Name {
-			return errors.Errorf("app %q imported from %q, but it was already imported frome %q", incoming.Name, incoming.FromPath, app.FromPath)
+			return errors.Errorf("app %q imported from %q, but it was already imported from %q", incoming.Name, incoming.FromPath, app.FromPath)
 		}
 	}
 

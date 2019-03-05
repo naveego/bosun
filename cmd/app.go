@@ -1024,6 +1024,7 @@ var appCloneCmd = addCommand(
 			ctx := b.NewContext()
 			for _, app := range apps {
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
+
 				if app.IsRepoCloned() {
 					pkg.Log.Infof("AppRepo already cloned to %q", app.FromPath)
 					continue

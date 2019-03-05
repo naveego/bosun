@@ -25,17 +25,17 @@ type AppRepo struct {
 	commit      string
 	gitTag      string
 	isCloned    bool
-	labels map[string]string
+	labels      map[string]string
 }
 
 func (a *AppRepo) Labels() map[string]string {
 	if a.labels == nil {
 		a.labels = map[string]string{
-			string(FilterKeyName): a.Name,
-			string(FilterKeyPath):a.FromPath,
-			string(FilterKeyBranch):a.GetBranch(),
-			string(FilterKeyCommit):a.GetCommit(),
-			string(FilterKeyVersion):a.Version,
+			string(FilterKeyName):    a.Name,
+			string(FilterKeyPath):    a.FromPath,
+			string(FilterKeyBranch):  a.GetBranch(),
+			string(FilterKeyCommit):  a.GetCommit(),
+			string(FilterKeyVersion): a.Version,
 		}
 		for k, v := range a.AppLabels {
 			a.labels[k] = v
@@ -61,6 +61,7 @@ func NewRepoFromDependency(dep *Dependency) *AppRepo {
 			Name:     dep.Name,
 			Version:  dep.Version,
 			Repo:     dep.Repo,
+			IsRef:    true,
 		},
 		isCloned: false,
 	}
