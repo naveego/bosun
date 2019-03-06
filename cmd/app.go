@@ -65,10 +65,6 @@ func init() {
 
 	appCmd.AddCommand(appAcceptActualCmd)
 
-	appDeployCmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
-	appDeployCmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
-	appCmd.AddCommand(appDeployCmd)
-
 	appDeleteCmd.Flags().Bool(ArgAppDeletePurge, false, "Purge the release from the cluster.")
 	appCmd.AddCommand(appDeleteCmd)
 
@@ -104,9 +100,9 @@ var appVersionCmd = &cobra.Command{
 }
 
 var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
-	Use:     "repo-path [name]",
-	Args:    cobra.RangeArgs(0, 1),
-	Short:   "Outputs the path where the app is cloned on the local system.",
+	Use:   "repo-path [name]",
+	Args:  cobra.RangeArgs(0, 1),
+	Short: "Outputs the path where the app is cloned on the local system.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		app := mustGetApp(b, args)
@@ -134,19 +130,18 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 		}
 
 		wantsTag := viper.GetBool(ArgAppBumpTag)
-		if  wantsTag {
+		if wantsTag {
 			if g.IsDirty() {
 				return errors.New("cannot bump version and tag when workspace is dirty")
 			}
 		}
 
-		err =  appBump(b, app, args[1])
+		err = appBump(b, app, args[1])
 		if err != nil {
 			return err
 		}
 
-
-		if wantsTag{
+		if wantsTag {
 			_, err = g.Exec("tag", app.Version)
 			if err != nil {
 				return err
@@ -156,7 +151,7 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-		cmd.Flags().Bool(ArgAppBumpTag, false, "Create and push a git tag for the version.")
+	cmd.Flags().Bool(ArgAppBumpTag, false, "Create and push a git tag for the version.")
 })
 
 const (
@@ -422,7 +417,7 @@ var appStatusCmd = &cobra.Command{
 
 		env := b.GetCurrentEnvironment()
 
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoMatchGetAll:true})
+		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoMatchGetAll: true})
 		if err != nil {
 			return err
 		}
@@ -598,16 +593,40 @@ var appToggleCmd = &cobra.Command{
 	},
 }
 
-var appDeployCmd = &cobra.Command{
+var appDeployCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "deploy [name] [name...]",
 	Short:        "Deploys the requested app.",
 	Long:         "If app is not specified, the first app in the nearest bosun.yaml file is used.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		valueOverrides := map[string]string{}
+		for _, set := range viper.GetStringSlice(ArgAppDeploySet) {
+
+			segs := strings.Split(set, "=")
+			if len(segs) != 2 {
+				return errors.Errorf("invalid set (should be key=value): %q", set)
+			}
+			valueOverrides[segs[0]] = segs[1]
+		}
+
+		ipp := strings.ToUpper(viper.GetString(AppDeployPullPolicy))
+		if strings.HasPrefix(ipp, "A") {
+			ipp = "Always"
+		} else if strings.HasPrefix(ipp, "I") {
+			ipp = "IfNotPresent"
+		}
+		if ipp != "" {
+			valueOverrides["imagePullPolicy"] = ipp
+		}
+
+		valueOverrides["tag"] = viper.GetString(AppDeployTag)
+
+		b := mustGetBosun(bosun.Parameters{
+			ValueOverrides: valueOverrides,
+		})
+
 		ctx := b.NewContext()
 
 		apps, err := getAppRepos(b, args)
@@ -616,16 +635,6 @@ var appDeployCmd = &cobra.Command{
 		}
 
 		ctx.Log.Debugf("AppReleaseConfigs: \n%s\n", MustYaml(apps))
-
-		sets := map[string]string{}
-		for _, set := range viper.GetStringSlice(ArgAppDeploySet) {
-
-			segs := strings.Split(set, "=")
-			if len(segs) != 2 {
-				return errors.Errorf("invalid set (should be key=value): %q", set)
-			}
-			sets[segs[0]] = segs[1]
-		}
 
 		ctx.Log.Debug("Creating transient release...")
 		rc := &bosun.ReleaseConfig{
@@ -666,7 +675,17 @@ var appDeployCmd = &cobra.Command{
 
 		return err
 	},
-}
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringP(AppDeployPullPolicy, "p", "", "Set the imagePullPolicy in the chart. (A = Always, I = IfNotPresent)")
+	cmd.Flags().StringP(AppDeployTag, "t", "latest", "Set the tag used in the chart.")
+	cmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
+	cmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
+})
+
+const (
+	AppDeployPullPolicy = "pull-policy"
+	AppDeployTag        = "tag"
+)
 
 var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "recycle [name] [name...]",
@@ -844,10 +863,10 @@ var appPublishChartCmd = addCommand(
 var appPublishImageCmd = addCommand(
 	appCmd,
 	&cobra.Command{
-		Use:   "publish-image [app]",
-		Aliases:[]string{"publish-images"},
-		Args:  cobra.MaximumNArgs(1),
-		Short: "Publishes the image for an app.",
+		Use:     "publish-image [app]",
+		Aliases: []string{"publish-images"},
+		Args:    cobra.MaximumNArgs(1),
+		Short:   "Publishes the image for an app.",
 		Long: `If app is not provided, the current directory is used.
 The image will be published with the "latest" tag and with a tag for the current version.
 If the current branch is a release branch, the image will also be published with a tag formatted
@@ -868,11 +887,11 @@ as "version-release".
 var appBuildImageCmd = addCommand(
 	appCmd,
 	&cobra.Command{
-		Use:   "build-image [app]",
-		Aliases:[]string{"build-images"},
-		Args:  cobra.MaximumNArgs(1),
-		Short: "Builds the image(s) for an app.",
-		Long: `If app is not provided, the current directory is used. The image(s) will be built with the "latest" tag.`,
+		Use:           "build-image [app]",
+		Aliases:       []string{"build-images"},
+		Args:          cobra.MaximumNArgs(1),
+		Short:         "Builds the image(s) for an app.",
+		Long:          `If app is not provided, the current directory is used. The image(s) will be built with the "latest" tag.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

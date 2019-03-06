@@ -3,7 +3,7 @@ package bosun
 import (
 	"context"
 	"fmt"
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"

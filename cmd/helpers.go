@@ -25,7 +25,6 @@ const (
 	OutputYaml  = "yaml"
 )
 
-
 func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
 	for _, fn := range flags {
 		fn(child)
@@ -35,8 +34,8 @@ func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *
 	return child
 }
 
-func mustGetBosun() *bosun.Bosun {
-	b, err := getBosun()
+func mustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
+	b, err := getBosun(optionalParams...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -86,17 +85,32 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 	return r
 }
 
-func getBosun() (*bosun.Bosun, error) {
+func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	config, err := bosun.LoadWorkspace(viper.GetString(ArgBosunConfigFile))
 	if err != nil {
 		return nil, err
 	}
 
-	params := bosun.Parameters{
-		Verbose:  viper.GetBool(ArgGlobalVerbose),
-		DryRun:   viper.GetBool(ArgGlobalDryRun),
-		NoReport: viper.GetBool(ArgGlobalNoReport),
-		Force:    viper.GetBool(ArgGlobalForce),
+	var params bosun.Parameters
+	if len(optionalParams) > 0 {
+		params = optionalParams[0]
+	}
+
+	params.Verbose = viper.GetBool(ArgGlobalVerbose)
+	params.DryRun = viper.GetBool(ArgGlobalDryRun)
+	params.NoReport = viper.GetBool(ArgGlobalNoReport)
+	params.Force = viper.GetBool(ArgGlobalForce)
+
+	if params.ValueOverrides == nil {
+		params.ValueOverrides = map[string]string{}
+	}
+
+	for _, kv := range viper.GetStringSlice(ArgGlobalValues) {
+		segs := strings.Split(kv, "=")
+		if len(segs) != 2 {
+			color.Red("invalid values flag value: %q (should be key=value)\n", kv)
+		}
+		params.ValueOverrides[segs[0]] = segs[1]
 	}
 
 	return bosun.New(params, config)
@@ -166,8 +180,8 @@ func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
 }
 
 type getAppReposOptions struct {
-	ifNoFiltersGetAll bool
-	ifNoMatchGetAll bool
+	ifNoFiltersGetAll   bool
+	ifNoMatchGetAll     bool
 	ifNoMatchGetCurrent bool
 }
 
@@ -175,7 +189,7 @@ type getAppReposOptions struct {
 // are valid file paths, imports the file at that path.
 // if names is empty, tries to find a apps starting
 // from the current directory
-func getAppReposOpt (b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*bosun.AppRepo, error) {
+func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*bosun.AppRepo, error) {
 
 	apps := b.GetAppsSortedByName()
 
@@ -186,7 +200,7 @@ func getAppReposOpt (b *bosun.Bosun, names []string, opt getAppReposOptions) ([]
 		return apps, nil
 	}
 
-	filtered:= bosun.ApplyFilter(apps, true, includeFilters).(bosun.ReposSortedByName)
+	filtered := bosun.ApplyFilter(apps, true, includeFilters).(bosun.ReposSortedByName)
 	filtered = bosun.ApplyFilter(filtered, false, excludeFilters).(bosun.ReposSortedByName)
 
 	if len(filtered) > 0 {
@@ -194,7 +208,7 @@ func getAppReposOpt (b *bosun.Bosun, names []string, opt getAppReposOptions) ([]
 	}
 
 	if opt.ifNoMatchGetAll {
-		return apps,nil
+		return apps, nil
 	}
 
 	var err error
@@ -223,7 +237,7 @@ func getAppReposOpt (b *bosun.Bosun, names []string, opt getAppReposOptions) ([]
 // if names is empty, tries to find a apps starting
 // from the current directory
 func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
-	return getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent:true})
+	return getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
 }
 
 func getIncludeFilters(names []string) []bosun.Filter {
@@ -284,6 +298,7 @@ func confirm(msg string, args ...string) bool {
 type handledError struct {
 	msg string
 }
+
 func (h handledError) Error() string {
 	return h.msg
 }
@@ -315,7 +330,7 @@ func checkHandle(err error, msgAndArgs ...string) error {
 	if ok {
 		fmt.Fprintln(w, color.BlueString("@ %s : line %d", file, line))
 	}
-	return handledError{msg:w.String()}
+	return handledError{msg: w.String()}
 }
 
 func check(err error, msgAndArgs ...string) {
@@ -436,7 +451,6 @@ func filterApps(apps []*bosun.AppRepo) []*bosun.AppRepo {
 	}
 	return out
 }
-
 
 func passesConditions(app *bosun.AppRepo) bool {
 	conditions := viper.GetStringSlice(ArgInclude)
