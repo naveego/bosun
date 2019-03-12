@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"regexp"
 )
 
@@ -60,6 +61,8 @@ func (c *File) Save() error {
 	}
 
 	b = stripFromPath.ReplaceAll(b, []byte{})
+
+	err = ioutil.WriteFile(c.FromPath, b, 0600)
 
 	return err
 }
