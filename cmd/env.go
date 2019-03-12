@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +42,7 @@ var envCmd = addCommand(rootCmd, &cobra.Command{
 	Example: "$(bosun env {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b, err := getBosun()
+		b, err := getBosun(bosun.Parameters{NoCurrentEnv:true})
 		if err != nil {
 			return err
 		}

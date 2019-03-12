@@ -115,10 +115,6 @@ var gitDeployUpdateCmd = &cobra.Command{
 	},
 }
 
-var ArgPullRequestReviewers = "reviewer"
-var ArgPullRequestTitle = "title"
-var ArgPullRequestBody = "body"
-
 var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
@@ -147,10 +143,12 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 		body := fmt.Sprintf("%s\nCloses #%s", viper.GetString(ArgPullRequestBody), issueNumber)
 
+		target := viper.GetString(ArgPullRequestTarget)
+
 		req := &github.NewPullRequest{
 			Title: &title,
 			Body:  &body,
-			Base:  github.String("master"),
+			Base:  &target,
 			Head:  &branch,
 		}
 
@@ -179,7 +177,15 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().StringSlice(ArgPullRequestReviewers, []string{}, "Reviewers to request.")
 	cmd.Flags().String(ArgPullRequestTitle, "", "Title of PR")
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
+	cmd.Flags().String(ArgPullRequestTarget, "master", "Target branch for merge.")
 })
+
+const(
+ ArgPullRequestReviewers = "reviewer"
+ ArgPullRequestTitle = "title"
+ ArgPullRequestBody = "body"
+ ArgPullRequestTarget = "target"
+)
 
 var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	Use:           "accept-pull-request [number] [major|minor|patch|major.minor.patch]",

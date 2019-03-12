@@ -37,10 +37,10 @@ type Parameters struct {
 	ForceTests     bool
 	ValueOverrides map[string]string
 	FileOverrides  []string
+	NoCurrentEnv   bool
 }
 
 func New(params Parameters, ws *Workspace) (*Bosun, error) {
-	var err error
 	b := &Bosun{
 		params: params,
 		ws:     ws,
@@ -64,39 +64,32 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 		}
 	}
 
-	// if only one environment exists, it's the current one
-	if ws.CurrentEnvironment == "" {
-		if len(b.file.Environments) == 1 {
-			ws.CurrentEnvironment = b.file.Environments[0].Name
-		} else {
-			var envNames []string
-			for _, env := range b.file.Environments {
-				envNames = append(envNames, env.Name)
+	if !params.NoCurrentEnv {
+		// if only one environment exists, it's the current one
+		if ws.CurrentEnvironment == "" {
+			if len(b.file.Environments) == 1 {
+				ws.CurrentEnvironment = b.file.Environments[0].Name
+			} else {
+				var envNames []string
+				for _, env := range b.file.Environments {
+					envNames = append(envNames, env.Name)
+				}
+				return nil, errors.Errorf("no environment set (available: %v)", envNames)
 			}
-			return nil, errors.Errorf("no environment set (available: %v)", envNames)
-		}
-	}
-
-	if ws.CurrentEnvironment != "" {
-
-		env, err := b.GetEnvironment(ws.CurrentEnvironment)
-		if err != nil {
-			return nil, errors.Errorf("get environment %q: %s", ws.CurrentEnvironment, err)
 		}
 
-		// set the current environment.
-		// this will also set environment vars based on it.
-		err = b.useEnvironment(env)
-		if err != nil {
-			return nil, err
-		}
-	}
+		if ws.CurrentEnvironment != "" {
 
-	for _, r := range b.file.Releases {
-		if r.Name == b.ws.Release {
-			b.release, err = NewRelease(b.NewContext(), r)
+			env, err := b.GetEnvironment(ws.CurrentEnvironment)
 			if err != nil {
-				return nil, errors.Errorf("creating release from config %q: %s", r.Name, err)
+				return nil, errors.Errorf("get environment %q: %s", ws.CurrentEnvironment, err)
+			}
+
+			// set the current environment.
+			// this will also set environment vars based on it.
+			err = b.useEnvironment(env)
+			if err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -393,9 +386,26 @@ func (b *Bosun) NewContext() BosunContext {
 }
 
 func (b *Bosun) GetCurrentRelease() (*Release, error) {
+	var err error
 	if b.release == nil {
-		return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
+		if b.ws.Release == "" {
+			return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
+		}
+		if b.ws.Release != "" {
+			for _, r := range b.file.Releases {
+				if r.Name == b.ws.Release {
+					b.release, err = NewRelease(b.NewContext(), r)
+					if err != nil {
+						return nil, errors.Errorf("creating release from config %q: %s", r.Name, err)
+					}
+				}
+			}
+		}
 	}
+	if b.release == nil {
+		return nil, errors.Errorf("current release %q could not be found, call `bosun release use {name}` to set current release", b.ws.Release)
+	}
+
 	return b.release, nil
 }
 
@@ -473,7 +483,6 @@ func (b *Bosun) TidyWorkspace() {
 			}
 		}
 	}
-
 
 	for _, importPath := range b.ws.Imports {
 		if _, err := os.Stat(importPath); os.IsNotExist(err) {
