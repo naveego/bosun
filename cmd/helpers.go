@@ -117,7 +117,7 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
-	apps, err := getAppRepos(b, names)
+	apps, err := getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent:true})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,6 +192,16 @@ type getAppReposOptions struct {
 func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*bosun.AppRepo, error) {
 
 	apps := b.GetAppsSortedByName()
+
+	for i := range names {
+		name := names[i]
+		if strings.HasSuffix(name, "yaml") {
+			if _, err := os.Stat(name); err == nil {
+				name, _ = filepath.Abs(name)
+			}
+		}
+		names[i] = name
+	}
 
 	includeFilters := getIncludeFilters(names)
 	excludeFilters := getExcludeFilters()

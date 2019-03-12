@@ -46,7 +46,10 @@ func FilterMatchAll() []Filter {
 func FiltersFromNames(names ...string) []Filter {
 	var out []Filter
 	for _, name := range names {
-		out = append(out, Filter{Key: FilterKeyName, Value: name, Operator: "="})
+		out = append(out,
+			Filter{Key: FilterKeyName, Value: name, Operator: "="},
+			Filter{Key: FilterKeyPath, Value: name, Operator: "="},
+		)
 	}
 	return out
 }
