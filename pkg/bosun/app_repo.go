@@ -130,6 +130,29 @@ func (a *AppRepo) FetchRepo(ctx BosunContext) error {
 	return err
 }
 
+func (a *AppRepo) Merge(fromBranch, toBranch string) error {
+	err := a.CheckRepoCloned()
+	if err != nil {
+		return err
+	}
+
+	g, _ := git.NewGitWrapper(a.FromPath)
+
+	err = g.Fetch()
+	if err != nil {
+		return err
+	}
+
+	_, err = g.Exec("checkout", fromBranch)
+	if err != nil {
+
+	}
+
+	err = g.Pull()
+
+	return err
+}
+
 func (a *AppRepo) IsRepoCloned() bool {
 
 	if a.FromPath == "" || a.IsRef {

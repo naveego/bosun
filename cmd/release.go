@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -611,19 +612,49 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		ctx := b.NewContext()
 
+		release, err := b.GetCurrentRelease()
+		if err != nil {
+			return err
+		}
 		appReleases := mustGetAppReleases(b, args)
+
+		releaseBranch := fmt.Sprintf("release/%s", release.Name)
 
 		for _, appRelease := range appReleases {
 
 			ctx = ctx.WithAppRelease(appRelease)
-			for _, action := range appRelease.Actions {
-				if action.Test != nil {
-					err := action.Execute(ctx)
-					if err != nil {
-						ctx.Log.WithError(err).Error("Test failed.")
-					}
-				}
+			appRepo := appRelease.AppRepo
+			if !appRepo.IsRepoCloned() {
+				ctx.Log.Error("Repo is not cloned, cannot merge.")
+				continue
 			}
+
+
+
+			ctx.Log.Info("Creating pull request.")
+			prNumber, err := GitPullRequestCommand{
+				App:  appRepo,
+				Base: "master",
+				FromBranch: releaseBranch,
+			}.Execute()
+			if err != nil {
+				ctx.Log.WithError(err).Error("Could not create pull request.")
+				continue
+			}
+
+			ctx.Log.Info("Accepting pull request.")
+			err = GitAcceptPRCommand{
+				PRNumber:prNumber,
+				RepoDirectory: filepath.Dir(appRepo.FromPath),
+				DoNotMergeBaseIntoBranch: true,
+			}.Execute()
+
+			if err != nil {
+				ctx.Log.WithError(err).Error("Could not accept pull request.")
+				continue
+			}
+
+			ctx.Log.Info("Merged back to master.")
 		}
 
 		return nil
