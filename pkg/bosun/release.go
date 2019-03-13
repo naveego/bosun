@@ -17,7 +17,8 @@ type ReleaseConfig struct {
 	Description       string                       `yaml:"description"`
 	FromPath          string                       `yaml:"fromPath"`
 	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
-	Exclude           map[string]bool          `yaml:"exclude,omitempty"`
+	Exclude           map[string]bool              `yaml:"exclude,omitempty"`
+	IsPatch           bool                         `yaml:"isPatch,omitempty"`
 	Parent            *File                        `yaml:"-"`
 }
 
@@ -132,7 +133,6 @@ func checkImageExists(ctx BosunContext, name string) error {
 
 	ctx.UseMinikubeForDockerIfAvailable()
 
-
 	cmd := exec.Command("docker", "pull", name)
 	stdout, err := cmd.StdoutPipe()
 	stderr, err := cmd.StderrPipe()
@@ -197,7 +197,7 @@ func (r *Release) IncludeDependencies(ctx BosunContext) error {
 	for _, dep := range topology {
 		if r.AppReleaseConfigs[dep] == nil {
 			if _, ok := r.Exclude[dep]; ok {
-				ctx.Log.Warnf("Dependency %q is not being added because it is in the exclude list. " +
+				ctx.Log.Warnf("Dependency %q is not being added because it is in the exclude list. "+
 					"Add it using the `add` command if want to override this exclusion.", dep)
 				continue
 			}

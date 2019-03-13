@@ -18,8 +18,6 @@ import (
 
 func init() {
 
-	releaseCmd.AddCommand(releaseCreateCmd)
-
 	releaseAddCmd.Flags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
 	releaseAddCmd.Flags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
 
@@ -215,21 +213,32 @@ var releaseUseCmd = &cobra.Command{
 	},
 }
 
-var releaseCreateCmd = &cobra.Command{
+var releaseCreateCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "create {name} {path}",
 	Args:  cobra.ExactArgs(2),
 	Short: "Creates a new release.",
 	Long: `The name will be used to refer to the release.
-The release file will be stored at the path.`,
+The release file will be stored at the path.
+
+The --patch flag changes the behavior of "bosun release add {app}".
+If the --patch flag is set when the release is created, the add command
+will check check if the app was in a previous release with the same 
+major.minor version as this release. If such a branch is found,
+the release branch will be created from the previous release branch,
+rather than being created off of master.
+`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, path := args[0], args[1]
 
-		semverRaw := regexp.MustCompile(`[^\.0-9]`).ReplaceAllString(name, "")
-		semverSegs := strings.Split(semverRaw, ".")
-		if len(semverSegs) < 3 {
-			semverSegs = append(semverSegs, "0")
+		version := viper.GetString(ArgReleaseCreateVersion)
+		if version == "" {
+			semverRaw := regexp.MustCompile(`[^\.0-9]`).ReplaceAllString(name, "")
+			semverSegs := strings.Split(semverRaw, ".")
+			if len(semverSegs) < 3 {
+				semverSegs = append(semverSegs, "0")
+			}
+			version = strings.Join(semverSegs, ".")
 		}
-		version = strings.Join(semverSegs, ".")
 
 		c := bosun.File{
 			FromPath: path,
@@ -237,6 +246,7 @@ The release file will be stored at the path.`,
 				&bosun.ReleaseConfig{
 					Name:    name,
 					Version: version,
+					IsPatch:viper.GetBool(ArgReleaseCreatePatch),
 				},
 			},
 		}
@@ -269,7 +279,16 @@ The release file will be stored at the path.`,
 
 		return err
 	},
-}
+}, func(cmd *cobra.Command) {
+	cmd.Flags().Bool(ArgReleaseCreatePatch, false, "Set if this is a patch release.")
+	cmd.Flags().String(ArgReleaseCreateVersion, "", "Version of this release (will attempt to derive from name if not provided).")
+})
+
+const (
+	ArgReleaseCreateVersion = "version"
+	ArgReleaseCreatePatch = "patch"
+	ArgReleaseCreateParentVersion = "parent-version"
+)
 
 var releaseAddCmd = &cobra.Command{
 	Use:   "add [names...]",

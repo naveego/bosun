@@ -218,6 +218,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		if err != nil {
 			return errors.Errorf("could not get pull request %d: %s", number, err)
 		}
+		baseBranch := pr.GetBase().GetRef()
 
 		// j, _ := json.MarshalIndent(pr, "", "  ")
 		// fmt.Println(string(j))
@@ -246,6 +247,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			}
 		}()
 
+
 		if err = checkHandle(g.Fetch()); err != nil {
 			return err
 		}
@@ -273,8 +275,10 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			g.Exec("branch", "-d", mergeBranch)
 		}()
 
+
+
 		pkg.Log.Info("Merging...")
-		out, err = g.Exec("merge", "master")
+		out, err = g.Exec("merge", baseBranch)
 
 		if !pr.GetMergeable() || err != nil {
 			return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
@@ -341,19 +345,19 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			}
 		}
 
-		pkg.Log.Info("Checking out master...")
-		if err = checkHandleMsg(g.Exec("checkout", "master")); err != nil {
+		pkg.Log.Infof("Checking out %s...", baseBranch)
+		if err = checkHandleMsg(g.Exec("checkout", baseBranch)); err != nil {
 			return err
 		}
 
 		pkg.Log.Info("Merging...")
 		out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("Merge of PR #%d", number))
 		if err != nil {
-			return errors.New("could not merge into master")
+			return errors.Errorf("could not merge into %s", baseBranch)
 		}
 
-		pkg.Log.Info("Pushing master...")
-		if err = checkHandleMsg(g.Exec("push", "origin", "master")); err != nil {
+		pkg.Log.Infof("Pushing %s...", baseBranch)
+		if err = checkHandleMsg(g.Exec("push", "origin", baseBranch)); err != nil {
 			return err
 		}
 

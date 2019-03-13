@@ -65,33 +65,7 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	}
 
 	if !params.NoCurrentEnv {
-		// if only one environment exists, it's the current one
-		if ws.CurrentEnvironment == "" {
-			if len(b.file.Environments) == 1 {
-				ws.CurrentEnvironment = b.file.Environments[0].Name
-			} else {
-				var envNames []string
-				for _, env := range b.file.Environments {
-					envNames = append(envNames, env.Name)
-				}
-				return nil, errors.Errorf("no environment set (available: %v)", envNames)
-			}
-		}
-
-		if ws.CurrentEnvironment != "" {
-
-			env, err := b.GetEnvironment(ws.CurrentEnvironment)
-			if err != nil {
-				return nil, errors.Errorf("get environment %q: %s", ws.CurrentEnvironment, err)
-			}
-
-			// set the current environment.
-			// this will also set environment vars based on it.
-			err = b.useEnvironment(env)
-			if err != nil {
-				return nil, err
-			}
-		}
+		b.configureCurrentEnv()
 	}
 
 	return b, nil
@@ -231,7 +205,10 @@ func (b *Bosun) UseEnvironment(name string) error {
 
 func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 	if b.env == nil {
-		panic(errors.Errorf("environment not initialized; current environment is %s", b.ws.CurrentEnvironment))
+		err := b.configureCurrentEnv()
+		if err != nil{
+			panic(errors.Errorf("environment was not initialized; initializing environment caused error: %s", err))
+		}
 	}
 
 	return b.env
@@ -497,4 +474,33 @@ func (b *Bosun) TidyWorkspace() {
 	}
 
 	b.ws.Imports = imports
+}
+
+func (b *Bosun) configureCurrentEnv() error{
+	// if only one environment exists, it's the current one
+	if b.ws.CurrentEnvironment == "" {
+		if len(b.file.Environments) == 1 {
+			b.ws.CurrentEnvironment = b.file.Environments[0].Name
+		} else {
+			var envNames []string
+			for _, env := range b.file.Environments {
+				envNames = append(envNames, env.Name)
+			}
+			return errors.Errorf("no environment set (available: %v)", envNames)
+		}
+	}
+
+	if b.ws.CurrentEnvironment != "" {
+
+		env, err := b.GetEnvironment(b.ws.CurrentEnvironment)
+		if err != nil {
+			return errors.Errorf("get environment %q: %s", b.ws.CurrentEnvironment, err)
+		}
+
+		// set the current environment.
+		// this will also set environment vars based on it.
+		return b.useEnvironment(env)
+	}
+
+	return errors.New("no current environment set in workspace")
 }

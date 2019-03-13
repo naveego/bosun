@@ -460,6 +460,11 @@ func (a *AppRepo) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, erro
 				return nil, err
 			}
 		} else {
+
+			if ctx.Release.IsPatch {
+				return nil, errors.New("patch release not implemented yet, you must create the release branch manually")
+			}
+
 			ctx.Log.Info("Creating release branch...")
 			_, err = g.Exec("checkout", "master")
 			if err != nil {
