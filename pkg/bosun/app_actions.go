@@ -32,6 +32,7 @@ type AppAction struct {
 	Vault       *AppVaultAction `yaml:"vault,omitempty"`
 	Exec        *Command        `yaml:"exec,omitempty"`
 	Test        *AppTestAction  `yaml:"test,omitempty"`
+	FromPath    string          `yaml:"-"`
 }
 
 type AppVaultAction struct {
@@ -65,7 +66,7 @@ func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
-	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name))
+	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
 	log := ctx.Log
 
 	if a.Where != "" && !strings.Contains(a.Where, ctx.Env.Name) {

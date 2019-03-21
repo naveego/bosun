@@ -93,6 +93,9 @@ func (a *AppRepoConfig) SetFragment(fragment *File) {
 	for i := range a.DependsOn {
 		a.DependsOn[i].FromPath = a.FromPath
 	}
+	for i := range a.Actions {
+		a.Actions[i].FromPath = a.FromPath
+	}
 }
 
 // Combine returns a new AppValuesConfig with the values from
