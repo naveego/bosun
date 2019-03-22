@@ -116,8 +116,8 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	return bosun.New(params, config)
 }
 
-func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
-	apps, err := getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent:true})
+func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
+	apps, err := getAppReposOpt(b, names, options)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -128,6 +128,11 @@ func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
 		log.Fatalf("%d apps match %v", len(apps), names)
 	}
 	return apps[0]
+
+}
+
+func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
+	return mustGetAppOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent:true})
 }
 
 func MustYaml(i interface{}) string {
@@ -181,6 +186,7 @@ func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
 
 type getAppReposOptions struct {
 	ifNoFiltersGetAll   bool
+	ifNoFiltersGetCurrent   bool
 	ifNoMatchGetAll     bool
 	ifNoMatchGetCurrent bool
 }
@@ -210,6 +216,14 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 		return apps, nil
 	}
 
+	if opt.ifNoFiltersGetCurrent && len(includeFilters) == 0 && len(excludeFilters) == 0 {
+		app, err := getCurrentApp(b)
+		if err != nil {
+			return nil, errors.Wrap(err,"no filters provided but current directory is not associated with an app")
+		}
+		return []*bosun.AppRepo{app}, nil
+	}
+
 	filtered := bosun.ApplyFilter(apps, true, includeFilters).(bosun.ReposSortedByName)
 	filtered = bosun.ApplyFilter(filtered, false, excludeFilters).(bosun.ReposSortedByName)
 
@@ -224,15 +238,8 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 	var err error
 
 	if opt.ifNoMatchGetCurrent {
-		var bosunFile string
-
-		wd, _ := os.Getwd()
-		bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
-		if err != nil {
-			return nil, err
-		}
-
-		app, err := b.GetOrAddAppForPath(bosunFile)
+		var app *bosun.AppRepo
+		app, err = getCurrentApp(b)
 		if err != nil {
 			return nil, err
 		}
@@ -240,6 +247,25 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 	}
 
 	return apps, err
+}
+
+func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error){
+	var bosunFile string
+	var err error
+	var app *bosun.AppRepo
+
+	wd, _ := os.Getwd()
+	bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+	if err != nil {
+		return nil, err
+	}
+
+	app, err = b.GetOrAddAppForPath(bosunFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return app, nil
 }
 
 // gets one or more apps matching names, or if names

@@ -126,7 +126,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
-		app := mustGetApp(b, args)
+		app := mustGetAppOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent:true})
 
 		prCmd := GitPullRequestCommand{
 			App:        app,
