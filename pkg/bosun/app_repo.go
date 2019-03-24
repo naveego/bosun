@@ -106,6 +106,13 @@ func (a *AppRepo) CloneRepo(ctx BosunContext, githubDir string) error {
 	return nil
 }
 
+func (a *AppRepo) GetLocalRepoPath() (string, error) {
+	if !a.IsRepoCloned() {
+		return "", errors.New("repo is not cloned")
+	}
+	return git.GetRepoPath(a.FromPath)
+}
+
 func (a *AppRepo) PullRepo(ctx BosunContext) error {
 	err := a.CheckRepoCloned()
 	if err != nil {

@@ -125,19 +125,25 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
-		app := mustGetAppOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent:true})
+		repoPath, err := git.GetCurrentRepoPath()
+		if err != nil {
+			return err
+		}
+
+		g, err := git.NewGitWrapper(repoPath)
+		if err != nil {
+			return err
+		}
 
 		prCmd := GitPullRequestCommand{
-			App:        app,
+			LocalRepoPath: repoPath,
 			Reviewers:  viper.GetStringSlice(ArgPullRequestReviewers),
-			Title:      viper.GetString(ArgPullRequestBase),
 			Base:       viper.GetString(ArgPullRequestBase),
-			FromBranch: app.GetBranch(),
+			FromBranch: g.Branch(),
 			Body:       viper.GetString(ArgPullRequestBody),
 		}
 
-		_, err := prCmd.Execute()
+		_, err = prCmd.Execute()
 
 		return err
 	},
@@ -149,21 +155,18 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 })
 
 type GitPullRequestCommand struct {
-	App        *bosun.AppRepo
-	Reviewers  []string
-	Title      string
-	Body       string
-	Base       string
-	FromBranch string
+	Reviewers     []string
+	Title         string
+	Body          string
+	Base          string
+	FromBranch    string
+	LocalRepoPath string
 }
 
 func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
 	client := getGitClient()
 
-	repoPath, err := git.GetRepoPath(c.App.FromPath)
-	if err != nil {
-		return 0, err
-	}
+	repoPath := c.LocalRepoPath
 	org, repo := git.GetOrgAndRepoFromPath(repoPath)
 
 	branch := c.FromBranch
@@ -365,7 +368,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}()
 
 	if !c.DoNotMergeBaseIntoBranch {
-		pkg.Log.Info("Merging %s into %s...", baseBranch, mergeBranch)
+		pkg.Log.Infof("Merging %s into %s...", baseBranch, mergeBranch)
 		out, err = g.Exec("merge", baseBranch)
 
 		if !pr.GetMergeable() || err != nil {
