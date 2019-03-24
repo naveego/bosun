@@ -255,7 +255,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			ecmd.VersionBump = args[1]
 			b := mustGetBosun()
 
-			app, err := getAppOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent: true})
+			app, err := getAppOpt(b, nil, getAppReposOptions{ifNoFiltersGetCurrent: true})
 
 			if err != nil {
 				return errors.Wrap(err, "could not get app to version")
