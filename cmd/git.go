@@ -137,10 +137,10 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		prCmd := GitPullRequestCommand{
 			LocalRepoPath: repoPath,
-			Reviewers:  viper.GetStringSlice(ArgPullRequestReviewers),
-			Base:       viper.GetString(ArgPullRequestBase),
-			FromBranch: g.Branch(),
-			Body:       viper.GetString(ArgPullRequestBody),
+			Reviewers:     viper.GetStringSlice(ArgPullRequestReviewers),
+			Base:          viper.GetString(ArgPullRequestBase),
+			FromBranch:    g.Branch(),
+			Body:          viper.GetString(ArgPullRequestBody),
 		}
 
 		_, err = prCmd.Execute()
@@ -255,26 +255,13 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			ecmd.VersionBump = args[1]
 			b := mustGetBosun()
 
-			appsToVersion := viper.GetStringSlice(ArgGitAcceptPRAppVersion)
+			app, err := getAppOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent: true})
 
-			if len(appsToVersion) == 0 {
-				allApps := b.GetApps()
-				var appsInRepo []*bosun.AppRepo
-
-				for _, app := range allApps {
-					if strings.HasPrefix(app.FromPath, repoPath) && (app.BranchForRelease || app.ContractsOnly) {
-						appsInRepo = append(appsInRepo, app)
-					}
-				}
-
-				if len(appsInRepo) != 1 {
-					return errors.Errorf("found %d apps in repo, please provided the --app flag to indicate which app(s) to version", len(appsInRepo))
-				}
-
-				appsToVersion = []string{appsInRepo[0].Name}
+			if err != nil {
+				return errors.Wrap(err, "could not get app to version")
 			}
 
-			ecmd.AppsToVersion = mustGetAppRepos(b, appsToVersion)
+			ecmd.AppsToVersion = []*bosun.AppRepo{app}
 		}
 
 		return ecmd.Execute()

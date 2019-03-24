@@ -117,21 +117,29 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	return bosun.New(params, config)
 }
 
-func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
+func getAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) (*bosun.AppRepo, error) {
 	apps, err := getAppReposOpt(b, names, options)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	if len(apps) == 0 {
-		log.Fatalf("no apps matched %v", names)
+		return nil, errors.Errorf("no apps matched %v", names)
 	}
 	if len(apps) > 1 {
 		if len(names) > 0 {
-			log. Fatalf("%d apps match %v", len(apps), names)
+			return nil, errors.Errorf("%d apps match %v", len(apps), names)
 		}
-			log. Fatalf("%d apps found, please provide a filter", len(apps))
+		return nil, errors.Errorf("%d apps found, please provide a filter", len(apps))
 	}
-	return apps[0]
+	return apps[0], nil
+}
+
+func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
+	app, err := getAppOpt(b, names, options)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return app
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
