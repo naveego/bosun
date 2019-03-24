@@ -629,11 +629,10 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 				continue
 			}
 
-
-
+			localRepoPath, _ := appRepo.GetLocalRepoPath()
 			ctx.Log.Info("Creating pull request.")
 			prNumber, err := GitPullRequestCommand{
-				App:  appRepo,
+				LocalRepoPath: localRepoPath,
 				Base: "master",
 				FromBranch: releaseBranch,
 			}.Execute()

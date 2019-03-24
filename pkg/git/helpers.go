@@ -19,6 +19,15 @@ func GetCurrentOrgAndRepo() (string, string) {
 	return GetOrgAndRepoFromPath(repoDir)
 }
 
+func GetCurrentRepoPath() (string, error) {
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return GetRepoPath(wd)
+}
+
 func GetRepoPath(path string) (string, error) {
 	original := path
 	path, _ = filepath.Abs(path)

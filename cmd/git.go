@@ -125,19 +125,25 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
-		app := mustGetAppOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent:true})
-
-		prCmd := GitPullRequestCommand{
-			App:        app,
-			Reviewers:  viper.GetStringSlice(ArgPullRequestReviewers),
-			Title:      viper.GetString(ArgPullRequestBase),
-			Base:       viper.GetString(ArgPullRequestBase),
-			FromBranch: app.GetBranch(),
-			Body:       viper.GetString(ArgPullRequestBody),
+		repoPath, err := git.GetCurrentRepoPath()
+		if err != nil {
+			return err
 		}
 
-		_, err := prCmd.Execute()
+		g, err := git.NewGitWrapper(repoPath)
+		if err != nil {
+			return err
+		}
+
+		prCmd := GitPullRequestCommand{
+			LocalRepoPath: repoPath,
+			Reviewers:     viper.GetStringSlice(ArgPullRequestReviewers),
+			Base:          viper.GetString(ArgPullRequestBase),
+			FromBranch:    g.Branch(),
+			Body:          viper.GetString(ArgPullRequestBody),
+		}
+
+		_, err = prCmd.Execute()
 
 		return err
 	},
@@ -149,21 +155,18 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 })
 
 type GitPullRequestCommand struct {
-	App        *bosun.AppRepo
-	Reviewers  []string
-	Title      string
-	Body       string
-	Base       string
-	FromBranch string
+	Reviewers     []string
+	Title         string
+	Body          string
+	Base          string
+	FromBranch    string
+	LocalRepoPath string
 }
 
 func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
 	client := getGitClient()
 
-	repoPath, err := git.GetRepoPath(c.App.FromPath)
-	if err != nil {
-		return 0, err
-	}
+	repoPath := c.LocalRepoPath
 	org, repo := git.GetOrgAndRepoFromPath(repoPath)
 
 	branch := c.FromBranch
@@ -252,26 +255,13 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			ecmd.VersionBump = args[1]
 			b := mustGetBosun()
 
-			appsToVersion := viper.GetStringSlice(ArgGitAcceptPRAppVersion)
+			app, err := getAppOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent: true})
 
-			if len(appsToVersion) == 0 {
-				allApps := b.GetApps()
-				var appsInRepo []*bosun.AppRepo
-
-				for _, app := range allApps {
-					if strings.HasPrefix(app.FromPath, repoPath) && (app.BranchForRelease || app.ContractsOnly) {
-						appsInRepo = append(appsInRepo, app)
-					}
-				}
-
-				if len(appsInRepo) != 1 {
-					return errors.Errorf("found %d apps in repo, please provided the --app flag to indicate which app(s) to version", len(appsInRepo))
-				}
-
-				appsToVersion = []string{appsInRepo[0].Name}
+			if err != nil {
+				return errors.Wrap(err, "could not get app to version")
 			}
 
-			ecmd.AppsToVersion = mustGetAppRepos(b, appsToVersion)
+			ecmd.AppsToVersion = []*bosun.AppRepo{app}
 		}
 
 		return ecmd.Execute()
@@ -365,7 +355,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}()
 
 	if !c.DoNotMergeBaseIntoBranch {
-		pkg.Log.Info("Merging %s into %s...", baseBranch, mergeBranch)
+		pkg.Log.Infof("Merging %s into %s...", baseBranch, mergeBranch)
 		out, err = g.Exec("merge", baseBranch)
 
 		if !pr.GetMergeable() || err != nil {

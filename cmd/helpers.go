@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -116,19 +117,29 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	return bosun.New(params, config)
 }
 
-func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
+func getAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) (*bosun.AppRepo, error) {
 	apps, err := getAppReposOpt(b, names, options)
+	if err != nil {
+		return nil, err
+	}
+	if len(apps) == 0 {
+		return nil, errors.Errorf("no apps matched %v", names)
+	}
+	if len(apps) > 1 {
+		if len(names) > 0 {
+			return nil, errors.Errorf("%d apps match %v", len(apps), names)
+		}
+		return nil, errors.Errorf("%d apps found, please provide a filter", len(apps))
+	}
+	return apps[0], nil
+}
+
+func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
+	app, err := getAppOpt(b, names, options)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(apps) == 0 {
-		log.Fatalf("no apps matched %v", names)
-	}
-	if len(apps) > 1 {
-		log.Fatalf("%d apps match %v", len(apps), names)
-	}
-	return apps[0]
-
+	return app
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
@@ -260,12 +271,38 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error){
 		return nil, err
 	}
 
-	app, err = b.GetOrAddAppForPath(bosunFile)
+	_, err = b.GetOrAddAppForPath(bosunFile)
 	if err != nil {
 		return nil, err
 	}
 
-	return app, nil
+	bosunFileDir := filepath.Dir(bosunFile)
+
+	var appsUnderDirNames []string
+	var appsUnderDir []*bosun.AppRepo
+	for _, app = range b.GetApps() {
+		if app.IsRepoCloned() && strings.HasPrefix(app.FromPath, bosunFileDir) {
+			appsUnderDirNames = append(appsUnderDirNames, app.Name)
+			appsUnderDir = append(appsUnderDir, app)
+		}
+	}
+	sort.Strings(appsUnderDirNames)
+
+	if len(appsUnderDir) == 1 {
+		return appsUnderDir[0], nil
+	}
+
+	p := &promptui.Select{
+		Label:"Multiple apps found in this repo, please choose one.",
+		Items:appsUnderDirNames,
+	}
+
+	i,_, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	return appsUnderDir[i], nil
 }
 
 // gets one or more apps matching names, or if names
