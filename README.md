@@ -27,7 +27,7 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
 ### Dependencies
 
 - Go (https://golang.org/doc/install)
-- Virtualbox (https://www.virtualbox.org/wiki/Downloads) 
+- Virtualbox (https://www.virtualbox.org/wiki/Downloads) ***
 - Minikube (https://github.com/kubernetes/minikube)
 - Kubernetes (https://kubernetes.io/)
 - Vault (https://www.vaultproject.io/docs/install/index.html)
@@ -37,6 +37,8 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
 - LastPass CLI (https://github.com/lastpass/lastpass-cli) 
     - To avoid storing passwords in scripts, only needed if you're touching the blue environment.   
 
+
+*** https://askubuntu.com/questions/465454/problem-with-the-installation-of-virtualbox
 
 ## How to make microservices available as apps
 
