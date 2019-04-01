@@ -9,6 +9,12 @@ builds:
   - CGO_ENABLED=0
   ldflags:
     - -s -w -X cmd.version={{.Version}} -X cmd.timestamp={{.Timestamp}} -X cmd.commit={{.ShortCommit}}
+  goos:
+  - windows
+  - linux
+  - darwin
+  goarch:
+  - amd64
 archive:
   replacements:
     darwin: darwin
