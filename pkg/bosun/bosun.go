@@ -291,8 +291,8 @@ func (b *Bosun) GetInWorkspace(path string) (interface{}, error) {
 	return v.GetAtPath(path)
 }
 
-func (b *Bosun) GetWorkspace() Workspace {
-	return *b.ws
+func (b *Bosun) GetWorkspace() *Workspace {
+	return b.ws
 }
 
 func (b *Bosun) GetMergedConfig() File {

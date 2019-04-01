@@ -36,17 +36,48 @@ func init() {
 	rootCmd.AddCommand(gitCmd)
 }
 
-func getGitClient() *github.Client {
+func mustGetGithubClient() *github.Client {
+	b := mustGetBosun()
+	ws := b.GetWorkspace()
+	ctx := b.NewContext().WithDir(ws.Path)
+	if ws.GithubToken == nil {
+		fmt.Println("Github token was not found. Please provide a command that can be run to obtain a github token.")
+		fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
+		fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
+		fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
+		script := pkg.RequestStringFromUser("Command")
+
+		ws.GithubToken = &bosun.CommandValue{
+			Command: bosun.Command{
+				Script:script,
+			},
+		}
+
+		_, err := ws.GithubToken.Resolve(ctx)
+		if err != nil {
+			log.Fatalf("script failed: %s\nscript:\n%s", err, script)
+		}
+
+		err = b.Save()
+		if err != nil {
+			log.Fatalf("save failed: %s", err)
+		}
+	}
+
+	token, err := ws.GithubToken.Resolve(ctx)
+	if err != nil {
+		log.Fatal("")
+	}
+
 	token, ok := os.LookupEnv("GITHUB_TOKEN")
 	if !ok {
 		log.Fatal("GITHUB_TOKEN must be set")
 	}
 
-	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
-	tc := oauth2.NewClient(ctx, ts)
+	tc := oauth2.NewClient(context.Background(), ts)
 
 	client := github.NewClient(tc)
 
@@ -63,7 +94,7 @@ var gitDeployStartCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Notifies github that a deploy has happened.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client := getGitClient()
+		client := mustGetGithubClient()
 
 		cluster := args[0]
 		sha := pkg.NewCommand("git rev-parse HEAD").MustOut()
@@ -95,7 +126,7 @@ var gitDeployUpdateCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Notifies github that a deploy has happened.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client := getGitClient()
+		client := mustGetGithubClient()
 
 		org, repo := getOrgAndRepo()
 
@@ -164,7 +195,7 @@ type GitPullRequestCommand struct {
 }
 
 func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
-	client := getGitClient()
+	client := mustGetGithubClient()
 
 	repoPath := c.LocalRepoPath
 	org, repo := git.GetOrgAndRepoFromPath(repoPath)
@@ -285,7 +316,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	var err error
 	var out string
 
-	client := getGitClient()
+	client := mustGetGithubClient()
 	repoPath, err := git.GetRepoPath(c.RepoDirectory)
 	if err != nil {
 		return err
@@ -444,7 +475,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 
 		body := viper.GetString(ArgGitBody)
 		taskName := args[0]
-		client := getGitClient()
+		client := mustGetGithubClient()
 		issueRequest := &github.IssueRequest{
 			Title: github.String(taskName),
 		}

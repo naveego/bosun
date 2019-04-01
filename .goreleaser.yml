@@ -7,13 +7,14 @@ before:
 builds:
 - env:
   - CGO_ENABLED=0
+  ldflags:
+    - -s -w -X cmd.version={{.Version}} -X cmd.timestamp={{.Timestamp}} -X cmd.commit={{.ShortCommit}}
 archive:
   replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    386: i386
-    amd64: x86_64
+    darwin: darwin
+    linux: linux
+    windows: windows
+    amd64: amd64
 checksum:
   name_template: 'checksums.txt'
 snapshot:

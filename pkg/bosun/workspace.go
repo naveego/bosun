@@ -20,7 +20,8 @@ type Workspace struct {
 	ClonePaths         map[string]string      `yaml:"clonePaths"`
 	MergedBosunFile    *File                  `yaml:"-"`
 	ImportedBosunFiles map[string]*File       `yaml:"-"`
-	Minikube MinikubeConfig `yaml:"minikube"`
+	GithubToken        *CommandValue          `yaml:"githubToken"`
+	Minikube           MinikubeConfig         `yaml:"minikube"`
 }
 
 func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
