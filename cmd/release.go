@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -247,7 +246,7 @@ rather than being created off of master.
 				&bosun.ReleaseConfig{
 					Name:    name,
 					Version: version,
-					IsPatch:viper.GetBool(ArgReleaseCreatePatch),
+					IsPatch: viper.GetBool(ArgReleaseCreatePatch),
 				},
 			},
 		}
@@ -286,8 +285,8 @@ rather than being created off of master.
 })
 
 const (
-	ArgReleaseCreateVersion = "version"
-	ArgReleaseCreatePatch = "patch"
+	ArgReleaseCreateVersion       = "version"
+	ArgReleaseCreatePatch         = "patch"
 	ArgReleaseCreateParentVersion = "parent-version"
 )
 
@@ -618,6 +617,8 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		ctx := b.NewContext()
 
+		force := viper.GetBool(ArgGlobalForce)
+
 		release, err := b.GetCurrentRelease()
 		if err != nil {
 			return err
@@ -626,40 +627,90 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 
 		releaseBranch := fmt.Sprintf("release/%s", release.Name)
 
-		for _, appRelease := range appReleases {
+		repoDirs := make(map[string]string)
 
-			ctx = ctx.WithAppRelease(appRelease)
+		for _, appRelease := range appReleases {
 			appRepo := appRelease.AppRepo
 			if !appRepo.IsRepoCloned() {
 				ctx.Log.Error("Repo is not cloned, cannot merge.")
 				continue
 			}
-
-			localRepoPath, _ := appRepo.GetLocalRepoPath()
-			ctx.Log.Info("Creating pull request.")
-			prNumber, err := GitPullRequestCommand{
-				LocalRepoPath: localRepoPath,
-				Base: "master",
-				FromBranch: releaseBranch,
-			}.Execute()
+			repoDir, err := git.GetRepoPath(appRepo.FromPath)
 			if err != nil {
-				ctx.Log.WithError(err).Error("Could not create pull request.")
+				ctx.Log.WithError(err).Error("Could not get git repository from path, cannot merge.")
+				continue
+			}
+			repoDirs[repoDir] = appRelease.Version
+		}
+
+		for repoDir, version := range repoDirs {
+
+			ctx = ctx.WithDir(repoDir)
+
+			g, _ := git.NewGitWrapper(repoDir)
+
+			g.Pull()
+
+			_, err := g.Exec("checkout", releaseBranch)
+			if err != nil {
+				return errors.Errorf("checkout %s: %s", repoDir, releaseBranch)
+			}
+
+			tagArgs := []string{"tag", fmt.Sprintf("%s-%s", version, release.Version)}
+			if force {
+				tagArgs = append(tagArgs, "--force")
+			}
+
+			_, err = g.Exec(tagArgs...)
+			if err != nil {
+				ctx.Log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
 				continue
 			}
 
-			ctx.Log.Info("Accepting pull request.")
-			err = GitAcceptPRCommand{
-				PRNumber:prNumber,
-				RepoDirectory: filepath.Dir(appRepo.FromPath),
-				DoNotMergeBaseIntoBranch: true,
-			}.Execute()
-
+			pushArgs := []string{"push", "--tags"}
+			if force {
+				pushArgs = append(pushArgs, "--force")
+			}
+			_, err = g.Exec(pushArgs...)
 			if err != nil {
-				ctx.Log.WithError(err).Error("Could not accept pull request.")
-				continue
+				return errors.Errorf("push tags: %s", err)
 			}
 
-			ctx.Log.Info("Merged back to master.")
+			diff, err := g.Exec("log", "origin/master..origin/"+releaseBranch, "--oneline")
+			if err != nil {
+				return errors.Errorf("find diffs: %s", err)
+			}
+
+			if len(diff) > 0 {
+
+				ctx.Log.Info("Release branch has diverged from master, will merge back...")
+
+				ctx.Log.Info("Creating pull request.")
+				prNumber, err := GitPullRequestCommand{
+					LocalRepoPath: repoDir,
+					Base:          "master",
+					FromBranch:    releaseBranch,
+				}.Execute()
+				if err != nil {
+					ctx.Log.WithError(err).Error("Could not create pull request.")
+					continue
+				}
+
+				ctx.Log.Info("Accepting pull request.")
+				err = GitAcceptPRCommand{
+					PRNumber:                 prNumber,
+					RepoDirectory:            repoDir,
+					DoNotMergeBaseIntoBranch: true,
+				}.Execute()
+
+				if err != nil {
+					ctx.Log.WithError(err).Error("Could not accept pull request.")
+					continue
+				}
+
+				ctx.Log.Info("Merged back to master.")
+			}
+
 		}
 
 		return nil
