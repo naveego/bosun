@@ -3,6 +3,7 @@ package bosun
 import (
 	"context"
 	"fmt"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
@@ -27,6 +28,7 @@ type Bosun struct {
 	env              *EnvironmentConfig
 	clusterAvailable *bool
 	log              *logrus.Entry
+	environmentConfirmed *bool
 }
 
 type Parameters struct {
@@ -38,6 +40,7 @@ type Parameters struct {
 	ValueOverrides map[string]string
 	FileOverrides  []string
 	NoCurrentEnv   bool
+	ConfirmedEnv string
 }
 
 func New(params Parameters, ws *Workspace) (*Bosun, error) {
@@ -503,4 +506,31 @@ func (b *Bosun) configureCurrentEnv() error{
 	}
 
 	return errors.New("no current environment set in workspace")
+}
+
+// Confirm environment checks that the environment has been confirmed by the
+// user if the environment is marked as protected.
+func (b *Bosun) ConfirmEnvironment() error {
+
+	if b.environmentConfirmed == nil {
+
+		envName := b.GetCurrentEnvironment().Name
+		if b.params.ConfirmedEnv != "" {
+			if b.params.ConfirmedEnv == envName {
+				b.environmentConfirmed = to.BoolPtr(true)
+			} else {
+				return errors.Errorf("The --confirm-env flag was set to %q, but you are targeting the %q environment!\nSwitch environments or unset the flag.", b.params.ConfirmedEnv, b.env.Name)
+
+			}
+		}
+
+		confirmed := pkg.RequestConfirmFromUser("Do you really want to run this command against the %q environment?", envName)
+		b.environmentConfirmed = &confirmed
+	}
+
+	if *b.environmentConfirmed {
+		return nil
+	}
+
+	return errors.Errorf("The %q environment is protected, so you must confirm that you want to perform this action.\n(you can do this by setting the --confirm-env to the name of the environment)", b.env.Name)
 }

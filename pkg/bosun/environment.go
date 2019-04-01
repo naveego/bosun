@@ -11,6 +11,9 @@ type EnvironmentConfig struct {
 	Name      string                 `yaml:name`
 	Cluster   string                 `yaml:"cluster"`
 	Domain    string                 `yaml:"domain"`
+	// If true, commands which would cause modifications to be deployed will
+	// trigger a confirmation prompt.
+	Protected bool `yaml:"protected"`
 	IsLocal bool `yaml:"isLocal"`
 	Commands  []*EnvironmentCommand  `yaml:"commands,omitempty"`
 	Variables []*EnvironmentVariable `yaml:"variables,omitempty"`

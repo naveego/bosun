@@ -551,6 +551,9 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 		b := mustGetBosun()
 		ctx := b.NewContext()
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
 
 		appReleases := mustGetAppReleases(b, args)
 
@@ -583,6 +586,9 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 		ctx := b.NewContext()
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
 
 		if viper.GetBool(ArgReleaseSkipValidate) {
 			ctx.Log.Warn("Validation disabled.")

@@ -524,6 +524,10 @@ var appToggleCmd = &cobra.Command{
 		b := mustGetBosun()
 		c := b.GetCurrentEnvironment()
 
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
+
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to toggle services.")
 		}
@@ -627,6 +631,10 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 			ValueOverrides: valueOverrides,
 		})
 
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
+
 		ctx := b.NewContext()
 
 		apps, err := getAppRepos(b, args)
@@ -701,6 +709,10 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 
 		env := b.GetCurrentEnvironment()
 
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
+
 		releases := mustGetAppReleases(b, args)
 
 		pullLatest := viper.GetBool(ArgAppRecyclePullLatest)
@@ -744,6 +756,10 @@ var appDeleteCmd = &cobra.Command{
 
 		b := mustGetBosun()
 
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
+
 		appReleases := mustGetAppReleases(b, args)
 
 		ctx := b.NewContext()
@@ -781,6 +797,10 @@ var appRunCmd = &cobra.Command{
 
 		b := mustGetBosun()
 		c := b.GetCurrentEnvironment()
+
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
 
 		if c.Name != "red" {
 			return errors.New("Environment must be set to 'red' to run apps.")
@@ -948,6 +968,10 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
+
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
 
 		var app *bosun.AppRepo
 		var scriptName string

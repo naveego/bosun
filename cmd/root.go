@@ -103,6 +103,7 @@ const (
 	ArgGlobalDomain    = "domain"
 	ArgGlobalValues    = "values"
 	ArgBosunConfigFile = "config-file"
+	ArgGlobalConfirmedEnv = "confirm-env"
 	ArgGlobalForce     = "force"
 	ArgGlobalNoReport  = "no-report"
 	ArgGlobalOutput    = "output"
@@ -119,6 +120,8 @@ func init() {
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
+	rootCmd.PersistentFlags().String(ArgGlobalConfirmedEnv, "", "Set to confirm that the environment is correct when targeting a protected environment.")
+	rootCmd.PersistentFlags().MarkHidden(ArgGlobalConfirmedEnv)
 
 	defaultCluster := ""
 	defaultDomain := ""

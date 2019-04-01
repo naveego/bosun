@@ -101,6 +101,7 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	params.DryRun = viper.GetBool(ArgGlobalDryRun)
 	params.NoReport = viper.GetBool(ArgGlobalNoReport)
 	params.Force = viper.GetBool(ArgGlobalForce)
+	params.ConfirmedEnv = viper.GetString(ArgGlobalConfirmedEnv)
 
 	if params.ValueOverrides == nil {
 		params.ValueOverrides = map[string]string{}

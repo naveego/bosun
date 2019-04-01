@@ -11,9 +11,33 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 )
 
 var Log = logrus.NewEntry(logrus.StandardLogger())
+
+func RequestConfirmFromUser(label string, args ... interface{}) bool {
+
+	if !IsInteractive() {
+		return false
+	}
+
+	prompt := promptui.Prompt{
+		Label: fmt.Sprintf(label, args...) + " [y/N]",
+	}
+
+	value, err := prompt.Run()
+	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
+		fmt.Println("User quit.")
+		os.Exit(0)
+	}
+
+	if strings.HasPrefix(strings.ToLower(value), "y") {
+		return true
+	}
+
+	return false
+}
 
 func RequestStringFromUser(text string, args ... interface{}) (string) {
 
