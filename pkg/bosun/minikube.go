@@ -45,6 +45,7 @@ func MinikubeUp(ctx BosunContext) error {
 				"--vm-driver", cfg.Driver,
 				"--hyperv-virtual-switch", "Default Switch",
 				"--extra-config=apiserver.service-node-port-range=80-32000",
+				"--disk-size=40g",
 			).RunE()
 		} else {
 			err = pkg.NewCommand("minikube",
@@ -54,6 +55,7 @@ func MinikubeUp(ctx BosunContext) error {
 				"--kubernetes-version=v1.10.0",
 				"--vm-driver", cfg.Driver,
 				"--extra-config=apiserver.service-node-port-range=80-32000",
+				"--disk-size=40g",
 				//"-v=7",
 			).RunE()
 		}

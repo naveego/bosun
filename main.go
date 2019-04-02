@@ -14,7 +14,9 @@
 
 package main
 
-import "github.com/naveego/bosun/cmd"
+import (
+	"github.com/naveego/bosun/cmd"
+)
 
 func main() {
 	cmd.Execute()

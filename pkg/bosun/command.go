@@ -94,6 +94,10 @@ func (d *Command) Execute(ctx BosunContext, opts ...CommandOpts) (string, error)
 
 func (d *Command) executeCore(ctx BosunContext, opt CommandOpts) (string, error) {
 
+	if d == nil {
+		return "", errors.New("command was nil")
+	}
+
 	var err error
 	var value string
 

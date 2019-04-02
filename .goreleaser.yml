@@ -7,13 +7,20 @@ before:
 builds:
 - env:
   - CGO_ENABLED=0
+  ldflags:
+    - -s -w -X github.com/naveego/bosun/cmd.Version={{.Version}} -X github.com/naveego/bosun/cmd.Timestamp={{.Timestamp}} -X github.com/naveego/bosun/cmd.Commit={{.ShortCommit}}
+  goos:
+  - windows
+  - linux
+  - darwin
+  goarch:
+  - amd64
 archive:
   replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    386: i386
-    amd64: x86_64
+    darwin: darwin
+    linux: linux
+    windows: windows
+    amd64: amd64
 checksum:
   name_template: 'checksums.txt'
 snapshot:

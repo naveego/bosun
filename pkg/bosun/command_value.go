@@ -10,7 +10,7 @@ type CommandValue struct {
 	Command `yaml:"-"`
 	OS      map[string]*CommandValue `yaml:"os,omitempty"`
 
-	resolved bool
+	resolvedValue string
 }
 
 type commandValueMarshalling struct {
@@ -107,19 +107,20 @@ func (c *CommandValue) Resolve(ctx BosunContext) (string, error) {
 	var err error
 
 	if c.resolved {
-		return c.Value, nil
+		return c.resolvedValue, nil
 	}
 
 	c.resolved = true
 
-	if c.Value == "" {
-		c.Value, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true})
+	if c.Value != "" {
+		c.resolvedValue = c.Value
+	} else {
+		c.resolvedValue, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true})
+		// trim whitespace, as script output may contain line breaks at the end
+		c.resolvedValue = strings.TrimSpace(c.resolvedValue)
 	}
 
-	// trim whitespace, as script output may contain line breaks at the end
-	c.Value = strings.TrimSpace(c.Value)
-
-	return c.Value, err
+	return c.resolvedValue, err
 }
 
 type DynamicValueOpts struct {

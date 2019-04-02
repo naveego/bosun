@@ -291,8 +291,8 @@ func (b *Bosun) GetInWorkspace(path string) (interface{}, error) {
 	return v.GetAtPath(path)
 }
 
-func (b *Bosun) GetWorkspace() Workspace {
-	return *b.ws
+func (b *Bosun) GetWorkspace() *Workspace {
+	return b.ws
 }
 
 func (b *Bosun) GetMergedConfig() File {
@@ -511,6 +511,10 @@ func (b *Bosun) configureCurrentEnv() error{
 // Confirm environment checks that the environment has been confirmed by the
 // user if the environment is marked as protected.
 func (b *Bosun) ConfirmEnvironment() error {
+
+	if !b.env.Protected {
+		return nil
+	}
 
 	if b.environmentConfirmed == nil {
 

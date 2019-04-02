@@ -31,19 +31,20 @@ var cfgFile string
 
 var step int
 
-var version string
-var timestamp string
-var commit string
+var Version string
+var Timestamp string
+var Commit string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:           "bosun",
 	Short:         "Devops tool.",
 	SilenceErrors: true,
-	Version: fmt.Sprintf(`Version: %s
+	Version: fmt.Sprintf(`
+Version: %s
 Timestamp: %s
 Commit: %s
-`, version, timestamp, commit),
+`, Version, Timestamp, Commit),
 	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

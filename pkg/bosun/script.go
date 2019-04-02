@@ -94,7 +94,7 @@ func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error 
 		if step.Literal != nil {
 			log.Info("Step is a literal script, not a bosun action.")
 
-			_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput:true})
+			_, err := step.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput:true})
 			if err != nil {
 				return err
 			}

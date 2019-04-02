@@ -2,7 +2,7 @@ environments: []
 appRefs: {}
 apps:
 - name: bosun
-  version: 0.5.0
+  version: 0.5.1
   images: []
   scripts:
   - name: publish
@@ -11,4 +11,12 @@ apps:
       args: []
       flags: {}
       literal:
-        command: [mage, -v, publish]
+        script: |-
+          set -e
+          if [[ -n "$(git status --porcelain)" ]] ; then
+            echo "directory is dirty"
+            exit 1
+          fi
+          git tag $(bosun app version bosun)
+          git push --tags
+          goreleaser --rm-dist
