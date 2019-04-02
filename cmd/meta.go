@@ -16,12 +16,15 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/coreos/go-semver/semver"
 	"github.com/google/go-github/v20/github"
 	"github.com/pkg/errors"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"gopkg.in/inconshreveable/go-update.v0"
 	"runtime"
 
 	"github.com/naveego/bosun/pkg"
@@ -37,22 +40,34 @@ var metaCmd = addCommand(rootCmd, &cobra.Command{
 
 })
 
+var metaVersionCmd = addCommand(metaCmd, &cobra.Command{
+	Use:   "version",
+	Short: "Shows bosun version",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf(`Version: %s\n
+Timestamp: %s\n
+Commit: %s\n
+`, Version, Timestamp, Commit)
+	},
+})
+
 var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 	Use:"upgrade",
 	Short:"Upgrades bosun if a newer release is available",
+	SilenceUsage:true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		client := mustGetGithubClient()
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 var err error
-		if version == "" {
-			version, err = pkg.NewCommand("bosun", "app", "version", "bosun").RunOut()
+		if Version == "" {
+			Version, err = pkg.NewCommand("bosun", "app", "version", "bosun").RunOut()
 			if err != nil {
 				return errors.Wrap(err, "could not get version")
 			}
 		}
 
-		currentVersion, err := semver.NewVersion(version)
+		currentVersion, err := semver.NewVersion(Version)
 
 		releases, _, err := client.Repositories.ListReleases(ctx, "naveego", "bosun", nil)
 		if err != nil {
@@ -73,7 +88,7 @@ var err error
 		}
 
 		if !upgradeAvailable {
-			fmt.Printf("Current version (%s) is up-to-date.\n", version)
+			fmt.Printf("Current version (%s) is up-to-date.\n", Version)
 			return nil
 		}
 
@@ -82,8 +97,8 @@ var err error
 
 		expectedAssetName := fmt.Sprintf("bosun_%s_%s_%s.tar.gz", release.GetTagName(), runtime.GOOS, runtime.GOARCH)
 		var foundAsset bool
-		var asset *github.ReleaseAsset
-		for _, asset := range release.Assets {
+		var asset github.ReleaseAsset
+		for _, asset = range release.Assets {
 			name := asset.GetName()
 			if name == expectedAssetName {
 				foundAsset = true
@@ -94,19 +109,38 @@ var err error
 			return errors.Errorf("could not find an asset with name %q", expectedAssetName)
 		}
 
+		j, _ := json.MarshalIndent(asset, "", "  ")
+		fmt.Println(string(j))
+
+
+		tempDir, err := ioutil.TempDir(os.TempDir(), "bosun-upgrade")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDir)
+
 		downloadURL := asset.GetBrowserDownloadURL()
-		pkg.Log.Infof("Found upgrade asset, will download from %q", downloadURL)
+		pkg.Log.Infof("Found upgrade asset, will download from %q to %q", downloadURL, tempDir)
+
+
+		err = getter.Get(tempDir, "http::"+downloadURL)
+		if err != nil {
+			return errors.Errorf("error downloading from %q: %s", downloadURL, err)
+		}
 
 		executable, err := os.Executable()
 		if err != nil {
 			return errors.WithStack(err)
 		}
 
-		outputDir := filepath.Dir(executable)
+		newVersion := filepath.Join(tempDir, filepath.Base(executable))
 
-		err = getter.Get(outputDir, "http::"+downloadURL)
+		err, errRecover := update.New().FromFile(newVersion)
 		if err != nil {
-			return errors.Errorf("error downloading from %q: %s", downloadURL, err)
+			return err
+		}
+		if errRecover != nil {
+			return errRecover
 		}
 
 		fmt.Println("Upgrade completed.")

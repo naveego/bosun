@@ -14,8 +14,14 @@
 
 package main
 
-import "github.com/naveego/bosun/cmd"
+import (
+	"fmt"
+	"github.com/naveego/bosun/cmd"
+)
+
+var version string
 
 func main() {
+	fmt.Println("version:", version)
 	cmd.Execute()
 }
