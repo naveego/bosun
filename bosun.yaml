@@ -2,7 +2,7 @@ environments: []
 appRefs: {}
 apps:
 - name: bosun
-  version: 0.5.1
+  version: 0.5.2
   images: []
   scripts:
   - name: publish
