@@ -12,7 +12,11 @@ apps:
       flags: {}
       literal:
         script: |-
-          test -z "$(git status --porcelain)" || echo "directory is dirty" && exit 1
+          set -e
+          if [[ -n "$(git status --porcelain)" ]] ; then
+            echo "directory is dirty"
+            exit 1
+          fi
           git tag $(bosun app version bosun)
           git push --tags
           goreleaser --rm-dist

@@ -18,6 +18,6 @@ func render(vars map[string]string) string {
 
 
 func getCommandForScript(file string) *pkg.Command {
-	cmd := pkg.NewCommand("/bin/sh", file)
+	cmd := pkg.NewCommand("/bin/bash", file)
 	return cmd
 }
