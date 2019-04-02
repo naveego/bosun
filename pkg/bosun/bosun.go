@@ -512,6 +512,10 @@ func (b *Bosun) configureCurrentEnv() error{
 // user if the environment is marked as protected.
 func (b *Bosun) ConfirmEnvironment() error {
 
+	if !b.env.Protected {
+		return nil
+	}
+
 	if b.environmentConfirmed == nil {
 
 		envName := b.GetCurrentEnvironment().Name
