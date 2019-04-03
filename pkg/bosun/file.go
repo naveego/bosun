@@ -17,10 +17,10 @@ type File struct {
 	FromPath     string                 `yaml:"fromPath"`
 	Config       *Workspace             `yaml:"-"`
 	Releases     []*ReleaseConfig       `yaml:"releases,omitempty"`
+	Tools        []ToolDef              `yaml:"tools,omitempty"`
 	// merged indicates that this File has had File instances merged into it and cannot be saved.
 	merged bool `yaml:"-"`
 }
-
 
 func (c *File) Merge(other *File) error {
 
@@ -46,6 +46,8 @@ func (c *File) Merge(other *File) error {
 	for _, other := range other.Releases {
 		c.mergeRelease(other)
 	}
+
+	c.Tools = append(c.Tools, other.Tools...)
 
 	return nil
 }

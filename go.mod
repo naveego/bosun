@@ -114,6 +114,7 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/keybase/go-crypto v0.0.0-20181127160227-255a5089e85a // indirect
 	github.com/kr/binarydist v0.1.0 // indirect
+	github.com/kyokomi/emoji v2.1.0+incompatible
 	github.com/lib/pq v1.0.0 // indirect
 	github.com/magefile/mage v1.8.0
 	github.com/manifoldco/promptui v0.3.2

@@ -171,6 +171,10 @@ func (r *Workspace) importFileFromPath(path string) error {
 		m.SetParent(c)
 	}
 
+	for i := range c.Tools {
+		c.Tools[i].FromPath = c.FromPath
+	}
+
 	err = r.MergedBosunFile.Merge(c)
 
 	if err != nil {

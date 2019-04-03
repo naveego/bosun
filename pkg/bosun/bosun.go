@@ -538,3 +538,7 @@ func (b *Bosun) ConfirmEnvironment() error {
 
 	return errors.Errorf("The %q environment is protected, so you must confirm that you want to perform this action.\n(you can do this by setting the --confirm-env to the name of the environment)", b.env.Name)
 }
+
+func (b *Bosun) GetTools() []ToolDef {
+	return b.ws.MergedBosunFile.Tools
+}
