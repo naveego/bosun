@@ -381,7 +381,14 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 	importedValues := a.Values[ctx.Env.Name]
 	overrideValues := a.ValueOverrides[ctx.Env.Name]
 
-	for _, v := range []AppValuesConfig{importedValues, overrideValues} {
+	appValues := []AppValuesConfig{importedValues, overrideValues}
+	if ctx.Env.AppValues != nil {
+		appValues = append(appValues, *ctx.Env.AppValues)
+	}
+
+
+
+	for _, v := range appValues {
 
 		r.Values.Merge(v.Static)
 

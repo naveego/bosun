@@ -7,17 +7,20 @@ import (
 )
 
 type EnvironmentConfig struct {
-	FromPath  string                 `yaml:"-"`
-	Name      string                 `yaml:name`
-	Cluster   string                 `yaml:"cluster"`
-	Domain    string                 `yaml:"domain"`
+	FromPath string `yaml:"-"`
+	Name     string `yaml:name`
+	Cluster  string `yaml:"cluster"`
+	Domain   string `yaml:"domain"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
-	Protected bool `yaml:"protected"`
-	IsLocal bool `yaml:"isLocal"`
+	Protected bool                   `yaml:"protected"`
+	IsLocal   bool                   `yaml:"isLocal"`
 	Commands  []*EnvironmentCommand  `yaml:"commands,omitempty"`
 	Variables []*EnvironmentVariable `yaml:"variables,omitempty"`
 	Scripts   []*Script              `yaml:"scripts,omitempty"`
+	// Contains app value overrides which should be applied when deploying
+	// apps to this environment.
+	AppValues *AppValuesConfig `yaml:"appValues"`
 }
 
 type EnvironmentVariable struct {
@@ -56,7 +59,6 @@ func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
 		return nil
 	}
 
-
 	if e.Value != "" {
 		// set the value in the process environment
 		os.Setenv(e.Name, e.Value)
@@ -64,7 +66,6 @@ func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
 	}
 
 	log.Debug("Resolving value...")
-
 
 	var err error
 	e.Value, err = e.From.Resolve(ctx)
@@ -126,8 +127,8 @@ func (e *EnvironmentConfig) GetVariablesAsMap(ctx BosunContext) (map[string]stri
 	}
 
 	vars := map[string]string{
-		EnvDomain: e.Domain,
-		EnvCluster: e.Cluster,
+		EnvDomain:      e.Domain,
+		EnvCluster:     e.Cluster,
 		EnvEnvironment: e.Name,
 	}
 	for _, v := range e.Variables {
@@ -139,14 +140,13 @@ func (e *EnvironmentConfig) GetVariablesAsMap(ctx BosunContext) (map[string]stri
 
 func (e *EnvironmentConfig) Render(ctx BosunContext) (string, error) {
 
-
 	err := e.Ensure(ctx)
 	if err != nil {
 		return "", err
 	}
 
 	vars, err := e.GetVariablesAsMap(ctx)
-	if err != nil{
+	if err != nil {
 		return "", err
 	}
 
