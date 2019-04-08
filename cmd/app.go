@@ -673,7 +673,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 			}
 		}
 
-		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", MustYaml(r))
+		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", r.Name)
 
 		err = r.Deploy(ctx)
 

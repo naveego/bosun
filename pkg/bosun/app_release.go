@@ -60,18 +60,17 @@ type AppRelease struct {
 	ActualState  AppState
 	DesiredState AppState
 	helmRelease  *HelmRelease
-	labels map[string]string
+	labels       map[string]string
 }
-
 
 func (a *AppRelease) Labels() map[string]string {
 	if a.labels == nil {
 		a.labels = map[string]string{
-			string(FilterKeyName): a.Name,
-			string(FilterKeyPath):a.AppRepo.FromPath,
-			string(FilterKeyBranch):a.Branch,
-			string(FilterKeyCommit):a.Commit,
-			string(FilterKeyVersion):a.Version,
+			string(FilterKeyName):    a.Name,
+			string(FilterKeyPath):    a.AppRepo.FromPath,
+			string(FilterKeyBranch):  a.Branch,
+			string(FilterKeyCommit):  a.Commit,
+			string(FilterKeyVersion): a.Version,
 		}
 		for k, v := range a.AppRepo.AppLabels {
 			a.labels[k] = v
@@ -79,7 +78,6 @@ func (a *AppRelease) Labels() map[string]string {
 	}
 	return a.labels
 }
-
 
 func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, error) {
 	release := &AppRelease{
@@ -337,21 +335,28 @@ type ReleaseValues struct {
 }
 
 func (r *ReleaseValues) PersistValues() (string, error) {
-	if r.FilePath != "" {
+	if r.FilePath == "" {
+
+		// b, err := r.Values.YAML()
+		// if err != nil {
+		// 	return "", err
+		// }
+		// r.FilePath = server.GetDefaultServer().AddValueFile(uuid.New().String(), []byte(b))
+
+		tmp, err := ioutil.TempFile(os.TempDir(), "bosun-release-*.yaml")
+		if err != nil {
+			return "", err
+		}
+		defer tmp.Close()
+		err = r.Values.Encode(tmp)
+		if err != nil {
+			return "", err
+		}
+		r.FilePath = tmp.Name()
 		return r.FilePath, nil
 	}
-
-	tmp, err := ioutil.TempFile(os.TempDir(), "bosun-release-*.yaml")
-	if err != nil {
-		return "", err
-	}
-	defer tmp.Close()
-	err = r.Values.Encode(tmp)
-	if err != nil {
-		return "", err
-	}
-	r.FilePath = tmp.Name()
 	return r.FilePath, nil
+
 }
 
 func (r *ReleaseValues) Cleanup() {
@@ -385,8 +390,6 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 	if ctx.Env.AppValues != nil {
 		appValues = append(appValues, *ctx.Env.AppValues)
 	}
-
-
 
 	for _, v := range appValues {
 
@@ -432,6 +435,9 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	if err != nil {
 		return errors.Errorf("create values map for app %q: %s", a.Name, err)
 	}
+
+	valuesYaml, _ := values.Values.YAML()
+	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
 	_, err = values.PersistValues()
 	if err != nil {

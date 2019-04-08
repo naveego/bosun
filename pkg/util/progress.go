@@ -1,4 +1,4 @@
-package cmd
+package util
 
 import (
 	"fmt"
@@ -77,6 +77,14 @@ func (p *ProgressBar) SetWriter(w io.Writer) {
 	p.Lock()
 	defer p.Unlock()
 	p.w = w
+}
+
+// Clear attempts to erase the progress bar.
+func (p *ProgressBar) Clear() error {
+	if f, ok := p.w.(*os.File); ok {
+		return f.Sync()
+	}
+	return nil
 }
 
 // Add with increase the current count on the progress bar
