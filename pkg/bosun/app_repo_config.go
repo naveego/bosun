@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -10,6 +11,7 @@ import (
 type AppRepoConfig struct {
 	Name             string `yaml:"name"`
 	FromPath         string `yaml:"-"`
+	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty"`
 	BranchForRelease bool   `yaml:"branchForRelease,omitempty"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool   `yaml:"contractsOnly,omitempty"`
@@ -34,6 +36,13 @@ type AppRepoConfig struct {
 	// If true, this app repo is only a ref, not a real cloned repo.
 	IsRef bool `yaml:"-"`
 }
+
+type ProjectManagementPlugin struct {
+	Name string `yaml:"name"`
+	ZenHub *zenhub.RepoConfig `yaml:"zenHub,omitempty"`
+}
+
+
 
 type AppImageConfig struct {
 	ImageName string `yaml:"imageName"`
