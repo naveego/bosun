@@ -96,6 +96,8 @@ func (c *Command) prepare() {
 
 	c.cmd = exec.Command(exe, c.Args...)
 
+	c.cmd.Stdin = os.Stdin
+
 	if c.Dir != nil {
 		c.cmd.Dir = *c.Dir
 	}

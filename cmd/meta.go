@@ -148,3 +148,8 @@ var err error
 		return nil
 	},
 })
+
+func init(){
+	rootCmd.AddCommand(metaUpgradeCmd)
+}
+

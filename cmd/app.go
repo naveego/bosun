@@ -16,7 +16,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/aryann/difflib"
 	"github.com/cheynewallace/tabby"
+	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
@@ -671,7 +673,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 			}
 		}
 
-		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", MustYaml(r))
+		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", r.Name)
 
 		err = r.Deploy(ctx)
 
@@ -1089,14 +1091,132 @@ var appCloneCmd = addCommand(
 		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into.")
 	})
 
-func getStandardObjects(args []string) (*bosun.Bosun, *bosun.EnvironmentConfig, []*bosun.AppRepo, bosun.BosunContext) {
-	b := mustGetBosun()
-	env := b.GetCurrentEnvironment()
-	ctx := b.NewContext()
+var appDiffCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:           "diff {app} [release/]{env} [release]/{env}",
+		Short:         "Reports the differences between the values for an app in two scenarios.",
+		Long: `If the release part of the scenario is not provided, a transient release will be created and used instead.`,
+		Example: `This command will show the differences between the values deployed 
+to the blue environment in release 2.4.2 and the current values for the
+green environment:
 
-	apps, err := getAppRepos(b, args)
-	if err != nil {
-		panic(err)
+diff go-between 2.4.2/blue green
+`,
+		Args:cobra.ExactArgs(3),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			b := mustGetBosun()
+			app := mustGetApp(b, []string{args[0]})
+
+			env1 := args[1]
+			env2 := args[2]
+
+			getValuesForEnv := func(scenario string) (string, error){
+
+
+
+				segs := strings.Split(scenario, "/")
+				var releaseName, envName string
+				var appRelease *bosun.AppRelease
+				switch len(segs) {
+				case 1:
+					envName = segs[0]
+				case 2:
+					releaseName = segs[0]
+					envName = segs[1]
+				default:
+					return "", errors.Errorf("invalid scenario %q", scenario)
+				}
+
+				env, err := b.GetEnvironment(envName)
+				if err != nil {
+					return "", errors.Wrap(err, "environment")
+				}
+				ctx := b.NewContext().WithEnv(env)
+
+				if releaseName != "" {
+					releaseConfig, err := b.GetReleaseConfig(releaseName)
+					release, err := bosun.NewRelease(ctx, releaseConfig)
+					if err != nil {
+						return "", err
+					}
+					appReleaseConfig, ok := release.AppReleaseConfigs[app.Name]
+					if !ok {
+						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
+					}
+					ctx = ctx.WithRelease(release)
+					appRelease, err = bosun.NewAppRelease(ctx, appReleaseConfig)
+					if err != nil {
+						return "", err
+					}
+				} else {
+					rc := &bosun.ReleaseConfig{
+						Name: time.Now().Format(time.RFC3339),
+					}
+					r, err := bosun.NewRelease(ctx, rc)
+					if err != nil {
+						return "", err
+					}
+					r.Transient = true
+					ctx = ctx.WithRelease(r)
+					config, err := app.GetAppReleaseConfig(ctx)
+					if err != nil {
+						return "", errors.Wrap(err, "make app release config")
+					}
+
+					appRelease, err = bosun.NewAppRelease(ctx, config)
+					if err != nil {
+						return "", errors.Wrap(err, "make app release")
+					}
+				}
+
+				values, err := appRelease.GetReleaseValues(ctx)
+				if err != nil {
+					return "", errors.Wrap(err, "get release values")
+				}
+				
+				valueYaml, err := values.Values.YAML()
+				if err != nil {
+					return "", errors.Wrap(err, "get release values yaml")
+				}
+				
+				return valueYaml, nil
+			}
+
+
+			env1yaml, err := getValuesForEnv(env1)
+			if err != nil {
+				return errors.Errorf("error for env1 %q: %s", env1, err)
+			} 
+			
+			env2yaml, err := getValuesForEnv(env2)
+			if err != nil {
+				return errors.Errorf("error for env2 %q: %s", env2, err)
+			}
+			
+			env1lines := strings.Split(env1yaml, "\n")
+			env2lines := strings.Split(env2yaml, "\n")
+			diffs := difflib.Diff(env1lines, env2lines)
+			
+			for _, diff := range diffs {
+				fmt.Println(renderDiff(diff))
+			}
+
+			return nil
+
+		},
+	})
+
+func renderDiff(diff difflib.DiffRecord) string {
+	switch diff.Delta {
+	case difflib.Common:
+		return fmt.Sprintf("  %s", diff.Payload)
+	case difflib.LeftOnly:
+		return color.RedString("- %s", diff.Payload)
+	case difflib.RightOnly:
+		return color.GreenString("+ %s", diff.Payload)
 	}
-	return b, env, apps, ctx
+	panic(fmt.Sprintf("invalid delta %v", diff.Delta))
 }

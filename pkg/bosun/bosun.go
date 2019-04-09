@@ -397,17 +397,20 @@ func (b *Bosun) GetReleaseConfigs() []*ReleaseConfig {
 	return releases
 }
 
-func (b *Bosun) UseRelease(name string) error {
-	var rc *ReleaseConfig
-	var err error
-	for _, rc = range b.file.Releases {
-		if rc.Name == name {
-			logrus.Debugf("found release")
-			break
+func (b *Bosun) GetReleaseConfig(name string) (*ReleaseConfig, error) {
+	for _, r := range b.file.Releases {
+		if r.Name == name {
+			return r, nil
 		}
 	}
-	if rc == nil {
-		return errors.Errorf("no release with name %q", name)
+	return nil, errors.Errorf("no release with name %q", name)
+}
+
+func (b *Bosun) UseRelease(name string) error {
+
+	rc, err := b.GetReleaseConfig(name)
+	if err != nil {
+		return err
 	}
 
 	b.release, err = NewRelease(b.NewContext(), rc)
@@ -537,4 +540,8 @@ func (b *Bosun) ConfirmEnvironment() error {
 	}
 
 	return errors.Errorf("The %q environment is protected, so you must confirm that you want to perform this action.\n(you can do this by setting the --confirm-env to the name of the environment)", b.env.Name)
+}
+
+func (b *Bosun) GetTools() []ToolDef {
+	return b.ws.MergedBosunFile.Tools
 }

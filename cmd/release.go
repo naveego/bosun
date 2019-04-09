@@ -7,6 +7,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -405,7 +406,7 @@ func validateRelease(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Rele
 	hasErrors := false
 
 	apps := release.AppReleases.GetAppsSortedByName()
-	p := NewProgressBar(len(apps))
+	p := util.NewProgressBar(len(apps))
 
 	for _, app := range apps {
 		if app.Excluded {
@@ -528,7 +529,7 @@ func processAppReleases(b *bosun.Bosun, ctx bosun.BosunContext, appReleases []*b
 			included = append(included, ar)
 		}
 	}
-	p := NewProgressBar(len(included))
+	p := util.NewProgressBar(len(included))
 
 	for _, appRelease := range included {
 		p.Add(1, appRelease.Name)

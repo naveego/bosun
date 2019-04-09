@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"crypto/tls"
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -105,16 +106,18 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 		if attempts == 0 {
 			return err
 		}
-
-		ctx.Log.WithField("wait", interval).Info("Waiting before trying again.")
-		select {
-		case <-ctx.Ctx().Done():
-			return nil
-		case <-time.After(interval):
+		seconds := int(interval.Seconds())
+		fmt.Printf("\rWaiting: %d", seconds)
+		for ; seconds >= 0; seconds = seconds - 1 {
+			select {
+			case <-ctx.Ctx().Done():
+				return nil
+			case <-time.After(time.Second):
+				fmt.Printf("\rWaiting: %d", seconds - 1)
+			}
 		}
+		fmt.Printf("\r")
 	}
-
-	return nil
 }
 
 func (a *AppAction) execute(ctx BosunContext) error {
@@ -215,7 +218,15 @@ func (a *AppAction) executeTest(ctx BosunContext) error {
 		if err != nil {
 			return err
 		}
-		resp.Body.Close()
+		body, _ := ioutil.ReadAll(resp.Body)
+		err = resp.Body.Close()
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 400 {
+			return errors.Errorf("got non-success code %d - %s: %s", resp.StatusCode, resp.Status, string(body))
+		}
+
 		return nil
 	}
 
