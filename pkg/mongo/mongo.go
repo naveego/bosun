@@ -40,32 +40,38 @@ type IndexInfo struct {
 // running inside a kubernetes cluster using the `port-forward` command, as well as
 // credential support using vault.
 type Connection struct {
-	DBName      string
-	Host        string
-	Port        string
-	KubePort    KubePortForward
-	Credentials CredentialProvider
+	DBName      string `yaml:"dbName"`
+	Host        string `yaml:"host"`
+	Port        string `yaml:"port"`
+	KubePort    KubePortForward `yaml:"kubePort"`
+	Credentials CredentialProvider `yaml:"credentials"`
 }
 
 // CredentialProvider defines how the connection should obtain its credentials
 type CredentialProvider struct {
-	Type       string
-	Username   string
-	Password   string
-	VaultPath  string
-	AuthSource string
+	Type       string `yaml:"type"`
+	Username   string `yaml:"username,omitempty"`
+	Password   string `yaml:"password,omitempty"`
+	VaultPath  string`yaml:"vaultPath,omitempty"`
+	AuthSource string `yaml:"authSource,omitempty"`
 }
 
 // KubePortForward defines whether or not we need to tunnel into Kuberetes, and what port to use.
 type KubePortForward struct {
-	Forward     bool
-	ServiceName string
-	Port        int
+	Forward     bool   `yaml:"forward"`
+	ServiceName string `yaml:"serviceName"`
+	Port        int `yaml:"port"`
 }
 
-// ImportDatabase imports a collection into a database
-func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool) error {
-	wrapper, dispose, err := getMongoWrapper(dataDir, conn)
+type MongoImportCommand struct {
+	Conn Connection
+	DB Database
+	DataDir string
+	RebuildDB bool
+}
+
+func (c MongoImportCommand) Execute() error {
+	wrapper, dispose, err := getMongoWrapper(c.DataDir, c.Conn)
 	if err != nil {
 		return fmt.Errorf("error connecting to mongo: %v", err)
 	}
@@ -73,10 +79,10 @@ func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool
 		defer dispose()
 	}
 
-	for colName, col := range db.Collections {
+	for colName, col := range c.DB.Collections {
 		// if we are forcing a rebuild of the database
 		// then we need to set the Drop flag.
-		if rebuildDb {
+		if c.RebuildDB {
 			col.Drop = true
 		}
 
@@ -87,6 +93,19 @@ func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool
 	}
 
 	return nil
+}
+
+
+// ImportDatabase imports a collection into a database
+func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool) error {
+	cmd := MongoImportCommand{
+		Conn:conn,
+		DB: db,
+		DataDir:dataDir,
+		RebuildDB:rebuildDb,
+	}
+
+	return cmd.Execute()
 }
 
 func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, error) {

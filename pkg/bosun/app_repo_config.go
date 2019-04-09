@@ -9,10 +9,10 @@ import (
 )
 
 type AppRepoConfig struct {
-	Name             string `yaml:"name"`
-	FromPath         string `yaml:"-"`
+	Name                    string                   `yaml:"name"`
+	FromPath                string                   `yaml:"-"`
 	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty"`
-	BranchForRelease bool   `yaml:"branchForRelease,omitempty"`
+	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool   `yaml:"contractsOnly,omitempty"`
 	ReportDeployment bool   `yaml:"reportDeployment,omitempty"`
@@ -26,7 +26,7 @@ type AppRepoConfig struct {
 	ChartPath     string                 `yaml:"chartPath,omitempty"`
 	RunCommand    []string               `yaml:"runCommand,omitempty,flow"`
 	DependsOn     []Dependency           `yaml:"dependsOn,omitempty"`
-	AppLabels     Labels               `yaml:"labels,omitempty"`
+	AppLabels     Labels                 `yaml:"labels,omitempty"`
 	Minikube      *AppMinikubeConfig     `yaml:"minikube,omitempty"`
 	Images        []AppImageConfig       `yaml:"images"`
 	Values        AppValuesByEnvironment `yaml:"values,omitempty"`
@@ -38,16 +38,14 @@ type AppRepoConfig struct {
 }
 
 type ProjectManagementPlugin struct {
-	Name string `yaml:"name"`
+	Name   string             `yaml:"name"`
 	ZenHub *zenhub.RepoConfig `yaml:"zenHub,omitempty"`
 }
 
-
-
 type AppImageConfig struct {
-	ImageName string `yaml:"imageName"`
+	ImageName   string `yaml:"imageName"`
 	ProjectName string `yaml:"projectName,omitempty"`
-	Dockerfile string `yaml:"dockerfile,omitempty"`
+	Dockerfile  string `yaml:"dockerfile,omitempty"`
 	ContextPath string `yaml:"contextPath,omitempty"`
 }
 
@@ -263,11 +261,15 @@ func (a *AppRepo) ExportActions(ctx BosunContext) ([]*AppAction, error) {
 	var err error
 	var actions []*AppAction
 	for _, action := range a.Actions {
-		err = action.MakeSelfContained(ctx)
-		if err != nil {
-			return nil, errors.Errorf("prepare action %q for release: %s", action.Name, err)
+		if action.When == ActionManual {
+			ctx.Log.Infof("Skipping action %q because it is marked as manual.", action.Name)
+		} else {
+			err = action.MakeSelfContained(ctx)
+			if err != nil {
+				return nil, errors.Errorf("prepare action %q for release: %s", action.Name, err)
+			}
+			actions = append(actions, action)
 		}
-		actions = append(actions, action)
 	}
 
 	return actions, nil

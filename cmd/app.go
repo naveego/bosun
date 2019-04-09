@@ -70,8 +70,6 @@ func init() {
 	appDeleteCmd.Flags().Bool(ArgAppDeletePurge, false, "Purge the release from the cluster.")
 	appCmd.AddCommand(appDeleteCmd)
 
-	appCmd.AddCommand(appListCmd)
-
 	appCmd.AddCommand(appBumpCmd)
 
 	appCmd.AddCommand(appRunCmd)
@@ -366,47 +364,7 @@ var appAcceptActualCmd = &cobra.Command{
 	},
 }
 
-var appListCmd = &cobra.Command{
-	Use:          "list",
-	Aliases:      []string{"ls"},
-	Short:        "Lists the static config of all known apps.",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		viper.BindPFlags(cmd.Flags())
-		viper.SetDefault(ArgAppAll, true)
 
-		b := mustGetBosun()
-		apps, err := getAppRepos(b, args)
-		if err != nil {
-			return err
-		}
-
-		t := tabby.New()
-		t.AddHeader("APP", "CLONED", "VERSION", "PATH or REPO", "BRANCH", "IMPORTED BY")
-		for _, app := range apps {
-			var check, pathrepo, branch, version, importedBy string
-
-			if app.IsRepoCloned() {
-				check = "✔"
-				pathrepo = app.FromPath
-				branch = app.GetBranch()
-				version = app.Version
-			} else {
-				check = ""
-				pathrepo = app.Repo
-				branch = ""
-				version = app.Version
-				importedBy = app.FromPath
-			}
-
-			t.AddLine(app.Name, check, version, pathrepo, branch, importedBy)
-		}
-
-		t.Print()
-
-		return nil
-	},
-}
 
 var appStatusCmd = &cobra.Command{
 	Use:          "status [name...]",
@@ -1017,6 +975,65 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().IntSliceVar(&scriptStepsSlice, ArgScriptSteps, []int{}, "Steps to run (defaults to all steps)")
+})
+
+var appActionCmd = addCommand(appCmd, &cobra.Command{
+	Use:          "action [app] {name}",
+	Args:         cobra.RangeArgs(1, 2),
+	Aliases:      []string{"actions", "run"},
+	Short:        "Run an action associated with an app.",
+	Long:         `If app is not provided, the current directory is used.`,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		b := mustGetBosun()
+
+		if err := b.ConfirmEnvironment(); err != nil {
+			return err
+		}
+
+		var app *bosun.AppRepo
+		var actionName string
+		switch len(args) {
+		case 1:
+			app = mustGetApp(b, []string{})
+			actionName = args[0]
+		case 2:
+			app = mustGetApp(b, args[:1])
+			actionName = args[1]
+		}
+
+		var action *bosun.AppAction
+		var actionNames []string
+		for _, s := range app.Actions {
+			actionNames = append(actionNames, action.Name)
+			if strings.EqualFold(s.Name, actionName) {
+				action = s
+				break
+			}
+		}
+		if action == nil {
+			return errors.Errorf("no action named %q in app %q\navailable actions:\n-%s", actionName, app.Name, strings.Join(actionNames, "\n-"))
+		}
+
+		ctx := b.NewContext()
+
+		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
+		if err != nil {
+			return err
+		}
+
+		values, err := appRelease.GetReleaseValues(ctx)
+		if err != nil {
+			return err
+		}
+		ctx = ctx.WithReleaseValues(values)
+
+		err = action.Execute(ctx)
+
+		return err
+	},
 })
 
 var appCloneCmd = addCommand(
