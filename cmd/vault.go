@@ -235,7 +235,7 @@ var vaultJWTCmd = &cobra.Command{
 		tenant:=viper.GetString(ArgVaultJWTTenant)
 		sub:=viper.GetString(ArgVaultJWTSub)
 		claimsStrings:=viper.GetStringSlice(ArgVaultJWTClaims)
-		 claims := map[string]string{
+		 claims := map[string]interface{}{
 		 	"tid":tenant,
 		 	"sub":sub,
 		 }
@@ -248,6 +248,8 @@ var vaultJWTCmd = &cobra.Command{
 			}
 		 }
 		 ttl := viper.GetDuration(ArgVaultJWTTTL)
+		 exp := time.Now().Add(ttl).Unix()
+		 claims["exp"] = exp
 
 		req := map[string]interface{}{
 			"claims": claims,

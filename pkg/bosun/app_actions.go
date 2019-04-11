@@ -200,6 +200,8 @@ func (a *VaultAction) Execute(ctx BosunContext) error {
 }
 
 func (a *VaultAction) MakeSelfContained(ctx BosunContext) error {
+	if a.File != "" {
+
 	path := ctx.ResolvePath(a.File)
 	layoutBytes, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -207,6 +209,8 @@ func (a *VaultAction) MakeSelfContained(ctx BosunContext) error {
 	}
 	a.File = ""
 	a.Literal = string(layoutBytes)
+	}
+
 	return nil
 }
 
