@@ -12,22 +12,22 @@ import (
 )
 
 type ToolDef struct {
-	FromPath string `yaml:"-"`
-	Name string `yaml:"name"`
-	Description string `yaml:"description"`
-	URL string `yaml:"url,omitempty"`
-	Cmd map[string]string `yaml:"cmd,omitempty"`
-	Installer map[string]Installer `yaml:"installer,omitempty"`
+	FromPath string `yaml:"-" json:"-"`
+	Name string `yaml:"name" json:"name"`
+	Description string `yaml:"description" json:"description"`
+	URL string `yaml:"url,omitempty" json:"url,omitempty"`
+	Cmd map[string]string `yaml:"cmd,omitempty" json:"cmd,omitempty"`
+	Installer map[string]Installer `yaml:"installer,omitempty" json:"installer,omitempty"`
 }
 
 type Installer struct {
-	Script string `yaml:"script,omitempty"`
-	Getter *GetterConfig `yaml:"getter,omitempty"`
+	Script string `yaml:"script,omitempty" json:"script,omitempty"`
+	Getter *GetterConfig `yaml:"getter,omitempty" json:"getter,omitempty"`
 }
 
 type GetterConfig struct {
-	URL string `yaml:"url"`
-	Mappings map[string]string `yaml:"mappings"`
+	URL string `yaml:"url" json:"url"`
+	Mappings map[string]string `yaml:"mappings" json:"mappings"`
 }
 
 func (t ToolDef) GetExecutable() (string, error) {

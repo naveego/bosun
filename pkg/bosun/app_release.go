@@ -29,24 +29,24 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 }
 
 type AppReleaseConfig struct {
-	Name             string       `yaml:"name"`
-	Namespace        string       `yaml:"namespace"`
-	Repo             string       `yaml:"repo"`
-	Branch           string       `yaml:"branch"`
-	Commit           string       `yaml:"commit"`
-	Version          string       `yaml:"version"`
-	SyncedAt         time.Time    `yaml:"syncedAt"`
-	Chart            string       `yaml:"chart"`
-	ImageNames       []string     `yaml:"images,omitempty"`
-	ImageTag         string       `yaml:"imageTag,omitempty"`
-	ReportDeployment bool         `yaml:"reportDeployment"`
-	DependsOn        []string     `yaml:"dependsOn"`
-	Actions          []*AppAction `yaml:"actions"`
+	Name             string       `yaml:"name" json:"name"`
+	Namespace        string       `yaml:"namespace" json:"namespace"`
+	Repo             string       `yaml:"repo" json:"repo"`
+	Branch           string       `yaml:"branch" json:"branch"`
+	Commit           string       `yaml:"commit" json:"commit"`
+	Version          string       `yaml:"version" json:"version"`
+	SyncedAt         time.Time    `yaml:"syncedAt" json:"syncedAt"`
+	Chart            string       `yaml:"chart" json:"chart"`
+	ImageNames       []string     `yaml:"images,omitempty" json:"images,omitempty"`
+	ImageTag         string       `yaml:"imageTag,omitempty" json:"imageTag,omitempty"`
+	ReportDeployment bool         `yaml:"reportDeployment" json:"reportDeployment"`
+	DependsOn        []string     `yaml:"dependsOn" json:"dependsOn"`
+	Actions          []*AppAction `yaml:"actions" json:"actions"`
 	// Values copied from app repo.
-	Values AppValuesByEnvironment `yaml:"values"`
+	Values AppValuesByEnvironment `yaml:"values" json:"values"`
 	// Values manually added to this release.
-	ValueOverrides AppValuesByEnvironment `yaml:"valueOverrides"`
-	ParentConfig   *ReleaseConfig         `yaml:"-"`
+	ValueOverrides AppValuesByEnvironment `yaml:"valueOverrides" json:"valueOverrides"`
+	ParentConfig   *ReleaseConfig         `yaml:"-" json:"-"`
 }
 
 func (r *AppReleaseConfig) SetParent(config *ReleaseConfig) {
@@ -55,8 +55,8 @@ func (r *AppReleaseConfig) SetParent(config *ReleaseConfig) {
 
 type AppRelease struct {
 	*AppReleaseConfig
-	AppRepo      *AppRepo `yaml:"-"`
-	Excluded     bool     `yaml:"-"`
+	AppRepo      *AppRepo `yaml:"-" json:"-"`
+	Excluded     bool     `yaml:"-" json:"-"`
 	ActualState  AppState
 	DesiredState AppState
 	helmRelease  *HelmRelease
@@ -160,16 +160,16 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 }
 
 type HelmReleaseResult struct {
-	Releases []*HelmRelease `yaml:"Releases"`
+	Releases []*HelmRelease `yaml:"Releases" json:"Releases"`
 }
 type HelmRelease struct {
-	Name       string `yaml:"Name"`
-	Revision   string `yaml:"Revision"`
-	Updated    string `yaml:"Updated"`
-	Status     string `yaml:"Status"`
-	Chart      string `yaml:"Chart"`
-	AppVersion string `yaml:"AppVersion"`
-	Namespace  string `yaml:"Namespace"`
+	Name       string `yaml:"Name" json:"Name"`
+	Revision   string `yaml:"Revision" json:"Revision"`
+	Updated    string `yaml:"Updated" json:"Updated"`
+	Status     string `yaml:"Status" json:"Status"`
+	Chart      string `yaml:"Chart" json:"Chart"`
+	AppVersion string `yaml:"AppVersion" json:"AppVersion"`
+	Namespace  string `yaml:"Namespace" json:"Namespace"`
 }
 
 func (a *AppRelease) GetHelmRelease(name string) (*HelmRelease, error) {

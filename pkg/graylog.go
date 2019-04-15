@@ -11,9 +11,9 @@ import (
 type GraylogConfig struct {
 	Username  string
 	Password  string
-	ApiOrigin string `yaml:"apiOrigin"`
+	ApiOrigin string `yaml:"apiOrigin" json:"apiOrigin"`
 	Inputs    []GraylogInput
-	DryRun    bool `yaml:"dryRun"`
+	DryRun    bool `yaml:"dryRun" json:"dryRun"`
 	client    *sling.Sling
 }
 

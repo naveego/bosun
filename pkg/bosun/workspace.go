@@ -10,18 +10,18 @@ import (
 const logConfigs = true
 
 type Workspace struct {
-	Path               string                 `yaml:"-"`
-	CurrentEnvironment string                 `yaml:"currentEnvironment"`
-	Imports            []string               `yaml:"imports,omitempty"`
-	GitRoots           []string               `yaml:"gitRoots"`
-	Release            string                 `yaml:"release"`
-	HostIPInMinikube   string                 `yaml:"hostIPInMinikube"`
-	AppStates          AppStatesByEnvironment `yaml:"appStates"`
-	ClonePaths         map[string]string      `yaml:"clonePaths"`
-	MergedBosunFile    *File                  `yaml:"-"`
-	ImportedBosunFiles map[string]*File       `yaml:"-"`
-	GithubToken        *CommandValue          `yaml:"githubToken"`
-	Minikube           MinikubeConfig         `yaml:"minikube"`
+	Path               string                 `yaml:"-" json:"-"`
+	CurrentEnvironment string                 `yaml:"currentEnvironment" json:"currentEnvironment"`
+	Imports            []string               `yaml:"imports,omitempty" json:"imports"`
+	GitRoots           []string               `yaml:"gitRoots" json:"gitRoots"`
+	Release            string                 `yaml:"release" json:"release"`
+	HostIPInMinikube   string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
+	AppStates          AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
+	ClonePaths         map[string]string      `yaml:"clonePaths" json:"clonePaths"`
+	MergedBosunFile    *File                  `yaml:"-" json:"merged"`
+	ImportedBosunFiles map[string]*File       `yaml:"-" json:"imported"`
+	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
+	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
 }
 
 func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -46,8 +46,8 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type MinikubeConfig struct {
-	HostIP string `yaml:"hostIP"`
-	Driver string `yaml:"driver"`
+	HostIP string `yaml:"hostIP" json:"hostIP"`
+	Driver string `yaml:"driver" json:"driver"`
 }
 
 type State struct {

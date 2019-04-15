@@ -12,14 +12,14 @@ import (
 )
 
 type ReleaseConfig struct {
-	Name              string                       `yaml:"name"`
-	Version           string                       `yaml:"version"`
-	Description       string                       `yaml:"description"`
-	FromPath          string                       `yaml:"fromPath"`
-	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps"`
-	Exclude           map[string]bool              `yaml:"exclude,omitempty"`
-	IsPatch           bool                         `yaml:"isPatch,omitempty"`
-	Parent            *File                        `yaml:"-"`
+	Name              string                       `yaml:"name" json:"name"`
+	Version           string                       `yaml:"version" json:"version"`
+	Description       string                       `yaml:"description" json:"description"`
+	FromPath          string                       `yaml:"fromPath" json:"fromPath"`
+	AppReleaseConfigs map[string]*AppReleaseConfig `yaml:"apps" json:"apps"`
+	Exclude           map[string]bool              `yaml:"exclude,omitempty" json:"exclude,omitempty"`
+	IsPatch           bool                         `yaml:"isPatch,omitempty" json:"isPatch,omitempty"`
+	Parent            *File                        `yaml:"-" json:"-"`
 }
 
 func (r *ReleaseConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {

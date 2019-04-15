@@ -11,11 +11,11 @@ import (
 )
 
 type Command struct {
-	Command  []string            `yaml:"command,omitempty,flow"`
-	Script   string              `yaml:"script,omitempty"`
-	OS       map[string]*Command `yaml:"os,omitempty"`
+	Command  []string            `yaml:"command,omitempty,flow" json:"command,omitempty,flow"`
+	Script   string              `yaml:"script,omitempty" json:"script,omitempty"`
+	OS       map[string]*Command `yaml:"os,omitempty" json:"os,omitempty"`
 	// List of tools required for this command to succeed.
-	Tools []string `yaml:"tools,omitempty"`
+	Tools []string `yaml:"tools,omitempty" json:"tools,omitempty"`
 	resolved bool
 }
 

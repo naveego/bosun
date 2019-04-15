@@ -13,7 +13,7 @@ import (
 )
 
 type container struct {
-	DV *CommandValue `yaml:"dv"`
+	DV *CommandValue `yaml:"dv" json:"dv"`
 }
 
 var _ = Describe("CommandValue", func() {

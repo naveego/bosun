@@ -1,7 +1,7 @@
 package zenhub
 
 type RepoConfig struct {
-	ID int `yaml:"id"`
+	ID int `yaml:"id" json:"id"`
 }
 
 // Repository represents a github repository.

@@ -9,33 +9,40 @@ import (
 )
 
 type EnvironmentConfig struct {
-	FromPath string `yaml:"-"`
-	Name     string `yaml:"name"`
-	Cluster  string `yaml:"cluster"`
-	Domain   string `yaml:"domain"`
+	FromPath string `yaml:"-" json:"-"`
+	Name     string `yaml:"name" json:"name"`
+	Cluster  string `yaml:"cluster" json:"cluster"`
+	Domain   string `yaml:"domain" json:"domain"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
-	Protected bool                   `yaml:"protected"`
-	IsLocal   bool                   `yaml:"isLocal"`
-	Commands  []*EnvironmentCommand  `yaml:"commands,omitempty"`
-	Variables []*EnvironmentVariable `yaml:"variables,omitempty"`
-	Scripts   []*Script              `yaml:"scripts,omitempty"`
+	Protected bool                   `yaml:"protected" json:"protected"`
+	IsLocal   bool                   `yaml:"isLocal" json:"isLocal"`
+	Commands  []*EnvironmentCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Variables []*EnvironmentVariable `yaml:"variables,omitempty" json:"variables,omitempty"`
+	Scripts   []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues *AppValuesConfig `yaml:"appValues"`
+	AppValues *AppValuesConfig `yaml:"appValues" json:"appValues"`
+	HelmRepos []HelmRepo `yaml:"helmRepos,omitempty" json:"helmRepos,omitempty"`
 }
 
 type EnvironmentVariable struct {
-	FromPath string        `yaml:"fromPath,omitempty"`
-	Name     string        `yaml:"name"`
-	From     *CommandValue `yaml:"from"`
-	Value    string        `yaml:"-"`
+	FromPath string        `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
+	Name     string        `yaml:"name" json:"name"`
+	From     *CommandValue `yaml:"from" json:"from"`
+	Value    string        `yaml:"-" json:"-"`
 }
 
 type EnvironmentCommand struct {
-	FromPath string        `yaml:"fromPath,omitempty"`
-	Name     string        `yaml:"name"`
-	Exec     *CommandValue `yaml:"exec,omitempty"`
+	FromPath string        `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
+	Name     string        `yaml:"name" json:"name"`
+	Exec     *CommandValue `yaml:"exec,omitempty" json:"exec,omitempty"`
+}
+
+type HelmRepo struct {
+	Name string `yaml:"name" json:"name"`
+	URL string `yaml:"url" json:"url"`
+	Environment map[string]string `yaml:"environment" json:"environment"`
 }
 
 func (e *EnvironmentConfig) SetFromPath(path string) {

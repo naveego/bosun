@@ -12,20 +12,20 @@ import (
 )
 
 type Script struct {
-	Name     string       `yaml:"name"`
-	FromPath string       `yaml:"fromPath,omitempty"`
-	Description string    `yaml:"description,omitempty"`
-	Steps    []ScriptStep `yaml:"steps,omitempty"`
-	Literal *Command `yaml:"literal,omitempty"`
+	Name     string       `yaml:"name" json:"name"`
+	FromPath string       `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
+	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
+	Steps    []ScriptStep `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Literal *Command `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
 type ScriptStep struct {
-	Name string                    `yaml:"name,omitempty"`
-	Description string             `yaml:"description,omitempty"`
-	Command string                 `yaml:"command"`
-	Args    []string               `yaml:"args"`
-	Flags   map[string]interface{} `yaml:"flags"`
-	Literal *CommandValue          `yaml:"literal,omitempty"`
+	Name string                    `yaml:"name,omitempty" json:"name,omitempty"`
+	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
+	Command string                 `yaml:"command" json:"command"`
+	Args    []string               `yaml:"args" json:"args"`
+	Flags   map[string]interface{} `yaml:"flags" json:"flags"`
+	Literal *CommandValue          `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
 func (b *Bosun) Execute(s *Script, steps ...int) error {

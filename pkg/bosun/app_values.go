@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -19,6 +20,21 @@ type ErrNoValue error
 
 // Values represents a collection of chart values.
 type Values map[string]interface{}
+
+func (v Values) MarshalJSON() ([]byte, error) {
+
+	proxy := map[string]interface{}{
+		"elided": "values can't be marshaled",
+	}
+	return json.Marshal(proxy)
+	// if v == nil {
+	// 	return json.Marshal(nil)
+	// }
+	// v.cleanUp()
+	// x := map[string]interface{}(v)
+	// return json.Marshal(x)
+}
+
 
 func (v *Values) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	m := map[string]interface{}(*v)

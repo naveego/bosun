@@ -10,16 +10,16 @@ import (
 
 // File represents a loaded bosun.yaml file.
 type File struct {
-	Imports      []string               `yaml:"imports,omitempty"`
-	Environments []*EnvironmentConfig   `yaml:"environments"`
-	AppRefs      map[string]*Dependency `yaml:"appRefs"`
-	Apps         []*AppRepoConfig       `yaml:"apps"`
-	FromPath     string                 `yaml:"fromPath"`
-	Config       *Workspace             `yaml:"-"`
-	Releases     []*ReleaseConfig       `yaml:"releases,omitempty"`
-	Tools        []ToolDef              `yaml:"tools,omitempty"`
+	Imports      []string               `yaml:"imports,omitempty" json:"imports"`
+	Environments []*EnvironmentConfig   `yaml:"environments" json:"environments"`
+	AppRefs      map[string]*Dependency `yaml:"appRefs" json:"appRefs"`
+	Apps         []*AppRepoConfig       `yaml:"apps" json:"apps"`
+	FromPath     string                 `yaml:"fromPath" json:"fromPath"`
+	Config       *Workspace             `yaml:"-" json:"-"`
+	Releases     []*ReleaseConfig       `yaml:"releases,omitempty" json:"releases"`
+	Tools        []ToolDef              `yaml:"tools,omitempty" json:"tools"`
 	// merged indicates that this File has had File instances merged into it and cannot be saved.
-	merged bool `yaml:"-"`
+	merged bool `yaml:"-" json:"-"`
 }
 
 func (c *File) Merge(other *File) error {

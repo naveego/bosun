@@ -116,7 +116,7 @@ func init() {
 	rootCmd.PersistentFlags().MarkHidden("step")
 
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
-	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "table", "Output format. Options are `table` or `yaml`. Only respected by a some commands.")
+	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "yaml", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")

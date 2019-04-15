@@ -15,7 +15,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/oliveagle/jsonpath"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -95,21 +98,28 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 })
 
 var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
-	Use:     "get {path}",
+	Use:     "get {JSONPath}",
 	Args: cobra.ExactArgs(1),
 	Short:   "Gets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
-		v, err := b.GetInWorkspace(args[0])
+		ws := b.GetWorkspace()
+
+		//spew.Dump(ws)
+
+		j, err := json.Marshal(ws)
+		if err != nil {
+			return errors.Wrap(err, "could not marshal workspace")
+		}
+		var jdata interface{}
+		json.Unmarshal(j, &jdata)
+
+		result, err := jsonpath.JsonPathLookup(jdata, args[0])
 		if err != nil {
 			return err
 		}
-		yml, err := yaml.Marshal(v)
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(yml))
-		return nil
+		err = printOutput(result)
+		return err
 	},
 })
 

@@ -22,60 +22,60 @@ import (
 
 // namespace type represents the fields of a namespace
 type namespace struct {
-	Protected            bool   `yaml:"protected"`
-	InstallTiller        bool   `yaml:"installTiller"`
-	UseTiller            bool   `yaml:"useTiller"`
-	TillerServiceAccount string `yaml:"tillerServiceAccount"`
-	CaCert               string `yaml:"caCert"`
-	TillerCert           string `yaml:"tillerCert"`
-	TillerKey            string `yaml:"tillerKey"`
-	ClientCert           string `yaml:"clientCert"`
-	ClientKey            string `yaml:"clientKey"`
+	Protected            bool   `yaml:"protected" json:"protected"`
+	InstallTiller        bool   `yaml:"installTiller" json:"installTiller"`
+	UseTiller            bool   `yaml:"useTiller" json:"useTiller"`
+	TillerServiceAccount string `yaml:"tillerServiceAccount" json:"tillerServiceAccount"`
+	CaCert               string `yaml:"caCert" json:"caCert"`
+	TillerCert           string `yaml:"tillerCert" json:"tillerCert"`
+	TillerKey            string `yaml:"tillerKey" json:"tillerKey"`
+	ClientCert           string `yaml:"clientCert" json:"clientCert"`
+	ClientKey            string `yaml:"clientKey" json:"clientKey"`
 }
 
 // config type represents the settings fields
 type config struct {
-	KubeContext    string `yaml:"kubeContext"`
-	Username       string `yaml:"username"`
-	Password       string `yaml:"password"`
-	ClusterURI     string `yaml:"clusterURI"`
-	ServiceAccount string `yaml:"serviceAccount"`
-	StorageBackend string `yaml:"storageBackend"`
-	SlackWebhook   string `yaml:"slackWebhook"`
-	ReverseDelete  bool   `yaml:"reverseDelete"`
+	KubeContext    string `yaml:"kubeContext" json:"kubeContext"`
+	Username       string `yaml:"username" json:"username"`
+	Password       string `yaml:"password" json:"password"`
+	ClusterURI     string `yaml:"clusterURI" json:"clusterURI"`
+	ServiceAccount string `yaml:"serviceAccount" json:"serviceAccount"`
+	StorageBackend string `yaml:"storageBackend" json:"storageBackend"`
+	SlackWebhook   string `yaml:"slackWebhook" json:"slackWebhook"`
+	ReverseDelete  bool   `yaml:"reverseDelete" json:"reverseDelete"`
 }
 
 // state type represents the desired state of applications on a k8s cluster.
 type state struct {
-	Metadata     map[string]string    `yaml:"metadata"`
-	Certificates map[string]string    `yaml:"certificates"`
-	Settings     config               `yaml:"settings"`
-	Namespaces   map[string]namespace `yaml:"namespaces"`
-	HelmRepos    map[string]string    `yaml:"helmRepos"`
-	Apps         map[string]*release  `yaml:"apps"`
+	Metadata     map[string]string    `yaml:"metadata" json:"metadata"`
+	Certificates map[string]string    `yaml:"certificates" json:"certificates"`
+	Settings     config               `yaml:"settings" json:"settings"`
+	Namespaces   map[string]namespace `yaml:"namespaces" json:"namespaces"`
+	HelmRepos    map[string]string    `yaml:"helmRepos" json:"helmRepos"`
+	Apps         map[string]*release  `yaml:"apps" json:"apps"`
 }
 
 // release type representing Helm releases which are described in the desired state
 type release struct {
-	Name            string   `yaml:"name"`
-	Description     string   `yaml:"description"`
-	Namespace       string   `yaml:"namespace"`
-	Enabled         bool     `yaml:"enabled"`
-	Chart           string   `yaml:"chart"`
-	Version         string   `yaml:"version"`
-	ValuesFile      string   `yaml:"valuesFile"`
-	ValuesFiles     []string `yaml:"valuesFiles"`
-	SecretFile      string   `yaml:"secretsFile"`
-	SecretFiles     []string `yaml:"secretsFiles"`
-	Purge           bool     `yaml:"purge"`
-	Test            bool     `yaml:"test"`
-	Protected       bool     `yaml:"protected"`
-	Wait            bool     `yaml:"wait"`
-	Priority        int      `yaml:"priority"`
-	TillerNamespace string   `yaml:"tillerNamespace"`
+	Name            string   `yaml:"name" json:"name"`
+	Description     string   `yaml:"description" json:"description"`
+	Namespace       string   `yaml:"namespace" json:"namespace"`
+	Enabled         bool     `yaml:"enabled" json:"enabled"`
+	Chart           string   `yaml:"chart" json:"chart"`
+	Version         string   `yaml:"version" json:"version"`
+	ValuesFile      string   `yaml:"valuesFile" json:"valuesFile"`
+	ValuesFiles     []string `yaml:"valuesFiles" json:"valuesFiles"`
+	SecretFile      string   `yaml:"secretsFile" json:"secretsFile"`
+	SecretFiles     []string `yaml:"secretsFiles" json:"secretsFiles"`
+	Purge           bool     `yaml:"purge" json:"purge"`
+	Test            bool     `yaml:"test" json:"test"`
+	Protected       bool     `yaml:"protected" json:"protected"`
+	Wait            bool     `yaml:"wait" json:"wait"`
+	Priority        int      `yaml:"priority" json:"priority"`
+	TillerNamespace string   `yaml:"tillerNamespace" json:"tillerNamespace"`
 	Set             map[string]string
-	SetString       map[string]string `yaml:"setString"`
-	NoHooks         bool              `yaml:"noHooks"`
+	SetString       map[string]string `yaml:"setString" json:"setString"`
+	NoHooks         bool              `yaml:"noHooks" json:"noHooks"`
 	Timeout         int
 }
 

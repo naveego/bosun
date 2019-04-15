@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/cheynewallace/tabby"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
@@ -557,4 +559,66 @@ func passesConditions(app *bosun.AppRepo) bool {
 	}
 
 	return true
+}
+
+func printOutput(out interface{}) error {
+
+	format := strings.ToLower(viper.GetString(ArgGlobalOutput))
+
+	if format == "" {
+		format = "y"
+	}
+	formatKey := format[0:1]
+
+	switch formatKey {
+	case "j":
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	case "y":
+		enc := yaml.NewEncoder(os.Stdout)
+		return enc.Encode(out)
+	case "t":
+		j, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		var mapSlice []map[string]json.RawMessage
+		err = json.Unmarshal(j, &mapSlice)
+		if err != nil {
+			return errors.Wrapf(err, "only slices of structs or maps can be rendered as a table, but got %T", out)
+		}
+		if len(mapSlice) == 0 {
+			return nil
+		}
+
+		first := mapSlice[0]
+		t := tabby.New()
+		var keys []string
+		for k := range first {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		t.AddHeader(keys)
+		for _, m := range mapSlice {
+			var values []string
+
+			for _, k := range keys {
+				if v, ok := m[k]; ok && len(v) > 0{
+					values = append(values, string(v))
+				} else {
+					values = append(values, "")
+				}
+			}
+			t.AddHeader(values)
+		}
+		t.Print()
+
+		return nil
+	default:
+		return errors.Errorf("Unrecognized format %q (valid formats are 'json', 'yaml', and 'table')", format)
+	}
+
+
+
 }

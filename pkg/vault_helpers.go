@@ -30,6 +30,17 @@ type VaultLayout struct {
 	Policies  map[string]interface{}
 }
 
+func (v VaultLayout) MarshalJSON() ([]byte, error) {
+	type proxy VaultLayout
+	p := proxy(v)
+	p.Auth = cleanUpMap(p.Auth).(map[string]map[string]interface{})
+	p.Mounts = cleanUpMap(p.Mounts).(map[string]map[string]interface{})
+	p.Resources = cleanUpMap(p.Resources).(map[string]map[string]interface{})
+	p.Policies = cleanUpMap(p.Policies).(map[string]interface{})
+
+	return json.Marshal(p)
+}
+
 type TemplateValues struct {
 	Cluster string
 	Domain  string
@@ -465,4 +476,28 @@ func CreateWrappedAppRoleToken(vaultClient *api.Client, appRole string) (string,
 	wrappedToken := wrapped.WrapInfo.Token
 
 	return wrappedToken, nil
+}
+
+
+func cleanUpMap(m interface{}) interface{}{
+	switch t := m.(type) {
+	case map[string]interface{}:
+		for k, child := range t {
+			t[k] = cleanUpMap(child)
+		}
+		return t
+	case map[string]map[string]interface{}:
+		for k, child := range t {
+			t[k] = cleanUpMap(child).(map[string]interface{})
+		}
+		return t
+	case map[interface{}]interface{}:
+		out := map[string]interface{}{}
+		for k, child := range t {
+			out[fmt.Sprint(k)] = cleanUpMap(child)
+		}
+		return out
+	default:
+		return m
+	}
 }

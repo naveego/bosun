@@ -44,27 +44,27 @@ type IndexInfo struct {
 // running inside a kubernetes cluster using the `port-forward` command, as well as
 // credential support using vault.
 type Connection struct {
-	DBName      string             `yaml:"dbName"`
-	Host        string             `yaml:"host"`
-	Port        string             `yaml:"port"`
-	KubePort    KubePortForward    `yaml:"kubePort"`
-	Credentials CredentialProvider `yaml:"credentials"`
+	DBName      string             `yaml:"dbName" json:"dbName"`
+	Host        string             `yaml:"host" json:"host"`
+	Port        string             `yaml:"port" json:"port"`
+	KubePort    KubePortForward    `yaml:"kubePort" json:"kubePort"`
+	Credentials CredentialProvider `yaml:"credentials" json:"credentials"`
 }
 
 // CredentialProvider defines how the connection should obtain its credentials
 type CredentialProvider struct {
-	Type       string `yaml:"type"`
-	Username   string `yaml:"username,omitempty"`
-	Password   string `yaml:"password,omitempty"`
-	VaultPath  string `yaml:"vaultPath,omitempty"`
-	AuthSource string `yaml:"authSource,omitempty"`
+	Type       string `yaml:"type" json:"type"`
+	Username   string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password   string `yaml:"password,omitempty" json:"password,omitempty"`
+	VaultPath  string `yaml:"vaultPath,omitempty" json:"vaultPath,omitempty"`
+	AuthSource string `yaml:"authSource,omitempty" json:"authSource,omitempty"`
 }
 
 // KubePortForward defines whether or not we need to tunnel into Kuberetes, and what port to use.
 type KubePortForward struct {
-	Forward     bool   `yaml:"forward"`
-	ServiceName string `yaml:"serviceName"`
-	Port        int    `yaml:"port"`
+	Forward     bool   `yaml:"forward" json:"forward"`
+	ServiceName string `yaml:"serviceName" json:"serviceName"`
+	Port        int    `yaml:"port" json:"port"`
 }
 
 type MongoImportCommand struct {

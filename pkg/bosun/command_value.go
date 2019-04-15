@@ -6,19 +6,19 @@ import (
 )
 
 type CommandValue struct {
-	Value   string `yaml:"value"`
-	Command `yaml:"-"`
-	OS      map[string]*CommandValue `yaml:"os,omitempty"`
+	Value   string `yaml:"value" json:"value"`
+	Command `yaml:"-" json:"-"`
+	OS      map[string]*CommandValue `yaml:"os,omitempty" json:"os,omitempty"`
 
 	resolvedValue string
 }
 
 type commandValueMarshalling struct {
-	Value   string                              `yaml:"value,omitempty"`
-	Command []string                            `yaml:"command,omitempty,flow"`
-	Script  string                              `yaml:"script,omitempty"`
-	OS      map[string]*commandValueMarshalling `yaml:"os,omitempty"`
-	Tools []string `yaml:"tools,omitempty"`
+	Value   string                              `yaml:"value,omitempty" json:"value,omitempty"`
+	Command []string                            `yaml:"command,omitempty,flow" json:"command,omitempty,flow"`
+	Script  string                              `yaml:"script,omitempty" json:"script,omitempty"`
+	OS      map[string]*commandValueMarshalling `yaml:"os,omitempty" json:"os,omitempty"`
+	Tools []string `yaml:"tools,omitempty" json:"tools,omitempty"`
 }
 
 func (c *CommandValue) toMarshalling() *commandValueMarshalling {

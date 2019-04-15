@@ -38,6 +38,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190212144455-93d5ec2c7f76 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dancannon/gorethink v4.0.0+incompatible // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/denisenkom/go-mssqldb v0.0.0-20181014144952-4e0d7dc8888f // indirect
 	github.com/dghubble/sling v1.2.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
@@ -130,6 +131,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/mongodb/mongo-tools v0.0.0-20190110215702-057dfac380db
 	github.com/nicksnyder/go-i18n v1.10.0 // indirect
+	github.com/oliveagle/jsonpath v0.0.0-20180606110733-2e52cf6e6852
 	github.com/onsi/ginkgo v1.7.0
 	github.com/onsi/gomega v1.4.3
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect

@@ -9,44 +9,44 @@ import (
 )
 
 type AppRepoConfig struct {
-	Name                    string                   `yaml:"name"`
-	FromPath                string                   `yaml:"-"`
-	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty"`
-	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty"`
+	Name                    string                   `yaml:"name" json:"name" json:"name" json:"name"`
+	FromPath                string                   `yaml:"-" json:"-"`
+	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty" json:"projectManagementPlugin,omitempty"`
+	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty" json:"branchForRelease,omitempty"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
-	ContractsOnly    bool   `yaml:"contractsOnly,omitempty"`
-	ReportDeployment bool   `yaml:"reportDeployment,omitempty"`
-	Namespace        string `yaml:"namespace,omitempty"`
-	Repo             string `yaml:"repo,omitempty"`
-	HarborProject    string `yaml:"harborProject,omitempty"`
-	Version          string `yaml:"version,omitempty"`
+	ContractsOnly    bool   `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
+	ReportDeployment bool   `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
+	Namespace        string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+	Repo             string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	HarborProject    string `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
+	Version          string `yaml:"version,omitempty" json:"version,omitempty"`
 	// The location of a standard go version file for this app.
-	GoVersionFile string                 `yaml:"goVersionFile,omitempty"`
-	Chart         string                 `yaml:"chart,omitempty"`
-	ChartPath     string                 `yaml:"chartPath,omitempty"`
-	RunCommand    []string               `yaml:"runCommand,omitempty,flow"`
-	DependsOn     []Dependency           `yaml:"dependsOn,omitempty"`
-	AppLabels     Labels                 `yaml:"labels,omitempty"`
-	Minikube      *AppMinikubeConfig     `yaml:"minikube,omitempty"`
-	Images        []AppImageConfig       `yaml:"images"`
-	Values        AppValuesByEnvironment `yaml:"values,omitempty"`
-	Scripts       []*Script              `yaml:"scripts,omitempty"`
-	Actions       []*AppAction           `yaml:"actions,omitempty"`
-	Fragment      *File                  `yaml:"-"`
+	GoVersionFile string                 `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
+	Chart         string                 `yaml:"chart,omitempty" json:"chart,omitempty"`
+	ChartPath     string                 `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
+	RunCommand    []string               `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
+	DependsOn     []Dependency           `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	AppLabels     Labels                 `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Minikube      *AppMinikubeConfig     `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	Images        []AppImageConfig       `yaml:"images" json:"images"`
+	Values        AppValuesByEnvironment `yaml:"values,omitempty" json:"values,omitempty"`
+	Scripts       []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Actions       []*AppAction           `yaml:"actions,omitempty" json:"actions,omitempty"`
+	Fragment      *File                  `yaml:"-" json:"-"`
 	// If true, this app repo is only a ref, not a real cloned repo.
-	IsRef bool `yaml:"-"`
+	IsRef bool `yaml:"-" json:"-"`
 }
 
 type ProjectManagementPlugin struct {
-	Name   string             `yaml:"name"`
-	ZenHub *zenhub.RepoConfig `yaml:"zenHub,omitempty"`
+	Name   string             `yaml:"name" json:"name"`
+	ZenHub *zenhub.RepoConfig `yaml:"zenHub,omitempty" json:"zenHub"`
 }
 
 type AppImageConfig struct {
-	ImageName   string `yaml:"imageName"`
-	ProjectName string `yaml:"projectName,omitempty"`
-	Dockerfile  string `yaml:"dockerfile,omitempty"`
-	ContextPath string `yaml:"contextPath,omitempty"`
+	ImageName   string `yaml:"imageName" json:"imageName,omitempty"`
+	ProjectName string `yaml:"projectName,omitempty" json:"projectName,omitempty"`
+	Dockerfile  string `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
+	ContextPath string `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
 }
 
 func (a AppImageConfig) GetPrefixedName() string {
@@ -56,26 +56,26 @@ func (a AppImageConfig) GetPrefixedName() string {
 type AppMinikubeConfig struct {
 	// The ports which should be made exposed through nodePorts
 	// when running on minikube.
-	Ports []int `yaml:"ports,omitempty"`
+	Ports []int `yaml:"ports,omitempty" json:"ports,omitempty"`
 	// The services which should be replaced when toggling an
 	// app to run on the host.
-	RoutableServices []AppRoutableService `yaml:"routableServices"`
+	RoutableServices []AppRoutableService `yaml:"routableServices" json:"routableServices"`
 }
 
 type AppRoutableService struct {
-	Name     string `yaml:"name"`
-	PortName string `yaml:"portName"`
+	Name     string `yaml:"name" json:"name,omitempty"`
+	PortName string `yaml:"portName" json:"portName,omitempty"`
 	// Deprecated, use localhostPort instead
-	ExternalPort  int `yaml:"externalPort"`
-	LocalhostPort int `yaml:"localhostPort"`
+	ExternalPort  int `yaml:"externalPort" json:"externalPort,omitempty"`
+	LocalhostPort int `yaml:"localhostPort" json:"localhostPort,omitempty"`
 }
 
 type Dependency struct {
-	Name     string   `yaml:"name"`
-	FromPath string   `yaml:"-"`
-	Repo     string   `yaml:"repo,omitempty"`
-	App      *AppRepo `yaml:"-"`
-	Version  string   `yaml:"version,omitempty"`
+	Name     string   `yaml:"name" json:"name,omitempty"`
+	FromPath string   `yaml:"-" json:"fromPath,omitempty"`
+	Repo     string   `yaml:"repo,omitempty" json:"repo,omitempty"`
+	App      *AppRepo `yaml:"-" json:"-"`
+	Version  string   `yaml:"version,omitempty" json:"version,omitempty"`
 }
 
 type Dependencies []Dependency
@@ -85,10 +85,10 @@ func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[
 func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 type AppValuesConfig struct {
-	Set     map[string]*CommandValue `yaml:"set,omitempty"`
-	Dynamic map[string]*CommandValue `yaml:"dynamic,omitempty"`
-	Files   []string                 `yaml:"files,omitempty"`
-	Static  Values                   `yaml:"static"`
+	Set     map[string]*CommandValue `yaml:"set,omitempty" json:"set,omitempty"`
+	Dynamic map[string]*CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
+	Files   []string                 `yaml:"files,omitempty" json:"files,omitempty"`
+	Static  Values                   `yaml:"static" json:"static"`
 }
 
 func (a *AppRepoConfig) SetFragment(fragment *File) {
@@ -282,14 +282,14 @@ type AppStatesByEnvironment map[string]AppStateMap
 type AppStateMap map[string]AppState
 
 type AppState struct {
-	Branch      string `yaml:"branch,omitempty"`
-	Status      string `yaml:"deployment,omitempty"`
-	Routing     string `yaml:"routing,omitempty"`
-	Version     string `yaml:"version,omitempty"`
-	Diff        string `yaml:"-"`
-	Error       error  `yaml:"-"`
-	Force       bool   `yaml:"-"`
-	Unavailable bool   `yaml:"-"`
+	Branch      string `yaml:"branch,omitempty" json:"branch,omitempty"`
+	Status      string `yaml:"deployment,omitempty" json:"deployment,omitempty"`
+	Routing     string `yaml:"routing,omitempty" json:"routing,omitempty"`
+	Version     string `yaml:"version,omitempty" json:"version,omitempty"`
+	Diff        string `yaml:"-" json:"-"`
+	Error       error  `yaml:"-" json:"-"`
+	Force       bool   `yaml:"-" json:"-"`
+	Unavailable bool   `yaml:"-" json:"-"`
 }
 
 func (a AppState) String() string {

@@ -24,18 +24,18 @@ const (
 )
 
 type AppAction struct {
-	Name               string         `yaml:"name"`
-	Description        string         `yaml:"description,omitempty"`
-	When               ActionSchedule `yaml:"when,omitempty"`
-	Where              string         `yaml:"where,omitempty"`
-	MaxAttempts        int            `yaml:"maxAttempts,omitempty"`
-	Timeout            time.Duration  `yaml:"timeout,omitempty"`
-	Interval           time.Duration  `yaml:"interval,omitempty"`
-	Vault              *VaultAction   `yaml:"vault,omitempty"`
-	Script             *ScriptAction  `yaml:"script,omitempty"`
-	Test               *TestAction    `yaml:"test,omitempty"`
-	ExcludeFromRelease bool           `yaml:"excludeFromRelease,omitempty"`
-	FromPath           string         `yaml:"-"`
+	Name               string         `yaml:"name" json:"name"`
+	Description        string         `yaml:"description,omitempty" json:"description,omitempty"`
+	When               ActionSchedule `yaml:"when,omitempty" json:"when,omitempty"`
+	Where              string         `yaml:"where,omitempty" json:"where,omitempty"`
+	MaxAttempts        int            `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
+	Timeout            time.Duration  `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Interval           time.Duration  `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Vault              *VaultAction   `yaml:"vault,omitempty" json:"vault,omitempty"`
+	Script             *ScriptAction  `yaml:"script,omitempty" json:"script,omitempty"`
+	Test               *TestAction    `yaml:"test,omitempty" json:"test,omitempty"`
+	ExcludeFromRelease bool           `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
+	FromPath           string         `yaml:"-" json:"-"`
 }
 
 type Action interface {
@@ -150,9 +150,9 @@ func (a *AppAction) getActions() []Action {
 }
 
 type VaultAction struct {
-	File    string           `yaml:"file,omitempty"`
-	Layout  *pkg.VaultLayout `yaml:"layout,omitempty"`
-	Literal string           `yaml:"literal,omitempty"`
+	File    string           `yaml:"file,omitempty" json:"file,omitempty"`
+	Layout  *pkg.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
+	Literal string           `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
 func (a *VaultAction) Execute(ctx BosunContext) error {
@@ -227,9 +227,9 @@ func (a *ScriptAction) Execute(ctx BosunContext) error {
 }
 
 type TestAction struct {
-	Exec *Command `yaml:"exec,omitempty"`
-	HTTP string   `yaml:"http,omitempty"`
-	TCP  string   `yaml:"tcp,omitempty"`
+	Exec *Command `yaml:"exec,omitempty" json:"exec,omitempty"`
+	HTTP string   `yaml:"http,omitempty" json:"http,omitempty"`
+	TCP  string   `yaml:"tcp,omitempty" json:"tcp,omitempty"`
 }
 
 func (t *TestAction) Execute(ctx BosunContext) error {
@@ -296,6 +296,6 @@ func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
 }
 
 type MongoAction struct {
-	Connection   mongo.Connection `yaml:"connection"`
-	DatabaseFile string           `yaml:"databaseFile"`
+	Connection   mongo.Connection `yaml:"connection" json:"connection"`
+	DatabaseFile string           `yaml:"databaseFile" json:"databaseFile"`
 }
