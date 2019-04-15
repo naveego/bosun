@@ -114,6 +114,28 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 	},
 })
 
+var kubeAddNamespaceCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:   "add-namespace {name}",
+	Args:cobra.ExactArgs(1),
+	Short: "Adds a namespace to your cluster. ",
+	SilenceUsage:true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		name := args[0]
+
+		_, err := pkg.NewCommand( "kubectl", "create", "namespace", name).RunOut()
+		if err != nil {
+			if strings.Contains(err.Error(), "AlreadyExists") {
+				color.Yellow("Namespace %q already exists.", name)
+				return nil
+			}
+			return err
+		}
+
+		return nil
+	},
+})
+
 var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "dashboard",
 	Short: "Opens dashboard for current cluster.",
