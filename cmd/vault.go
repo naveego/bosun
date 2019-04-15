@@ -31,7 +31,7 @@ import (
 // vaultCmd represents the vault command
 var vaultCmd = &cobra.Command{
 	Use:   "vault {vault-layouts...}",
-	Args: cobra.MinimumNArgs(1),
+	Args:  cobra.MinimumNArgs(1),
 	Short: "Updates VaultClient using layout files. Supports --dry-run flag.",
 	Long: `This command has environmental pre-reqs:
 - You must be authenticated to vault (with VAULT_ADDR set and either VAULT_TOKEN set or a ~/.vault-token file created by logging in to vault).
@@ -43,7 +43,7 @@ The vault layout yaml file can use go template syntax for formatting.
 The .Domain and .Cluster values are populated from the flags to this command, or inferred from VAULT_ADDR.
 Any values provided using --values will be in {{ .Values.xxx }}
 `,
-	Example:"vault green-auth.yaml green-kube.yaml green-default.yaml",
+	Example: "vault green-auth.yaml green-kube.yaml green-default.yaml",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -59,15 +59,15 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		}
 
 		templateArgs := pkg.TemplateValues{
-			Cluster:viper.GetString(ArgGlobalCluster),
-			Domain:viper.GetString(ArgGlobalDomain),
-			Values:map[string]interface{}{
-				"cluster":viper.GetString(ArgGlobalCluster),
-				"domain":viper.GetString(ArgGlobalDomain),
+			Cluster: viper.GetString(ArgGlobalCluster),
+			Domain:  viper.GetString(ArgGlobalDomain),
+			Values: map[string]interface{}{
+				"cluster": viper.GetString(ArgGlobalCluster),
+				"domain":  viper.GetString(ArgGlobalDomain),
 			},
 		}
 
-		for _, kv := range viper.GetStringSlice(ArgGlobalValues){
+		for _, kv := range viper.GetStringSlice(ArgGlobalValues) {
 			segs := strings.Split(kv, "=")
 			if len(segs) != 2 {
 				return errors.Errorf("invalid values flag value: %q (should be key=value)", kv)
@@ -106,7 +106,7 @@ If Vault has not been initialized, this will initialize it and store the keys in
 If Vault is initialized, but sealed, this will unseal it using the keys stored in Kubernetes.
 Otherwise, this will do nothing.
 `,
-	Example:"vault bootstrap-dev",
+	Example: "vault bootstrap-dev",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -122,7 +122,7 @@ Otherwise, this will do nothing.
 		}
 
 		initializer := pkg.VaultInitializer{
-			Client:vaultClient,
+			Client: vaultClient,
 		}
 
 		err = initializer.InitNonProd()
@@ -132,11 +132,11 @@ Otherwise, this will do nothing.
 }
 
 var vaultUnsealCmd = &cobra.Command{
-	Use:   "unseal {path/to/keys}",
-	Args: cobra.ExactArgs(1),
-	Short: "Unseals vault using the keys at the provided path, if it exists. Intended to be run from within kubernetes, with the shard secret mounted.",
-	SilenceErrors:true,
-	SilenceUsage:true,
+	Use:           "unseal {path/to/keys}",
+	Args:          cobra.ExactArgs(1),
+	Short:         "Unseals vault using the keys at the provided path, if it exists. Intended to be run from within kubernetes, with the shard secret mounted.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -152,7 +152,7 @@ var vaultUnsealCmd = &cobra.Command{
 		}
 
 		initializer := pkg.VaultInitializer{
-			Client:vaultClient,
+			Client: vaultClient,
 		}
 
 		err = initializer.Unseal(args[0])
@@ -162,11 +162,11 @@ var vaultUnsealCmd = &cobra.Command{
 }
 
 var vaultSecretCmd = &cobra.Command{
-	Use:   "secret {path} [key]",
-	Args: cobra.RangeArgs(1,2),
-	Short: "Gets a secret value from vault, optionally populating the value if not found.",
-	SilenceErrors:true,
-	SilenceUsage:true,
+	Use:           "secret {path} [key]",
+	Args:          cobra.RangeArgs(1, 2),
+	Short:         "Gets a secret value from vault, optionally populating the value if not found.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
@@ -183,18 +183,17 @@ var vaultSecretCmd = &cobra.Command{
 			key = args[1]
 		}
 
-
 		defaultValue := viper.GetString(ArgVaultSecretDefault)
 		if viper.GetBool(ArgVaultSecretGenerate) {
 			defaultValue = strings.Replace(uuid.New().String(), "-", "", -1)
 		}
 
 		action := pkg.GetOrUpdateVaultSecretAction{
-			Client: vaultClient,
-			Path: path,
-			Key: key,
-			Replace: viper.GetBool(ArgVaultSecretOverwrite),
-			DefaultValue:defaultValue,
+			Client:       vaultClient,
+			Path:         path,
+			Key:          key,
+			Replace:      viper.GetBool(ArgVaultSecretOverwrite),
+			DefaultValue: defaultValue,
 		}
 
 		p, err := action.Execute()
@@ -209,12 +208,11 @@ var vaultSecretCmd = &cobra.Command{
 	},
 }
 
-
 var vaultJWTCmd = &cobra.Command{
-	Use:   "jwt",
-	Short: "Creates a JWT.",
-	Long: ``,
-	Example:"vault init-dev",
+	Use:     "jwt",
+	Short:   "Creates a JWT.",
+	Long:    ``,
+	Example: "vault init-dev",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 		viper.BindEnv(ArgVaultAddr, "VAULT_ADDR")
@@ -231,28 +229,29 @@ var vaultJWTCmd = &cobra.Command{
 			return err
 		}
 
-		role:=viper.GetString(ArgVaultJWTRole)
-		tenant:=viper.GetString(ArgVaultJWTTenant)
-		sub:=viper.GetString(ArgVaultJWTSub)
-		claimsStrings:=viper.GetStringSlice(ArgVaultJWTClaims)
-		 claims := map[string]interface{}{
-		 	"tid":tenant,
-		 	"sub":sub,
-		 }
-		 for _, c := range claimsStrings {
-		 	segs := strings.Split(c, "=")
-		 	if len(segs) == 2 {
-		 		claims[segs[0]] = segs[1]
+
+		role := viper.GetString(ArgVaultJWTRole)
+		tenant := viper.GetString(ArgVaultJWTTenant)
+		sub := viper.GetString(ArgVaultJWTSub)
+		claimsStrings := viper.GetStringSlice(ArgVaultJWTClaims)
+		claims := map[string]interface{}{
+			"tid": tenant,
+			"sub": sub,
+		}
+		for _, c := range claimsStrings {
+			segs := strings.Split(c, "=")
+			if len(segs) == 2 {
+				claims[segs[0]] = segs[1]
 			} else {
 				return errors.Errorf("invalid claim %q (wanted k=v format)", c)
 			}
-		 }
-		 ttl := viper.GetDuration(ArgVaultJWTTTL)
-		 exp := time.Now().Add(ttl).Unix()
-		 claims["exp"] = exp
+		}
+		ttl := viper.GetDuration(ArgVaultJWTTTL)
+		exp := time.Now().Add(ttl).Unix()
+		claims["exp"] = exp
 
 		req := map[string]interface{}{
-			"claims": claims,
+			"claims":    claims,
 			"token_ttl": ttl.Seconds(),
 		}
 
@@ -268,16 +267,16 @@ var vaultJWTCmd = &cobra.Command{
 }
 
 const (
-	ArgVaultAddr           = "vault-addr"
-	ArgVaultToken          = "vault-token"
-	ArgVaultJWTRole        ="role"
-	ArgVaultJWTTenant      ="tenant"
-	ArgVaultJWTSub         = "sub"
-	ArgVaultJWTTTL         = "ttl"
-	ArgVaultJWTClaims      = "claims"
-	ArgVaultSecretGenerate = "generate"
+	ArgVaultAddr            = "vault-addr"
+	ArgVaultToken           = "vault-token"
+	ArgVaultJWTRole         = "role"
+	ArgVaultJWTTenant       = "tenant"
+	ArgVaultJWTSub          = "sub"
+	ArgVaultJWTTTL          = "ttl"
+	ArgVaultJWTClaims       = "claims"
+	ArgVaultSecretGenerate  = "generate"
 	ArgVaultSecretOverwrite = "overwrite"
-	ArgVaultSecretDefault = "default"
+	ArgVaultSecretDefault   = "default"
 )
 
 func init() {
@@ -288,15 +287,14 @@ func init() {
 		sub = u.Username
 	}
 
-	vaultJWTCmd.Flags().StringP(ArgVaultJWTRole, "r", "auth", "The role to use when creating the token." )
-	vaultJWTCmd.Flags().StringP(ArgVaultJWTTenant, "t", "", "The tenant to set." )
+	vaultJWTCmd.Flags().StringP(ArgVaultJWTRole, "r", "auth", "The role to use when creating the token.")
+	vaultJWTCmd.Flags().StringP(ArgVaultJWTTenant, "t", "", "The tenant to set.")
 	vaultJWTCmd.MarkFlagRequired(ArgVaultJWTTenant)
-	vaultJWTCmd.Flags().StringP(ArgVaultJWTSub, "s", sub, "The sub to set." )
+	vaultJWTCmd.Flags().StringP(ArgVaultJWTSub, "s", sub, "The sub to set.")
 	vaultJWTCmd.Flags().Duration(ArgVaultJWTTTL, 15*time.Minute, "The TTL for the JWT, in go duration format.")
 	vaultJWTCmd.Flags().StringSlice(ArgVaultJWTClaims, []string{}, "Additional claims to set, as k=v pairs. Use the flag multiple times or delimit claims with commas.")
 	addVaultFlags(vaultJWTCmd)
 	vaultCmd.AddCommand(vaultJWTCmd)
-
 
 	addVaultFlags(vaultInitCmd)
 	vaultCmd.AddCommand(vaultInitCmd)
@@ -309,7 +307,6 @@ func init() {
 	vaultSecretCmd.Flags().Bool(ArgVaultSecretOverwrite, false, "Overwrite existing secret.")
 	vaultSecretCmd.Flags().String(ArgVaultSecretDefault, "", "Set the secret to this value if not found or --overwrite is set.")
 	vaultCmd.AddCommand(vaultSecretCmd)
-
 
 	addVaultFlags(vaultCmd)
 	rootCmd.AddCommand(vaultCmd)
