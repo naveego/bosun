@@ -53,7 +53,7 @@ var toolsListCmd = addCommand(toolsCmd, &cobra.Command{
 				executable, installErr := tool.GetExecutable()
 				if installErr != nil {
 					if tool.Installer != nil {
-						if _, ok := tool.GetInstaller(); ok {
+						if _, err := tool.GetInstaller(); err == nil {
 							installInfo = emoji.Sprint(":cloud:")
 							location = "(installable)"
 						} else {
@@ -96,12 +96,12 @@ var toolsInstallCmd = addCommand(toolsCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		installer, ok := tool.GetInstaller()
-		if !ok {
-			return errors.Errorf("could not get installer for %q", name)
+		installer, err := tool.GetInstaller()
+		if err != nil {
+			return errors.Errorf("could not get installer for %q: %s", name, err)
 		}
 
-		err := installer.Execute(ctx)
+		err = installer.Execute(ctx)
 
 		return err
 	},

@@ -18,6 +18,7 @@ type commandValueMarshalling struct {
 	Command []string                            `yaml:"command,omitempty,flow"`
 	Script  string                              `yaml:"script,omitempty"`
 	OS      map[string]*commandValueMarshalling `yaml:"os,omitempty"`
+	Tools []string `yaml:"tools,omitempty"`
 }
 
 func (c *CommandValue) toMarshalling() *commandValueMarshalling {
@@ -25,6 +26,7 @@ func (c *CommandValue) toMarshalling() *commandValueMarshalling {
 		Value:   c.Value,
 		Command: c.Command.Command,
 		Script:  c.Script,
+		Tools:c.Tools,
 	}
 	if len(c.OS) > 0 {
 		m.OS = map[string]*commandValueMarshalling{}
@@ -39,6 +41,7 @@ func (c commandValueMarshalling) apply(to *CommandValue) {
 	to.Value = c.Value
 	to.Command.Command = c.Command
 	to.Script = c.Script
+	to.Tools = c.Tools
 	if len(c.OS) > 0 {
 		to.OS = map[string]*CommandValue{}
 		for k, v := range c.OS {

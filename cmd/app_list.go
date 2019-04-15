@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"github.com/cheynewallace/tabby"
+	"github.com/kyokomi/emoji"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"strings"
 )
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
@@ -21,25 +23,37 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
+		gitRoots := b.GetGitRoots()
+		var trimGitRoot = func(p string) string {
+			for _, gitRoot := range gitRoots {
+				p = strings.Replace(p, gitRoot, "$GITROOT", -1)
+			}
+			return p
+		}
+
 		t := tabby.New()
 		t.AddHeader("APP", "CLONED", "VERSION", "PATH or REPO", "BRANCH", "IMPORTED BY")
 		for _, app := range apps {
-			var check, pathrepo, branch, version, importedBy string
+			var isCloned, pathrepo, branch, version, importedBy string
 
 			if app.IsRepoCloned() {
-				check = "✔"
-				pathrepo = app.FromPath
-				branch = app.GetBranch()
+				isCloned = emoji.Sprint( ":heavy_check_mark:")
+				pathrepo = trimGitRoot(app.FromPath)
+				if app.BranchForRelease {
+					branch = app.GetBranch()
+				} else {
+					branch = ""
+				}
 				version = app.Version
 			} else {
-				check = ""
+				isCloned = emoji.Sprint("    :x:")
 				pathrepo = app.Repo
 				branch = ""
 				version = app.Version
-				importedBy = app.FromPath
+				importedBy = trimGitRoot(app.FromPath)
 			}
 
-			t.AddLine(app.Name, check, version, pathrepo, branch, importedBy)
+			t.AddLine(app.Name, isCloned, version, pathrepo, branch, importedBy)
 		}
 
 		t.Print()

@@ -24,18 +24,18 @@ const (
 )
 
 type AppAction struct {
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description,omitempty"`
-	When        ActionSchedule `yaml:"when,omitempty"`
-	Where       string         `yaml:"where,omitempty"`
-	MaxAttempts int            `yaml:"maxAttempts,omitempty"`
-	Timeout     time.Duration  `yaml:"timeout,omitempty"`
-	Interval    time.Duration  `yaml:"interval,omitempty"`
-	Vault       *VaultAction   `yaml:"vault,omitempty"`
-	Script      *ScriptAction      `yaml:"script,omitempty"`
-	Test        *TestAction    `yaml:"test,omitempty"`
-	ExcludeFromRelease bool `yaml:"excludeFromRelease,omitempty"`
-	FromPath    string         `yaml:"-"`
+	Name               string         `yaml:"name"`
+	Description        string         `yaml:"description,omitempty"`
+	When               ActionSchedule `yaml:"when,omitempty"`
+	Where              string         `yaml:"where,omitempty"`
+	MaxAttempts        int            `yaml:"maxAttempts,omitempty"`
+	Timeout            time.Duration  `yaml:"timeout,omitempty"`
+	Interval           time.Duration  `yaml:"interval,omitempty"`
+	Vault              *VaultAction   `yaml:"vault,omitempty"`
+	Script             *ScriptAction  `yaml:"script,omitempty"`
+	Test               *TestAction    `yaml:"test,omitempty"`
+	ExcludeFromRelease bool           `yaml:"excludeFromRelease,omitempty"`
+	FromPath           string         `yaml:"-"`
 }
 
 type Action interface {
@@ -52,7 +52,7 @@ func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
 	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
 
 	for _, action := range a.getActions() {
-		if sc, ok := action.(SelfContainer) ; ok{
+		if sc, ok := action.(SelfContainer); ok {
 			err := sc.MakeSelfContained(ctx)
 			if err != nil {
 				return errors.Errorf("error making %q action self contained: %s", a.Name, err)
@@ -64,7 +64,6 @@ func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
-	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
 	log := ctx.Log
 
 	if a.Where != "" && !strings.Contains(a.Where, ctx.Env.Name) {
@@ -86,6 +85,9 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 	}
 
 	for {
+		ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
+
+		ctx.Log.Infof("Executing action...")
 
 		attemptCtx := ctx.WithTimeout(timeout)
 
@@ -108,12 +110,13 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 		for ; seconds >= 0; seconds = seconds - 1 {
 			select {
 			case <-ctx.Ctx().Done():
+				fmt.Printf("\r")
 				return nil
 			case <-time.After(time.Second):
-				fmt.Printf("\rWaiting: %d", seconds - 1)
+				fmt.Printf("\rWaiting: %d  ", seconds-1)
 			}
 		}
-		fmt.Printf("\r")
+		fmt.Printf("\r                     \r")
 	}
 }
 
@@ -143,10 +146,6 @@ func (a *AppAction) getActions() []Action {
 		actions = append(actions, a.Test)
 	}
 
-	if a.Vault != nil {
-		actions = append(actions, a.Vault)
-	}
-
 	return actions
 }
 
@@ -155,7 +154,6 @@ type VaultAction struct {
 	Layout  *pkg.VaultLayout `yaml:"layout,omitempty"`
 	Literal string           `yaml:"literal,omitempty"`
 }
-
 
 func (a *VaultAction) Execute(ctx BosunContext) error {
 	vaultClient, err := ctx.GetVaultClient()
@@ -202,13 +200,13 @@ func (a *VaultAction) Execute(ctx BosunContext) error {
 func (a *VaultAction) MakeSelfContained(ctx BosunContext) error {
 	if a.File != "" {
 
-	path := ctx.ResolvePath(a.File)
-	layoutBytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	a.File = ""
-	a.Literal = string(layoutBytes)
+		path := ctx.ResolvePath(a.File)
+		layoutBytes, err := ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		a.File = ""
+		a.Literal = string(layoutBytes)
 	}
 
 	return nil
@@ -220,7 +218,7 @@ func (a *ScriptAction) Execute(ctx BosunContext) error {
 
 	script := *a
 	cmd := Command{
-		Script:string(script),
+		Script: string(script),
 	}
 
 	_, err := cmd.Execute(ctx)
@@ -228,11 +226,10 @@ func (a *ScriptAction) Execute(ctx BosunContext) error {
 	return err
 }
 
-
 type TestAction struct {
 	Exec *Command `yaml:"exec,omitempty"`
-	HTTP string        `yaml:"http,omitempty"`
-	TCP  string        `yaml:"tcp,omitempty"`
+	HTTP string   `yaml:"http,omitempty"`
+	TCP  string   `yaml:"tcp,omitempty"`
 }
 
 func (t *TestAction) Execute(ctx BosunContext) error {
@@ -299,6 +296,6 @@ func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
 }
 
 type MongoAction struct {
-	Connection mongo.Connection `yaml:"connection"`
-	DatabaseFile string `yaml:"databaseFile"`
+	Connection   mongo.Connection `yaml:"connection"`
+	DatabaseFile string           `yaml:"databaseFile"`
 }

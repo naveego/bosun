@@ -14,6 +14,8 @@ type Command struct {
 	Command  []string            `yaml:"command,omitempty,flow"`
 	Script   string              `yaml:"script,omitempty"`
 	OS       map[string]*Command `yaml:"os,omitempty"`
+	// List of tools required for this command to succeed.
+	Tools []string `yaml:"tools,omitempty"`
 	resolved bool
 }
 

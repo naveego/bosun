@@ -597,7 +597,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getAppReposOpt(b, args, getAppReposOptions{})
 		if err != nil {
 			return err
 		}

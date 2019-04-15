@@ -545,3 +545,45 @@ func (b *Bosun) ConfirmEnvironment() error {
 func (b *Bosun) GetTools() []ToolDef {
 	return b.ws.MergedBosunFile.Tools
 }
+func (b *Bosun) GetTool(name string) (ToolDef, error){
+	for _, tool := range b.ws.MergedBosunFile.Tools {
+		if tool.Name == name {
+			return tool, nil
+		}
+	}
+	return ToolDef{}, errors.Errorf("no tool named %q is known", name)
+}
+
+func (b *Bosun) RequireTool(name string) error {
+	tool, err := b.GetTool(name)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tool.GetExecutable(); err != nil {
+		return errors.Wrapf(err, "required tool %q is not installed", name)
+	}
+	return nil
+}
+
+
+func (b *Bosun) EnsureTool(name string) error {
+	tool, err := b.GetTool(name)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tool.GetExecutable(); err == nil {
+		return nil
+	}
+
+	installer, err := tool.GetInstaller()
+	if err != nil {
+		return errors.Errorf("required tool %q is not installable: %s", name, err)
+	}
+	ctx := b.NewContext()
+
+	err = installer.Execute(ctx)
+	return err
+}
+

@@ -46,6 +46,16 @@ var _ = Describe("CommandValue", func() {
 				CommandValue{Value: "some-value"},
 				`dv:
   value: some-value`),
+			Entry("value explicit with tools",
+				`dv:
+  value: some-value
+  tools: 
+    - xyz`,
+				CommandValue{Value: "some-value", Command:Command{Tools: []string{"xyz"}}},
+				`dv:
+  value: some-value
+  tools:
+  - xyz`),
 			Entry("command implicit",
 				`dv:
   command: 

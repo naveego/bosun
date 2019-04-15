@@ -48,15 +48,17 @@ func (t ToolDef) GetExecutable() (string, error) {
 	return ex, err
 }
 
-func (t ToolDef) GetInstaller() (*Installer, bool) {
+func (t ToolDef) GetInstaller() (*Installer, error) {
 
-	if t.Installer == nil {
-		return nil, false
+	if t.Installer == nil || len(t.Installer) == 0 {
+		return nil, errors.New("no installers registered")
 	}
 
 	var ok bool
 	var installer Installer
+	var oses []string
 	for key, val := range t.Installer {
+		oses = append(oses, key)
 		if strings.Contains(key, runtime.GOOS) {
 			installer = val
 			ok = true
@@ -64,19 +66,19 @@ func (t ToolDef) GetInstaller() (*Installer, bool) {
 	}
 
 	if !ok {
-		return nil, false
+		return nil, errors.Errorf("no installer defined for current OS (defined installers: %s)", strings.Join(oses, ", "))
 	}
 
-	return &installer, true
+	return &installer, nil
 }
 
 func (t ToolDef) RunInstall(ctx BosunContext) error {
-	installer, ok := t.GetInstaller()
-	if !ok {
-		return  errors.New("no installer script available")
+	installer, err := t.GetInstaller()
+	if err != nil {
+		return  errors.Wrap(err, "no installer script available")
 	}
 
-	err := installer.Execute(ctx)
+	err = installer.Execute(ctx)
 	if err != nil {
 		return err
 	}
@@ -120,7 +122,7 @@ func (i Installer) Execute(ctx BosunContext)  error {
 			from = filepath.Join(tmp, from)
 			to = os.ExpandEnv(to)
 
-			ctx.Log.Debugf("Moving %s to %s.")
+			ctx.Log.Debugf("Moving %s to %s.", from, to)
 			err = os.Rename(from, to)
 			if err != nil {
 				return err

@@ -215,10 +215,12 @@ func (a *AppRepo) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error)
 	for envNames := range a.Values {
 		for _, envName := range strings.Split(envNames, ",") {
 			if _, ok := envs[envName]; !ok {
-				envs[envName], err = ctx.Bosun.GetEnvironment(envName)
+				env, err := ctx.Bosun.GetEnvironment(envName)
 				if err != nil {
-					return nil, err
+					ctx.Log.Warnf("App values include key for environment %q, but no such environment has been defined.", envName)
+					continue
 				}
+				envs[envName] = env
 			}
 		}
 	}

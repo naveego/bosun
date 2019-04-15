@@ -256,9 +256,10 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 			return nil, err
 		}
 		apps = append(apps, app)
+		return apps, nil
 	}
 
-	return apps, err
+	return nil, errors.New("no apps matched")
 }
 
 func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error){
