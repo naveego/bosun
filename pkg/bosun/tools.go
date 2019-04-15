@@ -128,6 +128,8 @@ func (i Installer) Execute(ctx BosunContext)  error {
 				return err
 			}
 		}
+
+		return nil
 	}
 
 	return errors.New("no install strategy defined")
