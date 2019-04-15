@@ -24,9 +24,9 @@ import (
 )
 
 var toolsCmd = addCommand(rootCmd, &cobra.Command{
-	Use:          "tools",
-	Short:        "Commands for listing and installing tools.",
-
+	Use:     "tools",
+	Aliases: []string{"tool"},
+	Short:   "Commands for listing and installing tools.",
 })
 
 var toolsListCmd = addCommand(toolsCmd, &cobra.Command{
@@ -53,7 +53,7 @@ var toolsListCmd = addCommand(toolsCmd, &cobra.Command{
 				executable, installErr := tool.GetExecutable()
 				if installErr != nil {
 					if tool.Installer != nil {
-						if _, ok := tool.GetInstaller(); ok {
+						if _, err := tool.GetInstaller(); err == nil {
 							installInfo = emoji.Sprint(":cloud:")
 							location = "(installable)"
 						} else {
@@ -74,10 +74,10 @@ var toolsListCmd = addCommand(toolsCmd, &cobra.Command{
 })
 
 var toolsInstallCmd = addCommand(toolsCmd, &cobra.Command{
-	Use:   "install {tool}",
-	Short: "Installs a tool.",
-	SilenceUsage:true,
-	Args: cobra.ExactArgs(1),
+	Use:          "install {tool}",
+	Short:        "Installs a tool.",
+	SilenceUsage: true,
+	Args:         cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		tools := b.GetTools()
@@ -96,19 +96,17 @@ var toolsInstallCmd = addCommand(toolsCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		installer, ok := tool.GetInstaller()
-		if !ok  {
-			return errors.Errorf("could not get installer for %q", name)
+		installer, err := tool.GetInstaller()
+		if err != nil {
+			return errors.Errorf("could not get installer for %q: %s", name, err)
 		}
 
-		err := installer.Execute(ctx)
+		err = installer.Execute(ctx)
 
 		return err
 	},
 })
 
-
-func init(){
+func init() {
 	rootCmd.AddCommand(metaUpgradeCmd)
 }
-

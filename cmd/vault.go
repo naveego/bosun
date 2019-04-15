@@ -229,6 +229,7 @@ var vaultJWTCmd = &cobra.Command{
 			return err
 		}
 
+
 		role := viper.GetString(ArgVaultJWTRole)
 		tenant := viper.GetString(ArgVaultJWTTenant)
 		sub := viper.GetString(ArgVaultJWTSub)

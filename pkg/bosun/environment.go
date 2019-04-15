@@ -1,14 +1,16 @@
 package bosun
 
 import (
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"log"
 	"os"
 )
 
 type EnvironmentConfig struct {
 	FromPath string `yaml:"-"`
-	Name     string `yaml:name`
+	Name     string `yaml:"name"`
 	Cluster  string `yaml:"cluster"`
 	Domain   string `yaml:"domain"`
 	// If true, commands which would cause modifications to be deployed will
@@ -107,7 +109,8 @@ func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 
 	_, err := pkg.NewCommand("kubectl", "config", "use-context", e.Cluster).RunOut()
 	if err != nil {
-		return err
+		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
+		log.Println(color.YellowString(`try running "bosun kube add-eks %s"`, e.Cluster ))
 	}
 
 	for _, v := range e.Variables {

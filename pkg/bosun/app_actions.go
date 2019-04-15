@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/mongo"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -23,43 +24,39 @@ const (
 )
 
 type AppAction struct {
-	Name        string          `yaml:"name"`
-	Description string          `yaml:"description,omitempty"`
-	When        ActionSchedule  `yaml:"when,omitempty"`
-	Where       string          `yaml:"where,omitempty"`
-	MaxAttempts int             `yaml:"maxAttempts,omitempty"`
-	Timeout     time.Duration   `yaml:"timeout,omitempty"`
-	Interval    time.Duration   `yaml:"interval,omitempty"`
-	Vault       *AppVaultAction `yaml:"vault,omitempty"`
-	Exec        *Command        `yaml:"exec,omitempty"`
-	Test        *AppTestAction  `yaml:"test,omitempty"`
-	FromPath    string          `yaml:"-"`
+	Name               string         `yaml:"name"`
+	Description        string         `yaml:"description,omitempty"`
+	When               ActionSchedule `yaml:"when,omitempty"`
+	Where              string         `yaml:"where,omitempty"`
+	MaxAttempts        int            `yaml:"maxAttempts,omitempty"`
+	Timeout            time.Duration  `yaml:"timeout,omitempty"`
+	Interval           time.Duration  `yaml:"interval,omitempty"`
+	Vault              *VaultAction   `yaml:"vault,omitempty"`
+	Script             *ScriptAction  `yaml:"script,omitempty"`
+	Test               *TestAction    `yaml:"test,omitempty"`
+	ExcludeFromRelease bool           `yaml:"excludeFromRelease,omitempty"`
+	FromPath           string         `yaml:"-"`
 }
 
-type AppVaultAction struct {
-	File    string           `yaml:"file,omitempty"`
-	Layout  *pkg.VaultLayout `yaml:"layout,omitempty"`
-	Literal string           `yaml:"literal,omitempty"`
+type Action interface {
+	Execute(ctx BosunContext) error
 }
 
-type AppTestAction struct {
-	Exec *CommandValue `yaml:"exec,omitempty"`
-	HTTP string        `yaml:"http,omitempty"`
-	TCP  string        `yaml:"tcp,omitempty"`
+type SelfContainer interface {
+	MakeSelfContained(ctx BosunContext) error
 }
 
 // MakeSelfContained removes imports all file dependencies into literals,
 // then deletes those dependencies.
 func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
-	if a.Vault != nil {
-		if a.Vault.File != "" {
-			path := ctx.ResolvePath(a.Vault.File)
-			layoutBytes, err := ioutil.ReadFile(path)
+	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
+
+	for _, action := range a.getActions() {
+		if sc, ok := action.(SelfContainer); ok {
+			err := sc.MakeSelfContained(ctx)
 			if err != nil {
-				return err
+				return errors.Errorf("error making %q action self contained: %s", a.Name, err)
 			}
-			a.Vault.File = ""
-			a.Vault.Literal = string(layoutBytes)
 		}
 	}
 
@@ -67,11 +64,10 @@ func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
-	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
 	log := ctx.Log
 
 	if a.Where != "" && !strings.Contains(a.Where, ctx.Env.Name) {
-		log.Debugf("Skipping because 'where' is %q.", a.Where)
+		log.Debugf("Skipping because 'where' is %q but current environment is %q.", a.Where, ctx.Env.Name)
 		return nil
 	}
 
@@ -89,6 +85,9 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 	}
 
 	for {
+		ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
+
+		ctx.Log.Infof("Executing action...")
 
 		attemptCtx := ctx.WithTimeout(timeout)
 
@@ -111,74 +110,80 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 		for ; seconds >= 0; seconds = seconds - 1 {
 			select {
 			case <-ctx.Ctx().Done():
+				fmt.Printf("\r")
 				return nil
 			case <-time.After(time.Second):
-				fmt.Printf("\rWaiting: %d", seconds - 1)
+				fmt.Printf("\rWaiting: %d  ", seconds-1)
 			}
 		}
-		fmt.Printf("\r")
+		fmt.Printf("\r                     \r")
 	}
 }
 
 func (a *AppAction) execute(ctx BosunContext) error {
-	log := ctx.Log
-	if a.Vault != nil {
-		log.Debug("Applying vault layout...")
-		err := a.executeVault(ctx)
+	for _, action := range a.getActions() {
+		ctx.Log.Debugf("Executing %T action...", action)
+		err := action.Execute(ctx)
 		if err != nil {
 			return err
 		}
 	}
-
-	if a.Exec != nil {
-		log.Debug("Executing command or script...")
-		_, err := a.Exec.Execute(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
-	if a.Test != nil {
-		log.Debug("Executing test...")
-		err := a.executeTest(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
-func (a *AppAction) executeVault(ctx BosunContext) error {
+func (a *AppAction) getActions() []Action {
+
+	var actions []Action
+	if a.Vault != nil {
+		actions = append(actions, a.Vault)
+	}
+
+	if a.Script != nil {
+		actions = append(actions, a.Script)
+	}
+
+	if a.Test != nil {
+		actions = append(actions, a.Test)
+	}
+
+	return actions
+}
+
+type VaultAction struct {
+	File    string           `yaml:"file,omitempty"`
+	Layout  *pkg.VaultLayout `yaml:"layout,omitempty"`
+	Literal string           `yaml:"literal,omitempty"`
+}
+
+func (a *VaultAction) Execute(ctx BosunContext) error {
 	vaultClient, err := ctx.GetVaultClient()
 	if err != nil {
 		return err
 	}
 
-	vaultAction := a.Vault
 	var vaultLayout *pkg.VaultLayout
 	var layoutBytes []byte
-	if vaultAction.File != "" {
-		path := ctx.ResolvePath(vaultAction.File)
+	if a.File != "" {
+		path := ctx.ResolvePath(a.File)
 		layoutBytes, err = ioutil.ReadFile(path)
 		if err != nil {
 			return err
 		}
-	} else if vaultAction.Literal != "" {
-		layoutBytes = []byte(vaultAction.Literal)
+	} else if a.Literal != "" {
+		layoutBytes = []byte(a.Literal)
 	} else {
-		layoutBytes, _ = yaml.Marshal(vaultAction.Layout)
+		layoutBytes, _ = yaml.Marshal(a.Layout)
 	}
 
 	templateArgs := ctx.GetTemplateArgs()
 
-	vaultLayout, err = pkg.LoadVaultLayoutFromBytes(a.Name, layoutBytes, templateArgs, vaultClient)
+	vaultLayout, err = pkg.LoadVaultLayoutFromBytes("action", layoutBytes, templateArgs, vaultClient)
 	if err != nil {
 		return err
 	}
 
 	y, _ := yaml.Marshal(vaultLayout)
-	ctx.Log.Debugf("Vault layout from %s:\n%s\n", a.Name, string(y))
+	ctx.Log.Debugf("Vault layout from %s:\n%s\n", a.Layout, string(y))
 
 	if ctx.IsDryRun() {
 		return nil
@@ -192,15 +197,47 @@ func (a *AppAction) executeVault(ctx BosunContext) error {
 	return nil
 }
 
-func (a *AppAction) executeTest(ctx BosunContext) error {
+func (a *VaultAction) MakeSelfContained(ctx BosunContext) error {
+	if a.File != "" {
+
+		path := ctx.ResolvePath(a.File)
+		layoutBytes, err := ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		a.File = ""
+		a.Literal = string(layoutBytes)
+	}
+
+	return nil
+}
+
+type ScriptAction string
+
+func (a *ScriptAction) Execute(ctx BosunContext) error {
+
+	script := *a
+	cmd := Command{
+		Script: string(script),
+	}
+
+	_, err := cmd.Execute(ctx)
+
+	return err
+}
+
+type TestAction struct {
+	Exec *Command `yaml:"exec,omitempty"`
+	HTTP string   `yaml:"http,omitempty"`
+	TCP  string   `yaml:"tcp,omitempty"`
+}
+
+func (t *TestAction) Execute(ctx BosunContext) error {
 
 	if ctx.GetParams().DryRun {
 		ctx.Log.Info("Skipping test because this is a dry run.")
 		return nil
 	}
-
-	t := a.Test
-
 	if t.Exec != nil {
 		_, err := t.Exec.Execute(ctx)
 		return err
@@ -256,4 +293,9 @@ func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
 
 	return w.String(), err
 
+}
+
+type MongoAction struct {
+	Connection   mongo.Connection `yaml:"connection"`
+	DatabaseFile string           `yaml:"databaseFile"`
 }

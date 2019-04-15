@@ -1,12 +1,16 @@
 package mongo
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"io"
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"time"
 )
 
@@ -40,32 +44,38 @@ type IndexInfo struct {
 // running inside a kubernetes cluster using the `port-forward` command, as well as
 // credential support using vault.
 type Connection struct {
-	DBName      string
-	Host        string
-	Port        string
-	KubePort    KubePortForward
-	Credentials CredentialProvider
+	DBName      string             `yaml:"dbName"`
+	Host        string             `yaml:"host"`
+	Port        string             `yaml:"port"`
+	KubePort    KubePortForward    `yaml:"kubePort"`
+	Credentials CredentialProvider `yaml:"credentials"`
 }
 
 // CredentialProvider defines how the connection should obtain its credentials
 type CredentialProvider struct {
-	Type       string
-	Username   string
-	Password   string
-	VaultPath  string
-	AuthSource string
+	Type       string `yaml:"type"`
+	Username   string `yaml:"username,omitempty"`
+	Password   string `yaml:"password,omitempty"`
+	VaultPath  string `yaml:"vaultPath,omitempty"`
+	AuthSource string `yaml:"authSource,omitempty"`
 }
 
 // KubePortForward defines whether or not we need to tunnel into Kuberetes, and what port to use.
 type KubePortForward struct {
-	Forward     bool
-	ServiceName string
-	Port        int
+	Forward     bool   `yaml:"forward"`
+	ServiceName string `yaml:"serviceName"`
+	Port        int    `yaml:"port"`
 }
 
-// ImportDatabase imports a collection into a database
-func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool) error {
-	wrapper, dispose, err := getMongoWrapper(dataDir, conn)
+type MongoImportCommand struct {
+	Conn      Connection
+	DB        Database
+	DataDir   string
+	RebuildDB bool
+}
+
+func (c MongoImportCommand) Execute() error {
+	wrapper, dispose, err := getMongoWrapper(c.DataDir, c.Conn)
 	if err != nil {
 		return fmt.Errorf("error connecting to mongo: %v", err)
 	}
@@ -73,10 +83,10 @@ func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool
 		defer dispose()
 	}
 
-	for colName, col := range db.Collections {
+	for colName, col := range c.DB.Collections {
 		// if we are forcing a rebuild of the database
 		// then we need to set the Drop flag.
-		if rebuildDb {
+		if c.RebuildDB {
 			col.Drop = true
 		}
 
@@ -87,6 +97,18 @@ func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool
 	}
 
 	return nil
+}
+
+// ImportDatabase imports a collection into a database
+func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool) error {
+	cmd := MongoImportCommand{
+		Conn:      conn,
+		DB:        db,
+		DataDir:   dataDir,
+		RebuildDB: rebuildDb,
+	}
+
+	return cmd.Execute()
 }
 
 func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, error) {
@@ -116,8 +138,12 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 		if c.KubePort.Port >= 0 {
 			svcPort = c.KubePort.Port
 		}
-		portFwdCmd = exec.Command("kubectl", "port-forward", svcName, fmt.Sprintf("%d", svcPort))
+		portFwdCmd = exec.Command("kubectl", "port-forward", svcName, fmt.Sprintf("0:%d", svcPort))
 
+		portFwdCmd.Stderr = os.Stderr
+		portFwdOut, _ := portFwdCmd.StdoutPipe()
+
+		reader := bufio.NewReader(portFwdOut)
 		logrus.Debugf("port-forwarding mongo with service name '%s' and port '%d'", svcName, svcPort)
 		// Start it up
 		err = portFwdCmd.Start()
@@ -125,12 +151,39 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 			return nil, nil, fmt.Errorf("error starting kuberenetes port forwarding to %s on port %d: %v", svcName, svcPort, err)
 		}
 
+		cleanUp = func() {
+			if portFwdCmd != nil {
+				e := portFwdCmd.Process.Signal(os.Kill)
+				if e != nil {
+					os.Stderr.WriteString(e.Error())
+				}
+			}
+		}
+
+		line, _, err := reader.ReadLine()
+		if err == io.EOF {
+			cleanUp()
+			err := portFwdCmd.Wait()
+			return nil, nil, errors.Wrap(err, "kubectl port-forward failed")
+		}
+		if err != nil {
+			return nil, cleanUp, errors.Wrap(err, "read kubectl port-forward output")
+		}
+		matches := regexp.MustCompile(`Forwarding from ([^:]+):(\d+)`).FindStringSubmatch(string(line))
+		if len(matches) < 3 {
+			return nil, cleanUp, errors.Errorf("port forward failed; kubectl said %q", line)
+		}
+
+		c.Host = matches[1]
+		c.Port = matches[2]
+
 		// Wait for port to be available
 		for {
-			conn, _ := net.DialTimeout("tcp", net.JoinHostPort("", fmt.Sprintf("%d", svcPort)), time.Second*30)
+			logrus.Infof("checking for success of kubectl port-forward to mongodb at %s:%s", c.Host, c.Port)
+			conn, _ := net.DialTimeout("tcp", net.JoinHostPort(c.Host, c.Port), time.Second*30)
 			if conn != nil {
 				conn.Close()
-				logrus.Debug("kubectl port-forward to mongodb is ready")
+				logrus.Infof("kubectl port-forward to mongodb is ready at %s:%s", c.Host, c.Port)
 				break
 			}
 		}
@@ -163,15 +216,6 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get mongo wrapper: %v", err)
-	}
-
-	cleanUp = func() {
-		if portFwdCmd != nil {
-			e := portFwdCmd.Process.Signal(os.Kill)
-			if e != nil {
-				os.Stderr.WriteString(e.Error())
-			}
-		}
 	}
 
 	return wrapper, cleanUp, nil

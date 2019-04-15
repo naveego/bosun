@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
@@ -72,6 +73,26 @@ func RequestSecretFromUser(text string, args ... interface{}) (string) {
 
 	return value
 }
+
+
+// IfTTY invokes the function if there is a TTY attached, and returns ErrNoTTY otherwise.
+// If the function returns an error of promptui.ErrInterrupt or promptui.ErrAbort
+// this will call os.Exit.
+func IfTTY(fn func() (string, error)) (string, error) {
+	if !IsInteractive() {
+		return "", ErrNoTTY
+	}
+
+	result, err := fn()
+	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
+		fmt.Println("User quit.")
+		os.Exit(0)
+	}
+
+	return result, err
+}
+
+var ErrNoTTY = errors.New("no tty attached")
 
 func Must(err error, msgAndArgs ... string) {
 	if err == nil {
