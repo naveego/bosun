@@ -224,19 +224,24 @@ func (a *AppRepo) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error)
 			}
 		}
 	}
-	chartRef := a.getAbsoluteChartPathOrChart(ctx)
-	valuesYaml, err := pkg.NewCommand(
-		"helm", "inspect", "values",
-		chartRef,
-		"--version", a.Version,
-	).RunOut()
-	if err != nil {
-		return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
-	}
+	var defaultValues Values
 
-	defaultValues, err := ReadValues([]byte(valuesYaml))
-	if err != nil {
-		return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
+	if a.HasChart() {
+		chartRef := a.getAbsoluteChartPathOrChart(ctx)
+		valuesYaml, err := pkg.NewCommand(
+			"helm", "inspect", "values",
+			chartRef,
+			"--version", a.Version,
+		).RunOut()
+		if err != nil {
+			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
+		}
+		defaultValues, err = ReadValues([]byte(valuesYaml))
+		if err != nil {
+			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
+		}
+	} else {
+		defaultValues = Values{}
 	}
 
 	out := AppValuesByEnvironment{}
@@ -264,7 +269,7 @@ func (a *AppRepo) ExportActions(ctx BosunContext) ([]*AppAction, error) {
 	var actions []*AppAction
 	for _, action := range a.Actions {
 		if action.When == ActionManual {
-			ctx.Log.Infof("Skipping action %q because it is marked as manual.", action.Name)
+			ctx.Log.Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
 		} else {
 			err = action.MakeSelfContained(ctx)
 			if err != nil {

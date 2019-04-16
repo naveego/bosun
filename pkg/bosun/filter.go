@@ -21,21 +21,35 @@ type Filter struct {
 	Operator string
 }
 
-type Labels map[string]string
+type LabelValue interface {
+	Value() string
+}
+
+type LabelThunk func() string
+func (l LabelThunk) Value() string { return l() }
+
+type Labels map[string]LabelValue
+
+type LabelString string
+func (l LabelString) Value() string { return string(l) }
 
 func (l *Labels) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var arr []string
 	err := unmarshal(&arr)
-	out := map[string]string{}
+	proxy := map[string]string{}
 	if err == nil {
-		*l = map[string]string{}
 		for _, name := range arr {
-			out[name] = "true"
+			proxy[name] = "true"
 		}
 	} else {
-		err = unmarshal(out)
+		err = unmarshal(proxy)
 	}
-	*l = Labels(out)
+	out := Labels{}
+
+	for k, v := range proxy {
+		out[k] = LabelString(v)
+	}
+	*l = out
 	return err
 }
 
@@ -153,7 +167,10 @@ func MatchFilter(labelled Labelled, filter Filter) bool {
 
 	switch filter.Operator {
 	case "=", "==", "":
-		return labels[filter.Key] == filter.Value
+		value, ok := labels[filter.Key]
+		if ok {
+			return value.Value() == filter.Value
+		}
 	case "?=":
 		re, err := regexp.Compile(filter.Value)
 		if err != nil {
@@ -162,7 +179,7 @@ func MatchFilter(labelled Labelled, filter Filter) bool {
 		}
 		value, ok := labels[filter.Key]
 		if ok {
-			return re.MatchString(value)
+			return re.MatchString(value.Value())
 		} else {
 			return false
 		}
@@ -172,5 +189,5 @@ func MatchFilter(labelled Labelled, filter Filter) bool {
 }
 
 type Labelled interface {
-	Labels() map[string]string
+	Labels() Labels
 }

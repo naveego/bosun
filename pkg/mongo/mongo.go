@@ -30,7 +30,7 @@ type CollectionInfo struct {
 	MaxBytes     *int                 `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
 	MaxDocuments *int                 `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
 	Indexes      map[string]IndexInfo `json:"indexes,omitempty" yaml:"indexes,omitempty"`
-	Data         *string              `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
+	DataFile     *string              `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
 }
 
 type IndexInfo struct {
@@ -65,6 +65,7 @@ type KubePortForward struct {
 	Forward     bool   `yaml:"forward" json:"forward"`
 	ServiceName string `yaml:"serviceName" json:"serviceName"`
 	Port        int    `yaml:"port" json:"port"`
+	Namespace   string `yaml:"namespace" json:"namespace"`
 }
 
 type MongoImportCommand struct {
@@ -72,10 +73,15 @@ type MongoImportCommand struct {
 	DB        Database
 	DataDir   string
 	RebuildDB bool
+	Log *logrus.Entry
 }
 
 func (c MongoImportCommand) Execute() error {
-	wrapper, dispose, err := getMongoWrapper(c.DataDir, c.Conn)
+	if c.Log == nil {
+		c.Log = logrus.WithField("cmd", "MongoImportCommand")
+	}
+
+	wrapper, dispose, err := c.getMongoWrapper(c.DataDir, c.Conn)
 	if err != nil {
 		return fmt.Errorf("error connecting to mongo: %v", err)
 	}
@@ -111,7 +117,7 @@ func ImportDatabase(conn Connection, db Database, dataDir string, rebuildDb bool
 	return cmd.Execute()
 }
 
-func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, error) {
+func (i MongoImportCommand) getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, error) {
 	var portFwdCmd *exec.Cmd
 	var err error
 	var cleanUp disposeFunc
@@ -127,7 +133,7 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 
 	// check to see if we need to port forward the connection
 	if c.KubePort.Forward {
-		logrus.Info("using kubectl port-forward for connection to MongoDB")
+		i.Log.Info("using kubectl port-forward for connection to MongoDB")
 
 		svcName := "svc/mongodb"
 		if c.KubePort.ServiceName != "" {
@@ -138,13 +144,23 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 		if c.KubePort.Port >= 0 {
 			svcPort = c.KubePort.Port
 		}
-		portFwdCmd = exec.Command("kubectl", "port-forward", svcName, fmt.Sprintf("0:%d", svcPort))
+
+		namespace := c.KubePort.Namespace
+		if namespace == "" {
+			namespace = "default"
+		}
+
+		portFwdCmd = exec.Command("kubectl",
+			"port-forward",
+			"--namespace", namespace,
+			svcName,
+			fmt.Sprintf("0:%d", svcPort))
 
 		portFwdCmd.Stderr = os.Stderr
 		portFwdOut, _ := portFwdCmd.StdoutPipe()
 
 		reader := bufio.NewReader(portFwdOut)
-		logrus.Debugf("port-forwarding mongo with service name '%s' and port '%d'", svcName, svcPort)
+		i.Log.Debugf("port-forwarding mongo with service name '%s' and port '%d'", svcName, svcPort)
 		// Start it up
 		err = portFwdCmd.Start()
 		if err != nil {
@@ -179,7 +195,7 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 
 		// Wait for port to be available
 		for {
-			logrus.Infof("checking for success of kubectl port-forward to mongodb at %s:%s", c.Host, c.Port)
+			i.Log.Infof("checking for success of kubectl port-forward to mongodb at %s:%s", c.Host, c.Port)
 			conn, _ := net.DialTimeout("tcp", net.JoinHostPort(c.Host, c.Port), time.Second*30)
 			if conn != nil {
 				conn.Close()
@@ -194,9 +210,9 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 
 	switch c.Credentials.Type {
 	case "password":
-		username, password, err = getPasswordCredentials(c.Credentials)
+		username, password, err = i.getPasswordCredentials(c.Credentials)
 	case "vault":
-		username, password, err = getVaultCredentials(c.Credentials)
+		username, password, err = i.getVaultCredentials(c.Credentials)
 	default:
 		return nil, nil, fmt.Errorf("the type '%s' is not a supported credential type, must be 'vault' or 'password'", c.Credentials.Type)
 	}
@@ -212,7 +228,8 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 		username,
 		password,
 		c.Credentials.AuthSource,
-		dataDir)
+		dataDir,
+		i.Log.WithField("typ", "mongoWrapper"))
 
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get mongo wrapper: %v", err)
@@ -221,27 +238,27 @@ func getMongoWrapper(dataDir string, c Connection) (*mongoWrapper, disposeFunc, 
 	return wrapper, cleanUp, nil
 }
 
-func getPasswordCredentials(c CredentialProvider) (string, string, error) {
-	logrus.Debug("getting mongo credentials using 'password' type")
+func (i MongoImportCommand) getPasswordCredentials(c CredentialProvider) (string, string, error) {
+	i.Log.Debug("getting mongo credentials using 'password' type")
 	return c.Username, c.Password, nil
 }
 
-func getVaultCredentials(c CredentialProvider) (username string, password string, err error) {
-	logrus.Debug("getting mongo credentials using 'vault' type")
+func (i MongoImportCommand) getVaultCredentials(c CredentialProvider) (username string, password string, err error) {
+	i.Log.Debug("getting mongo credentials using 'vault' type")
 	username = ""
 	password = ""
 
 	vaultToken := os.Getenv("VAULT_TOKEN")
 	vaultAddr := os.Getenv("VAULT_ADDR")
 
-	logrus.Debugf("getting vault client at '%s' with token '%s'", vaultAddr, vaultToken)
+	i.Log.Debugf("getting vault client at '%s' with token '%s'", vaultAddr, vaultToken)
 
 	vault, err := pkg.NewVaultLowlevelClient(vaultToken, vaultAddr)
 	if err != nil {
 		return
 	}
 
-	logrus.Debugf("getting credentials from vault using path '%s'", c.VaultPath)
+	i.Log.Debugf("getting credentials from vault using path '%s'", c.VaultPath)
 	loginSecret, err := vault.Logical().Read(c.VaultPath)
 	if err != nil {
 		return

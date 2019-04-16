@@ -6,7 +6,11 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"io"
+	"io/ioutil"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -20,6 +24,13 @@ type ReleaseConfig struct {
 	Exclude           map[string]bool              `yaml:"exclude,omitempty" json:"exclude,omitempty"`
 	IsPatch           bool                         `yaml:"isPatch,omitempty" json:"isPatch,omitempty"`
 	Parent            *File                        `yaml:"-" json:"-"`
+	BundleFiles       map[string]*BundleFile       `yaml:"bundleFiles,omitempty"`
+}
+
+type BundleFile struct {
+	App     string `yaml:"namespace"`
+	Path    string `yaml:"path"`
+	Content []byte `yaml:"-"`
 }
 
 func (r *ReleaseConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -299,3 +310,62 @@ func (r *Release) IncludeApp(ctx BosunContext, app *AppRepo) error {
 
 	return nil
 }
+
+func (r *Release) AddBundleFile(app string, path string, content []byte) string {
+	key := fmt.Sprintf("%s|%s", app, path)
+	shortPath := safeFileNameRE.ReplaceAllString(strings.TrimLeft(path, "./\\"), "_")
+	bf := &BundleFile{
+		App:     app,
+		Path:    shortPath,
+		Content: content,
+	}
+	if r.BundleFiles == nil {
+		r.BundleFiles = map[string]*BundleFile{}
+	}
+	r.BundleFiles[key] = bf
+	return filepath.Join("./", r.Name, app, shortPath)
+}
+
+// GetBundleFileContent returns the content and path to a bundle file, or an error if it fails.
+func (r *Release) GetBundleFileContent(app, path string) ([]byte, string, error) {
+	key := fmt.Sprintf("%s|%s", app, path)
+	bf, ok := r.BundleFiles[key]
+	if !ok {
+		return nil, "", errors.Errorf("no bundle for app %q and path %q", app, path)
+	}
+
+	bundleFilePath := filepath.Join(filepath.Dir(r.FromPath), r.Name, bf.App, bf.Path)
+	content, err := ioutil.ReadFile(bundleFilePath)
+	return content, bundleFilePath, err
+}
+
+func (r *ReleaseConfig) SaveBundle() error {
+	bundleDir := filepath.Join(filepath.Dir(r.FromPath), r.Name)
+
+	err := os.MkdirAll(bundleDir,0770)
+	if err != nil {
+		return err
+	}
+
+	for _, bf := range r.BundleFiles {
+		if bf.Content == nil {
+			continue
+		}
+
+		appDir := filepath.Join(bundleDir, bf.App)
+		err := os.MkdirAll(bundleDir,0770)
+		if err != nil {
+			return err
+		}
+
+		bundleFilepath := filepath.Join(appDir, bf.Path)
+		err = ioutil.WriteFile(bundleFilepath, bf.Content, 0770)
+		if err != nil {
+			return errors.Wrapf(err, "writing bundle file for app %q, path %q", bf.App, bf.Path)
+		}
+	}
+
+	return nil
+}
+
+var safeFileNameRE = regexp.MustCompile(`([^A-z0-9_.]+)`)

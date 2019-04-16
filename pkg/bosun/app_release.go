@@ -60,17 +60,17 @@ type AppRelease struct {
 	ActualState  AppState
 	DesiredState AppState
 	helmRelease  *HelmRelease
-	labels       map[string]string
+	labels       Labels
 }
 
-func (a *AppRelease) Labels() map[string]string {
+func (a *AppRelease) Labels() Labels {
 	if a.labels == nil {
-		a.labels = map[string]string{
-			string(FilterKeyName):    a.Name,
-			string(FilterKeyPath):    a.AppRepo.FromPath,
-			string(FilterKeyBranch):  a.Branch,
-			string(FilterKeyCommit):  a.Commit,
-			string(FilterKeyVersion): a.Version,
+		a.labels = map[string]LabelValue{
+			string(FilterKeyName):    LabelString(a.Name),
+			string(FilterKeyPath):    LabelString(a.AppRepo.FromPath),
+			string(FilterKeyBranch):  LabelString(a.Branch),
+			string(FilterKeyCommit):  LabelString(a.Commit),
+			string(FilterKeyVersion): LabelString(a.Version),
 		}
 		for k, v := range a.AppRepo.AppLabels {
 			a.labels[k] = v

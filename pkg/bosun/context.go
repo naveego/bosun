@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
@@ -172,4 +173,32 @@ func (c BosunContext) UseMinikubeForDockerIfAvailable() {
 
 		}
 	})
+}
+
+func (c BosunContext) AddAppFileToReleaseBundle(path string, content []byte) (string, error) {
+	app := c.AppRepo
+	if app == nil {
+		return "", errors.New("no app set in context")
+	}
+	release := c.Release
+	if release == nil {
+		return "", errors.New("no release set in context")
+	}
+
+	bundleFilePath := release.AddBundleFile(app.Name, path, content)
+	return bundleFilePath, nil
+}
+
+func (c BosunContext) GetAppFileFromReleaseBundle(path string) ([]byte, string, error) {
+	app := c.AppRepo
+	if app == nil {
+		return nil, "", errors.New("no app set in context")
+	}
+	release := c.Release
+	if release == nil {
+		return nil, "", errors.New("no release set in context")
+	}
+
+	content, bundleFilePath, err := release.GetBundleFileContent(app.Namespace, path)
+	return content, bundleFilePath, err
 }

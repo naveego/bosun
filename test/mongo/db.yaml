@@ -1,0 +1,3 @@
+collections:
+  repositories:
+    dataFile: data/test-collection.json

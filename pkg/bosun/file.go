@@ -65,8 +65,18 @@ func (c *File) Save() error {
 	b = stripFromPath.ReplaceAll(b, []byte{})
 
 	err = ioutil.WriteFile(c.FromPath, b, 0600)
+	if err != nil {
+		return err
+	}
 
-	return err
+	for _, release := range c.Releases {
+		err = release.SaveBundle()
+		if err != nil {
+			return errors.Wrapf(err, "saving bundle for release %q", release.Name)
+		}
+	}
+
+	return nil
 }
 
 var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)

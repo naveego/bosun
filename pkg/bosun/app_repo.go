@@ -25,17 +25,17 @@ type AppRepo struct {
 	commit      string
 	gitTag      string
 	isCloned    bool
-	labels      map[string]string
+	labels      Labels
 }
 
-func (a *AppRepo) Labels() map[string]string {
+func (a *AppRepo) Labels() Labels {
 	if a.labels == nil {
-		a.labels = map[string]string{
-			string(FilterKeyName):    a.Name,
-			string(FilterKeyPath):    a.FromPath,
-			string(FilterKeyBranch):  a.GetBranch(),
-			string(FilterKeyCommit):  a.GetCommit(),
-			string(FilterKeyVersion): a.Version,
+		a.labels = Labels{
+			string(FilterKeyName):    LabelString(a.Name),
+			string(FilterKeyPath):    LabelString(a.FromPath),
+			string(FilterKeyBranch):  LabelThunk(a.GetBranch),
+			string(FilterKeyCommit):  LabelThunk(a.GetCommit),
+			string(FilterKeyVersion): LabelString(a.Version),
 		}
 		for k, v := range a.AppLabels {
 			a.labels[k] = v
@@ -465,6 +465,8 @@ func (a *AppRepo) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, erro
 		ReportDeployment: a.ReportDeployment,
 		SyncedAt:         time.Now(),
 	}
+
+	ctx.Log.Debug("Getting app release config.")
 
 	if !isTransient && a.BranchForRelease {
 

@@ -1004,12 +1004,16 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 			actionName = args[1]
 		}
 
+		if app == nil {
+			panic("will not happen because of mustGetApp")
+		}
+
 		var action *bosun.AppAction
 		var actionNames []string
-		for _, s := range app.Actions {
-			actionNames = append(actionNames, action.Name)
-			if strings.EqualFold(s.Name, actionName) {
-				action = s
+		for _, a := range app.Actions {
+			actionNames = append(actionNames, a.Name)
+			if strings.EqualFold(a.Name, actionName) {
+				action = a
 				break
 			}
 		}

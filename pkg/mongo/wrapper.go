@@ -5,6 +5,7 @@ import (
 	"github.com/mongodb/mongo-tools/common/db"
 	"github.com/mongodb/mongo-tools/common/options"
 	"github.com/mongodb/mongo-tools/mongoimport"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/mgo.v2"
 	"os"
@@ -22,9 +23,10 @@ type mongoWrapper struct {
 	DataDir    string
 
 	session *mgo.Session
+	log *logrus.Entry
 }
 
-func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir string) (*mongoWrapper, error) {
+func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir string, log *logrus.Entry) (*mongoWrapper, error) {
 	w := &mongoWrapper{
 		Host:       host,
 		Port:       port,
@@ -33,13 +35,17 @@ func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir
 		Password:   password,
 		AuthSource: authSource,
 		DataDir:    dataDir,
+		log:log,
+	}
+	if w.log == nil {
+		w.log = logrus.WithField("typ", "mongoWrapper")
 	}
 
 	hostAndPort := fmt.Sprintf("%s:%s", host, port)
 
-	logrus.Infof("connecting to mongodb at %s", hostAndPort)
-	logrus.Debugf("Username=%s", username)
-	logrus.Debugf("AuthSource=%s", authSource)
+	w.log.Infof("connecting to mongodb at %s", hostAndPort)
+	w.log.Debugf("Username=%s", username)
+	w.log.Debugf("AuthSource=%s", authSource)
 
 	dialInfo := &mgo.DialInfo{
 		Database: dbName,
@@ -60,16 +66,16 @@ func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir
 	return w, nil
 }
 
-func (mw *mongoWrapper) Import(colName string, col CollectionInfo) error {
+func (w *mongoWrapper) Import(colName string, col CollectionInfo) error {
 
 	if col.Drop {
-		logrus.Infof("Dropping and re-creating collection '%s'", colName)
-		err := mw.dropCollection(colName)
+		w.log.Infof("Dropping and re-creating collection '%s'", colName)
+		err := w.dropCollection(colName)
 		if err != nil {
 			return fmt.Errorf("error dropping collection '%s': %v", colName, err)
 		}
 
-		err = mw.createCollection(colName, col)
+		err = w.createCollection(colName, col)
 		if err != nil {
 			return fmt.Errorf("error creating collection '%s': %v", colName, err)
 		}
@@ -77,16 +83,16 @@ func (mw *mongoWrapper) Import(colName string, col CollectionInfo) error {
 
 	if col.Indexes != nil {
 		for n, i := range col.Indexes {
-			logrus.Debugf("ensuring index '%s' on collection '%s'", n, colName)
-			err := mw.ensureIndex(colName, n, i)
+			w.log.Debugf("ensuring index '%s' on collection '%s'", n, colName)
+			err := w.ensureIndex(colName, n, i)
 			if err != nil {
 				logrus.Warnf("could not ensure index '%s' on collection '%s': %v", n, colName, err)
 			}
 		}
 	}
 
-	if col.Data != nil && *col.Data != "" {
-		err := mw.importData(colName, *col.Data)
+	if col.DataFile != nil && *col.DataFile != "" {
+		err := w.importData(colName, *col.DataFile)
 		if err != nil {
 			return fmt.Errorf("error inserting data into collection '%s': %v", colName, err)
 		}
@@ -95,12 +101,12 @@ func (mw *mongoWrapper) Import(colName string, col CollectionInfo) error {
 	return nil
 }
 
-func (mw *mongoWrapper) importData(colName string, dataFile string) error {
-	dataFilePath := filepath.Join(mw.DataDir, os.ExpandEnv(dataFile))
+func (w *mongoWrapper) importData(colName string, dataFile string) error {
+	dataFilePath := filepath.Join(w.DataDir, os.ExpandEnv(dataFile))
 
-	logrus.Infof("importing data for collection '%s' from file '%s'", colName, dataFilePath)
+	w.log.Infof("importing data for collection '%s' from file '%s'", colName, dataFilePath)
 
-	toolOptions := mw.getToolOptions(colName)
+	toolOptions := w.getToolOptions(colName)
 	inputOptions := &mongoimport.InputOptions{
 		ParseGrace: "stop",
 		File:       dataFilePath,
@@ -108,6 +114,7 @@ func (mw *mongoWrapper) importData(colName string, dataFile string) error {
 	}
 	ingestOptions := &mongoimport.IngestOptions{
 		Mode: "upsert",
+		UpsertFields: "_id",
 	}
 
 	provider, err := db.NewSessionProvider(*toolOptions)
@@ -123,15 +130,22 @@ func (mw *mongoWrapper) importData(colName string, dataFile string) error {
 		SessionProvider: provider,
 	}
 
+	err = im.ValidateSettings(nil)
+	if err != nil {
+		return errors.Wrap(err, "validate mongo import settings")
+	}
+
+	// log.SetVerbosity(options.Verbosity{Quiet:false, VLevel:log.DebugLow})
+
 	cnt, err := im.ImportDocuments()
 	if err == nil {
-		logrus.Infof("Successfully imported %d documents into %s.%s", cnt, mw.DBName, colName)
+		w.log.Infof("Successfully imported %d documents into %s.%s", cnt, w.DBName, colName)
 	}
 	return err
 }
 
-func (mw *mongoWrapper) dropCollection(name string) error {
-	s := mw.session.Copy()
+func (w *mongoWrapper) dropCollection(name string) error {
+	s := w.session.Copy()
 	defer s.Close()
 
 	names, err := s.DB("").CollectionNames()
@@ -141,7 +155,7 @@ func (mw *mongoWrapper) dropCollection(name string) error {
 
 	for _, n := range names {
 		if n == name {
-			logrus.Debugf("Dropping collection '%s'", name)
+			w.log.Debugf("Dropping collection '%s'", name)
 			return s.DB("").C(name).DropCollection()
 		}
 	}
@@ -149,8 +163,8 @@ func (mw *mongoWrapper) dropCollection(name string) error {
 	return nil
 }
 
-func (mw *mongoWrapper) createCollection(colName string, col CollectionInfo) error {
-	s := mw.session.Copy()
+func (w *mongoWrapper) createCollection(colName string, col CollectionInfo) error {
+	s := w.session.Copy()
 	defer s.Close()
 
 	info := &mgo.CollectionInfo{
@@ -170,8 +184,8 @@ func (mw *mongoWrapper) createCollection(colName string, col CollectionInfo) err
 	return s.DB("").C(colName).Create(info)
 }
 
-func (mw *mongoWrapper) ensureIndex(colName, indexName string, index IndexInfo) error {
-	s := mw.session.Copy()
+func (w *mongoWrapper) ensureIndex(colName, indexName string, index IndexInfo) error {
+	s := w.session.Copy()
 	defer s.Close()
 
 	var keys []string
@@ -197,24 +211,24 @@ func (mw *mongoWrapper) ensureIndex(colName, indexName string, index IndexInfo) 
 	return s.DB("").C(colName).EnsureIndex(i)
 }
 
-func (mw *mongoWrapper) getToolOptions(colName string) *options.ToolOptions {
+func (w *mongoWrapper) getToolOptions(colName string) *options.ToolOptions {
 	return &options.ToolOptions{
 		General: &options.General{},
 		SSL: &options.SSL{
 			UseSSL: false,
 		},
 		Auth: &options.Auth{
-			Username: mw.Username,
-			Password: mw.Password,
-			Source:   mw.AuthSource,
+			Username: w.Username,
+			Password: w.Password,
+			Source:   w.AuthSource,
 		},
 		Namespace: &options.Namespace{
-			DB:         mw.DBName,
+			DB:         w.DBName,
 			Collection: colName,
 		},
 		Connection: &options.Connection{
-			Host: mw.Host,
-			Port: mw.Port,
+			Host: w.Host,
+			Port: w.Port,
 		},
 		URI: &options.URI{},
 	}

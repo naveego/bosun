@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/mongo"
@@ -10,6 +11,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"text/template"
 	"time"
@@ -34,6 +36,7 @@ type AppAction struct {
 	Vault              *VaultAction   `yaml:"vault,omitempty" json:"vault,omitempty"`
 	Script             *ScriptAction  `yaml:"script,omitempty" json:"script,omitempty"`
 	Test               *TestAction    `yaml:"test,omitempty" json:"test,omitempty"`
+	Mongo              *MongoAction   `yaml:"mongo,omitempty" json:"mongo,omitempty"`
 	ExcludeFromRelease bool           `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
 	FromPath           string         `yaml:"-" json:"-"`
 }
@@ -87,13 +90,14 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 	for {
 		ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
 
-		ctx.Log.Infof("Executing action...")
+		ctx.Log.WithField("description", a.Description).Infof("Executing action...")
 
 		attemptCtx := ctx.WithTimeout(timeout)
 
 		err := a.execute(attemptCtx)
 
 		if err == nil {
+			ctx.Log.Info("Action completed.")
 			// succeeded
 			return nil
 		}
@@ -144,6 +148,10 @@ func (a *AppAction) getActions() []Action {
 
 	if a.Test != nil {
 		actions = append(actions, a.Test)
+	}
+
+	if a.Mongo != nil {
+		actions = append(actions, a.Mongo)
 	}
 
 	return actions
@@ -251,6 +259,8 @@ func (t *TestAction) Execute(ctx BosunContext) error {
 			},
 		}
 
+		ctx.Log.WithField("url", target).Infof("Making HTTP GET request...")
+
 		resp, err := c.Get(target)
 		if err != nil {
 			return err
@@ -298,4 +308,39 @@ func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
 type MongoAction struct {
 	Connection   mongo.Connection `yaml:"connection" json:"connection"`
 	DatabaseFile string           `yaml:"databaseFile" json:"databaseFile"`
+	RebuildDB    bool             `yaml:"rebuildDb"`
+}
+
+func (a *MongoAction) Execute(ctx BosunContext) error {
+	var dataFile []byte
+
+	dataFile, err := ioutil.ReadFile(a.DatabaseFile)
+	if err != nil {
+		return errors.Errorf("could not read file directly: %s", err)
+	}
+
+	ctx.Log.Debug("parsing file '%s'", a.DatabaseFile)
+
+	db := mongo.Database{}
+	err = yaml.Unmarshal(dataFile, &db)
+	if err != nil {
+		return errors.Errorf("could not read file as yaml '%s': %v", a.DatabaseFile, err)
+	}
+
+	dataDir := filepath.Dir(a.DatabaseFile)
+
+	cmd := mongo.MongoImportCommand{
+		Conn:      a.Connection,
+		DB:        db,
+		DataDir:   dataDir,
+		RebuildDB: a.RebuildDB,
+		Log:       ctx.Log,
+	}
+
+	j, _ := json.MarshalIndent(cmd, "", "  ")
+	ctx.Log.Debugf("Executing mongo import command: \n%s", string(j))
+
+	err = cmd.Execute()
+
+	return err
 }

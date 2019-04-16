@@ -2,8 +2,30 @@ environments: []
 appRefs: {}
 apps:
 - name: bosun
+  repo: naveego/bosun
   version: 0.8.0
   images: []
+  actions:
+    - name: TestManualHTTPTest
+      description: Test for manual actions.
+      when: Manual
+      test:
+        http: https://google.com
+    - name: ManualMongo
+      description: Test for manual mongo insert action.
+      when: Manual
+      mongo:
+        databaseFile: test/mongo/db.yaml
+        connection:
+          dbName: "bosun-test"
+          kubePort:
+            forward: true
+            port: 27017
+            serviceName: mongodb-0
+          credentials:
+            type:       vault
+            vaultPath:  database/creds/mongodb-provisioner
+            authSource: admin
   scripts:
   - name: publish
     steps:
