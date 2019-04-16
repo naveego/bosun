@@ -1,0 +1,24 @@
+name: mongo-test
+description: Test which inserts documents into mongo and then asserts that they are there
+steps:
+  - name: insert
+    action:
+      mongo:
+        databaseFile: mongo-test-data/db.yaml
+        connectionName: e2e
+  - name: assert all inserted
+    action:
+      mongoAssert:
+        connectionName: e2e
+        collection: test-collection
+        expectedResultCount: 2
+        query:
+  - name: assert filtered query
+    action:
+      mongoAssert:
+        connectionName: e2e
+        collection: test-collection
+        expectedResultCount: 1
+        query: {
+          "active":true
+        }

@@ -18,6 +18,7 @@ type File struct {
 	Config       *Workspace             `yaml:"-" json:"-"`
 	Releases     []*ReleaseConfig       `yaml:"releases,omitempty" json:"releases"`
 	Tools        []ToolDef              `yaml:"tools,omitempty" json:"tools"`
+	TestSuites   []*E2ESuiteConfig      `yaml:"testSuites,omitempty" json:"testSuites,omitempty"`
 	// merged indicates that this File has had File instances merged into it and cannot be saved.
 	merged bool `yaml:"-" json:"-"`
 }
@@ -47,6 +48,7 @@ func (c *File) Merge(other *File) error {
 		c.mergeRelease(other)
 	}
 
+	c.TestSuites = append(c.TestSuites, other.TestSuites...)
 	c.Tools = append(c.Tools, other.Tools...)
 
 	return nil

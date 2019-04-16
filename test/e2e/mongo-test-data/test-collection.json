@@ -1,0 +1,11 @@
+{
+  "_id": "test-item",
+  "name": "Test Item",
+  "active": true
+}
+{
+  "_id": "test-inactive-item",
+  "name": "Test Inactive Item ",
+  "active": false
+}
+

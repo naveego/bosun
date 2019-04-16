@@ -364,8 +364,6 @@ var appAcceptActualCmd = &cobra.Command{
 	},
 }
 
-
-
 var appStatusCmd = &cobra.Command{
 	Use:          "status [name...]",
 	Short:        "Lists apps",
@@ -944,6 +942,10 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			scriptName = args[1]
 		}
 
+		if app == nil {
+			panic("will not happen because of mustGetApp")
+		}
+
 		var script *bosun.Script
 		var scriptNames []string
 		for _, s := range app.Scripts {
@@ -956,7 +958,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			return errors.Errorf("no script named %q in app %q\navailable scripts:\n-%s", scriptName, app.Name, strings.Join(scriptNames, "\n-"))
 		}
 
-		ctx := b.NewContext()
+		ctx := b.NewContext().WithDir(app.FromPath)
 
 		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
 		if err != nil {
@@ -969,7 +971,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 		}
 		ctx = ctx.WithReleaseValues(values)
 
-		err = b.ExecuteContext(ctx, script, scriptStepsSlice...)
+		err = script.Execute(ctx, scriptStepsSlice...)
 
 		return err
 	},
@@ -1115,16 +1117,16 @@ var appCloneCmd = addCommand(
 var appDiffCmd = addCommand(
 	appCmd,
 	&cobra.Command{
-		Use:           "diff {app} [release/]{env} [release]/{env}",
-		Short:         "Reports the differences between the values for an app in two scenarios.",
-		Long: `If the release part of the scenario is not provided, a transient release will be created and used instead.`,
+		Use:   "diff {app} [release/]{env} [release]/{env}",
+		Short: "Reports the differences between the values for an app in two scenarios.",
+		Long:  `If the release part of the scenario is not provided, a transient release will be created and used instead.`,
 		Example: `This command will show the differences between the values deployed 
 to the blue environment in release 2.4.2 and the current values for the
 green environment:
 
 diff go-between 2.4.2/blue green
 `,
-		Args:cobra.ExactArgs(3),
+		Args:          cobra.ExactArgs(3),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1134,9 +1136,7 @@ diff go-between 2.4.2/blue green
 			env1 := args[1]
 			env2 := args[2]
 
-			getValuesForEnv := func(scenario string) (string, error){
-
-
+			getValuesForEnv := func(scenario string) (string, error) {
 
 				segs := strings.Split(scenario, "/")
 				var releaseName, envName string
@@ -1197,30 +1197,29 @@ diff go-between 2.4.2/blue green
 				if err != nil {
 					return "", errors.Wrap(err, "get release values")
 				}
-				
+
 				valueYaml, err := values.Values.YAML()
 				if err != nil {
 					return "", errors.Wrap(err, "get release values yaml")
 				}
-				
+
 				return valueYaml, nil
 			}
-
 
 			env1yaml, err := getValuesForEnv(env1)
 			if err != nil {
 				return errors.Errorf("error for env1 %q: %s", env1, err)
-			} 
-			
+			}
+
 			env2yaml, err := getValuesForEnv(env2)
 			if err != nil {
 				return errors.Errorf("error for env2 %q: %s", env2, err)
 			}
-			
+
 			env1lines := strings.Split(env1yaml, "\n")
 			env2lines := strings.Split(env2yaml, "\n")
 			diffs := difflib.Diff(env1lines, env2lines)
-			
+
 			for _, diff := range diffs {
 				fmt.Println(renderDiff(diff))
 			}

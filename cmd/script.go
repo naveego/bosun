@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -27,7 +28,7 @@ import (
 var scriptCmd = &cobra.Command{
 	Use:          "script {script-file}",
 	Args:         cobra.ExactArgs(1),
-	Aliases:[]string{"scripts"},
+	Aliases:      []string{"scripts"},
 	Short:        "Run a scripted sequence of commands.",
 	Long:         `Provide a script file path.`,
 	SilenceUsage: true,
@@ -54,19 +55,20 @@ var scriptCmd = &cobra.Command{
 			}
 		}
 
-		err = b.Execute(script, scriptStepsSlice...)
+		if script == nil {
+			return errors.New("script was nil")
+		}
 
-		return err
+		return script.Execute(b.NewContext(), scriptStepsSlice...)
 	},
 }
 
 var scriptListCmd = &cobra.Command{
 	Use:          "list",
-	Aliases:[]string{"ls"},
+	Aliases:      []string{"ls"},
 	Short:        "List scripts from current environment.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-
 
 		b, err := getBosun()
 		if err != nil {
@@ -74,7 +76,6 @@ var scriptListCmd = &cobra.Command{
 		}
 
 		scripts := b.GetScripts()
-
 
 		if len(scripts) == 0 {
 			fmt.Println("No scripts in current environment.")

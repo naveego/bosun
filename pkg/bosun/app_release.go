@@ -34,7 +34,7 @@ type AppReleaseConfig struct {
 	Repo             string       `yaml:"repo" json:"repo"`
 	Branch           string       `yaml:"branch" json:"branch"`
 	Commit           string       `yaml:"commit" json:"commit"`
-	Version          string       `yaml:"version" json:"version"`
+	Version          string               `yaml:"version" json:"version"`
 	SyncedAt         time.Time    `yaml:"syncedAt" json:"syncedAt"`
 	Chart            string       `yaml:"chart" json:"chart"`
 	ImageNames       []string     `yaml:"images,omitempty" json:"images,omitempty"`

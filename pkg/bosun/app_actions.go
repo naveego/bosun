@@ -26,19 +26,20 @@ const (
 )
 
 type AppAction struct {
-	Name               string         `yaml:"name" json:"name"`
-	Description        string         `yaml:"description,omitempty" json:"description,omitempty"`
-	When               ActionSchedule `yaml:"when,omitempty" json:"when,omitempty"`
-	Where              string         `yaml:"where,omitempty" json:"where,omitempty"`
-	MaxAttempts        int            `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
-	Timeout            time.Duration  `yaml:"timeout,omitempty" json:"timeout,omitempty"`
-	Interval           time.Duration  `yaml:"interval,omitempty" json:"interval,omitempty"`
-	Vault              *VaultAction   `yaml:"vault,omitempty" json:"vault,omitempty"`
-	Script             *ScriptAction  `yaml:"script,omitempty" json:"script,omitempty"`
-	Test               *TestAction    `yaml:"test,omitempty" json:"test,omitempty"`
-	Mongo              *MongoAction   `yaml:"mongo,omitempty" json:"mongo,omitempty"`
-	ExcludeFromRelease bool           `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
-	FromPath           string         `yaml:"-" json:"-"`
+	Name               string             `yaml:"name" json:"name"`
+	Description        string             `yaml:"description,omitempty" json:"description,omitempty"`
+	When               ActionSchedule     `yaml:"when,omitempty" json:"when,omitempty"`
+	Where              string             `yaml:"where,omitempty" json:"where,omitempty"`
+	MaxAttempts        int                `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
+	Timeout            time.Duration      `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Interval           time.Duration      `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Vault              *VaultAction       `yaml:"vault,omitempty" json:"vault,omitempty"`
+	Script             *ScriptAction      `yaml:"script,omitempty" json:"script,omitempty"`
+	Test               *TestAction        `yaml:"test,omitempty" json:"test,omitempty"`
+	Mongo              *MongoAction       `yaml:"mongo,omitempty" json:"mongo,omitempty"`
+	MongoAssert        *MongoAssertAction `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
+	ExcludeFromRelease bool               `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
+	FromPath           string             `yaml:"-" json:"-"`
 }
 
 type Action interface {
@@ -88,7 +89,13 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 	}
 
 	for {
-		ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
+		ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name))
+		if a.FromPath != "" {
+			// if the action has its own FromPath, we'll use it, but usually
+			// actions are executed in a context which has already set the
+			// Dir to the parent script or app
+			ctx = ctx.WithDir(a.FromPath)
+		}
 
 		ctx.Log.WithField("description", a.Description).Infof("Executing action...")
 
@@ -152,6 +159,10 @@ func (a *AppAction) getActions() []Action {
 
 	if a.Mongo != nil {
 		actions = append(actions, a.Mongo)
+	}
+
+	if a.MongoAssert != nil {
+		actions = append(actions, a.MongoAssert)
 	}
 
 	return actions
@@ -306,28 +317,31 @@ func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
 }
 
 type MongoAction struct {
-	Connection   mongo.Connection `yaml:"connection" json:"connection"`
-	DatabaseFile string           `yaml:"databaseFile" json:"databaseFile"`
-	RebuildDB    bool             `yaml:"rebuildDb"`
+	ConnectionName string           `yaml:"connectionName,omitempty"`
+	Connection     mongo.Connection `yaml:"connection" json:"connection"`
+	DatabaseFile   string           `yaml:"databaseFile" json:"databaseFile"`
+	RebuildDB      bool             `yaml:"rebuildDb"`
 }
 
 func (a *MongoAction) Execute(ctx BosunContext) error {
 	var dataFile []byte
 
-	dataFile, err := ioutil.ReadFile(a.DatabaseFile)
+	databaseFilePath := ctx.ResolvePath(a.DatabaseFile)
+
+	dataFile, err := ioutil.ReadFile(databaseFilePath)
 	if err != nil {
 		return errors.Errorf("could not read file directly: %s", err)
 	}
 
-	ctx.Log.Debug("parsing file '%s'", a.DatabaseFile)
+	ctx.Log.Debugf("parsing file '%s'", databaseFilePath)
 
 	db := mongo.Database{}
 	err = yaml.Unmarshal(dataFile, &db)
 	if err != nil {
-		return errors.Errorf("could not read file as yaml '%s': %v", a.DatabaseFile, err)
+		return errors.Errorf("could not read file as yaml '%s': %v", databaseFilePath, err)
 	}
 
-	dataDir := filepath.Dir(a.DatabaseFile)
+	dataDir := filepath.Dir(databaseFilePath)
 
 	cmd := mongo.MongoImportCommand{
 		Conn:      a.Connection,
@@ -337,10 +351,67 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 		Log:       ctx.Log,
 	}
 
+	if a.ConnectionName != "" {
+		var ok bool
+		cmd.Conn, ok = ctx.GetKeyedValue(a.ConnectionName).(mongo.Connection)
+		if !ok {
+			return errors.Errorf("action had connectionName %q, but no connection with that name was found in the context", a.ConnectionName)
+		}
+	}
+
 	j, _ := json.MarshalIndent(cmd, "", "  ")
 	ctx.Log.Debugf("Executing mongo import command: \n%s", string(j))
 
 	err = cmd.Execute()
 
 	return err
+}
+
+type MongoAssertAction struct {
+	ConnectionName      string                 `yaml:"connectionName,omitempty"`
+	Connection          mongo.Connection       `yaml:"connection" json:"connection"`
+	Database            string                 `yaml:"database,omitempty" json:"database,omitempty"`
+	Collection          string                 `yaml:"collection" json:"collection"`
+	Query               map[string]interface{} `yaml:"query" json:"query"`
+	ExpectedResultCount int64                  `yaml:"expectedResultCount" json:"expectedResultCount"`
+}
+
+func (a *MongoAssertAction) Execute(ctx BosunContext) error {
+
+	if a.ConnectionName != "" {
+		var ok bool
+		a.Connection, ok = ctx.GetKeyedValue(a.ConnectionName).(mongo.Connection)
+		if !ok {
+			return errors.Errorf("action had connectionName %q, but no connection with that name was found in the context", a.ConnectionName)
+		}
+	}
+
+	pc, err := a.Connection.Prepare(ctx.Log)
+	if err != nil {
+		return errors.Wrap(err, "prepare connection")
+	}
+	defer pc.CleanUp()
+
+	client, err := pc.GetClient()
+	if err != nil {
+		return errors.Wrap(err, "get client")
+	}
+
+	databaseName := a.Database
+	if databaseName == "" {
+		databaseName = a.Connection.DBName
+	}
+
+	db := client.Database(databaseName)
+
+	collectionName := a.Collection
+	collection := db.Collection(collectionName)
+
+	res, err := collection.CountDocuments(ctx.Ctx(), a.Query)
+
+	if res != a.ExpectedResultCount {
+		return errors.Errorf("expected %d results, but found %d", a.ExpectedResultCount, res)
+	}
+
+	return nil
 }

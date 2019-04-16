@@ -19,15 +19,15 @@ import (
 )
 
 type Bosun struct {
-	params           Parameters
-	ws               *Workspace
-	file             *File
-	repos            map[string]*AppRepo
-	release          *Release
-	vaultClient      *vault.Client
-	env              *EnvironmentConfig
-	clusterAvailable *bool
-	log              *logrus.Entry
+	params               Parameters
+	ws                   *Workspace
+	file                 *File
+	repos                map[string]*AppRepo
+	release              *Release
+	vaultClient          *vault.Client
+	env                  *EnvironmentConfig
+	clusterAvailable     *bool
+	log                  *logrus.Entry
 	environmentConfirmed *bool
 }
 
@@ -40,7 +40,7 @@ type Parameters struct {
 	ValueOverrides map[string]string
 	FileOverrides  []string
 	NoCurrentEnv   bool
-	ConfirmedEnv string
+	ConfirmedEnv   string
 }
 
 func New(params Parameters, ws *Workspace) (*Bosun, error) {
@@ -209,7 +209,7 @@ func (b *Bosun) UseEnvironment(name string) error {
 func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 	if b.env == nil {
 		err := b.configureCurrentEnv()
-		if err != nil{
+		if err != nil {
 			panic(errors.Errorf("environment was not initialized; initializing environment caused error: %s", err))
 		}
 	}
@@ -482,7 +482,7 @@ func (b *Bosun) TidyWorkspace() {
 	b.ws.Imports = imports
 }
 
-func (b *Bosun) configureCurrentEnv() error{
+func (b *Bosun) configureCurrentEnv() error {
 	// if only one environment exists, it's the current one
 	if b.ws.CurrentEnvironment == "" {
 		if len(b.file.Environments) == 1 {
@@ -545,7 +545,7 @@ func (b *Bosun) ConfirmEnvironment() error {
 func (b *Bosun) GetTools() []ToolDef {
 	return b.ws.MergedBosunFile.Tools
 }
-func (b *Bosun) GetTool(name string) (ToolDef, error){
+func (b *Bosun) GetTool(name string) (ToolDef, error) {
 	for _, tool := range b.ws.MergedBosunFile.Tools {
 		if tool.Name == name {
 			return tool, nil
@@ -565,7 +565,6 @@ func (b *Bosun) RequireTool(name string) error {
 	}
 	return nil
 }
-
 
 func (b *Bosun) EnsureTool(name string) error {
 	tool, err := b.GetTool(name)
@@ -587,3 +586,19 @@ func (b *Bosun) EnsureTool(name string) error {
 	return err
 }
 
+func (b *Bosun) GetTestSuiteConfigs() []*E2ESuiteConfig {
+	return b.ws.MergedBosunFile.TestSuites
+}
+
+func (b *Bosun) GetTestSuite(name string) (*E2ESuite, error) {
+	var suite *E2ESuite
+	var err error
+	for _, c := range b.GetTestSuiteConfigs() {
+		if c.Name == name {
+			suite, err = NewE2ESuite(c)
+			return suite, err
+		}
+	}
+
+	return nil, errors.Errorf("no test suite found with name %q", name)
+}

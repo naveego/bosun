@@ -48,7 +48,7 @@ type HelmRepo struct {
 func (e *EnvironmentConfig) SetFromPath(path string) {
 	e.FromPath = path
 	for i := range e.Scripts {
-		e.Scripts[i].FromPath = path
+		e.Scripts[i].SetFromPath(path)
 	}
 	for i := range e.Variables {
 		e.Variables[i].FromPath = path

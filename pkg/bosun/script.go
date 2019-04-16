@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,32 +11,85 @@ import (
 )
 
 type Script struct {
-	Name     string       `yaml:"name" json:"name"`
-	FromPath string       `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
-	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
-	Steps    []ScriptStep `yaml:"steps,omitempty" json:"steps,omitempty"`
-	Literal *Command `yaml:"literal,omitempty" json:"literal,omitempty"`
+	ConfigShared `yaml:",inline"`
+	File         *File        `yaml:"-" json:"-"`
+	Steps        []ScriptStep `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Literal      *Command     `yaml:"literal,omitempty" json:"literal,omitempty"`
+}
+
+func (s Script) SetFromPath(path string) {
+	s.FromPath = path
+	for i := range s.Steps {
+		step := s.Steps[i]
+		if step.Action != nil {
+			step.Action.FromPath = path
+		}
+		s.Steps[i] = step
+	}
 }
 
 type ScriptStep struct {
-	Name string                    `yaml:"name,omitempty" json:"name,omitempty"`
-	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Command string                 `yaml:"command" json:"command"`
-	Args    []string               `yaml:"args" json:"args"`
-	Flags   map[string]interface{} `yaml:"flags" json:"flags"`
-	Literal *CommandValue          `yaml:"literal,omitempty" json:"literal,omitempty"`
+	ConfigShared `yaml:",inline"`
+	// Bosun is a list of arguments to pass to a child instance of bosun, which
+	// will be run in the directory containing this script.
+	Bosun []string `yaml:"bosun,omitempty" json:"bosun,omitempty"`
+	// Cmd is a standard shell command.
+	Cmd *Command `yaml:"cmd,omitempty" json:"cmd,omitempty"`
+	// Action is an action to execute in the current context.
+	Action *AppAction `yaml:"action,omitempty" json:"action,omitempty"`
 }
 
-func (b *Bosun) Execute(s *Script, steps ...int) error {
+func (s *ScriptStep) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var m map[string]interface{}
+	err := unmarshal(&m)
+	if err != nil {
+		return err
+	}
 
-	relativeDir := filepath.Dir(s.FromPath)
-
-	ctx := b.NewContext().WithDir(relativeDir).WithLog(b.log.WithField("script", s.Name))
-
-	return b.ExecuteContext(ctx, s, steps...)
+	_, hasCommand := m["command"]
+	_, hasLiteral := m["literal"]
+	if hasCommand || hasLiteral {
+		// this is a v1 script step
+		var v1 scriptStepV1
+		err = unmarshal(&v1)
+		if err != nil {
+			return err
+		}
+		if s == nil {
+			*s = ScriptStep{}
+		}
+		if hasCommand {
+			s.Bosun = append([]string{v1.Command}, v1.Args...)
+			for k, v := range v1.Flags {
+				s.Bosun = append(s.Bosun, "--"+k, fmt.Sprint(v))
+			}
+		}
+		if hasLiteral {
+			s.Cmd = &v1.Literal.Command
+		}
+	} else {
+		type proxy ScriptStep
+		var p proxy
+		err = unmarshal(&p)
+		if err != nil {
+			return err
+		}
+		*s = ScriptStep(p)
+	}
+	return nil
 }
 
-func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error {
+// Deprecated script step format.
+type scriptStepV1 struct {
+	Name        string                 `yaml:"name,omitempty" json:"name,omitempty"`
+	Description string                 `yaml:"description,omitempty" json:"description,omitempty"`
+	Command     string                 `yaml:"command" json:"command"`
+	Args        []string               `yaml:"args" json:"args"`
+	Flags       map[string]interface{} `yaml:"flags" json:"flags"`
+	Literal     *CommandValue          `yaml:"literal,omitempty" json:"literal,omitempty"`
+}
+
+func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 	var err error
 	env := ctx.Env
 
@@ -50,14 +102,13 @@ func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error 
 	}
 
 	if s.Literal != nil {
-		log.Debug("Executing literal script, not bosun script.")
-		_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput:true})
+		ctx.Log.Debug("Executing literal script, not bosun script.")
+		_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
 		if err != nil {
 			return err
 		}
 		return err
 	}
-
 
 	exe, err := os.Executable()
 	if err != nil {
@@ -83,67 +134,68 @@ func (b *Bosun) ExecuteContext(ctx BosunContext, s *Script, steps ...int) error 
 			return errors.Errorf("invalid step %d (there are %d steps)", i, len(s.Steps))
 		}
 		step := s.Steps[i]
-		log := ctx.Log.WithField("step", i).WithField("command", step.Command)
-		if step.Name != "" {
-			log = log.WithField("name", step.Name)
-		}
-		if step.Description != "" {
-			log.Info(step.Description)
-		}
 
-		if step.Literal != nil {
-			log.Info("Step is a literal script, not a bosun action.")
-
-			_, err := step.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput:true})
-			if err != nil {
-				return err
-			}
-			continue
-		}
-
-		if step.Flags == nil {
-			step.Flags = make(map[string]interface{})
-		}
-
-		var stepArgs []string
-		stepArgs = append(stepArgs, strings.Fields(step.Command)...)
-		stepArgs = append(stepArgs, "--step", fmt.Sprintf("%d", i))
-		if b.params.Verbose {
-			stepArgs = append(stepArgs, "--verbose")
-		}
-		if b.params.DryRun {
-			stepArgs = append(stepArgs, "--dry-run")
-		}
-
-		step.Flags["domain"] = env.Domain
-		step.Flags["cluster"] = env.Cluster
-
-		for k, v := range step.Flags {
-			switch vt := v.(type) {
-			case []interface{}:
-				var arr []string
-				for _, i := range vt {
-					arr = append(arr, fmt.Sprint(i))
-				}
-				stepArgs = append(stepArgs, fmt.Sprintf("--%s", k), strings.Join(arr, ","))
-			case bool:
-				stepArgs = append(stepArgs, fmt.Sprintf("--%s", k))
-			default:
-				stepArgs = append(stepArgs, fmt.Sprintf("--%s", k), fmt.Sprintf("%v", vt))
-			}
-		}
-
-		for _, v := range step.Args {
-			stepArgs = append(stepArgs, v)
-		}
-
-		log.WithField("args", stepArgs).Info("Executing step")
-
-		err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Dir).RunE()
+		ctx := ctx.WithLog(ctx.Log.WithField("step", i))
+		err := step.Execute(ctx, i)
 		if err != nil {
-			log.WithField("flags", step.Flags).WithField("args", step.Args).Error("Step failed.")
-			return errors.Errorf("script %q abended on step %q (%d): %s", s.Name, step.Name, i, err)
+			return errors.Wrapf(err, "script %q abended on step %q (%d)", s.Name, s.Name, i)
 		}
+	}
+
+	return nil
+}
+
+func (s ScriptStep) Execute(ctx BosunContext, index int) error {
+
+	log := ctx.Log
+	if s.Name != "" {
+		log = log.WithField("name", s.Name)
+	}
+	if s.Description != "" {
+		log.Info(s.Description)
+	}
+
+	if s.Cmd != nil {
+		log.Debug("Step is a shell command, not a bosun command.")
+
+		_, err := s.Cmd.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
+		return err
+	}
+
+	if s.Action != nil {
+		log.Debug("Step is an action.")
+		if s.Action.Name == "" {
+			s.Action.Name = s.Name
+		}
+
+		err := s.Action.Execute(ctx)
+		return err
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	var stepArgs []string
+	stepArgs = append(stepArgs, s.Bosun...)
+	stepArgs = append(stepArgs, "--step", fmt.Sprintf("%d", index))
+	if ctx.IsVerbose() {
+		stepArgs = append(stepArgs, "--verbose")
+	}
+	if ctx.IsDryRun() {
+		stepArgs = append(stepArgs, "--dry-run")
+	}
+
+	stepArgs = append(stepArgs, "--domain", ctx.GetDomain())
+	stepArgs = append(stepArgs, "--cluster", ctx.GetCluster())
+
+	log.WithField("args", stepArgs).Info("Executing step")
+
+	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Dir).RunE()
+	if err != nil {
+		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
+		return err
 	}
 
 	return nil

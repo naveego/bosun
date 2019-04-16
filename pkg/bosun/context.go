@@ -15,7 +15,6 @@ import (
 	"time"
 )
 
-
 type BosunContext struct {
 	Bosun           *Bosun
 	Env             *EnvironmentConfig
@@ -27,9 +26,13 @@ type BosunContext struct {
 	AppRelease      *AppRelease
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
+	contextValues   map[string]interface{}
 }
 
 func (c BosunContext) WithDir(dirOrFilePath string) BosunContext {
+	if dirOrFilePath == "" {
+		panic("empty path passed to WithDir (probably some config didn't get its FromPath property populated)")
+	}
 	dir := getDirIfFile(dirOrFilePath)
 	c.Dir = dir
 	return c
@@ -40,6 +43,21 @@ func (c BosunContext) Ctx() context.Context {
 		return context.Background()
 	}
 	return c.ctx
+}
+
+func (c BosunContext) WithKeyedValue(key string, value interface{}) BosunContext {
+	c.LogLine(1, "[Context] Set value at %q to %T", key, value)
+	kvs := map[string]interface{}{}
+	for k, v := range c.contextValues {
+		kvs[k] = v
+	}
+	kvs[key] = value
+	c.contextValues = kvs
+	return c
+}
+
+func (c BosunContext) GetKeyedValue(key string) interface{} {
+	return c.contextValues[key]
 }
 
 func (c BosunContext) WithRelease(r *Release) BosunContext {
@@ -76,7 +94,6 @@ func (c BosunContext) WithReleaseValues(v *ReleaseValues) BosunContext {
 
 	yml, _ := yaml.Marshal(v.Values)
 	c.LogLine(1, "[Context] Set release values:\n%s\n", string(yml))
-
 
 	return c
 }
@@ -201,4 +218,21 @@ func (c BosunContext) GetAppFileFromReleaseBundle(path string) ([]byte, string, 
 
 	content, bundleFilePath, err := release.GetBundleFileContent(app.Namespace, path)
 	return content, bundleFilePath, err
+}
+
+func (c BosunContext) IsVerbose() bool {
+	return c.GetParams().Verbose
+}
+
+func (c BosunContext) GetDomain() string {
+	if c.Env != nil {
+		return c.Env.Domain
+	}
+	return ""
+}
+func (c BosunContext) GetCluster() string {
+	if c.Env != nil {
+		return c.Env.Cluster
+	}
+	return ""
 }

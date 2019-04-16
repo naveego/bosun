@@ -146,7 +146,7 @@ func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
-	return mustGetAppOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent:true})
+	return mustGetAppOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
 }
 
 func MustYaml(i interface{}) string {
@@ -199,10 +199,10 @@ func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
 }
 
 type getAppReposOptions struct {
-	ifNoFiltersGetAll   bool
-	ifNoFiltersGetCurrent   bool
-	ifNoMatchGetAll     bool
-	ifNoMatchGetCurrent bool
+	ifNoFiltersGetAll     bool
+	ifNoFiltersGetCurrent bool
+	ifNoMatchGetAll       bool
+	ifNoMatchGetCurrent   bool
 }
 
 // gets one or more apps matching names, or if names
@@ -233,7 +233,7 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 	if opt.ifNoFiltersGetCurrent && len(includeFilters) == 0 && len(excludeFilters) == 0 {
 		app, err := getCurrentApp(b)
 		if err != nil {
-			return nil, errors.Wrap(err,"no filters provided but current directory is not associated with an app")
+			return nil, errors.Wrap(err, "no filters provided but current directory is not associated with an app")
 		}
 		return []*bosun.AppRepo{app}, nil
 	}
@@ -264,7 +264,7 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 	return nil, errors.New("no apps matched")
 }
 
-func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error){
+func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 	var bosunFile string
 	var err error
 	var app *bosun.AppRepo
@@ -297,11 +297,11 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error){
 	}
 
 	p := &promptui.Select{
-		Label:"Multiple apps found in this repo, please choose one.",
-		Items:appsUnderDirNames,
+		Label: "Multiple apps found in this repo, please choose one.",
+		Items: appsUnderDirNames,
 	}
 
-	i,_, err := p.Run()
+	i, _, err := p.Run()
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +510,7 @@ func findFileInDirOrAncestors(dir string, filename string) (string, error) {
 }
 
 var (
-	colorHeader = color.New(color.Bold)
+	colorHeader = color.New(color.Bold, color.FgHiBlue)
 	colorError  = color.New(color.FgRed)
 	colorOK     = color.New(color.FgGreen, color.Bold)
 )
@@ -561,7 +561,7 @@ func passesConditions(app *bosun.AppRepo) bool {
 	return true
 }
 
-func printOutput(out interface{}) error {
+func printOutput(out interface{}, columns ...string) error {
 
 	format := strings.ToLower(viper.GetString(ArgGlobalOutput))
 
@@ -595,22 +595,30 @@ func printOutput(out interface{}) error {
 		first := mapSlice[0]
 		t := tabby.New()
 		var keys []string
-		for k := range first {
-			keys = append(keys, k)
+		if len(columns) > 0 {
+			keys = columns
+		} else {
+			for k := range first {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
 		}
-		sort.Strings(keys)
-		t.AddHeader(keys)
+		var header []interface{}
+		for _, k := range keys {
+			header = append(header, k)
+		}
+		t.AddHeader(header...)
 		for _, m := range mapSlice {
-			var values []string
+			var values []interface{}
 
 			for _, k := range keys {
-				if v, ok := m[k]; ok && len(v) > 0{
-					values = append(values, string(v))
+				if v, ok := m[k]; ok && len(v) > 0 {
+					values = append(values, strings.Trim(string(v), `"`))
 				} else {
 					values = append(values, "")
 				}
 			}
-			t.AddHeader(values)
+			t.AddLine(values...)
 		}
 		t.Print()
 
@@ -618,7 +626,5 @@ func printOutput(out interface{}) error {
 	default:
 		return errors.Errorf("Unrecognized format %q (valid formats are 'json', 'yaml', and 'table')", format)
 	}
-
-
 
 }

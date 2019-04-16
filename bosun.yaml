@@ -1,5 +1,7 @@
 environments: []
 appRefs: {}
+imports:
+  - test/e2e/suite.yaml
 apps:
 - name: bosun
   repo: naveego/bosun

@@ -1,0 +1,3 @@
+collections:
+  test-collection:
+    dataFile: test-collection.json
