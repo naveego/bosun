@@ -1,47 +1,48 @@
+imports:
+- integration/testdata/e2e/simple-http-test/suite.yaml
+- integration/testdata/e2e/mongo-test/suite.yaml
 environments: []
 appRefs: {}
-imports:
-  - integration/testdata/e2e/simple-http-test/suite.yaml
-  - integration/testdata/e2e/mongo-test/suite.yaml
 apps:
 - name: bosun
   repo: naveego/bosun
-  version: 0.8.0
+  version: 0.8.1
   images: []
-  actions:
-    - name: TestManualHTTPTest
-      description: Test for manual actions.
-      when: Manual
-      test:
-        http: https://google.com
-    - name: ManualMongo
-      description: Test for manual mongo insert action.
-      when: Manual
-      mongo:
-        databaseFile: test/mongo/db.yaml
-        connection:
-          dbName: "bosun-test"
-          kubePort:
-            forward: true
-            port: 27017
-            serviceName: mongodb-0
-          credentials:
-            type:       vault
-            vaultPath:  database/creds/mongodb-provisioner
-            authSource: admin
   scripts:
   - name: publish
     steps:
-    - command: ""
-      args: []
-      flags: {}
-      literal:
-        script: |-
-          set -e
-          if [[ -n "$(git status --porcelain)" ]] ; then
-            echo "directory is dirty"
-            exit 1
-          fi
-          git tag $(bosun app version bosun)
-          git push --tags
-          goreleaser --rm-dist
+    - bosun: [""]
+      cmd: |-
+        set -e
+        if [[ -n "$(git status --porcelain)" ]] ; then
+          echo "directory is dirty"
+          exit 1
+        fi
+        git tag $(bosun app version bosun)
+        git push --tags
+        goreleaser --rm-dist
+  actions:
+  - name: TestManualHTTPTest
+    description: Test for manual actions.
+    when: Manual
+    test:
+      http: https://google.com
+  - name: ManualMongo
+    description: Test for manual mongo insert action.
+    when: Manual
+    mongo:
+      connection:
+        dbName: bosun-test
+        host: ""
+        port: ""
+        kubePort:
+          forward: true
+          serviceName: mongodb-0
+          port: 27017
+          namespace: ""
+        credentials:
+          type: vault
+          vaultPath: database/creds/mongodb-provisioner
+          authSource: admin
+      databaseFile: test/mongo/db.yaml
+      rebuildDb: false
