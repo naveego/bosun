@@ -1,0 +1,6 @@
+testSuites:
+- name: SimpleHttpTest
+  description: Suite for testing http get and templating.
+  tests:
+    - pass-test.yaml
+    - fail-test.yaml

@@ -1,0 +1,6 @@
+currentEnvironment: black
+imports:
+  - bosun.red.yaml
+  - bosun.black.yaml
+  - e2e/mongo-test/suite.yaml
+  - e2e/simple-http-test/suite.yaml

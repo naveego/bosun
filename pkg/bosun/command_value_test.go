@@ -38,24 +38,13 @@ var _ = Describe("CommandValue", func() {
 			Entry("value",
 				"dv: some-value",
 				CommandValue{Value: "some-value"},
-				`dv:
-  value: some-value`),
+				`dv: some-value`),
 			Entry("value explicit",
 				`dv:
   value: some-value`,
 				CommandValue{Value: "some-value"},
-				`dv:
-  value: some-value`),
-			Entry("value explicit with tools",
-				`dv:
-  value: some-value
-  tools: 
-    - xyz`,
-				CommandValue{Value: "some-value", Command:Command{Tools: []string{"xyz"}}},
-				`dv:
-  value: some-value
-  tools:
-  - xyz`),
+				`dv: some-value`),
+
 			Entry("command implicit",
 				`dv:
   command: 
@@ -71,10 +60,21 @@ var _ = Describe("CommandValue", func() {
 				CommandValue{Command: Command{Command: []string{"some", "command"}}},
 				`dv:
   command: [some, command]`),
+			Entry("command explicit with tools",
+				`dv:
+  command: [some, command]
+  tools: 
+    - xyz`,
+				CommandValue{Command: Command{Command: []string{"some", "command"}, Tools: []string{"xyz"}}},
+				`dv:
+  command: [some, command]
+  tools:
+  - xyz`),
 			Entry("script",
-				`dv: |-
-  some
-  value`, CommandValue{Command: Command{Script: `some
+				`dv: 
+  script: |-
+    some
+    value`, CommandValue{Command: Command{Script: `some
 value`}}, `dv:
   script: |-
     some

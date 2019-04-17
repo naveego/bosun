@@ -1,7 +1,8 @@
 environments: []
 appRefs: {}
 imports:
-  - test/e2e/suite.yaml
+  - integration/testdata/e2e/simple-http-test/suite.yaml
+  - integration/testdata/e2e/mongo-test/suite.yaml
 apps:
 - name: bosun
   repo: naveego/bosun

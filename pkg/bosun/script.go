@@ -17,10 +17,11 @@ type Script struct {
 	Literal      *Command     `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
-func (s Script) SetFromPath(path string) {
+func (s *Script) SetFromPath(path string) {
 	s.FromPath = path
 	for i := range s.Steps {
 		step := s.Steps[i]
+		step.FromPath = path
 		if step.Action != nil {
 			step.Action.FromPath = path
 		}
@@ -32,7 +33,7 @@ type ScriptStep struct {
 	ConfigShared `yaml:",inline"`
 	// Bosun is a list of arguments to pass to a child instance of bosun, which
 	// will be run in the directory containing this script.
-	Bosun []string `yaml:"bosun,omitempty" json:"bosun,omitempty"`
+	Bosun []string `yaml:"bosun,flow,omitempty" json:"bosun,omitempty"`
 	// Cmd is a standard shell command.
 	Cmd *Command `yaml:"cmd,omitempty" json:"cmd,omitempty"`
 	// Action is an action to execute in the current context.
@@ -91,6 +92,8 @@ type scriptStepV1 struct {
 
 func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 	var err error
+
+	ctx = ctx.WithDir(s.FromPath)
 	env := ctx.Env
 
 	if err = env.Ensure(ctx); err != nil {

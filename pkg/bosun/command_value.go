@@ -18,7 +18,7 @@ type commandValueMarshalling struct {
 	Command []string                            `yaml:"command,omitempty,flow" json:"command,omitempty,flow"`
 	Script  string                              `yaml:"script,omitempty" json:"script,omitempty"`
 	OS      map[string]*commandValueMarshalling `yaml:"os,omitempty" json:"os,omitempty"`
-	Tools []string `yaml:"tools,omitempty" json:"tools,omitempty"`
+	Tools   []string                            `yaml:"tools,omitempty" json:"tools,omitempty"`
 }
 
 func (c *CommandValue) toMarshalling() *commandValueMarshalling {
@@ -26,7 +26,7 @@ func (c *CommandValue) toMarshalling() *commandValueMarshalling {
 		Value:   c.Value,
 		Command: c.Command.Command,
 		Script:  c.Script,
-		Tools:c.Tools,
+		Tools:   c.Tools,
 	}
 	if len(c.OS) > 0 {
 		m.OS = map[string]*commandValueMarshalling{}
@@ -53,6 +53,9 @@ func (c commandValueMarshalling) apply(to *CommandValue) {
 }
 
 func (c *CommandValue) MarshalYAML() (interface{}, error) {
+	if c.Value != "" && !isMultiline(c.Value) {
+		return c.Value, nil
+	}
 
 	return c.toMarshalling(), nil
 }
@@ -71,7 +74,7 @@ func (c *CommandValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			u.Value = s
 		}
 	} else if err = unmarshal(&u); err == nil && (len(u.OS) > 0 || u.Value != "") {
-
+		// direct unmarshal succeeded
 	} else if err = unmarshal(&cmd); err == nil {
 		u.Command = cmd
 	}
@@ -82,7 +85,7 @@ func (c *CommandValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func isMultiline(s string) bool {
-	return strings.Contains(s, "\n")
+	return strings.Index(s, "\n") >= 0
 }
 
 func (c *CommandValue) GetValue() string {

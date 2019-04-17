@@ -1,5 +1,5 @@
 testSuites:
-- name: Test Suite
+- name: MongoTestSuite
   description: Suite for testing test suites.
   mongoConnections:
     e2e:

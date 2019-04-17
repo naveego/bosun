@@ -1,0 +1,11 @@
+{{ $url := "https://google.com" }}
+name: pass-test
+description: Test which inserts documents into mongo and then asserts that they are there
+variables:
+  url: {{ $url }}
+steps:
+  - name: HTTP get
+    action:
+      http:
+        url: {{ $url }}
+        method: GET

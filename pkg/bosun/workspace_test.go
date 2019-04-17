@@ -41,6 +41,7 @@ values:
 			var sut AppRepoConfig
 
 			Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
+			sut.FromPath = RootPkgBosunDir
 
 			redValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "red"}})
 
@@ -53,7 +54,7 @@ values:
 					"redgreenfile",
 					"redfile",
 				},
-				Static:Values{},
+				Static: Values{},
 			}))
 
 			greenValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "green"}})
@@ -67,7 +68,7 @@ values:
 					"redgreenfile",
 					"greenfile",
 				},
-				Static:Values{},
+				Static: Values{},
 			}))
 
 			b, err := yaml.Marshal(sut)

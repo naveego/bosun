@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -38,6 +39,7 @@ type AppAction struct {
 	Test               *TestAction        `yaml:"test,omitempty" json:"test,omitempty"`
 	Mongo              *MongoAction       `yaml:"mongo,omitempty" json:"mongo,omitempty"`
 	MongoAssert        *MongoAssertAction `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
+	HTTP               *HTTPAction        `yaml:"http,omitempty" json:"http,omitempty"`
 	ExcludeFromRelease bool               `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
 	FromPath           string             `yaml:"-" json:"-"`
 }
@@ -88,51 +90,56 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 		interval = 5 * time.Second
 	}
 
-	for {
-		ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name))
-		if a.FromPath != "" {
-			// if the action has its own FromPath, we'll use it, but usually
-			// actions are executed in a context which has already set the
-			// Dir to the parent script or app
-			ctx = ctx.WithDir(a.FromPath)
+	var err error
+
+	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name))
+	if a.FromPath != "" {
+		// if the action has its own FromPath, we'll use it, but usually
+		// actions are executed in a context which has already set the
+		// Dir to the parent script or app
+		ctx = ctx.WithDir(a.FromPath)
+	}
+
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			seconds := int(interval.Seconds())
+			ctx.Log.WithError(err).WithField("attempts_remaining", attempts-i).Errorf("Action failed, waiting %s...", interval)
+			if seconds > 0 {
+				fmt.Printf("\rWaiting: %d", seconds)
+				for ; seconds >= 0; seconds = seconds - 1 {
+					select {
+					case <-ctx.Ctx().Done():
+						fmt.Printf("\r")
+						return nil
+					case <-time.After(time.Second):
+						fmt.Printf("\rWaiting: %d  ", seconds-1)
+					}
+				}
+				fmt.Printf("\r                     \r")
+			}
 		}
 
 		ctx.Log.WithField("description", a.Description).Infof("Executing action...")
 
 		attemptCtx := ctx.WithTimeout(timeout)
 
-		err := a.execute(attemptCtx)
+		err = a.execute(attemptCtx)
 
 		if err == nil {
 			ctx.Log.Info("Action completed.")
 			// succeeded
 			return nil
 		}
-
-		attempts--
-
-		ctx.Log.WithError(err).WithField("attempts_remaining", attempts).Error("Action failed.")
-
-		if attempts == 0 {
-			return err
-		}
-		seconds := int(interval.Seconds())
-		fmt.Printf("\rWaiting: %d", seconds)
-		for ; seconds >= 0; seconds = seconds - 1 {
-			select {
-			case <-ctx.Ctx().Done():
-				fmt.Printf("\r")
-				return nil
-			case <-time.After(time.Second):
-				fmt.Printf("\rWaiting: %d  ", seconds-1)
-			}
-		}
-		fmt.Printf("\r                     \r")
 	}
+
+	return errors.Wrapf(err, "action failed after %d attempts (with a timeout of %s and an interval of %s); final error",
+		attempts, timeout, interval)
+
 }
 
 func (a *AppAction) execute(ctx BosunContext) error {
 	for _, action := range a.getActions() {
+		ctx = ctx.WithLogField("action_type", fmt.Sprintf("%T", action))
 		ctx.Log.Debugf("Executing %T action...", action)
 		err := action.Execute(ctx)
 		if err != nil {
@@ -163,6 +170,10 @@ func (a *AppAction) getActions() []Action {
 
 	if a.MongoAssert != nil {
 		actions = append(actions, a.MongoAssert)
+	}
+
+	if a.HTTP != nil {
+		actions = append(actions, a.HTTP)
 	}
 
 	return actions
@@ -392,10 +403,7 @@ func (a *MongoAssertAction) Execute(ctx BosunContext) error {
 	}
 	defer pc.CleanUp()
 
-	client, err := pc.GetClient()
-	if err != nil {
-		return errors.Wrap(err, "get client")
-	}
+	client := pc.Client
 
 	databaseName := a.Database
 	if databaseName == "" {
@@ -411,6 +419,51 @@ func (a *MongoAssertAction) Execute(ctx BosunContext) error {
 
 	if res != a.ExpectedResultCount {
 		return errors.Errorf("expected %d results, but found %d", a.ExpectedResultCount, res)
+	}
+
+	return nil
+}
+
+type HTTPAction struct {
+	URL     string                 `yaml:"url" json:"url"`
+	Method  string                 `yaml:"method" json:"method"`
+	Headers map[string]string      `yaml:"headers" json:"headers"`
+	Body    map[string]interface{} `yaml:"body,omitempty" json:"body"`
+}
+
+func (a *HTTPAction) Execute(ctx BosunContext) error {
+
+	var bodyBytes []byte
+	var err error
+	if a.Body != nil {
+		bodyBytes, err = json.Marshal(a.Body)
+		if err != nil {
+			return errors.Wrap(err, "marshal body")
+		}
+	}
+
+	bodyBuffer := bytes.NewBuffer(bodyBytes)
+	a.Method = strings.ToUpper(a.Method)
+
+	ctx.Log.Debugf("Making %s request to %s...", a.Method, a.URL)
+
+	req, err := http.NewRequest(a.Method, a.URL, bodyBuffer)
+	if err != nil {
+		return errors.Wrap(err, "create req")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "made request")
+	}
+
+	ctx.Log.Debugf("Request returned %d - %s.", resp.StatusCode, resp.Status)
+
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		err = errors.Errorf("Response had non-success status code %d: %s", resp.StatusCode, string(respBody))
+		return err
 	}
 
 	return nil

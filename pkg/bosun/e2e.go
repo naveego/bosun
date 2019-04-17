@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/mongo"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
+	"github.com/rs/xid"
 	"path/filepath"
 	"time"
 )
@@ -21,8 +20,9 @@ type E2ESuiteConfig struct {
 type E2ETestConfig struct {
 	ConfigShared      `yaml:",inline"`
 	E2EBookendScripts `yaml:",inline"`
-	Dependencies      []*Dependency `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
-	Steps             []ScriptStep  `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Dependencies      []*Dependency          `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
+	Variables         map[string]interface{} `yaml:"variables,omitempty" json:"variables"`
+	Steps             []ScriptStep           `yaml:"steps,omitempty" json:"steps,omitempty"`
 }
 
 type E2EStepConfig struct {
@@ -31,13 +31,7 @@ type E2EStepConfig struct {
 
 type E2ESuite struct {
 	E2ESuiteConfig
-	PreparedConnections []*mongo.PreparedConnection
-}
-
-func NewE2ESuite(config *E2ESuiteConfig) (*E2ESuite, error) {
-	return &E2ESuite{
-		E2ESuiteConfig: *config,
-	}, nil
+	PreparedConnections []mongo.PreparedConnection
 }
 
 type E2EBookendScripts struct {
@@ -65,20 +59,28 @@ func (e E2EBookendScripts) Teardown(ctx BosunContext) error {
 	return err
 }
 
-func (s *E2ESuite) Load() error {
+func NewE2ESuite(ctx BosunContext, config *E2ESuiteConfig) (*E2ESuite, error) {
+
+	suite := &E2ESuite{
+		E2ESuiteConfig: *config,
+	}
+
+	return suite, nil
+}
+
+func (s *E2ESuite) LoadTests(ctx BosunContext) error {
+	templateHelper, err := ctx.GetTemplateHelper()
+	if err != nil {
+		return errors.Wrap(err, "get template helper")
+	}
 
 	testDir := filepath.Dir(s.FromPath)
 
 	for _, path := range s.TestFiles {
 		path = filepath.Join(testDir, path)
 
-		b, err := ioutil.ReadFile(path)
-		if err != nil {
-			return errors.Wrap(err, "read test file")
-		}
-
 		var testConfig E2ETestConfig
-		err = yaml.Unmarshal(b, &testConfig)
+		err = templateHelper.LoadFromYaml(&testConfig, path)
 		if err != nil {
 			return errors.Wrapf(err, "read test config from %q", path)
 		}
@@ -92,13 +94,27 @@ func (s *E2ESuite) Load() error {
 
 func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) {
 
-	err := s.Load()
+	runID := xid.New().String()
+	releaseValues := &ReleaseValues{
+		Values: Values{
+			"e2e": Values{
+				"runID": runID,
+			},
+		},
+	}
+
+	ctx = ctx.WithDir(s.FromPath).
+		WithLogField("suite", s.Name).
+		WithReleaseValues(releaseValues)
+
+	err := s.LoadTests(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "load")
+		return nil, errors.Wrap(err, "load tests")
 	}
 
 	run := &E2ERun{
-		Ctx:   ctx.WithDir(s.FromPath),
+		ID:    runID,
+		Ctx:   ctx,
 		Suite: s,
 	}
 
@@ -152,6 +168,7 @@ func NewE2ETest(config E2ETestConfig) *E2ETest {
 }
 
 type E2ERun struct {
+	ID      string
 	Ctx     BosunContext
 	Suite   *E2ESuite
 	Configs []*E2ETestConfig
@@ -201,6 +218,7 @@ type E2EResult struct {
 	Name   string           `yaml:"name" json:"name"`
 	Steps  []*E2EStepResult `yaml:"steps" json:"steps"`
 	Passed bool             `yaml:"passed" json:"passed"`
+	Error  string           `yaml:"error,omitempty" json:"error,omitempty"`
 	Timed  `yaml:",inline"`
 }
 
@@ -259,7 +277,9 @@ func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
 		result.Steps = append(result.Steps, stepResult)
 
 		if err != nil {
+			ctx.Log.WithError(err).Error("Step failed.")
 			result.Passed = false
+			result.Error = err.Error()
 			stepResult.Passed = false
 			stepResult.Error = err.Error()
 			break

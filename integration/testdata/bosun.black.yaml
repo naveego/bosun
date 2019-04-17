@@ -1,0 +1,15 @@
+environments:
+  - name: black
+    cluster: black
+    domain: n5o.black
+    isLocal: true
+    variables:
+      - name: AWS_DEFAULT_PROFILE
+        from:
+          value: black
+      - name: VAULT_ADDR
+        from:
+          value: https://vault.n5o.black
+      - name: VAULT_TOKEN
+        from:
+          value: root

@@ -1,0 +1,12 @@
+name: fail-test
+description: Test which inserts documents into mongo and then asserts that they are there
+variables:
+steps:
+  - name: HTTP get
+    action:
+      maxAttempts: 3
+      interval: 1ms
+      timeout: 50ms
+      http:
+        url: http://not-a-real-domain-for-naveego-tests.com
+        method: GET

@@ -2,10 +2,10 @@ package bosun
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	"os"
@@ -29,12 +29,31 @@ type BosunContext struct {
 	contextValues   map[string]interface{}
 }
 
+// NewTestBosunContext creates a new BosunContext for testing purposes.
+// In production code a context should always be obtained from a Bosun instance.
+func NewTestBosunContext() BosunContext {
+	dir, _ := os.Getwd()
+	testBosun := &Bosun{
+		vaultClient: &vault.Client{},
+	}
+	return BosunContext{
+		ctx:   context.Background(),
+		Dir:   dir,
+		Env:   &EnvironmentConfig{},
+		Bosun: testBosun,
+		Log:   logrus.WithField("TEST", "INSTANCE"),
+	}
+}
+
 func (c BosunContext) WithDir(dirOrFilePath string) BosunContext {
 	if dirOrFilePath == "" {
 		panic("empty path passed to WithDir (probably some config didn't get its FromPath property populated)")
 	}
 	dir := getDirIfFile(dirOrFilePath)
-	c.Dir = dir
+	if c.Dir != dir {
+		c.LogLine(1, "[Context] Set dir to %q", dir)
+		c.Dir = dir
+	}
 	return c
 }
 
@@ -110,6 +129,11 @@ func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
 	return c
 }
 
+func (c BosunContext) WithLogField(key string, value interface{}) BosunContext {
+	c.Log = c.Log.WithField(key, value)
+	return c
+}
+
 func (c BosunContext) GetVaultClient() (*vault.Client, error) {
 	return c.Bosun.GetVaultClient()
 }
@@ -171,6 +195,18 @@ func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
 	return tv
 }
 
+func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
+	vaultClient, err := c.GetVaultClient()
+	if err != nil {
+		return nil, errors.Wrap(err, "get vault client")
+	}
+
+	return &pkg.TemplateHelper{
+		TemplateValues: c.GetTemplateArgs(),
+		VaultClient:    vaultClient,
+	}, nil
+}
+
 func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
 	c.Env = env
 	c.Log = c.Log.WithField("env", env.Name)
@@ -178,8 +214,10 @@ func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
 }
 
 func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
-	_, file, line, _ := runtime.Caller(skip)
-	c.Log.WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
+	if c.Log != nil {
+		_, file, line, _ := runtime.Caller(skip)
+		c.Log.WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
+	}
 }
 
 var useMinikubeForDockerOnce = new(sync.Once)

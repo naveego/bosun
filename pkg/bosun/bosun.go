@@ -595,7 +595,8 @@ func (b *Bosun) GetTestSuite(name string) (*E2ESuite, error) {
 	var err error
 	for _, c := range b.GetTestSuiteConfigs() {
 		if c.Name == name {
-			suite, err = NewE2ESuite(c)
+			ctx := b.NewContext()
+			suite, err = NewE2ESuite(ctx, c)
 			return suite, err
 		}
 	}

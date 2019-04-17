@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/Masterminds/sprig"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 )
 
 type TemplateHelper struct {
@@ -24,7 +26,7 @@ type TemplateHelper struct {
 	VaultClient    *vault.Client
 }
 
-func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) (error) {
+func (h *TemplateHelper) LoadFromYaml(out interface{}, globs ...string) error {
 
 	mergedYaml, err := h.LoadMergedYaml(globs...)
 	if err != nil {
@@ -327,6 +329,39 @@ func (t *TemplateBuilder) WithVaultTemplateFunctions(client *vault.Client) *Temp
 			}
 
 			return action.Execute()
+		},
+		"jwt": func(role string, ttl string, claimPairs ...string) (string, error) {
+
+			claims := map[string]interface{}{}
+			for i := 0; i < len(claimPairs)-1; i += 2 {
+				claims[claimPairs[i]] = claimPairs[i+1]
+			}
+
+			ttlDuration, err := time.ParseDuration(ttl)
+			if err != nil {
+				return "", errors.Wrapf(err, "invalid ttl: wanted go duration, got %q", ttl)
+			}
+
+			exp := time.Now().Add(ttlDuration).Unix()
+			claims["exp"] = exp
+
+			req := map[string]interface{}{
+				"claims":    claims,
+				"token_ttl": ttlDuration.Seconds(),
+			}
+
+			s, err := client.Logical().Write(fmt.Sprintf("jose/jwt/issue/%s", role), req)
+			if err != nil {
+				return "", errors.Wrap(err, "post request")
+			}
+
+			token, ok := s.Data["token"].(string)
+			if !ok {
+				j, _ := json.Marshal(s)
+				return "", errors.Errorf("secret did not contain token, got %s", string(j))
+			}
+
+			return token, nil
 		},
 	})
 
