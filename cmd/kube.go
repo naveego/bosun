@@ -92,11 +92,11 @@ var dashboardTokenCmd = &cobra.Command{
 }
 
 var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:   "add-eks {name} [region]",
-	Args:cobra.RangeArgs(1,2),
-	Short: "Adds an EKS cluster to your kubeconfig. ",
-	Long:  `You must the AWS CLI installed.`,
-	SilenceUsage:true,
+	Use:          "add-eks {name} [region]",
+	Args:         cobra.RangeArgs(1, 2),
+	Short:        "Adds an EKS cluster to your kubeconfig. ",
+	Long:         `You must the AWS CLI installed.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		region := "us-east-1"
@@ -105,7 +105,7 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 		}
 		name := args[0]
 
-		err := pkg.NewCommand( "aws", "eks", "--region", region, "update-kubeconfig", "--name", name, "--alias", name).RunE()
+		err := pkg.NewCommand("aws", "eks", "--region", region, "update-kubeconfig", "--name", name, "--alias", name).RunE()
 		if err != nil {
 			return err
 		}
@@ -115,15 +115,15 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 })
 
 var kubeAddNamespaceCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:   "add-namespace {name}",
-	Args:cobra.ExactArgs(1),
-	Short: "Adds a namespace to your cluster. ",
-	SilenceUsage:true,
+	Use:          "add-namespace {name}",
+	Args:         cobra.ExactArgs(1),
+	Short:        "Adds a namespace to your cluster. ",
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		name := args[0]
 
-		_, err := pkg.NewCommand( "kubectl", "create", "namespace", name).RunOut()
+		_, err := pkg.NewCommand("kubectl", "create", "namespace", name).RunOut()
 		if err != nil {
 			if strings.Contains(err.Error(), "AlreadyExists") {
 				color.Yellow("Namespace %q already exists.", name)

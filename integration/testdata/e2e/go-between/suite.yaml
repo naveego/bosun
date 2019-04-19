@@ -1,0 +1,16 @@
+testSuites:
+- name: MongoTestSuite
+  description: Suite for testing test suites.
+  mongoConnections:
+    e2e:
+      dbName: "bosun-test"
+      kubePort:
+        forward: true
+        port: 27017
+        serviceName: mongodb-0
+      credentials:
+        type:       vault
+        vaultPath:  database/creds/mongodb-provisioner
+        authSource: admin
+  tests:
+    - mongo-test.yaml

@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"text/template"
 	"time"
@@ -36,6 +37,7 @@ type AppAction struct {
 	Interval           time.Duration      `yaml:"interval,omitempty" json:"interval,omitempty"`
 	Vault              *VaultAction       `yaml:"vault,omitempty" json:"vault,omitempty"`
 	Script             *ScriptAction      `yaml:"script,omitempty" json:"script,omitempty"`
+	Bosun              *BosunAction       `yaml:"bosun,omitempty" json:"bosun,omitempty"`
 	Test               *TestAction        `yaml:"test,omitempty" json:"test,omitempty"`
 	Mongo              *MongoAction       `yaml:"mongo,omitempty" json:"mongo,omitempty"`
 	MongoAssert        *MongoAssertAction `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
@@ -57,7 +59,7 @@ type SelfContainer interface {
 func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
 	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
 
-	for _, action := range a.getActions() {
+	for _, action := range a.GetActions() {
 		if sc, ok := action.(SelfContainer); ok {
 			err := sc.MakeSelfContained(ctx)
 			if err != nil {
@@ -138,7 +140,12 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 }
 
 func (a *AppAction) execute(ctx BosunContext) error {
-	for _, action := range a.getActions() {
+	actions := a.GetActions()
+	if len(actions) == 0 {
+		return errors.New("no actions defined")
+	}
+
+	for _, action := range a.GetActions() {
 		ctx = ctx.WithLogField("action_type", fmt.Sprintf("%T", action))
 		ctx.Log.Debugf("Executing %T action...", action)
 		err := action.Execute(ctx)
@@ -149,31 +156,29 @@ func (a *AppAction) execute(ctx BosunContext) error {
 	return nil
 }
 
-func (a *AppAction) getActions() []Action {
+var actionInterfaceType = reflect.TypeOf((*Action)(nil))
+
+func (a *AppAction) GetActions() []Action {
+
+	if a == nil {
+		return nil
+	}
 
 	var actions []Action
-	if a.Vault != nil {
-		actions = append(actions, a.Vault)
-	}
-
-	if a.Script != nil {
-		actions = append(actions, a.Script)
-	}
-
-	if a.Test != nil {
-		actions = append(actions, a.Test)
-	}
-
-	if a.Mongo != nil {
-		actions = append(actions, a.Mongo)
-	}
-
-	if a.MongoAssert != nil {
-		actions = append(actions, a.MongoAssert)
-	}
-
-	if a.HTTP != nil {
-		actions = append(actions, a.HTTP)
+	v := reflect.ValueOf(*a)
+	t := v.Type()
+	n := t.NumField()
+	for i := 0; i < n; i++ {
+		fv := v.Field(i)
+		if fv.Kind() == reflect.Ptr || fv.Kind() == reflect.Slice || fv.Kind() == reflect.Map {
+			if fv.IsNil() {
+				continue
+			}
+			action, ok := fv.Interface().(Action)
+			if ok && action != nil {
+				actions = append(actions, action)
+			}
+		}
 	}
 
 	return actions
@@ -254,6 +259,17 @@ func (a *ScriptAction) Execute(ctx BosunContext) error {
 	_, err := cmd.Execute(ctx)
 
 	return err
+}
+
+type BosunAction []string
+
+func (a BosunAction) Execute(ctx BosunContext) error {
+
+	step := &ScriptStep{
+		Bosun: a,
+	}
+
+	return step.Execute(ctx, 0)
 }
 
 type TestAction struct {

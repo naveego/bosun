@@ -131,6 +131,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/mongodb/mongo-tools v0.0.0-20190110215702-057dfac380db
 	github.com/nicksnyder/go-i18n v1.10.0 // indirect
+	github.com/olekukonko/tablewriter v0.0.1
 	github.com/oliveagle/jsonpath v0.0.0-20180606110733-2e52cf6e6852
 	github.com/onsi/ginkgo v1.8.0
 	github.com/onsi/gomega v1.4.3

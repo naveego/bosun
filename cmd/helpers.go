@@ -3,11 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cheynewallace/tabby"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -563,12 +563,12 @@ func passesConditions(app *bosun.AppRepo) bool {
 
 func printOutput(out interface{}, columns ...string) error {
 
-	format := strings.ToLower(viper.GetString(ArgGlobalOutput))
+	format := viper.GetString(ArgGlobalOutput)
 
 	if format == "" {
 		format = "y"
 	}
-	formatKey := format[0:1]
+	formatKey := strings.ToLower(format[0:1])
 
 	switch formatKey {
 	case "j":
@@ -579,6 +579,10 @@ func printOutput(out interface{}, columns ...string) error {
 		enc := yaml.NewEncoder(os.Stdout)
 		return enc.Encode(out)
 	case "t":
+		segs := strings.Split(format, "=")
+		if len(segs) > 1 {
+			columns = strings.Split(segs[1], ",")
+		}
 		j, err := json.Marshal(out)
 		if err != nil {
 			return err
@@ -593,7 +597,7 @@ func printOutput(out interface{}, columns ...string) error {
 		}
 
 		first := mapSlice[0]
-		t := tabby.New()
+
 		var keys []string
 		if len(columns) > 0 {
 			keys = columns
@@ -603,13 +607,14 @@ func printOutput(out interface{}, columns ...string) error {
 			}
 			sort.Strings(keys)
 		}
-		var header []interface{}
+		var header []string
 		for _, k := range keys {
 			header = append(header, k)
 		}
-		t.AddHeader(header...)
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader(header)
 		for _, m := range mapSlice {
-			var values []interface{}
+			var values []string
 
 			for _, k := range keys {
 				if v, ok := m[k]; ok && len(v) > 0 {
@@ -618,9 +623,10 @@ func printOutput(out interface{}, columns ...string) error {
 					values = append(values, "")
 				}
 			}
-			t.AddLine(values...)
+			table.Append(values)
 		}
-		t.Print()
+
+		table.Render()
 
 		return nil
 	default:
