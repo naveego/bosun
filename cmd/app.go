@@ -645,7 +645,6 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 	cmd.Flags().StringP(AppDeployTag, "t", "latest", "Set the tag used in the chart.")
 	cmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
 	cmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
-	cmd.Flags().StringSlice(ArgSharedTenants, []string{}, "Tenants to deploy this app to, if it's per-tenant.")
 })
 
 const (

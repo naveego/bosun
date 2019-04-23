@@ -6,7 +6,7 @@ appRefs: {}
 apps:
 - name: bosun
   repo: naveego/bosun
-  version: 0.8.1
+  version: 0.8.3
   images: []
   scripts:
   - name: publish
