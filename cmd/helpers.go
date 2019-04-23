@@ -613,6 +613,8 @@ func printOutput(out interface{}, columns ...string) error {
 		}
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader(header)
+		table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
+		table.SetCenterSeparator("|")
 		for _, m := range mapSlice {
 			var values []string
 

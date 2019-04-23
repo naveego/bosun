@@ -1,10 +1,12 @@
 package bosun
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/go-getter/helper/url"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/mongo"
 	"github.com/pkg/errors"
@@ -330,6 +332,9 @@ func (t *TestAction) Execute(ctx BosunContext) error {
 
 func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
 
+	if !strings.Contains(tmpl, "{{") {
+		return tmpl, nil
+	}
 	t, err := template.New("").Parse(tmpl)
 	if err != nil {
 		return "", err
@@ -384,6 +389,10 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 		if !ok {
 			return errors.Errorf("action had connectionName %q, but no connection with that name was found in the context", a.ConnectionName)
 		}
+	}
+
+	if db.Name != "" {
+		cmd.Conn.DBName = db.Name
 	}
 
 	j, _ := json.MarshalIndent(cmd, "", "  ")
@@ -445,27 +454,52 @@ type HTTPAction struct {
 	Method  string                 `yaml:"method" json:"method"`
 	Headers map[string]string      `yaml:"headers" json:"headers"`
 	Body    map[string]interface{} `yaml:"body,omitempty" json:"body"`
+	Raw     string                 `yaml:"raw,omitempty" json:"raw,omitempty"`
+	OKCodes []int                  `yaml:"okCodes,omitempty,flow" json:"okCodes,omitempty"` // codes which should be treated as OK (passing). Defaults to [200, 201, 202, 204].
 }
 
 func (a *HTTPAction) Execute(ctx BosunContext) error {
 
-	var bodyBytes []byte
+	var req *http.Request
 	var err error
-	if a.Body != nil {
-		bodyBytes, err = json.Marshal(a.Body)
-		if err != nil {
-			return errors.Wrap(err, "marshal body")
+	if a.Raw == "" {
+		var bodyBytes []byte
+		var err error
+		if a.Body != nil {
+			bodyBytes, err = json.Marshal(a.Body)
+			if err != nil {
+				return errors.Wrap(err, "marshal body")
+			}
 		}
-	}
 
-	bodyBuffer := bytes.NewBuffer(bodyBytes)
-	a.Method = strings.ToUpper(a.Method)
+		bodyBuffer := bytes.NewBuffer(bodyBytes)
+		a.Method = strings.ToUpper(a.Method)
 
-	ctx.Log.Debugf("Making %s request to %s...", a.Method, a.URL)
+		ctx.Log.Debugf("Making %s request to %s...", a.Method, a.URL)
 
-	req, err := http.NewRequest(a.Method, a.URL, bodyBuffer)
-	if err != nil {
-		return errors.Wrap(err, "create req")
+		req, err = http.NewRequest(a.Method, a.URL, bodyBuffer)
+		if err != nil {
+			return errors.Wrap(err, "create req")
+		}
+		for k, v := range a.Headers {
+			req.Header.Add(k, v)
+		}
+	} else {
+		if !strings.Contains(a.Raw, "\n\n") {
+			a.Raw = a.Raw + "\n\n"
+		}
+
+		r := bufio.NewReader(strings.NewReader(a.Raw))
+
+		req, err = http.ReadRequest(r)
+		if err != nil {
+			return errors.Wrapf(err, "create req from raw input:\n%s", a.Raw)
+		}
+		req.URL, err = url.Parse(req.RequestURI)
+		if err != nil {
+			return errors.Wrapf(err, "parse url %q", req.RequestURI)
+		}
+		req.RequestURI = ""
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -475,10 +509,22 @@ func (a *HTTPAction) Execute(ctx BosunContext) error {
 
 	ctx.Log.Debugf("Request returned %d - %s.", resp.StatusCode, resp.Status)
 
+	if len(a.OKCodes) == 0 {
+		a.OKCodes = []int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}
+	}
+
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
+	isOK := false
+	for _, okCode := range a.OKCodes {
+		if resp.StatusCode == okCode {
+			isOK = true
+			break
+		}
+	}
+
+	if !isOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		err = errors.Errorf("Response had non-success status code %d: %s", resp.StatusCode, string(respBody))
+		err = errors.Errorf("Response had non-success status code %d (OKCodes: %v): %s", resp.StatusCode, a.OKCodes, string(respBody))
 		return err
 	}
 

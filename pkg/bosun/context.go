@@ -118,8 +118,15 @@ func (c BosunContext) WithReleaseValues(v *ReleaseValues) BosunContext {
 }
 
 func (c BosunContext) GetValuesAsEnvVars() map[string]string {
-	if c.valuesAsEnvVars == nil && c.ReleaseValues != nil {
-		c.valuesAsEnvVars = c.ReleaseValues.Values.ToEnv("BOSUN_")
+	if c.valuesAsEnvVars == nil {
+		if c.ReleaseValues != nil {
+			c.valuesAsEnvVars = c.ReleaseValues.Values.ToEnv("BOSUN_")
+		} else {
+			c.valuesAsEnvVars = map[string]string{
+				EnvCluster: c.Env.Cluster,
+				EnvDomain:  c.Env.Domain,
+			}
+		}
 	}
 	return c.valuesAsEnvVars
 }
@@ -188,10 +195,13 @@ func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
 	}
 	if c.ReleaseValues != nil {
 		values := c.ReleaseValues.Values
-		values.SetAtPath("cluster", c.Env.Cluster)
-		values.SetAtPath("domain", c.Env.Domain)
+		values.MustSetAtPath("cluster", c.Env.Cluster)
+		values.MustSetAtPath("domain", c.Env.Domain)
 		tv.Values = values
+	} else {
+		tv.Values = Values{}
 	}
+
 	return tv
 }
 

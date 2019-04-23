@@ -119,7 +119,7 @@ func (c *CommandValue) Resolve(ctx BosunContext) (string, error) {
 	c.resolved = true
 
 	if c.Value != "" {
-		c.resolvedValue = c.Value
+		c.resolvedValue, err = renderTemplate(ctx, c.Value)
 	} else {
 		c.resolvedValue, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true})
 		// trim whitespace, as script output may contain line breaks at the end

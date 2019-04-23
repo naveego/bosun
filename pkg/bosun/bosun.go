@@ -128,6 +128,7 @@ func (b *Bosun) GetScripts() []*Script {
 
 	scripts := make([]*Script, len(env.Scripts))
 	copy(scripts, env.Scripts)
+	copy(scripts, b.GetMergedConfig().Scripts)
 	for _, app := range b.GetAppsSortedByName() {
 		for _, script := range app.Scripts {
 			script.Name = fmt.Sprintf("%s-%s", app.Name, script.Name)

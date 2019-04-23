@@ -35,7 +35,6 @@ func (v Values) MarshalJSON() ([]byte, error) {
 	// return json.Marshal(x)
 }
 
-
 func (v *Values) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	m := map[string]interface{}(*v)
 	err := unmarshal(&m)
@@ -63,12 +62,11 @@ func (v Values) ToEnv(prefix string) map[string]string {
 	return out
 }
 
-
 func (v Values) toEnv(prefix string, acc map[string]string) {
 	for k, v := range v {
 		key := prefix + strings.ToUpper(k)
 		if values, ok := v.(Values); ok {
-			values.toEnv(key + "_", acc)
+			values.toEnv(key+"_", acc)
 		} else {
 			acc[key] = fmt.Sprint(v)
 		}
@@ -124,9 +122,19 @@ func (v Values) Encode(w io.Writer) error {
 
 // SetAtPath adds value to Values at the provided path, which can be a compound name.
 // If there table missing from the path, they will be created.
-func (v Values) GetAtPath(path string) (interface{},error) {
+func (v Values) GetAtPath(path string) (interface{}, error) {
 	segs := strings.Split(path, ".")
 	return v.getAtPath(segs)
+}
+
+// MustSetAtPath adds value to Values at the provided path, which can be a compound name.
+// This will panic if path is invalid, so it should only be used with literal string paths,
+// not user provided ones.
+func (v Values) MustSetAtPath(path string, value interface{}) {
+	err := v.SetAtPath(path, value)
+	if err != nil {
+		panic(fmt.Sprintf("invalid path; this method should only be passed a valid string literal: %s", err))
+	}
 }
 
 // SetAtPath adds value to Values at the provided path, which can be a compound name.
@@ -150,7 +158,6 @@ func (v Values) AddEnvAsPath(prefix, envName string, value interface{}) error {
 	err := v.SetAtPath(name, value)
 	return err
 }
-
 
 func (v Values) getAtPath(path []string) (interface{}, error) {
 
@@ -192,7 +199,7 @@ func (v Values) getAtPath(path []string) (interface{}, error) {
 
 func (v Values) setAtPath(path []string, value interface{}) error {
 
-	if len(path) == 0{
+	if len(path) == 0 {
 		panic("invalid path")
 	}
 	name := path[0]
@@ -238,10 +245,10 @@ func (v Values) Merge(src Values) {
 		srcType := fmt.Sprintf("%T", srcVal)
 		destType := fmt.Sprintf("%T", destVal)
 		match := srcType == destType
-		validSrc :=istable(srcVal)
-		validDest :=istable(destVal)
+		validSrc := istable(srcVal)
+		validDest := istable(destVal)
 
-		if found &&match  && validSrc  && validDest  {
+		if found && match && validSrc && validDest {
 			destMap := destVal.(Values)
 			srcMap := srcVal.(Values)
 			destMap.Merge(srcMap)
@@ -270,8 +277,6 @@ func istable(v interface{}) bool {
 	}
 	return ok
 }
-
-
 
 func tableLookup(v Values, simple string) (Values, error) {
 	v2, ok := v[simple]
@@ -312,7 +317,7 @@ func ReadValuesFile(filename string) (Values, error) {
 	return ReadValues(data)
 }
 
-func (v Values) cleanUp(){
+func (v Values) cleanUp() {
 	for k, child := range v {
 		switch c := child.(type) {
 		case map[interface{}]interface{}:

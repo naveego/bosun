@@ -25,6 +25,7 @@ type disposeFunc func()
 // Database defines data to be imported into the target mongo database.
 // It is the combination of a connection, collection definition, and data.
 type Database struct {
+	Name        string                     `json:"name" yaml:"name"` // the name of the database; overrides the name on the connection
 	Collections map[string]*CollectionInfo `json:"collections" yaml:"collections"`
 }
 
@@ -79,7 +80,7 @@ type MongoImportCommand struct {
 	DB        Database
 	DataDir   string
 	RebuildDB bool
-	Log       *logrus.Entry
+	Log       *logrus.Entry `json:"-"`
 }
 
 func (c MongoImportCommand) Execute() error {
@@ -278,114 +279,6 @@ func GetPreparedConnection(log *logrus.Entry, c Connection) (PreparedConnection,
 	return entry.PreparedConnection, nil
 }
 
-//
-// var defaultPortForwarder = &portForwardManager{
-// 	entries: map[string]*forwardedPortEntry{},
-// }
-//
-// type portForwardManager struct {
-// 	mu      sync.Mutex
-// 	entries map[string]*forwardedPortEntry
-// }
-//
-// type forwardedPortEntry struct {
-// 	port    string
-// 	host    string
-// 	cmd     *exec.Cmd
-// 	handles int
-// }
-//
-// type forwardedPort struct {
-// 	port    string
-// 	host    string
-// 	release func()
-// }
-//
-// func (p *portForwardManager) GetOrCreate(log *logrus.Entry, service string, namespace string, port int) (forwardedPort, error) {
-//
-// 	p.mu.Lock()
-// 	defer p.mu.Unlock()
-//
-// 	key := fmt.Sprintf("%s|%s|%d", service, namespace, port)
-//
-// 	entry, ok := p.entries[key]
-// 	if ok {
-// 		log.Debug("Using existing kubectl port-forward for connection to MongoDB")
-// 	} else {
-// 		log.Info("Creating new kubectl port-forward for connection to MongoDB")
-// 		entry = &forwardedPortEntry{}
-// 		entry.cmd = exec.Command("kubectl",
-// 			"port-forward",
-// 			"--namespace", namespace,
-// 			service,
-// 			fmt.Sprintf("0:%d", port))
-//
-// 		entry.cmd.Stderr = os.Stderr
-// 		portFwdOut, _ := entry.cmd.StdoutPipe()
-//
-// 		reader := bufio.NewReader(portFwdOut)
-// 		log.Debugf("port-forwarding mongo with service name '%s' and port '%d'", service, port)
-// 		// Start it up
-// 		err := entry.cmd.Start()
-// 		if err != nil {
-// 			return forwardedPort{}, errors.Wrapf(err, "error starting kubernetes port forwarding to %s on port %d", service, port)
-// 		}
-//
-// 		err = func() error {
-//
-// 			line, _, err := reader.ReadLine()
-// 			if err == io.EOF {
-// 				err := entry.cmd.Wait()
-// 				return errors.Wrap(err, "kubectl port-forward failed")
-// 			}
-// 			if err != nil {
-// 				return errors.Wrap(err, "read kubectl port-forward output")
-// 			}
-// 			matches := regexp.MustCompile(`Forwarding from ([^:]+):(\d+)`).FindStringSubmatch(string(line))
-// 			if len(matches) < 3 {
-// 				return errors.Errorf("port forward failed; kubectl said %q", line)
-// 			}
-//
-// 			entry.PreparedConnection.Host = matches[1]
-// 			entry.PreparedConnection.Port = matches[2]
-//
-// 			// Wait for port to be available
-// 			for {
-// 				log.Debugf("checking for success of kubectl port-forward to mongodb at %s:%s", entry.PreparedConnection.Host, entry.PreparedConnection.Port)
-// 				conn, _ := net.DialTimeout("tcp", net.JoinHostPort(entry.PreparedConnection.Host, entry.PreparedConnection.Port), time.Second*30)
-// 				if conn != nil {
-// 					conn.Close()
-// 					log.Infof("kubectl port-forward to mongodb is ready at %s:%s", entry.PreparedConnection.Host, entry.PreparedConnection.Port)
-// 					break
-// 				}
-// 			}
-// 			return nil
-// 		}()
-//
-// 		p.entries[key] = entry
-//
-// 	}
-//
-// 	entry.handles++
-// 	return forwardedPort{
-// 		host: entry.PreparedConnection.Host,
-// 		port: entry.PreparedConnection.Port,
-// 		release: func() {
-// 			p.mu.Lock()
-// 			defer p.mu.Unlock()
-// 			entry.handles--
-// 			if entry.handles == 0 {
-// 				err := entry.cmd.Process.Signal(os.Kill)
-// 				if err != nil {
-// 					logrus.WithError(err).Error("kill of port forward kubectl failed")
-// 				}
-// 				delete(p.entries, key)
-// 			}
-// 		},
-// 	}, nil
-//
-// }
-
 // Prepare returns a PreparedConnection which may have created a port-forward for mongo
 // and will have ensured that the credentials are populated.
 func (c Connection) Prepare(log *logrus.Entry) (PreparedConnection, error) {
@@ -398,43 +291,6 @@ func (c Connection) Prepare(log *logrus.Entry) (PreparedConnection, error) {
 	}
 
 	return GetPreparedConnection(log, c)
-	//
-	// var err error
-	//
-	// switch c.Credentials.Type {
-	// case "password":
-	// 	c.Credentials.Username, c.Credentials.Password, err = getPasswordCredentials(log, c.Credentials)
-	// case "vault":
-	// 	c.Credentials.Username, c.Credentials.Password, err = getVaultCredentials(log, c.Credentials)
-	// default:
-	// 	return nil, fmt.Errorf("the type '%s' is not a supported credential type, must be 'vault' or 'password'", c.Credentials.Type)
-	// }
-	//
-	// if !c.KubePort.Forward {
-	// 	return &PreparedConnection{
-	// 		Connection: c,
-	// 		CleanUp:    func() {},
-	// 	}, nil
-	// }
-	//
-	// namespace := c.KubePort.Namespace
-	// if namespace == "" {
-	// 	namespace = "default"
-	// }
-	//
-	// forwardedPort, err := defaultPortForwarder.GetOrCreate(log, svcName, namespace, svcPort)
-	//
-	// if err != nil {
-	// 	return nil, err
-	// }
-	//
-	// c.Port = forwardedPort.port
-	// c.Host = forwardedPort.host
-	//
-	// return &PreparedConnection{
-	// 	Connection: c,
-	// 	CleanUp:    forwardedPort.release,
-	// }, nil
 }
 
 type PreparedConnection struct {

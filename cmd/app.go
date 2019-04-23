@@ -399,14 +399,13 @@ var appStatusCmd = &cobra.Command{
 			for i := range appReleases {
 				appRelease := appReleases[i]
 				go func() {
+					defer wg.Done()
 					ctx := b.NewContext().WithAppRelease(appRelease)
 					err := appRelease.LoadActualState(ctx, false)
 					if err != nil {
 						ctx.Log.WithError(err).Fatal()
 					}
 					p.Add(1)
-
-					wg.Done()
 				}()
 			}
 			wg.Wait()
@@ -646,6 +645,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 	cmd.Flags().StringP(AppDeployTag, "t", "latest", "Set the tag used in the chart.")
 	cmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
 	cmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
+	cmd.Flags().StringSlice(ArgSharedTenants, []string{}, "Tenants to deploy this app to, if it's per-tenant.")
 })
 
 const (

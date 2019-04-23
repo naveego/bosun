@@ -10,6 +10,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
+	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -106,7 +107,14 @@ func (h *TemplateHelper) LoadMergedYaml(globs ...string) (string, error) {
 
 type TemplateBuilder struct {
 	t       *template.Template
+	docs    []TemplateFuncDocs
 	content string
+}
+
+type TemplateFuncDocs struct {
+	Name        string
+	Description string
+	Args        []string
 }
 
 func NewTemplateBuilder(name string) *TemplateBuilder {
@@ -116,6 +124,9 @@ func NewTemplateBuilder(name string) *TemplateBuilder {
 			"exec": func(exe string, args ...string) (string, error) {
 				out, err := NewCommand(exe, args...).RunOut()
 				return out, err
+			},
+			"xid": func() string {
+				return xid.New().String()
 			},
 			"generateLastPassPassword": func(name, username, url string) (string, error) {
 				password, err := NewCommand("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
@@ -164,6 +175,18 @@ func (t *TemplateBuilder) BuildAndExecute(input interface{}) (string, error) {
 func (t *TemplateBuilder) WithTemplate(c string) *TemplateBuilder {
 	t.content = c
 	return t
+}
+
+func (t *TemplateBuilder) AddFunc(name, description string, args []string, fn interface{}) {
+	t.docs = append(t.docs, TemplateFuncDocs{
+		Name:        name,
+		Description: description,
+		Args:        args,
+	})
+
+	t.t.Funcs(template.FuncMap{
+		name: fn,
+	})
 }
 
 func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {

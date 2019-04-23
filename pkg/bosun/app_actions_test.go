@@ -49,5 +49,23 @@ var _ = Describe("AppActions", func() {
 
 			Expect(sut.Execute(ctx)).To(Succeed())
 		})
+
+		It("should execute raw request", func() {
+
+			sut := HTTPAction{
+				URL: "",
+				Raw: `GET https://google.com HTTP/1.1
+Host: google.com
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8
+Accept-Encoding: gzip, deflate
+Accept-Language: en-US,en;q=0.9
+
+`,
+			}
+
+			ctx := NewTestBosunContext()
+
+			Expect(sut.Execute(ctx)).To(Succeed())
+		})
 	})
 })

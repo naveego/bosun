@@ -19,8 +19,43 @@ type File struct {
 	Releases     []*ReleaseConfig       `yaml:"releases,omitempty" json:"releases"`
 	Tools        []ToolDef              `yaml:"tools,omitempty" json:"tools"`
 	TestSuites   []*E2ESuiteConfig      `yaml:"testSuites,omitempty" json:"testSuites,omitempty"`
+	Scripts      []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+
 	// merged indicates that this File has had File instances merged into it and cannot be saved.
 	merged bool `yaml:"-" json:"-"`
+}
+
+func (c *File) SetFromPath(path string) {
+
+	c.FromPath = path
+
+	for _, e := range c.Environments {
+		e.SetFromPath(path)
+	}
+
+	for _, m := range c.Apps {
+		m.SetFragment(c)
+	}
+
+	for _, m := range c.AppRefs {
+		m.FromPath = path
+	}
+
+	for _, m := range c.Releases {
+		m.SetParent(c)
+	}
+
+	for _, s := range c.Scripts {
+		s.SetFromPath(path)
+	}
+
+	for i := range c.Tools {
+		c.Tools[i].FromPath = c.FromPath
+	}
+
+	for i := range c.TestSuites {
+		c.TestSuites[i].SetFromPath(c.FromPath)
+	}
 }
 
 func (c *File) Merge(other *File) error {
@@ -28,7 +63,10 @@ func (c *File) Merge(other *File) error {
 	c.merged = true
 
 	for _, otherEnv := range other.Environments {
-		c.mergeEnvironment(otherEnv)
+		err := c.mergeEnvironment(otherEnv)
+		if err != nil {
+			return errors.Wrap(err, "merge environment")
+		}
 	}
 
 	if c.AppRefs == nil {
@@ -41,11 +79,19 @@ func (c *File) Merge(other *File) error {
 	}
 
 	for _, otherApp := range other.Apps {
-		c.mergeApp(otherApp)
+		if err := c.mergeApp(otherApp); err != nil {
+			return errors.Wrapf(err, "merge app %q", otherApp.Name)
+		}
 	}
 
-	for _, other := range other.Releases {
-		c.mergeRelease(other)
+	for _, release := range other.Releases {
+		if err := c.mergeRelease(release); err != nil {
+			return errors.Wrapf(err, "merge release %q", release.Name)
+		}
+	}
+
+	for _, other := range other.Scripts {
+		c.Scripts = append(c.Scripts, other)
 	}
 
 	c.TestSuites = append(c.TestSuites, other.TestSuites...)

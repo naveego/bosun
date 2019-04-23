@@ -25,6 +25,44 @@ type E2ETestConfig struct {
 	Steps             []ScriptStep           `yaml:"steps,omitempty" json:"steps,omitempty"`
 }
 
+type E2EContext struct {
+	SkipSetup    bool
+	SkipTeardown bool
+	Tests        []string
+}
+
+const e2eContextKey = "e2e.context"
+
+func WithE2EContext(ctx BosunContext, e2eCtx E2EContext) BosunContext {
+	return ctx.WithKeyedValue(e2eContextKey, e2eCtx)
+}
+
+func GetE2EContext(ctx BosunContext) E2EContext {
+	x := ctx.GetKeyedValue(e2eContextKey)
+	if x != nil {
+		return x.(E2EContext)
+	}
+	return E2EContext{}
+}
+
+func (e *E2ESuiteConfig) SetFromPath(path string) {
+	e.FromPath = path
+	e.SetupScript.SetFromPath(path)
+	e.TeardownScript.SetFromPath(path)
+	for _, t := range e.Tests {
+		t.SetFromPath(path)
+	}
+}
+
+func (e *E2ETestConfig) SetFromPath(path string) {
+	e.FromPath = path
+	e.SetupScript.SetFromPath(path)
+	e.TeardownScript.SetFromPath(path)
+	if e.TeardownScript != nil {
+		e.TeardownScript.SetFromPath(path)
+	}
+}
+
 type E2EStepConfig struct {
 	ConfigShared `yaml:",inline"`
 }
@@ -45,13 +83,24 @@ func (e E2EBookendScripts) Setup(ctx BosunContext) error {
 		return nil
 	}
 
+	if GetE2EContext(ctx).SkipSetup {
+		ctx.Log.Warn("Skipping setup because skip-teardown flag was set.")
+		return nil
+	}
+
 	err := e.SetupScript.Execute(ctx)
 	return err
 }
 
 func (e E2EBookendScripts) Teardown(ctx BosunContext) error {
+
 	if e.TeardownScript == nil {
 		ctx.Log.Debug("No teardown script defined.")
+		return nil
+	}
+
+	if GetE2EContext(ctx).SkipTeardown {
+		ctx.Log.Warn("Skipping teardown because skip-teardown flag was set.")
 		return nil
 	}
 
@@ -85,7 +134,7 @@ func (s *E2ESuite) LoadTests(ctx BosunContext) error {
 			return errors.Wrapf(err, "read test config from %q", path)
 		}
 
-		testConfig.FromPath = path
+		testConfig.SetFromPath(path)
 		s.Tests = append(s.Tests, &testConfig)
 	}
 
@@ -181,6 +230,7 @@ func (r *E2ERun) Execute() error {
 	// error out if the suit setup fails
 	if err := r.Suite.Setup(r.Ctx); err != nil {
 		return errors.Wrap(err, "suite setup")
+
 	}
 
 	// log if the suite teardown fails, but don't error out
@@ -247,7 +297,6 @@ func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
 	}
 
 	result.StartTimer()
-
 	defer func(result *E2EResult) {
 		if err := e.Teardown(ctx); err != nil {
 			ctx.Log.WithError(err).Error("Error during teardown.")

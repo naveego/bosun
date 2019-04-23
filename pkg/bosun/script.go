@@ -12,12 +12,23 @@ import (
 
 type Script struct {
 	ConfigShared `yaml:",inline"`
-	File         *File        `yaml:"-" json:"-"`
-	Steps        []ScriptStep `yaml:"steps,omitempty" json:"steps,omitempty"`
-	Literal      *Command     `yaml:"literal,omitempty" json:"literal,omitempty"`
+	File         *File         `yaml:"-" json:"-"`
+	Steps        []ScriptStep  `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Literal      *Command      `yaml:"literal,omitempty" json:"literal,omitempty"`
+	Params       []ScriptParam `yaml:"params,omitempty" json:"params,omitempty"`
+}
+
+type ScriptParam struct {
+	Name         string      `yaml:"name,omitempty" json:"name,omitempty"`
+	Type         string      `yaml:"type,omitempty" json:"type,omitempty"`
+	Description  string      `yaml:"description,omitempty" json:"description,omitempty"`
+	DefaultValue interface{} `yaml:"defaultValue,omitempty"`
 }
 
 func (s *Script) SetFromPath(path string) {
+	if s == nil {
+		return
+	}
 	s.FromPath = path
 	for i := range s.Steps {
 		step := s.Steps[i]
@@ -104,9 +115,26 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 		return errors.Wrap(err, "render environment")
 	}
 
+	if len(s.Params) > 0 {
+		if ctx.ReleaseValues == nil {
+			return errors.New("script has params but no release values provided")
+		}
+		releaseValues := *ctx.ReleaseValues
+
+		for _, param := range s.Params {
+			_, ok := releaseValues.Values[param.Name]
+			if !ok {
+				if param.DefaultValue == nil {
+					return errors.Errorf("script param %q does not have a value set")
+				}
+				releaseValues.Values[param.Name] = param.DefaultValue
+			}
+		}
+	}
+
 	if s.Literal != nil {
 		ctx.Log.Debug("Executing literal script, not bosun script.")
-		_, err := s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
+		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
 		if err != nil {
 			return err
 		}
@@ -138,8 +166,8 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 		}
 		step := s.Steps[i]
 
-		ctx := ctx.WithLog(ctx.Log.WithField("step", i))
-		err := step.Execute(ctx, i)
+		stepCtx := ctx.WithLog(ctx.Log.WithField("step", i))
+		err = step.Execute(stepCtx, i)
 		if err != nil {
 			return errors.Wrapf(err, "script %q abended on step %q (%d)", s.Name, s.Name, i)
 		}

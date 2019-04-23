@@ -145,8 +145,7 @@ func (r *Workspace) importFileFromPath(path string) error {
 	}
 
 	c := &File{
-		FromPath: path,
-		AppRefs:  map[string]*Dependency{},
+		AppRefs: map[string]*Dependency{},
 	}
 
 	err := pkg.LoadYaml(path, &c)
@@ -155,29 +154,7 @@ func (r *Workspace) importFileFromPath(path string) error {
 		return errors.Errorf("yaml error loading %q: %s", path, err)
 	}
 
-	for _, e := range c.Environments {
-		e.SetFromPath(path)
-	}
-
-	for _, m := range c.Apps {
-		m.SetFragment(c)
-	}
-
-	for _, m := range c.AppRefs {
-		m.FromPath = path
-	}
-
-	for _, m := range c.Releases {
-		m.SetParent(c)
-	}
-
-	for i := range c.Tools {
-		c.Tools[i].FromPath = c.FromPath
-	}
-
-	for i := range c.TestSuites {
-		c.TestSuites[i].FromPath = c.FromPath
-	}
+	c.SetFromPath(path)
 
 	err = r.MergedBosunFile.Merge(c)
 
