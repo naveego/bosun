@@ -6,15 +6,22 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
 
 ## Quick Start
 
-1. Install the dependencies below.
-2. Copy ./examples/bosun.yaml to `$HOME/.bosun/bosun.yaml`.
-3. Get the latest version of https://github.com/naveegoinc/devops, branch 2018.2.1.
-4. `go install github.com/naveego/bosun`
-5. Run `$(bosun env red)` to set the environment variables for the red environment. Run it without the `$()` to see what it does.
-6. Run `bosun script list` to make sure everything is registered. You should see one script, named `up`.
-7. Run `docker stop $(docker ps -q)` to stop all your docker containers.
-8. Clear any hardcoded \*.n5o.red entries out of `etc/hosts`.
-9. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
+1. Install Go 1.11.9 from https://golang.org/doc/install
+2. In the root of this repo, run `go install`
+3. Get the latest version of https://github.com/naveegoinc/devops (recommendation: clone to `$HOME/src/github.com/naveegoinc/devops`).
+4. In the root of the devops repo, run `bosun workspace add bosun.yaml`
+    - Run `bosun app list` to check if bosun has added all the imports to your workspace. It should list a bunch of apps.    
+5. Run `eval $(bosun env red)` to set the environment variables for the red environment. Run it without the `$()` to see what it does.
+6. Run `bosun tools list` to see tools which are registered with bosun.
+    - You'll need to install some of these tools to proceed, using `bosun tool install {name}`
+    - virtualbox
+    - minikube 
+    - helm
+    - vault
+    - mkcert
+    - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/)
+7. Add docker login for our private repo: `docker login docker.n5o.black`. Get username/password from a senior dev.
+8. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
    - You may need to run this a few times if things are slow to come up and subsequent steps time out.
    - After minikube has started you can run `minikube dashboard` to open the dashboard and see what things have been deployed.
    - After traefik is up (in the kube-system namespace) you can browse to http://traefik.n5o.red to see its dashboard.
@@ -37,21 +44,8 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
   - Error: `load default values from "": Error: no Chart.yaml exists in directory "/home/$USER/.helm/repository"`
   - Solution: In the root directory of the listed repo run `bosun a add bosun.yaml`
 
-### Dependencies
-
-- Docker (https://docs.docker.com/v17.12/install/)
-- Go (https://golang.org/doc/install)
-- Virtualbox (https://www.virtualbox.org/wiki/Downloads) \*\*\*
-- Minikube (https://github.com/kubernetes/minikube)
-- Kubernetes (https://kubernetes.io/)
-- Vault (https://www.vaultproject.io/docs/install/index.html)
-- Helm >v2.11.0 (https://github.com/helm/helm)
-  - Helm diff plugin (https://github.com/databus23/helm-diff)
-  - Helm s3 plugin (https://github.com/hypnoglow/helm-s3)
-- LastPass CLI (https://github.com/lastpass/lastpass-cli)
-  - To avoid storing passwords in scripts, only needed if you're touching the blue environment.
-
-\*\*\* https://askubuntu.com/questions/465454/problem-with-the-installation-of-virtualbox
+- **Virtualbox**  
+  - https://askubuntu.com/questions/465454/problem-with-the-installation-of-virtualbox
 
 ## How to make microservices available as apps
 

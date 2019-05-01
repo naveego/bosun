@@ -11,22 +11,30 @@ import (
 	"strings"
 )
 
+type ToolDefs []ToolDef
+
+func (t ToolDefs) Len() int { return len(t) }
+
+func (t ToolDefs) Less(i, j int) bool { return t[i].Name < t[j].Name }
+
+func (t ToolDefs) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
 type ToolDef struct {
-	FromPath string `yaml:"-" json:"-"`
-	Name string `yaml:"name" json:"name"`
-	Description string `yaml:"description" json:"description"`
-	URL string `yaml:"url,omitempty" json:"url,omitempty"`
-	Cmd map[string]string `yaml:"cmd,omitempty" json:"cmd,omitempty"`
-	Installer map[string]Installer `yaml:"installer,omitempty" json:"installer,omitempty"`
+	FromPath    string               `yaml:"-" json:"-"`
+	Name        string               `yaml:"name" json:"name"`
+	Description string               `yaml:"description" json:"description"`
+	URL         string               `yaml:"url,omitempty" json:"url,omitempty"`
+	Cmd         map[string]string    `yaml:"cmd,omitempty" json:"cmd,omitempty"`
+	Installer   map[string]Installer `yaml:"installer,omitempty" json:"installer,omitempty"`
 }
 
 type Installer struct {
-	Script string `yaml:"script,omitempty" json:"script,omitempty"`
+	Script string        `yaml:"script,omitempty" json:"script,omitempty"`
 	Getter *GetterConfig `yaml:"getter,omitempty" json:"getter,omitempty"`
 }
 
 type GetterConfig struct {
-	URL string `yaml:"url" json:"url"`
+	URL      string            `yaml:"url" json:"url"`
 	Mappings map[string]string `yaml:"mappings" json:"mappings"`
 }
 
@@ -75,7 +83,7 @@ func (t ToolDef) GetInstaller() (*Installer, error) {
 func (t ToolDef) RunInstall(ctx BosunContext) error {
 	installer, err := t.GetInstaller()
 	if err != nil {
-		return  errors.Wrap(err, "no installer script available")
+		return errors.Wrap(err, "no installer script available")
 	}
 
 	err = installer.Execute(ctx)
@@ -91,10 +99,10 @@ func (t ToolDef) RunInstall(ctx BosunContext) error {
 	return nil
 }
 
-func (i Installer) Execute(ctx BosunContext)  error {
+func (i Installer) Execute(ctx BosunContext) error {
 	if i.Script != "" {
-		cmd := &Command{Script:i.Script}
-		_, err := cmd.Execute(ctx, CommandOpts{StreamOutput:true})
+		cmd := &Command{Script: i.Script}
+		_, err := cmd.Execute(ctx, CommandOpts{StreamOutput: true})
 		return err
 	}
 
@@ -106,10 +114,10 @@ func (i Installer) Execute(ctx BosunContext)  error {
 
 		ctx.Log.Debugf("Downloading from %s to %s", i.Getter.URL, tmp)
 
-		defer func(){
+		defer func() {
 			ctx.Log.Debugf("Deleting %s", tmp)
 			os.RemoveAll(tmp)
-		} ()
+		}()
 
 		err = getter.Get(tmp, i.Getter.URL)
 		if err != nil {

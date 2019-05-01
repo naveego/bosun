@@ -21,6 +21,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"sort"
 )
 
 var toolsCmd = addCommand(rootCmd, &cobra.Command{
@@ -36,12 +37,13 @@ var toolsListCmd = addCommand(toolsCmd, &cobra.Command{
 		b := mustGetBosun()
 		tools := b.GetTools()
 
-		byFromPath := map[string][]bosun.ToolDef{}
+		byFromPath := map[string]bosun.ToolDefs{}
 		for _, tool := range tools {
 			byFromPath[tool.FromPath] = append(byFromPath[tool.FromPath], tool)
 		}
 
 		for fromPath, tools := range byFromPath {
+			sort.Sort(tools)
 			fmt.Printf("Defined in %s:\n", fromPath)
 			t := tabby.New()
 			t.AddHeader("Name", "Installed", "Location", "Description")
