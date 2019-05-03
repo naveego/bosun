@@ -14,6 +14,7 @@ type File struct {
 	Environments []*EnvironmentConfig   `yaml:"environments" json:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs" json:"appRefs"`
 	Apps         []*AppRepoConfig       `yaml:"apps" json:"apps"`
+	Repos        []RepoConfig           `yaml:"repos" json:"repos"`
 	FromPath     string                 `yaml:"fromPath" json:"fromPath"`
 	Config       *Workspace             `yaml:"-" json:"-"`
 	Releases     []*ReleaseConfig       `yaml:"releases,omitempty" json:"releases"`
@@ -25,99 +26,129 @@ type File struct {
 	merged bool `yaml:"-" json:"-"`
 }
 
-func (c *File) SetFromPath(path string) {
+func (f *File) MarshalYAML() (interface{}, error) {
+	if f == nil {
+		return nil, nil
+	}
+	type proxy File
+	p := proxy(*f)
 
-	c.FromPath = path
+	return &p, nil
+}
 
-	for _, e := range c.Environments {
+func (f *File) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxy File
+	var p proxy
+	if f != nil {
+		p = proxy(*f)
+	}
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		*f = File(p)
+	}
+
+	return err
+}
+
+func (f *File) SetFromPath(path string) {
+
+	f.FromPath = path
+
+	for _, e := range f.Environments {
 		e.SetFromPath(path)
 	}
 
-	for _, m := range c.Apps {
-		m.SetFragment(c)
+	for _, m := range f.Apps {
+		m.SetFragment(f)
 	}
 
-	for _, m := range c.AppRefs {
+	for _, m := range f.AppRefs {
 		m.FromPath = path
 	}
 
-	for _, m := range c.Releases {
-		m.SetParent(c)
+	for _, m := range f.Releases {
+		m.SetParent(f)
 	}
 
-	for _, s := range c.Scripts {
+	for _, s := range f.Scripts {
 		s.SetFromPath(path)
 	}
 
-	for i := range c.Tools {
-		c.Tools[i].FromPath = c.FromPath
+	for i := range f.Tools {
+		f.Tools[i].FromPath = f.FromPath
 	}
 
-	for i := range c.TestSuites {
-		c.TestSuites[i].SetFromPath(c.FromPath)
+	for i := range f.TestSuites {
+		f.TestSuites[i].SetFromPath(f.FromPath)
 	}
 }
 
-func (c *File) Merge(other *File) error {
+func (f *File) Merge(other *File) error {
 
-	c.merged = true
+	f.merged = true
 
 	for _, otherEnv := range other.Environments {
-		err := c.mergeEnvironment(otherEnv)
+		err := f.mergeEnvironment(otherEnv)
 		if err != nil {
 			return errors.Wrap(err, "merge environment")
 		}
 	}
 
-	if c.AppRefs == nil {
-		c.AppRefs = make(map[string]*Dependency)
+	if f.AppRefs == nil {
+		f.AppRefs = make(map[string]*Dependency)
 	}
 
 	for k, other := range other.AppRefs {
 		other.Name = k
-		c.AppRefs[k] = other
+		f.AppRefs[k] = other
 	}
 
 	for _, otherApp := range other.Apps {
-		if err := c.mergeApp(otherApp); err != nil {
+		if err := f.mergeApp(otherApp); err != nil {
 			return errors.Wrapf(err, "merge app %q", otherApp.Name)
 		}
 	}
 
 	for _, release := range other.Releases {
-		if err := c.mergeRelease(release); err != nil {
+		if err := f.mergeRelease(release); err != nil {
 			return errors.Wrapf(err, "merge release %q", release.Name)
 		}
 	}
 
 	for _, other := range other.Scripts {
-		c.Scripts = append(c.Scripts, other)
+		f.Scripts = append(f.Scripts, other)
 	}
 
-	c.TestSuites = append(c.TestSuites, other.TestSuites...)
-	c.Tools = append(c.Tools, other.Tools...)
+	for _, repo := range other.Repos {
+		f.Repos = append(f.Repos, repo)
+	}
+
+	f.TestSuites = append(f.TestSuites, other.TestSuites...)
+	f.Tools = append(f.Tools, other.Tools...)
 
 	return nil
 }
 
-func (c *File) Save() error {
-	if c.merged {
+func (f *File) Save() error {
+	if f.merged {
 		panic("a merged File cannot be saved")
 	}
 
-	b, err := yaml.Marshal(c)
+	b, err := yaml.Marshal(f)
 	if err != nil {
 		return err
 	}
 
 	b = stripFromPath.ReplaceAll(b, []byte{})
 
-	err = ioutil.WriteFile(c.FromPath, b, 0600)
+	err = ioutil.WriteFile(f.FromPath, b, 0600)
 	if err != nil {
 		return err
 	}
 
-	for _, release := range c.Releases {
+	for _, release := range f.Releases {
 		err = release.SaveBundle()
 		if err != nil {
 			return errors.Wrapf(err, "saving bundle for release %q", release.Name)
@@ -129,41 +160,41 @@ func (c *File) Save() error {
 
 var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)
 
-func (c *File) mergeApp(incoming *AppRepoConfig) error {
-	for _, app := range c.Apps {
+func (f *File) mergeApp(incoming *AppRepoConfig) error {
+	for _, app := range f.Apps {
 		if app.Name == incoming.Name {
 			return errors.Errorf("app %q imported from %q, but it was already imported from %q", incoming.Name, incoming.FromPath, app.FromPath)
 		}
 	}
 
-	c.Apps = append(c.Apps, incoming)
+	f.Apps = append(f.Apps, incoming)
 
 	return nil
 }
 
-func (c *File) mergeEnvironment(env *EnvironmentConfig) error {
+func (f *File) mergeEnvironment(env *EnvironmentConfig) error {
 
 	if env.Name == "all" {
-		for _, e := range c.Environments {
+		for _, e := range f.Environments {
 			e.Merge(env)
 		}
 		return nil
 	}
 
-	for _, e := range c.Environments {
+	for _, e := range f.Environments {
 		if e.Name == env.Name {
 			e.Merge(env)
 			return nil
 		}
 	}
 
-	c.Environments = append(c.Environments, env)
+	f.Environments = append(f.Environments, env)
 
 	return nil
 }
 
-func (c *File) GetEnvironmentConfig(name string) *EnvironmentConfig {
-	for _, e := range c.Environments {
+func (f *File) GetEnvironmentConfig(name string) *EnvironmentConfig {
+	for _, e := range f.Environments {
 		if e.Name == name {
 			return e
 		}
@@ -172,14 +203,14 @@ func (c *File) GetEnvironmentConfig(name string) *EnvironmentConfig {
 	panic(fmt.Sprintf("no environment named %q", name))
 }
 
-func (c *File) mergeRelease(release *ReleaseConfig) error {
-	for _, e := range c.Releases {
+func (f *File) mergeRelease(release *ReleaseConfig) error {
+	for _, e := range f.Releases {
 		if e.Name == release.Name {
 			return errors.Errorf("already have a release named %q, from %q", release.Name, e.FromPath)
 
 		}
 	}
 
-	c.Releases = append(c.Releases, release)
+	f.Releases = append(f.Releases, release)
 	return nil
 }

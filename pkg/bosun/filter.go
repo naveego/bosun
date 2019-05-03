@@ -19,6 +19,7 @@ type Filter struct {
 	Key      string
 	Value    string
 	Operator string
+	Exclude  bool
 }
 
 type LabelValue interface {
@@ -26,11 +27,13 @@ type LabelValue interface {
 }
 
 type LabelThunk func() string
+
 func (l LabelThunk) Value() string { return l() }
 
 type Labels map[string]LabelValue
 
 type LabelString string
+
 func (l LabelString) Value() string { return string(l) }
 
 func (l *Labels) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -97,7 +100,7 @@ func FiltersFromAppLabels(args ...string) []Filter {
 
 var parseFilterRE = regexp.MustCompile(`(\w+)(\W+)(\w+)`)
 
-func ApplyFilter(from interface{}, includeMatched bool, filters []Filter) interface{} {
+func ApplyFilter(from interface{}, filters []Filter) interface{} {
 	fromValue := reflect.ValueOf(from)
 	var out reflect.Value
 
@@ -111,13 +114,13 @@ func ApplyFilter(from interface{}, includeMatched bool, filters []Filter) interf
 			var matched bool
 			for _, filter := range filters {
 				if ok {
-					matched := MatchFilter(labelled, filter)
+					matched = MatchFilter(labelled, filter)
 					if matched {
 						break
 					}
 				}
 			}
-			if matched == includeMatched {
+			if matched {
 				out.SetMapIndex(key, value)
 			}
 		}
@@ -136,7 +139,7 @@ func ApplyFilter(from interface{}, includeMatched bool, filters []Filter) interf
 					}
 				}
 			}
-			if matched == includeMatched {
+			if matched {
 				out = reflect.Append(out, value)
 			}
 		}
@@ -165,27 +168,35 @@ func ExcludeMatched(from []interface{}, filters []Filter) []interface{} {
 func MatchFilter(labelled Labelled, filter Filter) bool {
 	labels := labelled.Labels()
 
-	switch filter.Operator {
-	case "=", "==", "":
-		value, ok := labels[filter.Key]
-		if ok {
-			return value.Value() == filter.Value
+	matched := func() bool {
+		switch filter.Operator {
+		case "=", "==", "":
+			value, ok := labels[filter.Key]
+			if ok {
+				return value.Value() == filter.Value
+			}
+		case "?=":
+			re, err := regexp.Compile(filter.Value)
+			if err != nil {
+				color.Red("Invalid regex in filter %s?=%s: %s", filter.Key, filter.Value, err)
+				return false
+			}
+			value, ok := labels[filter.Key]
+			if ok {
+				return re.MatchString(value.Value())
+			} else {
+				return false
+			}
 		}
-	case "?=":
-		re, err := regexp.Compile(filter.Value)
-		if err != nil {
-			color.Red("Invalid regex in filter %s?=%s: %s", filter.Key, filter.Value, err)
-			return false
-		}
-		value, ok := labels[filter.Key]
-		if ok {
-			return re.MatchString(value.Value())
-		} else {
-			return false
-		}
+
+		return false
+	}()
+
+	if filter.Exclude {
+		return !matched
 	}
 
-	return false
+	return matched
 }
 
 type Labelled interface {

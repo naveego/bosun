@@ -11,10 +11,7 @@ type RetriableError struct {
 	Err error
 }
 
-
 func (r RetriableError) Error() string { return "Temporary Error: " + r.Err.Error() }
-
-
 
 type MultiError struct {
 	Errors []error
@@ -37,7 +34,6 @@ func (m MultiError) ToError() error {
 	}
 	return errors.New(strings.Join(errStrings, "\n"))
 }
-
 
 func Retry(attempts int, callback func() error) (err error) {
 	return RetryAfter(attempts, callback, 0)
@@ -62,4 +58,16 @@ func RetryAfter(attempts int, callback func() error, d time.Duration) (err error
 		time.Sleep(d)
 	}
 	return m.ToError()
+}
+
+func DistinctStrings(strs []string) []string {
+	var out []string
+	m := map[string]struct{}{}
+	for _, s := range strs {
+		m[s] = struct{}{}
+	}
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

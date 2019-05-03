@@ -17,11 +17,17 @@ type Workspace struct {
 	Release            string                 `yaml:"release" json:"release"`
 	HostIPInMinikube   string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
 	AppStates          AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
-	ClonePaths         map[string]string      `yaml:"clonePaths" json:"clonePaths"`
+	ClonePaths         map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
 	MergedBosunFile    *File                  `yaml:"-" json:"merged"`
 	ImportedBosunFiles map[string]*File       `yaml:"-" json:"imported"`
 	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
 	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
+	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
+}
+
+type LocalRepo struct {
+	Name string `yaml:"-" json:""`
+	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 }
 
 func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {

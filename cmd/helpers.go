@@ -223,14 +223,13 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 		names[i] = name
 	}
 
-	includeFilters := getIncludeFilters(names)
-	excludeFilters := getExcludeFilters()
+	filters := getFilters(names)
 
-	if opt.ifNoFiltersGetAll && len(includeFilters) == 0 && len(excludeFilters) == 0 {
+	if opt.ifNoFiltersGetAll && len(filters) == 0 {
 		return apps, nil
 	}
 
-	if opt.ifNoFiltersGetCurrent && len(includeFilters) == 0 && len(excludeFilters) == 0 {
+	if opt.ifNoFiltersGetCurrent && len(filters) == 0 {
 		app, err := getCurrentApp(b)
 		if err != nil {
 			return nil, errors.Wrap(err, "no filters provided but current directory is not associated with an app")
@@ -238,8 +237,7 @@ func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*
 		return []*bosun.AppRepo{app}, nil
 	}
 
-	filtered := bosun.ApplyFilter(apps, true, includeFilters).(bosun.ReposSortedByName)
-	filtered = bosun.ApplyFilter(filtered, false, excludeFilters).(bosun.ReposSortedByName)
+	filtered := bosun.ApplyFilter(apps, filters).(bosun.ReposSortedByName)
 
 	if len(filtered) > 0 {
 		return filtered, nil
@@ -317,6 +315,12 @@ func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
 	return getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
 }
 
+func getFilters(names []string) []bosun.Filter {
+	include := getIncludeFilters(names)
+	exclude := getExcludeFilters()
+	return append(include, exclude...)
+}
+
 func getIncludeFilters(names []string) []bosun.Filter {
 	if viper.GetBool(ArgAppAll) {
 		return bosun.FilterMatchAll()
@@ -339,7 +343,14 @@ func getIncludeFilters(names []string) []bosun.Filter {
 
 func getExcludeFilters() []bosun.Filter {
 	conditions := viper.GetStringSlice(ArgExclude)
-	return bosun.FiltersFromArgs(conditions...)
+	filters := bosun.FiltersFromArgs(conditions...)
+
+	var out []bosun.Filter
+	for _, filter := range filters {
+		filter.Exclude = true
+		out = append(out, filter)
+	}
+	return out
 }
 
 func checkExecutableDependency(exe string) {
