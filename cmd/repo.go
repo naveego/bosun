@@ -150,13 +150,13 @@ var repoCloneCmd = addCommand(
 				b = mustGetBosun()
 			}
 
-			repos := b.GetRepos()
-			filters := getFilters(args)
-
-			repos = bosun.ApplyFilter(repos, filters).([]*bosun.Repo)
+			repos, err := getFilterParams(b, args).Chain().From(b.GetRepos())
+			if err != nil {
+				return err
+			}
 
 			ctx := b.NewContext()
-			for _, repo := range repos {
+			for _, repo := range repos.([]*bosun.Repo) {
 				log := ctx.Log.WithField("repo", repo.Name)
 
 				if repo.IsRepoCloned() {

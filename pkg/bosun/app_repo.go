@@ -5,6 +5,7 @@ import (
 	"github.com/Masterminds/semver"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/pkg/errors"
@@ -25,19 +26,21 @@ type AppRepo struct {
 	commit      string
 	gitTag      string
 	isCloned    bool
-	labels      Labels
+	labels      filter.Labels
 }
 
-func (a *AppRepo) Labels() Labels {
+func (a *AppRepo) GetLabels() filter.Labels {
 	if a.labels == nil {
-		a.labels = Labels{
-			string(FilterKeyName):    LabelString(a.Name),
-			string(FilterKeyPath):    LabelString(a.FromPath),
-			string(FilterKeyBranch):  LabelThunk(a.GetBranch),
-			string(FilterKeyCommit):  LabelThunk(a.GetCommit),
-			string(FilterKeyVersion): LabelString(a.Version),
-		}
-		for k, v := range a.AppLabels {
+		a.labels = filter.LabelsFromMap(map[string]string{
+			LabelName:    a.Name,
+			LabelPath:    a.FromPath,
+			LabelVersion: a.Version,
+		})
+
+		a.labels[LabelBranch] = filter.LabelFunc(a.GetBranch)
+		a.labels[LabelCommit] = filter.LabelFunc(a.GetCommit)
+
+		for k, v := range a.Labels {
 			a.labels[k] = v
 		}
 	}
@@ -326,6 +329,9 @@ func (a *AppRepo) BuildImages(ctx BosunContext) error {
 
 	var report []string
 	for _, image := range a.GetImages() {
+		if image.ImageName == "" {
+			return errors.New("imageName not set in image config (did you accidentally set `name` instead?)")
+		}
 		dockerfilePath := image.Dockerfile
 		if dockerfilePath == "" {
 			dockerfilePath = ctx.ResolvePath("Dockerfile")

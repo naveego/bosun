@@ -89,7 +89,7 @@ func (b *Bosun) addApp(config *AppRepoConfig) *AppRepo {
 	return app
 }
 
-func (b *Bosun) GetAppsSortedByName() ReposSortedByName {
+func (b *Bosun) GetAppsSortedByName() []*AppRepo {
 	var ms ReposSortedByName
 
 	for _, x := range b.appRepos {

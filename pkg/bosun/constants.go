@@ -20,3 +20,11 @@ const (
 )
 
 var ErrNotCloned = errors.New("not cloned")
+
+const (
+	LabelName    = "name"
+	LabelPath    = "path"
+	LabelBranch  = "branch"
+	LabelCommit  = "commit"
+	LabelVersion = "version"
+)

@@ -37,7 +37,7 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 			var isCloned, pathrepo, branch, version, importedBy string
 
 			if app.IsRepoCloned() {
-				isCloned = emoji.Sprint( ":heavy_check_mark:")
+				isCloned = emoji.Sprint(":heavy_check_mark:")
 				pathrepo = trimGitRoot(app.FromPath)
 				if app.BranchForRelease {
 					branch = app.GetBranch()
@@ -72,10 +72,7 @@ var appListActionsCmd = addCommand(appListCmd, &cobra.Command{
 		viper.SetDefault(ArgAppAll, true)
 
 		b := mustGetBosun()
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent: true})
-		if err != nil {
-			return err
-		}
+		apps := getFilterParams(b, args).GetApps()
 
 		t := tabby.New()
 		t.AddHeader("APP", "ACTION", "WHEN", "WHERE", "DESCRIPTION")

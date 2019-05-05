@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
@@ -34,7 +35,7 @@ type AppReleaseConfig struct {
 	Repo             string       `yaml:"repo" json:"repo"`
 	Branch           string       `yaml:"branch" json:"branch"`
 	Commit           string       `yaml:"commit" json:"commit"`
-	Version          string               `yaml:"version" json:"version"`
+	Version          string       `yaml:"version" json:"version"`
 	SyncedAt         time.Time    `yaml:"syncedAt" json:"syncedAt"`
 	Chart            string       `yaml:"chart" json:"chart"`
 	ImageNames       []string     `yaml:"images,omitempty" json:"images,omitempty"`
@@ -60,19 +61,20 @@ type AppRelease struct {
 	ActualState  AppState
 	DesiredState AppState
 	helmRelease  *HelmRelease
-	labels       Labels
+	labels       filter.Labels
 }
 
-func (a *AppRelease) Labels() Labels {
+func (a *AppRelease) GetLabels() filter.Labels {
 	if a.labels == nil {
-		a.labels = map[string]LabelValue{
-			string(FilterKeyName):    LabelString(a.Name),
-			string(FilterKeyPath):    LabelString(a.AppRepo.FromPath),
-			string(FilterKeyBranch):  LabelString(a.Branch),
-			string(FilterKeyCommit):  LabelString(a.Commit),
-			string(FilterKeyVersion): LabelString(a.Version),
-		}
-		for k, v := range a.AppRepo.AppLabels {
+		a.labels = filter.LabelsFromMap(map[string]string{
+			LabelName:    a.Name,
+			LabelPath:    a.AppRepo.FromPath,
+			LabelVersion: a.Version,
+			LabelBranch:  a.Branch,
+			LabelCommit:  a.Commit,
+		})
+
+		for k, v := range a.AppRepo.Labels {
 			a.labels[k] = v
 		}
 	}

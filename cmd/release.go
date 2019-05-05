@@ -453,7 +453,7 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 		release := mustGetCurrentRelease(b)
 		ctx := b.NewContext()
 
-		appReleases := mustGetAppReleases(b, args)
+		appReleases := getFilterParams(b, args).MustGetAppReleases()
 
 		err := processAppReleases(b, ctx, appReleases, func(appRelease *bosun.AppRelease) error {
 			ctx = ctx.WithAppRelease(appRelease)
@@ -555,7 +555,7 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		appReleases := mustGetAppReleases(b, args)
+		appReleases := getFilterParams(b, args).MustGetAppReleases()
 
 		for _, appRelease := range appReleases {
 
@@ -624,7 +624,7 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appReleases := mustGetAppReleases(b, args)
+		appReleases := getFilterParams(b, args).MustGetAppReleases()
 
 		releaseBranch := fmt.Sprintf("release/%s", release.Name)
 

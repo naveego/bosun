@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"strings"
@@ -27,7 +28,7 @@ type AppRepoConfig struct {
 	ChartPath     string                 `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
 	RunCommand    []string               `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
 	DependsOn     []Dependency           `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
-	AppLabels     Labels                 `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Labels        filter.Labels          `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Minikube      *AppMinikubeConfig     `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	Images        []AppImageConfig       `yaml:"images" json:"images"`
 	Values        AppValuesByEnvironment `yaml:"values,omitempty" json:"values,omitempty"`
@@ -41,17 +42,6 @@ type AppRepoConfig struct {
 type ProjectManagementPlugin struct {
 	Name   string             `yaml:"name" json:"name"`
 	ZenHub *zenhub.RepoConfig `yaml:"zenHub,omitempty" json:"zenHub"`
-}
-
-type AppImageConfig struct {
-	ImageName   string `yaml:"imageName" json:"imageName,omitempty"`
-	ProjectName string `yaml:"projectName,omitempty" json:"projectName,omitempty"`
-	Dockerfile  string `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
-	ContextPath string `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
-}
-
-func (a AppImageConfig) GetPrefixedName() string {
-	return fmt.Sprintf("docker.n5o.black/%s/%s", a.ProjectName, a.ImageName)
 }
 
 type AppMinikubeConfig struct {

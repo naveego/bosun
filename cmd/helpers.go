@@ -7,6 +7,7 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -120,33 +121,9 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	return bosun.New(params, config)
 }
 
-func getAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) (*bosun.AppRepo, error) {
-	apps, err := getAppReposOpt(b, names, options)
-	if err != nil {
-		return nil, err
-	}
-	if len(apps) == 0 {
-		return nil, errors.Errorf("no apps matched %v", names)
-	}
-	if len(apps) > 1 {
-		if len(names) > 0 {
-			return nil, errors.Errorf("%d apps match %v", len(apps), names)
-		}
-		return nil, errors.Errorf("%d apps found, please provide a filter", len(apps))
-	}
-	return apps[0], nil
-}
-
-func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
-	app, err := getAppOpt(b, names, options)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return app
-}
-
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
-	return mustGetAppOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
+	f := getFilterParams(b, names)
+	return f.MustGetApp()
 }
 
 func MustYaml(i interface{}) string {
@@ -175,7 +152,99 @@ func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.AppRepo) ([]*bosun.Ap
 	return appReleases, nil
 }
 
-func mustGetAppRepos(b *bosun.Bosun, names []string) []*bosun.AppRepo {
+type FilterParams struct {
+	b       *bosun.Bosun
+	Names   []string
+	All     bool
+	Include []string
+	Exclude []string
+	Labels  []string
+}
+
+func (f FilterParams) IsEmpty() bool {
+	return len(f.Names) == 0 && len(f.Include) == 0 && len(f.Exclude) == 0 && len(f.Labels) == 0
+}
+
+func getFilterParams(b *bosun.Bosun, names []string) FilterParams {
+	p := FilterParams{
+		b:     b,
+		Names: names,
+		All:   viper.GetBool(ArgAppAll),
+	}
+	p.Labels = viper.GetStringSlice(ArgAppLabels)
+	p.Include = viper.GetStringSlice(ArgInclude)
+	p.Exclude = viper.GetStringSlice(ArgExclude)
+
+	if p.IsEmpty() {
+		app, err := getCurrentApp(b)
+		if err == nil && app != nil {
+			p.Names = []string{app.Name}
+		}
+	}
+
+	return p
+}
+
+func (f FilterParams) Chain() filter.Chain {
+	var include []filter.Filter
+	var exclude []filter.Filter
+
+	if viper.GetBool(ArgAppAll) {
+		include = append(include, filter.FilterMatchAll())
+	} else if len(f.Names) > 0 {
+		for _, name := range f.Names {
+			include = append(include, filter.MustParse(bosun.LabelName, "==", name))
+		}
+	} else {
+		labels := append(viper.GetStringSlice(ArgAppLabels), viper.GetStringSlice(ArgInclude)...)
+		for _, label := range labels {
+			include = append(include, filter.MustParse(label))
+		}
+	}
+
+	if len(f.Exclude) > 0 {
+		for _, label := range f.Exclude {
+			exclude = append(exclude, filter.MustParse(label))
+		}
+	}
+
+	chain := filter.Try().Including(include...).Excluding(exclude...)
+	return chain
+}
+
+func (f FilterParams) MustGetApp() *bosun.AppRepo {
+	app, err := f.GetApp()
+	if err != nil {
+		panic(err)
+	}
+	return app
+}
+
+func (f FilterParams) GetApp() (*bosun.AppRepo, error) {
+	apps := f.b.GetAppsSortedByName()
+
+	result, err := f.Chain().ToGetExactly(1).From(apps)
+
+	return result.(*bosun.AppRepo), err
+}
+
+func (f FilterParams) GetApps() []*bosun.AppRepo {
+	apps := f.b.GetAppsSortedByName()
+
+	result, _ := f.Chain().From(apps)
+
+	return result.([]*bosun.AppRepo)
+}
+
+func (f FilterParams) GetAppsChain(chain filter.Chain) ([]*bosun.AppRepo, error) {
+	apps := f.b.GetAppsSortedByName()
+
+	result, err := chain.From(apps)
+
+	return result.([]*bosun.AppRepo), err
+}
+
+func mustGetApps(b *bosun.Bosun, names []string) []*bosun.AppRepo {
 	repos, err := getAppRepos(b, names)
 	if err != nil {
 		log.Fatal(err)
@@ -186,80 +255,19 @@ func mustGetAppRepos(b *bosun.Bosun, names []string) []*bosun.AppRepo {
 	return repos
 }
 
-func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
-	repos, err := getAppRepos(b, names)
+func (f FilterParams) GetAppReleases() ([]*bosun.AppRelease, error) {
+	apps := f.GetApps()
+
+	releases, err := getAppReleasesFromApps(f.b, apps)
+	return releases, err
+}
+
+func (f FilterParams) MustGetAppReleases() []*bosun.AppRelease {
+	appReleases, err := f.GetAppReleases()
 	if err != nil {
 		log.Fatal(err)
 	}
-	releases, err := getAppReleasesFromApps(b, repos)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return releases
-}
-
-type getAppReposOptions struct {
-	ifNoFiltersGetAll     bool
-	ifNoFiltersGetCurrent bool
-	ifNoMatchGetAll       bool
-	ifNoMatchGetCurrent   bool
-}
-
-// gets one or more apps matching names, or if names
-// are valid file paths, imports the file at that path.
-// if names is empty, tries to find a apps starting
-// from the current directory
-func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*bosun.AppRepo, error) {
-
-	apps := b.GetAppsSortedByName()
-
-	for i := range names {
-		name := names[i]
-		if strings.HasSuffix(name, "yaml") {
-			if _, err := os.Stat(name); err == nil {
-				name, _ = filepath.Abs(name)
-			}
-		}
-		names[i] = name
-	}
-
-	filters := getFilters(names)
-
-	if opt.ifNoFiltersGetAll && len(filters) == 0 {
-		return apps, nil
-	}
-
-	if opt.ifNoFiltersGetCurrent && len(filters) == 0 {
-		app, err := getCurrentApp(b)
-		if err != nil {
-			return nil, errors.Wrap(err, "no filters provided but current directory is not associated with an app")
-		}
-		return []*bosun.AppRepo{app}, nil
-	}
-
-	filtered := bosun.ApplyFilter(apps, filters).(bosun.ReposSortedByName)
-
-	if len(filtered) > 0 {
-		return filtered, nil
-	}
-
-	if opt.ifNoMatchGetAll {
-		return apps, nil
-	}
-
-	var err error
-
-	if opt.ifNoMatchGetCurrent {
-		var app *bosun.AppRepo
-		app, err = getCurrentApp(b)
-		if err != nil {
-			return nil, err
-		}
-		apps = append(apps, app)
-		return apps, nil
-	}
-
-	return nil, errors.New("no apps matched")
+	return appReleases
 }
 
 func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
@@ -290,6 +298,10 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 	}
 	sort.Strings(appsUnderDirNames)
 
+	if len(appsUnderDir) == 0 {
+		return nil, errors.Errorf("no apps found under current path %s", wd)
+	}
+
 	if len(appsUnderDir) == 1 {
 		return appsUnderDir[0], nil
 	}
@@ -312,45 +324,8 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 // if names is empty, tries to find a apps starting
 // from the current directory
 func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
-	return getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
-}
-
-func getFilters(names []string) []bosun.Filter {
-	include := getIncludeFilters(names)
-	exclude := getExcludeFilters()
-	return append(include, exclude...)
-}
-
-func getIncludeFilters(names []string) []bosun.Filter {
-	if viper.GetBool(ArgAppAll) {
-		return bosun.FilterMatchAll()
-	}
-
-	out := bosun.FiltersFromNames(names...)
-
-	labels := viper.GetStringSlice(ArgAppLabels)
-	if len(labels) > 0 {
-		out = append(out, bosun.FiltersFromAppLabels(labels...)...)
-	}
-
-	conditions := viper.GetStringSlice(ArgInclude)
-	if len(conditions) > 0 {
-		out = append(out, bosun.FiltersFromArgs(conditions...)...)
-	}
-
-	return out
-}
-
-func getExcludeFilters() []bosun.Filter {
-	conditions := viper.GetStringSlice(ArgExclude)
-	filters := bosun.FiltersFromArgs(conditions...)
-
-	var out []bosun.Filter
-	for _, filter := range filters {
-		filter.Exclude = true
-		out = append(out, filter)
-	}
-	return out
+	f := getFilterParams(b, names)
+	return f.GetApps(), nil
 }
 
 func checkExecutableDependency(exe string) {

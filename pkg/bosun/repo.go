@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/filter"
 	"path/filepath"
 )
 
@@ -17,15 +18,15 @@ type Repo struct {
 	Apps      map[string]*AppRepoConfig
 }
 
-func (r Repo) Labels() Labels {
-	out := Labels{
-		"name": LabelString(r.Name),
+func (r Repo) GetLabels() filter.Labels {
+	out := filter.Labels{
+		"name": filter.LabelString(r.Name),
 	}
 	if r.LocalRepo != nil {
-		out["path"] = LabelString(r.LocalRepo.Path)
+		out["path"] = filter.LabelString(r.LocalRepo.Path)
 	}
 	for k, v := range r.RepoConfig.FilteringLabels {
-		out[k] = LabelString(v)
+		out[k] = filter.LabelString(v)
 	}
 	return out
 }

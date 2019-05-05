@@ -22,6 +22,7 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
@@ -184,7 +185,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		apps := mustGetAppRepos(b, args)
+		apps := mustGetApps(b, args)
 		env := b.GetCurrentEnvironment()
 		ip := pkg.NewCommand("minikube", "ip").MustOut()
 
@@ -250,7 +251,7 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		apps := mustGetAppRepos(b, args)
+		apps := mustGetApps(b, args)
 		env := b.GetCurrentEnvironment()
 
 		toRemove := map[string]bool{}
@@ -372,10 +373,10 @@ var appStatusCmd = &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
-
 		env := b.GetCurrentEnvironment()
-
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoMatchGetAll: true})
+		f := getFilterParams(b, args)
+		chain := f.Chain().Then().Including(filter.FilterMatchAll())
+		apps, err := f.GetAppsChain(chain)
 		if err != nil {
 			return err
 		}
@@ -446,7 +447,7 @@ var appStatusCmd = &cobra.Command{
 				fmtDesiredActual(desired.Status, actual.Status),
 				routing,
 				fmtTableEntry(diffStatus),
-				fmtTableEntry(fmt.Sprintf("%#v", m.AppRepo.AppLabels)))
+				fmtTableEntry(fmt.Sprintf("%#v", m.AppRepo.Labels)))
 		}
 
 		t.Print()
@@ -594,10 +595,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{})
-		if err != nil {
-			return err
-		}
+		apps := mustGetApps(b, args)
 
 		ctx.Log.Debugf("AppReleaseConfigs: \n%s\n", MustYaml(apps))
 
@@ -670,7 +668,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		releases := mustGetAppReleases(b, args)
+		releases := getFilterParams(b, args).MustGetAppReleases()
 
 		pullLatest := viper.GetBool(ArgAppRecyclePullLatest)
 
@@ -717,7 +715,7 @@ var appDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		appReleases := mustGetAppReleases(b, args)
+		appReleases := getFilterParams(b, args).MustGetAppReleases()
 
 		ctx := b.NewContext()
 
