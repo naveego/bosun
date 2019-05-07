@@ -54,7 +54,7 @@ type State struct {
 	Microservices map[string]AppState
 }
 
-func LoadWorkspace(path string) (*Workspace, error) {
+func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 	defaultPath := os.ExpandEnv("$HOME/.bosun/bosun.yaml")
 	if path == "" {
 		path = defaultPath
@@ -89,6 +89,17 @@ func LoadWorkspace(path string) (*Workspace, error) {
 	err = pkg.LoadYaml(path, &c)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading root config")
+	}
+
+	return c, nil
+
+}
+
+func LoadWorkspace(path string) (*Workspace, error) {
+
+	c, err := LoadWorkspaceNoImports(path)
+	if err != nil {
+		return nil, err
 	}
 
 	err = c.importFromPaths(path, c.Imports)
