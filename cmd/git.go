@@ -36,7 +36,7 @@ func init() {
 	rootCmd.AddCommand(gitCmd)
 }
 
-func mustGetGithubClient() *github.Client {
+func getGithubToken() (string, error) {
 	b := mustGetBosun()
 	ws := b.GetWorkspace()
 	ctx := b.NewContext().WithDir(ws.Path)
@@ -49,29 +49,44 @@ func mustGetGithubClient() *github.Client {
 
 		ws.GithubToken = &bosun.CommandValue{
 			Command: bosun.Command{
-				Script:script,
+				Script: script,
 			},
 		}
 
 		_, err := ws.GithubToken.Resolve(ctx)
 		if err != nil {
-			log.Fatalf("script failed: %s\nscript:\n%s", err, script)
+			return "", errors.Errorf("script failed: %s\nscript:\n%s", err, script)
 		}
 
 		err = b.Save()
 		if err != nil {
-			log.Fatalf("save failed: %s", err)
+			return "", errors.Errorf("save failed: %s", err)
 		}
 	}
 
 	token, err := ws.GithubToken.Resolve(ctx)
 	if err != nil {
-		log.Fatal("")
+		return "", err
+	}
+
+	err = os.Setenv("GITHUB_TOKEN", token)
+	if err != nil {
+		return "", err
 	}
 
 	token, ok := os.LookupEnv("GITHUB_TOKEN")
 	if !ok {
-		log.Fatal("GITHUB_TOKEN must be set")
+		return "", errors.Errorf("GITHUB_TOKEN must be set")
+	}
+
+	return token, nil
+}
+
+func mustGetGithubClient() *github.Client {
+
+	token, err := getGithubToken()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	ts := oauth2.StaticTokenSource(
@@ -88,6 +103,20 @@ var gitDeployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Deploy-related commands.",
 }
+
+var gitTokenCmd = addCommand(gitCmd, &cobra.Command{
+	Use:   "token",
+	Short: "Prints the github token.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		token, err := getGithubToken()
+		if err != nil {
+			return err
+		}
+		fmt.Println(token)
+		return nil
+	},
+})
 
 var gitDeployStartCmd = &cobra.Command{
 	Use:   "start {cluster}",
