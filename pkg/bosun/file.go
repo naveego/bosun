@@ -13,7 +13,7 @@ type File struct {
 	Imports      []string               `yaml:"imports,omitempty" json:"imports"`
 	Environments []*EnvironmentConfig   `yaml:"environments" json:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs" json:"appRefs"`
-	Apps         []*AppRepoConfig       `yaml:"apps" json:"apps"`
+	Apps         []*AppConfig           `yaml:"apps" json:"apps"`
 	Repos        []RepoConfig           `yaml:"repos" json:"repos"`
 	FromPath     string                 `yaml:"fromPath" json:"fromPath"`
 	Config       *Workspace             `yaml:"-" json:"-"`
@@ -160,7 +160,7 @@ func (f *File) Save() error {
 
 var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)
 
-func (f *File) mergeApp(incoming *AppRepoConfig) error {
+func (f *File) mergeApp(incoming *AppConfig) error {
 	for _, app := range f.Apps {
 		if app.Name == incoming.Name {
 			return errors.Errorf("app %q imported from %q, but it was already imported from %q", incoming.Name, incoming.FromPath, app.FromPath)

@@ -38,7 +38,7 @@ values:
   	 	- redfile
 
 `)
-			var sut AppRepoConfig
+			var sut AppConfig
 
 			Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 			sut.FromPath = RootPkgBosunDir

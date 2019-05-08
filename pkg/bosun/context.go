@@ -22,7 +22,7 @@ type BosunContext struct {
 	Log             *logrus.Entry
 	ReleaseValues   *ReleaseValues
 	Release         *Release
-	AppRepo         *AppRepo
+	AppRepo         *App
 	AppRelease      *AppRelease
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
@@ -86,14 +86,14 @@ func (c BosunContext) WithRelease(r *Release) BosunContext {
 	return c
 }
 
-func (c BosunContext) WithAppRepo(a *AppRepo) BosunContext {
+func (c BosunContext) WithAppRepo(a *App) BosunContext {
 	if c.AppRepo == a {
 		return c
 	}
 	c.AppRepo = a
 	c.Log = c.Log.WithField("repo", a.Name)
 	c.Log.Debug("")
-	c.LogLine(1, "[Context] Changed AppRepo.")
+	c.LogLine(1, "[Context] Changed App.")
 	return c.WithDir(a.FromPath)
 }
 

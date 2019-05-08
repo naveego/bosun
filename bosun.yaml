@@ -6,7 +6,7 @@ appRefs: {}
 apps:
 - name: bosun
   repo: naveego/bosun
-  version: 0.8.5
+  version: 0.9.0
   images: []
   scripts:
   - name: publish
@@ -46,3 +46,4 @@ apps:
           authSource: admin
       databaseFile: test/mongo/db.yaml
       rebuildDb: false
+repos: []

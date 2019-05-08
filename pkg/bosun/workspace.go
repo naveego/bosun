@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
@@ -26,8 +27,9 @@ type Workspace struct {
 }
 
 type LocalRepo struct {
-	Name string `yaml:"-" json:""`
-	Path string `yaml:"path,omitempty" json:"path,omitempty"`
+	Name   string         `yaml:"-" json:""`
+	Path   string         `yaml:"path,omitempty" json:"path,omitempty"`
+	branch git.BranchName `yaml:"-" json:"-"`
 }
 
 func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {

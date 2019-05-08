@@ -3,14 +3,13 @@ package bosun
 import (
 	"fmt"
 	"github.com/imdario/mergo"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"strings"
 )
 
-type AppRepoConfig struct {
+type AppConfig struct {
 	Name                    string                   `yaml:"name" json:"name" json:"name" json:"name"`
 	FromPath                string                   `yaml:"-" json:"-"`
 	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty" json:"projectManagementPlugin,omitempty"`
@@ -19,7 +18,7 @@ type AppRepoConfig struct {
 	ContractsOnly    bool   `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
 	ReportDeployment bool   `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
 	Namespace        string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
-	Repo             string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	RepoName         string `yaml:"repo,omitempty" json:"repo,omitempty"`
 	HarborProject    string `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
 	Version          string `yaml:"version,omitempty" json:"version,omitempty"`
 	// The location of a standard go version file for this app.
@@ -62,11 +61,11 @@ type AppRoutableService struct {
 }
 
 type Dependency struct {
-	Name     string   `yaml:"name" json:"name,omitempty"`
-	FromPath string   `yaml:"-" json:"fromPath,omitempty"`
-	Repo     string   `yaml:"repo,omitempty" json:"repo,omitempty"`
-	App      *AppRepo `yaml:"-" json:"-"`
-	Version  string   `yaml:"version,omitempty" json:"version,omitempty"`
+	Name     string `yaml:"name" json:"name,omitempty"`
+	FromPath string `yaml:"-" json:"fromPath,omitempty"`
+	Repo     string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	App      *App   `yaml:"-" json:"-"`
+	Version  string `yaml:"version,omitempty" json:"version,omitempty"`
 }
 
 type Dependencies []Dependency
@@ -130,7 +129,7 @@ type appValuesConfigV1 struct {
 	Static  Values                   `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
-func (a *AppRepoConfig) SetFragment(fragment *File) {
+func (a *AppConfig) SetFragment(fragment *File) {
 	a.FromPath = fragment.FromPath
 	a.Fragment = fragment
 	for i := range a.Scripts {
@@ -223,7 +222,7 @@ func (a AppValuesConfig) WithFilesLoaded(ctx BosunContext) (AppValuesConfig, err
 	return out, nil
 }
 
-func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
+func (a *AppConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	out := a.Values.GetValuesConfig(ctx.WithDir(a.FromPath))
 
 	if out.Static == nil {
@@ -234,83 +233,6 @@ func (a *AppRepoConfig) GetValuesConfig(ctx BosunContext) AppValuesConfig {
 	}
 
 	return out
-}
-
-// ExportValues creates an AppValuesByEnvironment instance with all the values
-// for releasing this app, reified into their environments, including values from
-// files and from the default values.yaml file for the chart.
-func (a *AppRepo) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error) {
-	ctx = ctx.WithAppRepo(a)
-	var err error
-	envs := map[string]*EnvironmentConfig{}
-	for envNames := range a.Values {
-		for _, envName := range strings.Split(envNames, ",") {
-			if _, ok := envs[envName]; !ok {
-				env, err := ctx.Bosun.GetEnvironment(envName)
-				if err != nil {
-					ctx.Log.Warnf("App values include key for environment %q, but no such environment has been defined.", envName)
-					continue
-				}
-				envs[envName] = env
-			}
-		}
-	}
-	var defaultValues Values
-
-	if a.HasChart() {
-		chartRef := a.getAbsoluteChartPathOrChart(ctx)
-		valuesYaml, err := pkg.NewCommand(
-			"helm", "inspect", "values",
-			chartRef,
-			"--version", a.Version,
-		).RunOut()
-		if err != nil {
-			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
-		}
-		defaultValues, err = ReadValues([]byte(valuesYaml))
-		if err != nil {
-			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
-		}
-	} else {
-		defaultValues = Values{}
-	}
-
-	out := AppValuesByEnvironment{}
-
-	for _, env := range envs {
-		envCtx := ctx.WithEnv(env)
-		valuesConfig := a.GetValuesConfig(envCtx)
-		valuesConfig, err = valuesConfig.WithFilesLoaded(envCtx)
-		if err != nil {
-			return nil, err
-		}
-		// make sure values from bosun app overwrite defaults from helm chart
-		static := defaultValues.Clone()
-		static.Merge(valuesConfig.Static)
-		valuesConfig.Static = static
-		valuesConfig.Files = nil
-		out[env.Name] = valuesConfig
-	}
-
-	return out, nil
-}
-
-func (a *AppRepo) ExportActions(ctx BosunContext) ([]*AppAction, error) {
-	var err error
-	var actions []*AppAction
-	for _, action := range a.Actions {
-		if action.When == ActionManual {
-			ctx.Log.Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
-		} else {
-			err = action.MakeSelfContained(ctx)
-			if err != nil {
-				return nil, errors.Errorf("prepare action %q for release: %s", action.Name, err)
-			}
-			actions = append(actions, action)
-		}
-	}
-
-	return actions, nil
 }
 
 type AppStatesByEnvironment map[string]AppStateMap

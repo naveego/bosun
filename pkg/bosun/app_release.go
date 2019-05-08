@@ -30,19 +30,19 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 }
 
 type AppReleaseConfig struct {
-	Name             string       `yaml:"name" json:"name"`
-	Namespace        string       `yaml:"namespace" json:"namespace"`
-	Repo             string       `yaml:"repo" json:"repo"`
-	Branch           string       `yaml:"branch" json:"branch"`
-	Commit           string       `yaml:"commit" json:"commit"`
-	Version          string       `yaml:"version" json:"version"`
-	SyncedAt         time.Time    `yaml:"syncedAt" json:"syncedAt"`
-	Chart            string       `yaml:"chart" json:"chart"`
-	ImageNames       []string     `yaml:"images,omitempty" json:"images,omitempty"`
-	ImageTag         string       `yaml:"imageTag,omitempty" json:"imageTag,omitempty"`
-	ReportDeployment bool         `yaml:"reportDeployment" json:"reportDeployment"`
-	DependsOn        []string     `yaml:"dependsOn" json:"dependsOn"`
-	Actions          []*AppAction `yaml:"actions" json:"actions"`
+	Name             string         `yaml:"name" json:"name"`
+	Namespace        string         `yaml:"namespace" json:"namespace"`
+	Repo             string         `yaml:"repo" json:"repo"`
+	Branch           git.BranchName `yaml:"branch" json:"branch"`
+	Commit           string         `yaml:"commit" json:"commit"`
+	Version          string         `yaml:"version" json:"version"`
+	SyncedAt         time.Time      `yaml:"syncedAt" json:"syncedAt"`
+	Chart            string         `yaml:"chart" json:"chart"`
+	ImageNames       []string       `yaml:"images,omitempty" json:"images,omitempty"`
+	ImageTag         string         `yaml:"imageTag,omitempty" json:"imageTag,omitempty"`
+	ReportDeployment bool           `yaml:"reportDeployment" json:"reportDeployment"`
+	DependsOn        []string       `yaml:"dependsOn" json:"dependsOn"`
+	Actions          []*AppAction   `yaml:"actions" json:"actions"`
 	// Values copied from app repo.
 	Values AppValuesByEnvironment `yaml:"values" json:"values"`
 	// Values manually added to this release.
@@ -56,8 +56,8 @@ func (r *AppReleaseConfig) SetParent(config *ReleaseConfig) {
 
 type AppRelease struct {
 	*AppReleaseConfig
-	AppRepo      *AppRepo `yaml:"-" json:"-"`
-	Excluded     bool     `yaml:"-" json:"-"`
+	App          *App `yaml:"-" json:"-"`
+	Excluded     bool `yaml:"-" json:"-"`
 	ActualState  AppState
 	DesiredState AppState
 	helmRelease  *HelmRelease
@@ -68,13 +68,13 @@ func (a *AppRelease) GetLabels() filter.Labels {
 	if a.labels == nil {
 		a.labels = filter.LabelsFromMap(map[string]string{
 			LabelName:    a.Name,
-			LabelPath:    a.AppRepo.FromPath,
+			LabelPath:    a.App.FromPath,
 			LabelVersion: a.Version,
-			LabelBranch:  a.Branch,
+			LabelBranch:  a.Branch.String(),
 			LabelCommit:  a.Commit,
 		})
 
-		for k, v := range a.AppRepo.Labels {
+		for k, v := range a.App.Labels {
 			a.labels[k] = v
 		}
 	}
@@ -84,14 +84,14 @@ func (a *AppRelease) GetLabels() filter.Labels {
 func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, error) {
 	release := &AppRelease{
 		AppReleaseConfig: config,
-		AppRepo:          ctx.Bosun.GetApps()[config.Name],
+		App:              ctx.Bosun.GetApps()[config.Name],
 		DesiredState:     ctx.Bosun.ws.AppStates[ctx.Env.Name][config.Name],
 	}
 
 	return release, nil
 }
 
-func NewAppReleaseFromRepo(ctx BosunContext, repo *AppRepo) (*AppRelease, error) {
+func NewAppReleaseFromRepo(ctx BosunContext, repo *App) (*AppRelease, error) {
 	cfg, err := repo.GetAppReleaseConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -135,9 +135,9 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 
 	// check if the app has a service with an ExternalName; if it does, it must have been
 	// creating using `app toggle` and is routed to localhost.
-	if ctx.Env.IsLocal && a.AppRepo.Minikube != nil {
-		for _, routableService := range a.AppRepo.Minikube.RoutableServices {
-			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.AppRepo.Namespace, routableService.Name, "-o", "yaml").RunOut()
+	if ctx.Env.IsLocal && a.App.Minikube != nil {
+		for _, routableService := range a.App.Minikube.RoutableServices {
+			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.App.Namespace, routableService.Name, "-o", "yaml").RunOut()
 			if err != nil {
 				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
 				continue
@@ -483,7 +483,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	if reportDeploy {
 		log.Info("Deploy progress will be reported to github.")
 		// create the deployment
-		deployID, err := git.CreateDeploy(a.Repo, a.Branch, env.Name)
+		deployID, err := git.CreateDeploy(a.Repo, a.Branch.String(), env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {
@@ -601,7 +601,7 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 
 	ctx.Log.Info("Configuring app to route traffic to localhost.")
 
-	if a.AppRepo.Minikube == nil || len(a.AppRepo.Minikube.RoutableServices) == 0 {
+	if a.App.Minikube == nil || len(a.App.Minikube.RoutableServices) == 0 {
 		return errors.New(`to route to localhost, app must have a minikube entry like this:
   minikube:
     routableServices:
@@ -616,7 +616,7 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 		return errors.New("minikube.hostIP is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
 	}
 
-	for _, routableService := range a.AppRepo.Minikube.RoutableServices {
+	for _, routableService := range a.App.Minikube.RoutableServices {
 		log := ctx.Log.WithField("routable_service", routableService.Name)
 
 		log.Info("Updating service...")
@@ -716,7 +716,7 @@ func (a *AppRelease) getHelmDryRunArgs(ctx BosunContext) []string {
 func (a *AppRelease) Recycle(ctx BosunContext) error {
 	ctx = ctx.WithAppRelease(a)
 	ctx.Log.Info("Deleting pods...")
-	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.AppRepo.Namespace, "pods", "--selector=release="+a.AppRepo.Name).RunE()
+	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.App.Namespace, "pods", "--selector=release="+a.App.Name).RunE()
 	if err != nil {
 		return err
 	}
@@ -724,7 +724,7 @@ func (a *AppRelease) Recycle(ctx BosunContext) error {
 
 	for {
 		podsReady := true
-		out, err := pkg.NewCommand("kubectl", "get", "pods", "--namespace", a.AppRepo.Namespace, "--selector=release="+a.AppRepo.Name,
+		out, err := pkg.NewCommand("kubectl", "get", "pods", "--namespace", a.App.Namespace, "--selector=release="+a.App.Name,
 			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
 		if err != nil {
 			return err

@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("AppRepo", func() {
+var _ = Describe("App", func() {
 
 	It("should support topological sort", func() {
 

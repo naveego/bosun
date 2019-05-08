@@ -40,23 +40,23 @@ import (
 const (
 	ArgSvcToggleLocalhost = "localhost"
 	ArgSvcToggleMinikube  = "minikube"
-	ArgAppAll             = "all"
-	ArgAppLabels          = "labels"
+	ArgFilteringAll       = "all"
+	ArgFilteringLabels    = "labels"
 	ArgAppListDiff        = "diff"
 	ArgAppListSkipActual  = "skip-actual"
 	ArgAppDeploySet       = "set"
 	ArgAppDeployDeps      = "deploy-deps"
 	ArgAppDeletePurge     = "purge"
 	ArgAppCloneDir        = "dir"
-	ArgInclude            = "include"
-	ArgExclude            = "exclude"
+	ArgFilteringInclude   = "include"
+	ArgFilteringExclude   = "exclude"
 )
 
 func init() {
-	appCmd.PersistentFlags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
-	appCmd.PersistentFlags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
-	appCmd.PersistentFlags().StringSlice(ArgInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
-	appCmd.PersistentFlags().StringSlice(ArgExclude, []string{}, `Don't include apps which match the provided selectors.".`)
+	appCmd.PersistentFlags().BoolP(ArgFilteringAll, "a", false, "Apply to all known microservices.")
+	appCmd.PersistentFlags().StringSliceP(ArgFilteringLabels, "i", []string{}, "Apply to microservices with the provided labels.")
+	appCmd.PersistentFlags().StringSlice(ArgFilteringInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
+	appCmd.PersistentFlags().StringSlice(ArgFilteringExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 
 	appCmd.AddCommand(appToggleCmd)
 	appToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
@@ -82,7 +82,7 @@ func init() {
 var appCmd = &cobra.Command{
 	Use:     "app",
 	Aliases: []string{"apps", "a"},
-	Short:   "AppRepo commands",
+	Short:   "App commands",
 }
 
 var _ = addCommand(appCmd, configImportCmd)
@@ -160,7 +160,7 @@ const (
 )
 
 // appBump is the implementation of appBumpCmd
-func appBump(b *bosun.Bosun, app *bosun.AppRepo, bump string) error {
+func appBump(b *bosun.Bosun, app *bosun.App, bump string) error {
 	ctx := b.NewContext()
 
 	err := app.BumpVersion(ctx, bump)
@@ -328,7 +328,7 @@ var appAcceptActualCmd = &cobra.Command{
 
 		b := mustGetBosun()
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -447,7 +447,7 @@ var appStatusCmd = &cobra.Command{
 				fmtDesiredActual(desired.Status, actual.Status),
 				routing,
 				fmtTableEntry(diffStatus),
-				fmtTableEntry(fmt.Sprintf("%#v", m.AppRepo.Labels)))
+				fmtTableEntry(fmt.Sprintf("%#v", m.App.Labels)))
 		}
 
 		t.Print()
@@ -490,7 +490,7 @@ var appToggleCmd = &cobra.Command{
 			return errors.New("Environment must be set to 'red' to toggle services.")
 		}
 
-		repos, err := getAppRepos(b, args)
+		repos, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -881,7 +881,7 @@ var appBuildImageCmd = addCommand(
 var appPullCmd = addCommand(
 	appCmd,
 	&cobra.Command{
-		Use:           "pull [app]",
+		Use:           "pull [app] [app...]",
 		Short:         "Pulls the repo for the app.",
 		Long:          "If app is not provided, the current directory is used.",
 		SilenceUsage:  true,
@@ -889,26 +889,31 @@ var appPullCmd = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := mustGetBosun()
 			ctx := b.NewContext()
-			apps, err := getAppRepos(b, args)
+			apps, err := getApps(b, args)
 			if err != nil {
 				return err
 			}
-			repos := map[string]*bosun.AppRepo{}
+			repos := map[string]*bosun.Repo{}
 			for _, app := range apps {
-				repos[app.Repo] = app
+				if app.Repo == nil {
+					ctx.Log.Errorf("no repo identified for app %q", app.Name)
+				}
+				repos[app.RepoName] = app.Repo
 			}
 
-			for _, app := range repos {
-				log := ctx.Log.WithField("repo", app.Repo)
+			var lastFailure error
+			for _, repo := range repos {
+				log := ctx.Log.WithField("repo", repo.Name)
 				log.Info("Pulling...")
-				err := app.PullRepo(ctx)
+				err = repo.Pull(ctx)
 				if err != nil {
+					lastFailure = err
 					log.WithError(err).Error("Error pulling.")
 				} else {
 					log.Info("Pulled.")
 				}
 			}
-			return err
+			return lastFailure
 		},
 	})
 
@@ -928,7 +933,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		var app *bosun.AppRepo
+		var app *bosun.App
 		var scriptName string
 		switch len(args) {
 		case 1:
@@ -992,7 +997,7 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		var app *bosun.AppRepo
+		var app *bosun.App
 		var actionName string
 		switch len(args) {
 		case 1:
@@ -1081,30 +1086,32 @@ var appCloneCmd = addCommand(
 				b = mustGetBosun()
 			}
 
-			apps, err := getAppRepos(b, args)
+			apps, err := getApps(b, args)
 			if err != nil {
 				return err
 			}
 
 			ctx := b.NewContext()
+			var lastErr error
 			for _, app := range apps {
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
 
 				if app.IsRepoCloned() {
-					pkg.Log.Infof("AppRepo already cloned to %q", app.FromPath)
+					pkg.Log.Infof("App already cloned to %q", app.FromPath)
 					continue
 				}
 				log.Info("Cloning...")
 
-				err := app.CloneRepo(ctx, dir)
+				err = app.Repo.Clone(ctx, dir)
 				if err != nil {
+					lastErr = err
 					log.WithError(err).Error("Error cloning.")
 				} else {
 					log.Info("Cloned.")
 				}
 			}
 
-			return err
+			return lastErr
 		},
 	},
 	func(cmd *cobra.Command) {

@@ -46,6 +46,10 @@ type SimpleFilter struct {
 	Operator Operator
 }
 
+func (s SimpleFilter) String() string {
+	return s.Raw
+}
+
 func (s SimpleFilter) IsMatch(l Labels) bool {
 	if label, ok := l[s.Key]; ok {
 		labelValue := label.Value()

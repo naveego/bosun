@@ -1,10 +1,12 @@
 package filter
 
 import (
+	"fmt"
 	"reflect"
 )
 
 type Filter interface {
+	fmt.Stringer
 	IsMatch(l Labels) bool
 }
 
@@ -12,14 +14,25 @@ type Labelled interface {
 	GetLabels() Labels
 }
 
-type FilterFunc func(l Labels) bool
+type filterFunc struct {
+	label string
+	fn    func(l Labels) bool
+}
 
-func (f FilterFunc) IsMatch(l Labels) bool {
-	return f(l)
+func FilterFunc(label string, fn func(l Labels) bool) Filter {
+	return filterFunc{label, fn}
+}
+
+func (f filterFunc) String() string {
+	return f.label
+}
+
+func (f filterFunc) IsMatch(l Labels) bool {
+	return f.fn(l)
 }
 
 func FilterMatchAll() Filter {
-	return FilterFunc(func(l Labels) bool { return true })
+	return FilterFunc("all", func(l Labels) bool { return true })
 }
 
 func Include(from interface{}, filters ...Filter) interface{} {
@@ -39,10 +52,14 @@ func applyFilters(f filterable, filters []Filter, include bool) filterable {
 		for _, key := range keys {
 			value := f.val.MapIndex(key)
 			labelled, ok := value.Interface().(Labelled)
+			if !ok {
+				panic(fmt.Sprintf("values must implement the filter.Labelled interface"))
+			}
 			var matched bool
+			labels := labelled.GetLabels()
 			for _, filter := range filters {
 				if ok {
-					matched = MatchFilter(labelled, filter)
+					matched = MatchFilter(labels, filter)
 					if matched {
 						break
 					}
@@ -58,10 +75,14 @@ func applyFilters(f filterable, filters []Filter, include bool) filterable {
 		for i := 0; i < length; i++ {
 			value := f.val.Index(i)
 			labelled, ok := value.Interface().(Labelled)
+			if !ok {
+				panic(fmt.Sprintf("values must implement the filter.Labelled interface"))
+			}
+			labels := labelled.GetLabels()
 			var matched bool
 			for _, filter := range filters {
 				if ok {
-					matched = MatchFilter(labelled, filter)
+					matched = MatchFilter(labels, filter)
 					if matched {
 						break
 					}
@@ -76,8 +97,7 @@ func applyFilters(f filterable, filters []Filter, include bool) filterable {
 	return after
 }
 
-func MatchFilter(labelled Labelled, filter Filter) bool {
-	labels := labelled.GetLabels()
+func MatchFilter(labels Labels, filter Filter) bool {
 	matched := filter.IsMatch(labels)
 	return matched
 }

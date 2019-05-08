@@ -19,6 +19,7 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
@@ -32,18 +33,20 @@ import (
 var repoCmd = addCommand(rootCmd, &cobra.Command{
 	Use:   "repo",
 	Short: "Contains sub-commands for interacting with repos. Has some overlap with the git sub-command.",
+	Long: `Most repo sub-commands take one or more optional name parameters. 
+If no name parameters are provided, the command will attempt to find a repo which
+contains the current working path.`,
+	Args: cobra.NoArgs,
 })
 
-var repoListCmd = addCommand(repoCmd, &cobra.Command{
+var _ = addCommand(repoCmd, &cobra.Command{
 	Use:          "list",
 	Aliases:      []string{"ls"},
 	Short:        "Lists the known repos and their clone status.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		viper.BindPFlags(cmd.Flags())
-
 		b := mustGetBosun()
-		repos := b.GetRepos()
+		repos := getFilterParams(b, []string{}).Chain().Then().Including(filter.FilterMatchAll()).From(b.GetRepos()).([]*bosun.Repo)
 
 		t := tablewriter.NewWriter(os.Stdout)
 
@@ -87,11 +90,11 @@ var repoListCmd = addCommand(repoCmd, &cobra.Command{
 		t.Render()
 		return nil
 	},
-})
+}, withFilteringFlags)
 
-var repoPathCmd = addCommand(repoCmd, &cobra.Command{
-	Use:   "path [name]",
-	Args:  cobra.RangeArgs(0, 1),
+var _ = addCommand(repoCmd, &cobra.Command{
+	Use:   "path {name}",
+	Args:  cobra.ExactArgs(1),
 	Short: "Outputs the path where the repo is cloned on the local system.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
@@ -108,14 +111,14 @@ var repoPathCmd = addCommand(repoCmd, &cobra.Command{
 	},
 })
 
-var repoCloneCmd = addCommand(
+var _ = addCommand(
 	repoCmd,
 	&cobra.Command{
-		Use:   "clone [name]",
-		Short: "Clones the named repo.",
+		Use:   "clone {name} [name...]",
+		Args:  cobra.MinimumNArgs(1),
+		Short: "Clones the named repo(s).",
 		Long:  "Uses the first directory in `gitRoots` from the root config.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			viper.BindPFlags(cmd.Flags())
 			b := mustGetBosun()
 
 			dir := viper.GetString(ArgAppCloneDir)
@@ -143,14 +146,14 @@ var repoCloneCmd = addCommand(
 			}
 			if !rootExists {
 				b.AddGitRoot(dir)
-				err := b.Save()
+				err = b.Save()
 				if err != nil {
 					return err
 				}
 				b = mustGetBosun()
 			}
 
-			repos, err := getFilterParams(b, args).Chain().From(b.GetRepos())
+			repos, err := getFilterParams(b, args).Chain().ToGetAtLeast(1).FromErr(b.GetRepos())
 			if err != nil {
 				return err
 			}
@@ -159,13 +162,13 @@ var repoCloneCmd = addCommand(
 			for _, repo := range repos.([]*bosun.Repo) {
 				log := ctx.Log.WithField("repo", repo.Name)
 
-				if repo.IsRepoCloned() {
+				if repo.CheckCloned() == nil {
 					pkg.Log.Infof("Repo already cloned to %q", repo.LocalRepo.Path)
 					continue
 				}
 				log.Info("Cloning...")
 
-				err = repo.CloneRepo(ctx, dir)
+				err = repo.Clone(ctx, dir)
 				if err != nil {
 					log.WithError(err).Error("Error cloning.")
 				} else {
@@ -180,4 +183,60 @@ var repoCloneCmd = addCommand(
 	},
 	func(cmd *cobra.Command) {
 		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into. (The repo will be cloned into `org/repo` in this directory.) ")
-	})
+	},
+	withFilteringFlags,
+)
+
+var _ = addCommand(
+	repoCmd,
+	&cobra.Command{
+		Use:           "pull [repo] [repo...]",
+		Short:         "Pulls the repo(s).",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
+				ctx.Log.Info("Fetching...")
+				err := repo.Pull(ctx)
+				return err
+			})
+		},
+	}, withFilteringFlags)
+
+var _ = addCommand(
+	repoCmd,
+	&cobra.Command{
+		Use:           "fetch [repo] [repo...]",
+		Short:         "Fetches the repo(s).",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
+				ctx.Log.Info("Pulling...")
+				err := repo.Fetch(ctx)
+				return err
+			})
+		},
+	}, withFilteringFlags)
+
+func forEachRepo(args []string, fn func(ctx bosun.BosunContext, repo *bosun.Repo) error) error {
+	b := mustGetBosun()
+	ctx := b.NewContext()
+	repos, err := getFilterParams(b, args).Chain().ToGetAtLeast(1).FromErr(b.GetRepos())
+	if err != nil {
+		return err
+	}
+
+	var errs error
+	for _, repo := range repos.([]*bosun.Repo) {
+		ctx.Log.Infof("Processing %q...", repo.Name)
+		err = fn(ctx, repo)
+		if err != nil {
+			errs = util.MultiErr(errs, err)
+			ctx.Log.WithError(err).Errorf("Error on repo %q", repo.Name)
+		} else {
+			ctx.Log.Infof("Completed %q.", repo.Name)
+		}
+	}
+	return errs
+}

@@ -38,6 +38,13 @@ func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *
 	return child
 }
 
+func withFilteringFlags(cmd *cobra.Command) {
+	cmd.Flags().StringSlice(ArgFilteringLabels, []string{}, "Will include any items where a label with that key is present.")
+	cmd.Flags().StringSlice(ArgFilteringInclude, []string{}, "Will include items with labels matching filter (like x==y or x?=prefix-.*).")
+	cmd.Flags().StringSlice(ArgFilteringExclude, []string{}, "Will exclude items with labels matching filter (like x==y or x?=prefix-.*).")
+	cmd.Flags().Bool(ArgFilteringAll, false, "Will include all items.")
+}
+
 func mustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 	b, err := getBosun(optionalParams...)
 	if err != nil {
@@ -62,7 +69,7 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		log.Fatal(err)
 	}
 
-	whitelist := viper.GetStringSlice(ArgInclude)
+	whitelist := viper.GetStringSlice(ArgFilteringInclude)
 	if len(whitelist) > 0 {
 		toReleaseSet := map[string]bool{}
 		for _, r := range whitelist {
@@ -70,16 +77,16 @@ func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
 		}
 		for k, app := range r.AppReleases {
 			if !toReleaseSet[k] {
-				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgInclude)
+				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgFilteringInclude)
 				app.DesiredState.Status = bosun.StatusUnchanged
 				app.Excluded = true
 			}
 		}
 	}
 
-	blacklist := viper.GetStringSlice(ArgExclude)
+	blacklist := viper.GetStringSlice(ArgFilteringExclude)
 	for _, name := range blacklist {
-		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgExclude)
+		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgFilteringExclude)
 		if app, ok := r.AppReleases[name]; ok {
 			app.DesiredState.Status = bosun.StatusUnchanged
 			app.Excluded = true
@@ -121,7 +128,7 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	return bosun.New(params, config)
 }
 
-func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
+func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {
 	f := getFilterParams(b, names)
 	return f.MustGetApp()
 }
@@ -134,7 +141,7 @@ func MustYaml(i interface{}) string {
 	return string(b)
 }
 
-func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.AppRepo) ([]*bosun.AppRelease, error) {
+func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppRelease, error) {
 	var appReleases []*bosun.AppRelease
 
 	for _, appRepo := range repos {
@@ -169,11 +176,11 @@ func getFilterParams(b *bosun.Bosun, names []string) FilterParams {
 	p := FilterParams{
 		b:     b,
 		Names: names,
-		All:   viper.GetBool(ArgAppAll),
+		All:   viper.GetBool(ArgFilteringAll),
 	}
-	p.Labels = viper.GetStringSlice(ArgAppLabels)
-	p.Include = viper.GetStringSlice(ArgInclude)
-	p.Exclude = viper.GetStringSlice(ArgExclude)
+	p.Labels = viper.GetStringSlice(ArgFilteringLabels)
+	p.Include = viper.GetStringSlice(ArgFilteringInclude)
+	p.Exclude = viper.GetStringSlice(ArgFilteringExclude)
 
 	if p.IsEmpty() {
 		app, err := getCurrentApp(b)
@@ -189,14 +196,14 @@ func (f FilterParams) Chain() filter.Chain {
 	var include []filter.Filter
 	var exclude []filter.Filter
 
-	if viper.GetBool(ArgAppAll) {
+	if viper.GetBool(ArgFilteringAll) {
 		include = append(include, filter.FilterMatchAll())
 	} else if len(f.Names) > 0 {
 		for _, name := range f.Names {
 			include = append(include, filter.MustParse(bosun.LabelName, "==", name))
 		}
 	} else {
-		labels := append(viper.GetStringSlice(ArgAppLabels), viper.GetStringSlice(ArgInclude)...)
+		labels := append(viper.GetStringSlice(ArgFilteringLabels), viper.GetStringSlice(ArgFilteringInclude)...)
 		for _, label := range labels {
 			include = append(include, filter.MustParse(label))
 		}
@@ -212,7 +219,7 @@ func (f FilterParams) Chain() filter.Chain {
 	return chain
 }
 
-func (f FilterParams) MustGetApp() *bosun.AppRepo {
+func (f FilterParams) MustGetApp() *bosun.App {
 	app, err := f.GetApp()
 	if err != nil {
 		panic(err)
@@ -220,32 +227,35 @@ func (f FilterParams) MustGetApp() *bosun.AppRepo {
 	return app
 }
 
-func (f FilterParams) GetApp() (*bosun.AppRepo, error) {
+func (f FilterParams) GetApp() (*bosun.App, error) {
 	apps := f.b.GetAppsSortedByName()
 
-	result, err := f.Chain().ToGetExactly(1).From(apps)
+	result, err := f.Chain().ToGetExactly(1).FromErr(apps)
+	if err != nil {
+		return nil, err
+	}
 
-	return result.(*bosun.AppRepo), err
+	return result.([]*bosun.App)[0], nil
 }
 
-func (f FilterParams) GetApps() []*bosun.AppRepo {
+func (f FilterParams) GetApps() []*bosun.App {
 	apps := f.b.GetAppsSortedByName()
 
-	result, _ := f.Chain().From(apps)
+	result := f.Chain().From(apps)
 
-	return result.([]*bosun.AppRepo)
+	return result.([]*bosun.App)
 }
 
-func (f FilterParams) GetAppsChain(chain filter.Chain) ([]*bosun.AppRepo, error) {
+func (f FilterParams) GetAppsChain(chain filter.Chain) ([]*bosun.App, error) {
 	apps := f.b.GetAppsSortedByName()
 
-	result, err := chain.From(apps)
+	result, err := chain.FromErr(apps)
 
-	return result.([]*bosun.AppRepo), err
+	return result.([]*bosun.App), err
 }
 
-func mustGetApps(b *bosun.Bosun, names []string) []*bosun.AppRepo {
-	repos, err := getAppRepos(b, names)
+func mustGetApps(b *bosun.Bosun, names []string) []*bosun.App {
+	repos, err := getApps(b, names)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -270,10 +280,10 @@ func (f FilterParams) MustGetAppReleases() []*bosun.AppRelease {
 	return appReleases
 }
 
-func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
+func getCurrentApp(b *bosun.Bosun) (*bosun.App, error) {
 	var bosunFile string
 	var err error
-	var app *bosun.AppRepo
+	var app *bosun.App
 
 	wd, _ := os.Getwd()
 	bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
@@ -289,7 +299,7 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 	bosunFileDir := filepath.Dir(bosunFile)
 
 	var appsUnderDirNames []string
-	var appsUnderDir []*bosun.AppRepo
+	var appsUnderDir []*bosun.App
 	for _, app = range b.GetApps() {
 		if app.IsRepoCloned() && strings.HasPrefix(app.FromPath, bosunFileDir) {
 			appsUnderDirNames = append(appsUnderDirNames, app.Name)
@@ -323,7 +333,7 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 // are valid file paths, imports the file at that path.
 // if names is empty, tries to find a apps starting
 // from the current directory
-func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
+func getApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 	f := getFilterParams(b, names)
 	return f.GetApps(), nil
 }
@@ -500,52 +510,6 @@ var (
 	colorError  = color.New(color.FgRed)
 	colorOK     = color.New(color.FgGreen, color.Bold)
 )
-
-func filterApps(apps []*bosun.AppRepo) []*bosun.AppRepo {
-	var out []*bosun.AppRepo
-	for _, app := range apps {
-		if passesConditions(app) {
-			out = append(out, app)
-		}
-	}
-	if len(apps) > 0 && len(out) == 0 && len(viper.GetStringSlice(ArgInclude)) > 0 {
-		color.Yellow("All apps excluded by conditions.")
-		os.Exit(0)
-	}
-	return out
-}
-
-func passesConditions(app *bosun.AppRepo) bool {
-	conditions := viper.GetStringSlice(ArgInclude)
-	if len(conditions) == 0 {
-		return true
-	}
-
-	for _, cs := range conditions {
-
-		segs := strings.Split(cs, "=")
-		if len(segs) != 2 {
-			check(errors.Errorf("invalid condition %q (should be x=y)", cs))
-		}
-		kind, arg := segs[0], segs[1]
-
-		switch kind {
-		case "branch":
-			re, err := regexp.Compile(arg)
-			check(errors.Wrapf(err, "branch must be regex (was %q)", arg))
-			branch := app.GetBranch()
-			if !re.MatchString(branch) {
-				color.Yellow("Skipping command for app %s because it did not match condition %q", app.Name, cs)
-				return false
-			}
-			return true
-		default:
-			check(errors.Errorf("invalid condition %q (should be branch=y)", cs))
-		}
-	}
-
-	return true
-}
 
 func printOutput(out interface{}, columns ...string) error {
 

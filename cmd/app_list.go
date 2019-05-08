@@ -15,10 +15,10 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		viper.SetDefault(ArgAppAll, true)
+		viper.SetDefault(ArgFilteringAll, true)
 
 		b := mustGetBosun()
-		apps, err := getAppRepos(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -40,14 +40,14 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 				isCloned = emoji.Sprint(":heavy_check_mark:")
 				pathrepo = trimGitRoot(app.FromPath)
 				if app.BranchForRelease {
-					branch = app.GetBranch()
+					branch = app.GetBranchName().String()
 				} else {
 					branch = ""
 				}
 				version = app.Version
 			} else {
 				isCloned = emoji.Sprint("    :x:")
-				pathrepo = app.Repo
+				pathrepo = app.RepoName
 				branch = ""
 				version = app.Version
 				importedBy = trimGitRoot(app.FromPath)
@@ -69,7 +69,7 @@ var appListActionsCmd = addCommand(appListCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		viper.SetDefault(ArgAppAll, true)
+		viper.SetDefault(ArgFilteringAll, true)
 
 		b := mustGetBosun()
 		apps := getFilterParams(b, args).GetApps()

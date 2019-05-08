@@ -19,15 +19,15 @@ import (
 
 func init() {
 
-	releaseAddCmd.Flags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
-	releaseAddCmd.Flags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
+	releaseAddCmd.Flags().BoolP(ArgFilteringAll, "a", false, "Apply to all known microservices.")
+	releaseAddCmd.Flags().StringSliceP(ArgFilteringLabels, "i", []string{}, "Apply to microservices with the provided labels.")
 
 	releaseCmd.AddCommand(releaseUseCmd)
 
 	releaseCmd.AddCommand(releaseAddCmd)
 
-	releaseCmd.PersistentFlags().StringSlice(ArgInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
-	releaseCmd.PersistentFlags().StringSlice(ArgExclude, []string{}, `Don't include apps which match the provided selectors.".`)
+	releaseCmd.PersistentFlags().StringSlice(ArgFilteringInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
+	releaseCmd.PersistentFlags().StringSlice(ArgFilteringExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 	rootCmd.AddCommand(releaseCmd)
 }
 
@@ -96,11 +96,11 @@ var releaseDiffCmd = addCommand(releaseCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		r := mustGetCurrentRelease(b)
-		if len(viper.GetStringSlice(ArgAppLabels)) == 0 && len(args) == 0 {
-			viper.Set(ArgAppAll, true)
+		if len(viper.GetStringSlice(ArgFilteringLabels)) == 0 && len(args) == 0 {
+			viper.Set(ArgFilteringAll, true)
 		}
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ var releaseAddCmd = &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -343,7 +343,7 @@ var releaseRemoveCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -369,7 +369,7 @@ var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
 		b := mustGetBosun()
 		release := mustGetCurrentRelease(b)
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -457,16 +457,16 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 
 		err := processAppReleases(b, ctx, appReleases, func(appRelease *bosun.AppRelease) error {
 			ctx = ctx.WithAppRelease(appRelease)
-			if appRelease.AppRepo == nil {
-				ctx.Log.Warn("AppRepo not found.")
+			if appRelease.App == nil {
+				ctx.Log.Warn("App not found.")
 			}
 
-			repo := appRelease.AppRepo
+			repo := appRelease.App
 			if !repo.BranchForRelease {
 				return nil
 			}
 
-			if err := repo.FetchRepo(ctx); err != nil {
+			if err := repo.Repo.Fetch(ctx); err != nil {
 				return errors.Wrap(err, "fetch")
 			}
 
@@ -482,7 +482,7 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 
 			ctx.Log.Warn("Release branch has had commits since app was added to release. Will attempt to merge before updating release.")
 
-			currentBranch := appRelease.AppRepo.GetBranch()
+			currentBranch := appRelease.App.GetBranchName()
 			if currentBranch != appRelease.Branch {
 				dirtiness, err := g.Exec("status", "--porcelain")
 				if err != nil {
@@ -492,7 +492,7 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 					return errors.New("app is on branch %q, not release branch %q, and has dirty files, so we can't switch to the release branch")
 				}
 				ctx.Log.Warnf("Checking out branch %s")
-				_, err = g.Exec("checkout", appRelease.Branch)
+				_, err = g.Exec("checkout", appRelease.Branch.String())
 				if err != nil {
 					return errors.Wrap(err, "check out release branch")
 				}
@@ -503,7 +503,7 @@ var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
 				}
 			}
 
-			err = release.IncludeApp(ctx, appRelease.AppRepo)
+			err = release.IncludeApp(ctx, appRelease.App)
 			if err != nil {
 				return errors.Wrap(err, "update failed")
 			}
@@ -631,7 +631,7 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 		repoDirs := make(map[string]string)
 
 		for _, appRelease := range appReleases {
-			appRepo := appRelease.AppRepo
+			appRepo := appRelease.App
 			if !appRepo.IsRepoCloned() {
 				ctx.Log.Error("Repo is not cloned, cannot merge.")
 				continue

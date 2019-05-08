@@ -22,7 +22,7 @@ type Bosun struct {
 	params               Parameters
 	ws                   *Workspace
 	file                 *File
-	appRepos             map[string]*AppRepo
+	apps                 map[string]*App
 	release              *Release
 	vaultClient          *vault.Client
 	env                  *EnvironmentConfig
@@ -46,12 +46,12 @@ type Parameters struct {
 
 func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	b := &Bosun{
-		params:   params,
-		ws:       ws,
-		file:     ws.MergedBosunFile,
-		appRepos: make(map[string]*AppRepo),
-		log:      pkg.Log,
-		repos:    map[string]*Repo{},
+		params: params,
+		ws:     ws,
+		file:   ws.MergedBosunFile,
+		apps:   make(map[string]*App),
+		log:    pkg.Log,
+		repos:  map[string]*Repo{},
 	}
 
 	if params.DryRun {
@@ -60,7 +60,7 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	}
 
 	for _, dep := range b.file.AppRefs {
-		b.appRepos[dep.Name] = NewRepoFromDependency(dep)
+		b.apps[dep.Name] = NewAppFromDependency(dep)
 	}
 
 	for _, a := range b.file.Apps {
@@ -76,31 +76,51 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	return b, nil
 }
 
-func (b *Bosun) addApp(config *AppRepoConfig) *AppRepo {
+func (b *Bosun) addApp(config *AppConfig) *App {
 	app := NewApp(config)
-	b.appRepos[config.Name] = app
+	if app.RepoName != "" {
+		// find or add repo for app
+		repo, err := b.GetRepo(app.RepoName)
+		if err != nil {
+			repo = &Repo{
+				Apps: map[string]*AppConfig{
+					app.Name: config,
+				},
+				RepoConfig: RepoConfig{
+					ConfigShared: ConfigShared{
+						Name: app.Name,
+					},
+				},
+			}
+			b.repos[app.RepoName] = repo
+			config.Fragment.Repos = append(config.Fragment.Repos, repo.RepoConfig)
+		}
+		app.Repo = repo
+	}
+
+	b.apps[config.Name] = app
 
 	for _, d2 := range app.DependsOn {
-		if _, ok := b.appRepos[d2.Name]; !ok {
-			b.appRepos[d2.Name] = NewRepoFromDependency(&d2)
+		if _, ok := b.apps[d2.Name]; !ok {
+			b.apps[d2.Name] = NewAppFromDependency(&d2)
 		}
 	}
 
 	return app
 }
 
-func (b *Bosun) GetAppsSortedByName() []*AppRepo {
-	var ms ReposSortedByName
+func (b *Bosun) GetAppsSortedByName() []*App {
+	var ms AppsSortedByName
 
-	for _, x := range b.appRepos {
+	for _, x := range b.apps {
 		ms = append(ms, x)
 	}
 	sort.Sort(ms)
 	return ms
 }
 
-func (b *Bosun) GetApps() map[string]*AppRepo {
-	return b.appRepos
+func (b *Bosun) GetApps() map[string]*App {
+	return b.apps
 }
 
 func (b *Bosun) GetAppDesiredStates() map[string]AppState {
@@ -151,16 +171,16 @@ func (b *Bosun) GetScript(name string) (*Script, error) {
 	return nil, errors.Errorf("no script found with name %q", name)
 }
 
-func (b *Bosun) GetApp(name string) (*AppRepo, error) {
-	m, ok := b.appRepos[name]
+func (b *Bosun) GetApp(name string) (*App, error) {
+	m, ok := b.apps[name]
 	if !ok {
 		return nil, errors.Errorf("no service named %q", name)
 	}
 	return m, nil
 }
 
-func (b *Bosun) GetOrAddAppForPath(path string) (*AppRepo, error) {
-	for _, m := range b.appRepos {
+func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
+	for _, m := range b.apps {
 		if m.FromPath == path {
 			return m, nil
 		}
@@ -439,12 +459,43 @@ func (b *Bosun) TidyWorkspace() {
 	log := ctx.Log
 	var importMap = map[string]struct{}{}
 
+	for _, repo := range b.GetRepos() {
+		if repo.CheckCloned() != nil {
+			for _, root := range b.ws.GitRoots {
+				clonedFolder := filepath.Join(root, repo.Name)
+				if _, err := os.Stat(clonedFolder); err != nil {
+					if os.IsNotExist(err) {
+						log.Debugf("Repo %s not found at %s", repo.Name, clonedFolder)
+					} else {
+						log.Warnf("Error looking for app %s: %s", repo.Name, err)
+					}
+				}
+				bosunFilePath := filepath.Join(clonedFolder, "bosun.yaml")
+				if _, err := os.Stat(bosunFilePath); err != nil {
+					if os.IsNotExist(err) {
+						log.Warnf("Repo %s seems to be cloned to %s, but there is no bosun.yaml file in that folder", repo.Name, clonedFolder)
+					} else {
+						log.Warnf("Error looking for bosun.yaml in repo %s: %s", repo.Name, err)
+					}
+				} else {
+					log.Infof("Found cloned repo %s at %s, will add to known local repos.", repo.Name, bosunFilePath)
+					localRepo := &LocalRepo{
+						Name: repo.Name,
+						Path: clonedFolder,
+					}
+					b.AddLocalRepo(localRepo)
+					break
+				}
+			}
+		}
+	}
+
 	for _, app := range b.GetApps() {
 		if app.IsRepoCloned() {
 			importMap[app.FromPath] = struct{}{}
 			log.Debugf("App %s found at %s", app.Name, app.FromPath)
 
-			repo, err := b.GetRepo(app.Repo)
+			repo, err := b.GetRepo(app.RepoName)
 			if err != nil || repo.LocalRepo == nil {
 				log.Infof("App %s is cloned but its repo is not registered. Registering repo %s...", app.Name, app.Repo)
 				path, err := app.GetLocalRepoPath()
@@ -452,7 +503,7 @@ func (b *Bosun) TidyWorkspace() {
 					log.WithError(err).Errorf("Error getting local repo path for %s.", app.Name)
 				}
 				b.AddLocalRepo(&LocalRepo{
-					Name: app.Repo,
+					Name: app.RepoName,
 					Path: path,
 				})
 			}
@@ -461,7 +512,7 @@ func (b *Bosun) TidyWorkspace() {
 		}
 		log.Debugf("Found app with no cloned repo: %s from %s", app.Name, app.Repo)
 		for _, root := range b.ws.GitRoots {
-			clonedFolder := filepath.Join(root, app.Repo)
+			clonedFolder := filepath.Join(root, app.RepoName)
 			if _, err := os.Stat(clonedFolder); err != nil {
 				if os.IsNotExist(err) {
 					log.Debugf("App %s not found at %s", app.Name, clonedFolder)
@@ -638,13 +689,13 @@ func (b *Bosun) GetRepos() []*Repo {
 		b.repos = map[string]*Repo{}
 		for _, repoConfig := range b.ws.MergedBosunFile.Repos {
 			for _, app := range b.ws.MergedBosunFile.Apps {
-				if app.Repo == repoConfig.Name {
+				if app.RepoName == repoConfig.Name {
 					var repo *Repo
 					var ok bool
 					if repo, ok = b.repos[repoConfig.Name]; !ok {
 						repo = &Repo{
 							RepoConfig: repoConfig,
-							Apps:       map[string]*AppRepoConfig{},
+							Apps:       map[string]*AppConfig{},
 						}
 						if lr, ok := b.ws.LocalRepos[repo.Name]; ok {
 							repo.LocalRepo = lr
@@ -674,9 +725,13 @@ func (b *Bosun) GetRepos() []*Repo {
 	return out
 }
 
-func (b *Bosun) AddLocalRepo(repo *LocalRepo) {
+func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
 	if b.ws.LocalRepos == nil {
 		b.ws.LocalRepos = map[string]*LocalRepo{}
 	}
-	b.ws.LocalRepos[repo.Name] = repo
+	b.ws.LocalRepos[localRepo.Name] = localRepo
+
+	if repo, ok := b.repos[localRepo.Name]; ok {
+		repo.LocalRepo = localRepo
+	}
 }

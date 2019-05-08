@@ -321,7 +321,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 				return errors.Wrap(err, "could not get app to version")
 			}
 
-			ecmd.AppsToVersion = []*bosun.AppRepo{app}
+			ecmd.AppsToVersion = []*bosun.App{app}
 		}
 
 		return ecmd.Execute()
@@ -337,7 +337,7 @@ type GitAcceptPRCommand struct {
 	RepoDirectory string
 	// if true, will skip merging the base branch back into the pr branch before merging into the target.
 	DoNotMergeBaseIntoBranch bool
-	AppsToVersion            []*bosun.AppRepo
+	AppsToVersion            []*bosun.App
 	VersionBump              string
 }
 

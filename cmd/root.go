@@ -73,7 +73,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			cmd.SilenceUsage = true
 		}
 
-		conditions := viper.GetStringSlice(ArgInclude)
+		conditions := viper.GetStringSlice(ArgFilteringInclude)
 		if len(conditions) > 0 {
 
 		}
@@ -98,16 +98,16 @@ func Execute() {
 }
 
 const (
-	ArgGlobalVerbose   = "verbose"
-	ArgGlobalDryRun    = "dry-run"
-	ArgGlobalCluster   = "cluster"
-	ArgGlobalDomain    = "domain"
-	ArgGlobalValues    = "values"
-	ArgBosunConfigFile = "config-file"
+	ArgGlobalVerbose      = "verbose"
+	ArgGlobalDryRun       = "dry-run"
+	ArgGlobalCluster      = "cluster"
+	ArgGlobalDomain       = "domain"
+	ArgGlobalValues       = "values"
+	ArgBosunConfigFile    = "config-file"
 	ArgGlobalConfirmedEnv = "confirm-env"
-	ArgGlobalForce     = "force"
-	ArgGlobalNoReport  = "no-report"
-	ArgGlobalOutput    = "output"
+	ArgGlobalForce        = "force"
+	ArgGlobalNoReport     = "no-report"
+	ArgGlobalOutput       = "output"
 )
 
 func init() {

@@ -1,8 +1,10 @@
 package filter
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"math"
+	"strings"
 )
 
 type Chain struct {
@@ -15,6 +17,24 @@ type Chain struct {
 type step struct {
 	include []Filter
 	exclude []Filter
+}
+
+func (s step) String() string {
+	var include, exclude []string
+	for _, i := range s.include {
+		include = append(include, i.String())
+	}
+	for _, i := range s.exclude {
+		exclude = append(exclude, i.String())
+	}
+	out := ""
+	if len(include) > 0 {
+		out += fmt.Sprintf("include(%s)", strings.Join(include, ","))
+	}
+	if len(exclude) > 0 {
+		out += fmt.Sprintf("exclude(%s)", strings.Join(include, ","))
+	}
+	return out
 }
 
 func Try() Chain {
@@ -65,7 +85,22 @@ func (c Chain) ToGetAtLeast(want int) Chain {
 	return c
 }
 
-func (c Chain) From(from interface{}) (interface{}, error) {
+// From returns the filtered set, or an empty value of the same type as from if an expectation failed.
+func (c Chain) From(from interface{}) interface{} {
+	out, _ := c.FromErr(from)
+	return out
+}
+
+func (c Chain) String() string {
+	var steps []string
+	for _, s := range c.steps {
+		steps = append(steps, s.String())
+	}
+	return strings.Join(steps, "\n")
+}
+
+// FromErr returns the filtered set, or an error if all steps failed expectations.
+func (c Chain) FromErr(from interface{}) (interface{}, error) {
 
 	f := newFilterable(from)
 
@@ -103,5 +138,10 @@ func (c Chain) From(from interface{}) (interface{}, error) {
 		}
 	}
 
-	return nil, errors.Errorf("no steps in chain could reduce initial set of %d items to requested size of [%d,%d]", f.len(), min, max)
+	maxString := "∞"
+	if max < math.MaxInt64 {
+		maxString = fmt.Sprint(max)
+	}
+
+	return f.cloneEmpty().val.Interface(), errors.Errorf("no steps in chain could reduce initial set of %d items to requested size of [%d,%s]\nsteps:\n%s", f.len(), min, maxString, c)
 }

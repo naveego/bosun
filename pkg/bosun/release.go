@@ -112,7 +112,7 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 		errs = append(errs, errors.Errorf("chart %s@%s not found", a.Chart, a.Version))
 	}
 
-	if !a.AppRepo.BranchForRelease {
+	if !a.App.BranchForRelease {
 		return errs
 	}
 
@@ -125,13 +125,13 @@ func (a *AppRelease) Validate(ctx BosunContext) []error {
 		}
 	}
 
-	// if a.AppRepo.IsRepoCloned() {
-	// 	appBranch := a.AppRepo.GetBranch()
+	// if a.App.IsCloned() {
+	// 	appBranch := a.App.GetBranchName()
 	// 	if appBranch != a.Branch {
 	// 		errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", a.Branch, appBranch))
 	// 	}
 	//
-	// 	appCommit := a.AppRepo.GetCommit()
+	// 	appCommit := a.App.GetCommit()
 	// 	if appCommit != a.Commit {
 	// 		errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.Commit, appCommit))
 	// 	}
@@ -290,7 +290,7 @@ func (r *Release) Deploy(ctx BosunContext) error {
 	return err
 }
 
-func (r *Release) IncludeApp(ctx BosunContext, app *AppRepo) error {
+func (r *Release) IncludeApp(ctx BosunContext, app *App) error {
 
 	var err error
 	var config *AppReleaseConfig
@@ -342,7 +342,7 @@ func (r *Release) GetBundleFileContent(app, path string) ([]byte, string, error)
 func (r *ReleaseConfig) SaveBundle() error {
 	bundleDir := filepath.Join(filepath.Dir(r.FromPath), r.Name)
 
-	err := os.MkdirAll(bundleDir,0770)
+	err := os.MkdirAll(bundleDir, 0770)
 	if err != nil {
 		return err
 	}
@@ -353,7 +353,7 @@ func (r *ReleaseConfig) SaveBundle() error {
 		}
 
 		appDir := filepath.Join(bundleDir, bf.App)
-		err := os.MkdirAll(bundleDir,0770)
+		err := os.MkdirAll(bundleDir, 0770)
 		if err != nil {
 			return err
 		}
