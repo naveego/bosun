@@ -14,7 +14,7 @@ func yamlize(y string) string {
 
 var _ = Describe("File", func() {
 
-	Describe("AppValuesByEnvironment", func() {
+	Describe("ValueSetMap", func() {
 		It("should merge values when unmarshalled", func() {
 
 			input := yamlize(
@@ -45,7 +45,7 @@ values:
 
 			redValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "red"}})
 
-			Expect(redValues).To(BeEquivalentTo(AppValuesConfig{
+			Expect(redValues).To(BeEquivalentTo(ValueSet{
 				Dynamic: map[string]*CommandValue{
 					"redgreen1": {Value: "a"},
 					"red1":      {Value: "b"},
@@ -59,7 +59,7 @@ values:
 
 			greenValues := sut.GetValuesConfig(BosunContext{Env: &EnvironmentConfig{Name: "green"}})
 
-			Expect(greenValues).To(BeEquivalentTo(AppValuesConfig{
+			Expect(greenValues).To(BeEquivalentTo(ValueSet{
 				Dynamic: map[string]*CommandValue{
 					"redgreen1": {Value: "c"},
 					"green1":    {Value: "d"},

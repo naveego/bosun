@@ -315,7 +315,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			ecmd.VersionBump = args[1]
 			b := mustGetBosun()
 
-			app, err := getFilterParams(b, args).GetApp()
+			app, err := getFilterParams(b, args).IncludeCurrent().GetApp()
 
 			if err != nil {
 				return errors.Wrap(err, "could not get app to version")
@@ -437,7 +437,7 @@ func (c GitAcceptPRCommand) Execute() error {
 				return err
 			}
 
-			finalVersion = app.Version
+			finalVersion = app.Version.String()
 		}
 
 		out, err := g.Exec("add", ".")

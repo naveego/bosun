@@ -18,26 +18,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/coreos/go-semver/semver"
 	"github.com/google/go-github/v20/github"
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/pkg/errors"
+	"gopkg.in/inconshreveable/go-update.v0"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"gopkg.in/inconshreveable/go-update.v0"
 	"runtime"
 
+	"github.com/hashicorp/go-getter"
 	"github.com/naveego/bosun/pkg"
- "github.com/hashicorp/go-getter"
 	"github.com/spf13/cobra"
 	"strings"
 	"time"
 )
 
 var metaCmd = addCommand(rootCmd, &cobra.Command{
-	Use:          "meta",
-	Short:        "Commands for managing bosun itself.",
-
+	Use:   "meta",
+	Short: "Commands for managing bosun itself.",
 })
 
 var metaVersionCmd = addCommand(metaCmd, &cobra.Command{
@@ -52,14 +51,14 @@ Commit: %s\n
 })
 
 var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
-	Use:"upgrade",
-	Short:"Upgrades bosun if a newer release is available",
-	SilenceUsage:true,
+	Use:          "upgrade",
+	Short:        "Upgrades bosun if a newer release is available",
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		client := mustGetGithubClient()
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-var err error
+		var err error
 		if Version == "" {
 			Version, err = pkg.NewCommand("bosun", "app", "version", "bosun").RunOut()
 			if err != nil {
@@ -78,10 +77,10 @@ var err error
 		for _, release = range releases {
 			tag := release.GetTagName()
 			tagVersion, err := semver.NewVersion(strings.TrimLeft(tag, "v"))
-			if err != nil{
+			if err != nil {
 				continue
 			}
-			if currentVersion.LessThan(*tagVersion){
+			if currentVersion.LessThan(tagVersion) {
 				upgradeAvailable = true
 				break
 			}
@@ -93,7 +92,6 @@ var err error
 		}
 
 		pkg.Log.Infof("Found upgrade: %s", release.GetTagName())
-
 
 		expectedAssetName := fmt.Sprintf("bosun_%s_%s_%s.tar.gz", release.GetTagName(), runtime.GOOS, runtime.GOARCH)
 		var foundAsset bool
@@ -112,7 +110,6 @@ var err error
 		j, _ := json.MarshalIndent(asset, "", "  ")
 		fmt.Println(string(j))
 
-
 		tempDir, err := ioutil.TempDir(os.TempDir(), "bosun-upgrade")
 		if err != nil {
 			return err
@@ -121,7 +118,6 @@ var err error
 
 		downloadURL := asset.GetBrowserDownloadURL()
 		pkg.Log.Infof("Found upgrade asset, will download from %q to %q", downloadURL, tempDir)
-
 
 		err = getter.Get(tempDir, "http::"+downloadURL)
 		if err != nil {
@@ -149,7 +145,6 @@ var err error
 	},
 })
 
-func init(){
+func init() {
 	rootCmd.AddCommand(metaUpgradeCmd)
 }
-

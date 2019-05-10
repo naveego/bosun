@@ -2,12 +2,12 @@ package bosun
 
 import (
 	"fmt"
-	"github.com/Masterminds/semver"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/stevenle/topsort"
 	"gopkg.in/yaml.v2"
@@ -35,11 +35,15 @@ func (a *App) GetLabels() filter.Labels {
 		a.labels = filter.LabelsFromMap(map[string]string{
 			LabelName:    a.Name,
 			LabelPath:    a.FromPath,
-			LabelVersion: a.Version,
+			LabelVersion: a.Version.String(),
 		})
 
 		a.labels[LabelBranch] = filter.LabelFunc(func() string { return a.GetBranchName().String() })
 		a.labels[LabelCommit] = filter.LabelFunc(a.GetCommit)
+
+		if a.HasChart() {
+			a.labels[LabelDeployable] = filter.LabelString("true")
+		}
 
 		for k, v := range a.Labels {
 			a.labels[k] = v
@@ -90,6 +94,22 @@ func (a *App) CheckRepoCloned() error {
 	return nil
 }
 
+func (a *App) CheckOutBranch(name string) error {
+	if !a.IsRepoCloned() {
+		return ErrNotCloned
+	}
+	local := a.Repo.LocalRepo
+	if local.GetCurrentBranch() == name {
+		return nil
+	}
+	if local.IsDirty() {
+		return errors.Errorf("current branch %q is dirty", local.GetCurrentBranch())
+	}
+
+	_, err := local.git().Exec("checkout", name)
+	return err
+}
+
 func (a *App) GetLocalRepoPath() (string, error) {
 	if !a.IsRepoCloned() {
 		return "", errors.New("repo is not cloned")
@@ -98,6 +118,9 @@ func (a *App) GetLocalRepoPath() (string, error) {
 }
 
 func (a *App) IsRepoCloned() bool {
+	if a.Repo == nil {
+		return false
+	}
 	return a.Repo.CheckCloned() == nil
 }
 
@@ -151,6 +174,10 @@ func (a *App) GetAbsolutePathToChart() string {
 }
 
 func (a *App) getAbsoluteChartPathOrChart(ctx BosunContext) string {
+	if a.IsFromManifest {
+		return a.Chart
+	}
+
 	if a.ChartPath != "" {
 		return ctx.ResolvePath(a.ChartPath)
 	}
@@ -162,6 +189,7 @@ func (a *App) getChartName() string {
 		return a.Chart
 	}
 	name := filepath.Base(a.ChartPath)
+	// TODO: Configure chart repo at WS or File level.
 	return fmt.Sprintf("helm.n5o.black/%s", name)
 }
 
@@ -180,11 +208,11 @@ func (a *App) PublishChart(ctx BosunContext, force bool) error {
 		}
 	}
 
-	err := helm.PublishChart(a.GetAbsolutePathToChart(), force)
+	err := helm.PublishChart(a.getChartName(), a.GetAbsolutePathToChart(), force)
 	return err
 }
 
-func (a *App) GetImages() []AppImageConfig {
+func (a *AppConfig) GetImages() []AppImageConfig {
 	images := a.Images
 	defaultProjectName := "private"
 	if a.HarborProject != "" {
@@ -210,7 +238,7 @@ func (a *App) GetImages() []AppImageConfig {
 func (a *App) GetPrefixedImageNames() []string {
 	var prefixedNames []string
 	for _, image := range a.GetImages() {
-		prefixedNames = append(prefixedNames, image.GetPrefixedName())
+		prefixedNames = append(prefixedNames, image.GetFullName())
 	}
 	return prefixedNames
 }
@@ -263,7 +291,7 @@ func (a *App) BuildImages(ctx BosunContext) error {
 			"--build-arg", fmt.Sprintf("VERSION_NUMBER=%s", a.Version),
 			"--build-arg", fmt.Sprintf("COMMIT=%s", a.GetCommit()),
 			"--build-arg", fmt.Sprintf("BUILD_NUMBER=%s", os.Getenv("BUILD_NUMBER")),
-			"--tag", image.GetPrefixedName(),
+			"--tag", image.GetFullName(),
 			contextPath,
 		}
 
@@ -273,7 +301,7 @@ func (a *App) BuildImages(ctx BosunContext) error {
 			return errors.Wrapf(err, "build image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
 		}
 
-		report = append(report, fmt.Sprintf("Built image from %q with context %q: %s", dockerfilePath, contextPath, image.GetPrefixedName()))
+		report = append(report, fmt.Sprintf("Built image from %q with context %q: %s", dockerfilePath, contextPath, image.GetFullName()))
 	}
 
 	fmt.Println()
@@ -288,7 +316,7 @@ func (a *App) PublishImages(ctx BosunContext) error {
 
 	var report []string
 
-	tags := []string{"latest", a.Version}
+	tags := []string{"latest", a.Version.String()}
 
 	branch := a.GetBranchName()
 	if branch != "master" && !branch.IsRelease() {
@@ -370,139 +398,133 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 	return result, nil
 }
 
-func (a *App) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, error) {
-	var err error
-	ctx = ctx.WithAppRepo(a)
-
-	isTransient := ctx.Release == nil || ctx.Release.Transient
-
-	r := &AppReleaseConfig{
-		Name:             a.Name,
-		Namespace:        a.Namespace,
-		Version:          a.Version,
-		ReportDeployment: a.ReportDeployment,
-		SyncedAt:         time.Now(),
-	}
-
-	ctx.Log.Debug("Getting app release config.")
-
-	if !isTransient && a.BranchForRelease {
-
-		g, err := git.NewGitWrapper(a.FromPath)
-		if err != nil {
-			return nil, err
-		}
-
-		branchName := fmt.Sprintf("release/%s", ctx.Release.Name)
-
-		branches, err := g.Exec("branch", "-a")
-		if err != nil {
-			return nil, err
-		}
-		if strings.Contains(branches, branchName) {
-			ctx.Log.Info("Checking out release branch...")
-			_, err := g.Exec("checkout", branchName)
-			if err != nil {
-				return nil, err
-			}
-			_, err = g.Exec("pull")
-			if err != nil {
-				return nil, err
-			}
-		} else {
-
-			if ctx.Release.IsPatch {
-				return nil, errors.New("patch release not implemented yet, you must create the release branch manually")
-			}
-
-			ctx.Log.Info("Creating release branch...")
-			_, err = g.Exec("checkout", "master")
-			if err != nil {
-				return nil, errors.Wrap(err, "checkout master")
-			}
-			_, err = g.Exec("pull")
-			if err != nil {
-				return nil, errors.Wrap(err, "pull master")
-			}
-
-			_, err = g.Exec("branch", branchName, "origin/master")
-			if err != nil {
-				return nil, err
-			}
-			_, err = g.Exec("checkout", branchName)
-			if err != nil {
-				return nil, err
-			}
-			_, err = g.Exec("push", "-u", "origin", branchName)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		r.Branch = a.GetBranchName()
-		r.Repo = a.GetRepoPath()
-		r.Commit = a.GetCommit()
-
-	}
-
-	if isTransient {
-		r.Chart = ctx.ResolvePath(a.ChartPath)
-	} else {
-		r.Chart = a.getChartName()
-	}
-
-	if a.BranchForRelease {
-		r.ImageNames = a.GetPrefixedImageNames()
-		if isTransient || ctx.Release == nil {
-			r.ImageTag = "latest"
-		} else {
-			r.ImageTag = fmt.Sprintf("%s-%s", r.Version, ctx.Release.Name)
-		}
-	}
-
-	r.Values, err = a.ExportValues(ctx)
-	if err != nil {
-		return nil, errors.Errorf("export values for release: %s", err)
-	}
-
-	r.Actions, err = a.ExportActions(ctx)
-	if err != nil {
-		return nil, errors.Errorf("export actions for release: %s", err)
-	}
-
-	for _, dep := range a.DependsOn {
-		r.DependsOn = append(r.DependsOn, dep.Name)
-	}
-
-	return r, nil
-}
+//
+// func (a *App) GetAppReleaseConfig(ctx BosunContext) (*AppReleaseConfig, error) {
+// 	var err error
+// 	ctx = ctx.WithApp(a)
+//
+// 	isTransient := ctx.Deploy == nil || ctx.Deploy.Transient
+//
+// 	r := &AppReleaseConfig{
+// 		Name:             a.Name,
+// 		Namespace:        a.Namespace,
+// 		Version:          a.Version,
+// 		ReportDeployment: a.ReportDeployment,
+// 		SyncedAt:         time.Now(),
+// 	}
+//
+// 	ctx.Log.Debug("Getting app release config.")
+//
+// 	if !isTransient && a.BranchForRelease {
+//
+// 		g, err := git.NewGitWrapper(a.FromPath)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+//
+// 		branchName := fmt.Sprintf("release/%s", ctx.Deploy.Name)
+//
+// 		branches, err := g.Exec("branch", "-a")
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		if strings.Contains(branches, branchName) {
+// 			ctx.Log.Info("Checking out release branch...")
+// 			_, err := g.Exec("checkout", branchName)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			_, err = g.Exec("pull")
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 		} else {
+//
+// 			if ctx.Deploy.IsPatch {
+// 				return nil, errors.New("patch release not implemented yet, you must create the release branch manually")
+// 			}
+//
+// 			ctx.Log.Info("Creating release branch...")
+// 			_, err = g.Exec("checkout", "master")
+// 			if err != nil {
+// 				return nil, errors.Wrap(err, "checkout master")
+// 			}
+// 			_, err = g.Exec("pull")
+// 			if err != nil {
+// 				return nil, errors.Wrap(err, "pull master")
+// 			}
+//
+// 			_, err = g.Exec("branch", branchName, "origin/master")
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			_, err = g.Exec("checkout", branchName)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			_, err = g.Exec("push", "-u", "origin", branchName)
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 		}
+//
+// 		r.Branch = a.GetBranchName()
+// 		r.Repo = a.GetRepoPath()
+// 		r.Commit = a.GetCommit()
+//
+// 	}
+//
+// 	if isTransient {
+// 		r.Chart = ctx.ResolvePath(a.ChartPath)
+// 	} else {
+// 		r.Chart = a.getChartName()
+// 	}
+//
+// 	if a.BranchForRelease {
+// 		r.ImageNames = a.GetPrefixedImageNames()
+// 		if isTransient || ctx.Deploy == nil {
+// 			r.ImageTag = "latest"
+// 		} else {
+// 			r.ImageTag = fmt.Sprintf("%s-%s", r.Version, ctx.Deploy.Name)
+// 		}
+// 	}
+//
+// 	r.Values, err = a.ExportValues(ctx)
+// 	if err != nil {
+// 		return nil, errors.Errorf("export values for release: %s", err)
+// 	}
+//
+// 	r.Actions, err = a.ExportActions(ctx)
+// 	if err != nil {
+// 		return nil, errors.Errorf("export actions for release: %s", err)
+// 	}
+//
+// 	for _, dep := range a.DependsOn {
+// 		r.DependsOn = append(r.DependsOn, dep.Name)
+// 	}
+//
+// 	return r, nil
+// }
 
 // BumpVersion bumps the version (including saving the source fragment
 // and updating the chart. The `bump` parameter may be one of
 // major|minor|patch|major.minor.patch. If major.minor.patch is provided,
 // the version is set to that value.
 func (a *App) BumpVersion(ctx BosunContext, bump string) error {
-	version, err := semver.NewVersion(bump)
+	version, err := NewVersion(bump)
 	if err == nil {
-		a.Version = version.String()
+		a.Version = version
 	} else {
-		version, err = semver.NewVersion(a.Version)
-		if err != nil {
-			return errors.Errorf("app has invalid version %q: %s", a.Version, err)
-		}
-		var v2 semver.Version
-
 		switch bump {
 		case "major":
-			v2 = version.IncMajor()
+			a.Version = a.Version.BumpMajor()
 		case "minor":
-			v2 = version.IncMinor()
+			a.Version = a.Version.BumpMinor()
 		case "patch":
-			v2 = version.IncPatch()
+			a.Version = a.Version.BumpPatch()
 		default:
 			return errors.Errorf("invalid version component %q (want major, minor, or patch)", bump)
 		}
-		a.Version = v2.String()
 	}
 
 	packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
@@ -536,7 +558,7 @@ func (a *App) BumpVersion(ctx BosunContext, bump string) error {
 
 	}
 
-	return a.Fragment.Save()
+	return a.Parent.Save()
 }
 
 func (a *App) getChartAsMap() (map[string]interface{}, error) {
@@ -591,11 +613,11 @@ func omitStrings(from []string, toOmit ...string) []string {
 	return out
 }
 
-// ExportValues creates an AppValuesByEnvironment instance with all the values
+// ExportValues creates an ValueSetMap instance with all the values
 // for releasing this app, reified into their environments, including values from
 // files and from the default values.yaml file for the chart.
-func (a *App) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error) {
-	ctx = ctx.WithAppRepo(a)
+func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
+	ctx = ctx.WithApp(a)
 	var err error
 	envs := map[string]*EnvironmentConfig{}
 	for envNames := range a.Values {
@@ -617,7 +639,7 @@ func (a *App) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error) {
 		valuesYaml, err := pkg.NewCommand(
 			"helm", "inspect", "values",
 			chartRef,
-			"--version", a.Version,
+			"--version", a.Version.String(),
 		).RunOut()
 		if err != nil {
 			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
@@ -630,24 +652,23 @@ func (a *App) ExportValues(ctx BosunContext) (AppValuesByEnvironment, error) {
 		defaultValues = Values{}
 	}
 
-	out := AppValuesByEnvironment{}
+	valueCopy := a.Values.CanonicalizedCopy()
 
-	for _, env := range envs {
-		envCtx := ctx.WithEnv(env)
-		valuesConfig := a.GetValuesConfig(envCtx)
-		valuesConfig, err = valuesConfig.WithFilesLoaded(envCtx)
+	for name, values := range valueCopy {
+
+		values, err = values.WithFilesLoaded(ctx)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "loading files for value set %q", name)
 		}
 		// make sure values from bosun app overwrite defaults from helm chart
 		static := defaultValues.Clone()
-		static.Merge(valuesConfig.Static)
-		valuesConfig.Static = static
-		valuesConfig.Files = nil
-		out[env.Name] = valuesConfig
+		static.Merge(values.Static)
+		values.Static = static
+		values.Files = nil
+		valueCopy[name] = values
 	}
 
-	return out, nil
+	return valueCopy, nil
 }
 
 func (a *App) ExportActions(ctx BosunContext) ([]*AppAction, error) {
@@ -666,4 +687,58 @@ func (a *App) ExportActions(ctx BosunContext) ([]*AppAction, error) {
 	}
 
 	return actions, nil
+}
+
+func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
+
+	// App already has a manifest, probably because it was created
+	// from an AppConfig that was obtained from an AppManifest.
+	if a.manifest != nil {
+		return a.manifest, nil
+	}
+
+	var appManifest *AppManifest
+
+	err := util.TryCatch(a.Name, func() error {
+
+		appConfig := a.AppConfig
+		var err error
+
+		appConfig.Values, err = a.ExportValues(ctx)
+		if err != nil {
+			return errors.Errorf("export values for manifest: %s", err)
+		}
+
+		appConfig.Actions, err = a.ExportActions(ctx)
+		if err != nil {
+			return errors.Errorf("export actions for manifest: %s", err)
+		}
+
+		// empty chart path to force deployment to use published chart
+		appConfig.ChartPath = ""
+
+		hashes := AppHashes{}
+
+		if a.Repo.CheckCloned() == nil {
+			hashes.Commit = a.Repo.LocalRepo.GetCurrentCommit()
+		}
+
+		hashes.AppConfig, err = util.HashToStringViaYaml(appConfig)
+
+		appManifest = &AppManifest{
+			AppConfig: appConfig,
+			AppMetadata: &AppMetadata{
+				Name:      appConfig.Name,
+				Repo:      appConfig.RepoName,
+				Timestamp: time.Now(),
+				Version:   a.Version,
+				Branch:    a.GetBranchName().String(),
+				Hashes:    hashes,
+			},
+		}
+
+		return nil
+	})
+
+	return appManifest, err
 }

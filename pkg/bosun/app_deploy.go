@@ -11,11 +11,12 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
-type AppReleasesSortedByName []*AppRelease
+type AppReleasesSortedByName []*AppDeploy
 
 func (a AppReleasesSortedByName) Len() int {
 	return len(a)
@@ -29,79 +30,79 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 	a[i], a[j] = a[j], a[i]
 }
 
-type AppReleaseConfig struct {
-	Name             string         `yaml:"name" json:"name"`
-	Namespace        string         `yaml:"namespace" json:"namespace"`
-	Repo             string         `yaml:"repo" json:"repo"`
-	Branch           git.BranchName `yaml:"branch" json:"branch"`
-	Commit           string         `yaml:"commit" json:"commit"`
-	Version          string         `yaml:"version" json:"version"`
-	SyncedAt         time.Time      `yaml:"syncedAt" json:"syncedAt"`
-	Chart            string         `yaml:"chart" json:"chart"`
-	ImageNames       []string       `yaml:"images,omitempty" json:"images,omitempty"`
-	ImageTag         string         `yaml:"imageTag,omitempty" json:"imageTag,omitempty"`
-	ReportDeployment bool           `yaml:"reportDeployment" json:"reportDeployment"`
-	DependsOn        []string       `yaml:"dependsOn" json:"dependsOn"`
-	Actions          []*AppAction   `yaml:"actions" json:"actions"`
-	// Values copied from app repo.
-	Values AppValuesByEnvironment `yaml:"values" json:"values"`
-	// Values manually added to this release.
-	ValueOverrides AppValuesByEnvironment `yaml:"valueOverrides" json:"valueOverrides"`
-	ParentConfig   *ReleaseConfig         `yaml:"-" json:"-"`
+// type AppReleaseConfig struct {
+// 	Name             string         `yaml:"name" json:"name"`
+// 	Namespace        string         `yaml:"namespace" json:"namespace"`
+// 	Repo             string         `yaml:"repo" json:"repo"`
+// 	Branch           git.BranchName `yaml:"branch" json:"branch"`
+// 	Commit           string         `yaml:"commit" json:"commit"`
+// 	Version          semver.Version `yaml:"version" json:"version"`
+// 	SyncedAt         time.Time      `yaml:"syncedAt" json:"syncedAt"`
+// 	Chart            string         `yaml:"chart" json:"chart"`
+// 	ImageNames       []string       `yaml:"images,omitempty" json:"images,omitempty"`
+// 	ImageTag         string         `yaml:"imageTag,omitempty" json:"imageTag,omitempty"`
+// 	ReportDeployment bool           `yaml:"reportDeployment" json:"reportDeployment"`
+// 	DependsOn        []string       `yaml:"dependsOn" json:"dependsOn"`
+// 	Actions          []*AppAction   `yaml:"actions" json:"actions"`
+// 	// Values copied from app repo.
+// 	Values ValueSetMap `yaml:"values" json:"values"`
+// 	// Values manually added to this release.
+// 	ValueOverrides ValueSetMap `yaml:"valueOverrides" json:"valueOverrides"`
+// 	ParentConfig   *ReleaseConfig         `yaml:"-" json:"-"`
+// }
+
+type AppDeploy struct {
+	FromPath     string
+	*AppManifest `yaml:"-" json:"-"`
+	// App          *App `yaml:"-" json:"-"`
+	Excluded          bool `yaml:"-" json:"-"`
+	ActualState       AppState
+	DesiredState      AppState
+	helmRelease       *HelmRelease
+	labels            filter.Labels
+	AppDeploySettings AppDeploySettings
 }
 
-func (r *AppReleaseConfig) SetParent(config *ReleaseConfig) {
-	r.ParentConfig = config
+// Chart gets the path to the chart.
+func (a *AppDeploy) Chart() string {
+	if a.AppConfig.IsFromManifest {
+		return a.AppConfig.Chart
+	}
+
+	if a.AppDeploySettings.UseLocalContent {
+		if a.AppConfig.ChartPath != "" {
+			return filepath.Join(filepath.Dir(a.AppConfig.FromPath), a.AppConfig.ChartPath)
+		}
+		return a.AppConfig.Chart
+	}
+
+	return a.AppConfig.Chart
 }
 
-type AppRelease struct {
-	*AppReleaseConfig
-	App          *App `yaml:"-" json:"-"`
-	Excluded     bool `yaml:"-" json:"-"`
-	ActualState  AppState
-	DesiredState AppState
-	helmRelease  *HelmRelease
-	labels       filter.Labels
+func NewAppDeploy(context BosunContext, settings DeploySettings, manifest *AppManifest) (*AppDeploy, error) {
+
+	appDeploy := &AppDeploy{
+		AppManifest:       manifest,
+		AppDeploySettings: settings.GetAppDeploySettings(manifest.Name),
+	}
+
+	return appDeploy, nil
 }
 
-func (a *AppRelease) GetLabels() filter.Labels {
+func (a *AppDeploy) GetLabels() filter.Labels {
 	if a.labels == nil {
 		a.labels = filter.LabelsFromMap(map[string]string{
 			LabelName:    a.Name,
-			LabelPath:    a.App.FromPath,
-			LabelVersion: a.Version,
-			LabelBranch:  a.Branch.String(),
-			LabelCommit:  a.Commit,
+			LabelVersion: a.Version.String(),
+			LabelBranch:  a.Branch,
+			LabelCommit:  a.Hashes.Commit,
 		})
-
-		for k, v := range a.App.Labels {
-			a.labels[k] = v
-		}
 	}
 	return a.labels
 }
 
-func NewAppRelease(ctx BosunContext, config *AppReleaseConfig) (*AppRelease, error) {
-	release := &AppRelease{
-		AppReleaseConfig: config,
-		App:              ctx.Bosun.GetApps()[config.Name],
-		DesiredState:     ctx.Bosun.ws.AppStates[ctx.Env.Name][config.Name],
-	}
-
-	return release, nil
-}
-
-func NewAppReleaseFromRepo(ctx BosunContext, repo *App) (*AppRelease, error) {
-	cfg, err := repo.GetAppReleaseConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewAppRelease(ctx, cfg)
-}
-
-func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
-	ctx = ctx.WithAppRelease(a)
+func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
+	ctx = ctx.WithAppDeploy(a)
 
 	a.ActualState = AppState{}
 
@@ -135,9 +136,9 @@ func (a *AppRelease) LoadActualState(ctx BosunContext, diff bool) error {
 
 	// check if the app has a service with an ExternalName; if it does, it must have been
 	// creating using `app toggle` and is routed to localhost.
-	if ctx.Env.IsLocal && a.App.Minikube != nil {
-		for _, routableService := range a.App.Minikube.RoutableServices {
-			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.App.Namespace, routableService.Name, "-o", "yaml").RunOut()
+	if ctx.Env.IsLocal && a.AppConfig.Minikube != nil {
+		for _, routableService := range a.AppConfig.Minikube.RoutableServices {
+			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.AppConfig.Namespace, routableService.Name, "-o", "yaml").RunOut()
 			if err != nil {
 				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
 				continue
@@ -174,7 +175,7 @@ type HelmRelease struct {
 	Namespace  string `yaml:"Namespace" json:"Namespace"`
 }
 
-func (a *AppRelease) GetHelmRelease(name string) (*HelmRelease, error) {
+func (a *AppDeploy) GetHelmRelease(name string) (*HelmRelease, error) {
 
 	if a.helmRelease == nil {
 		releases, err := a.GetHelmList(fmt.Sprintf(`^%s$`, name))
@@ -192,7 +193,7 @@ func (a *AppRelease) GetHelmRelease(name string) (*HelmRelease, error) {
 	return a.helmRelease, nil
 }
 
-func (a *AppRelease) GetHelmList(filter ...string) ([]*HelmRelease, error) {
+func (a *AppDeploy) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
 	data, err := pkg.NewCommand("helm", args...).RunOut()
@@ -218,9 +219,9 @@ type PlanStep struct {
 	Action      func(ctx BosunContext) error
 }
 
-func (a *AppRelease) PlanReconciliation(ctx BosunContext) (Plan, error) {
+func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
-	ctx = ctx.WithAppRelease(a)
+	ctx = ctx.WithAppDeploy(a)
 
 	if !ctx.Bosun.IsClusterAvailable() {
 		return nil, errors.New("cluster not available")
@@ -274,8 +275,8 @@ func (a *AppRelease) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	}
 
 	if desired.Status == StatusDeployed {
-		for i := range a.Actions {
-			action := a.Actions[i]
+		for i := range a.AppConfig.Actions {
+			action := a.AppConfig.Actions[i]
 			if strings.Contains(string(action.When), ActionBeforeDeploy) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
@@ -313,8 +314,8 @@ func (a *AppRelease) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	}
 
 	if desired.Status == StatusDeployed {
-		for i := range a.Actions {
-			action := a.Actions[i]
+		for i := range a.AppConfig.Actions {
+			action := a.AppConfig.Actions[i]
 			if strings.Contains(string(action.When), ActionAfterDeploy) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
@@ -331,12 +332,12 @@ func (a *AppRelease) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 }
 
-type ReleaseValues struct {
+type PersistableValues struct {
 	Values   Values
 	FilePath string
 }
 
-func (r *ReleaseValues) PersistValues() (string, error) {
+func (r *PersistableValues) PersistValues() (string, error) {
 	if r.FilePath == "" {
 
 		// b, err := r.Values.YAML()
@@ -361,7 +362,7 @@ func (r *ReleaseValues) PersistValues() (string, error) {
 
 }
 
-func (r *ReleaseValues) Cleanup() {
+func (r *PersistableValues) Cleanup() {
 	err := os.Remove(r.FilePath)
 	if err != nil && !os.IsNotExist(err) {
 		pkg.Log.WithError(err).WithField("path", r.FilePath).
@@ -369,8 +370,8 @@ func (r *ReleaseValues) Cleanup() {
 	}
 }
 
-func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) {
-	r := &ReleaseValues{
+func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*PersistableValues, error) {
+	r := &PersistableValues{
 		Values: Values{},
 	}
 
@@ -381,23 +382,19 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 	if err := r.Values.AddEnvAsPath(EnvPrefix, EnvAppBranch, a.Branch); err != nil {
 		return nil, err
 	}
-	if err := r.Values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.Commit); err != nil {
+	if err := r.Values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.Hashes.Commit); err != nil {
 		return nil, err
 	}
 
-	importedValues := a.Values[ctx.Env.Name]
-	overrideValues := a.ValueOverrides[ctx.Env.Name]
+	importedValues := a.AppConfig.Values.ExtractValueSetByNames(ctx.Env.ValueSets...)
 
-	appValues := []AppValuesConfig{importedValues, overrideValues}
-	if ctx.Env.AppValues != nil {
-		appValues = append(appValues, *ctx.Env.AppValues)
-	}
+	appValues := append([]ValueSet{importedValues}, a.AppDeploySettings.ValueSets...)
 
 	for _, v := range appValues {
 
 		r.Values.Merge(v.Static)
 
-		// Get the values defined using the `dynamic` element in the app's config:
+		// Get the values defined using the `dynamic` element:
 		for k, v := range v.Dynamic {
 			value, err := v.Resolve(ctx)
 			if err != nil {
@@ -409,8 +406,6 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 			}
 		}
 	}
-
-	r.Values["tag"] = a.ImageTag
 
 	// Finally, apply any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParams().ValueOverrides {
@@ -424,8 +419,8 @@ func (a *AppRelease) GetReleaseValues(ctx BosunContext) (*ReleaseValues, error) 
 	return r, nil
 }
 
-func (a *AppRelease) Reconcile(ctx BosunContext) error {
-	ctx = ctx.WithAppRelease(a)
+func (a *AppDeploy) Reconcile(ctx BosunContext) error {
+	ctx = ctx.WithAppDeploy(a)
 	log := ctx.Log
 
 	if a.DesiredState.Status == StatusUnchanged {
@@ -433,7 +428,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 		return nil
 	}
 
-	values, err := a.GetReleaseValues(ctx)
+	values, err := a.GetResolvedValues(ctx)
 	if err != nil {
 		return errors.Errorf("create values map for app %q: %s", a.Name, err)
 	}
@@ -447,7 +442,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	}
 	defer values.Cleanup()
 
-	ctx = ctx.WithReleaseValues(values)
+	ctx = ctx.WithPersistableValues(values)
 
 	// clear helm release cache after work is done
 	defer func() { a.helmRelease = nil }()
@@ -462,10 +457,10 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 
 	reportDeploy := !params.DryRun &&
 		!params.NoReport &&
-		!ctx.Release.IsTransient() &&
+		!a.AppDeploySettings.Environment.IsLocal &&
 		a.DesiredState.Status == StatusDeployed &&
 		!env.IsLocal &&
-		a.ReportDeployment
+		a.AppConfig.ReportDeployment
 
 	log.Info("Planning reconciliation...")
 
@@ -483,7 +478,7 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	if reportDeploy {
 		log.Info("Deploy progress will be reported to github.")
 		// create the deployment
-		deployID, err := git.CreateDeploy(a.Repo, a.Branch.String(), env.Name)
+		deployID, err := git.CreateDeploy(a.Repo, a.Branch, env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {
@@ -522,11 +517,11 @@ func (a *AppRelease) Reconcile(ctx BosunContext) error {
 	return nil
 }
 
-func (a *AppRelease) diff(ctx BosunContext) (string, error) {
+func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
 
-	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.Chart, "--version", a.Version).
+	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.Chart()).
 		WithArgs(args...).
 		RunOut()
 
@@ -543,7 +538,7 @@ func (a *AppRelease) diff(ctx BosunContext) (string, error) {
 	return msg, nil
 }
 
-func (a *AppRelease) Delete(ctx BosunContext) error {
+func (a *AppDeploy) Delete(ctx BosunContext) error {
 	args := []string{"delete"}
 	if a.DesiredState.Status == StatusNotFound {
 		args = append(args, "--purge")
@@ -555,10 +550,10 @@ func (a *AppRelease) Delete(ctx BosunContext) error {
 	return err
 }
 
-func (a *AppRelease) Rollback(ctx BosunContext) error {
+func (a *AppDeploy) Rollback(ctx BosunContext) error {
 	args := []string{"rollback"}
 	args = append(args, a.Name, a.helmRelease.Revision)
-	args = append(args, a.getHelmNamespaceArgs(ctx)...)
+	// args = append(args, a.getHelmNamespaceArgs(ctx)...)
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
@@ -566,15 +561,15 @@ func (a *AppRelease) Rollback(ctx BosunContext) error {
 	return err
 }
 
-func (a *AppRelease) Install(ctx BosunContext) error {
-	args := append([]string{"install", "--name", a.Name, a.Chart}, a.makeHelmArgs(ctx)...)
+func (a *AppDeploy) Install(ctx BosunContext) error {
+	args := append([]string{"install", "--name", a.Name, a.Chart()}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
 	return err
 }
 
-func (a *AppRelease) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.Name, a.Chart}, a.makeHelmArgs(ctx)...)
+func (a *AppDeploy) Upgrade(ctx BosunContext) error {
+	args := append([]string{"upgrade", a.Name, a.Chart()}, a.makeHelmArgs(ctx)...)
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}
@@ -583,7 +578,7 @@ func (a *AppRelease) Upgrade(ctx BosunContext) error {
 	return err
 }
 
-func (a *AppRelease) GetStatus() (string, error) {
+func (a *AppDeploy) GetStatus() (string, error) {
 	release, err := a.GetHelmRelease(a.Name)
 	if err != nil {
 		return "", err
@@ -595,13 +590,13 @@ func (a *AppRelease) GetStatus() (string, error) {
 	return release.Status, nil
 }
 
-func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
+func (a *AppDeploy) RouteToLocalhost(ctx BosunContext) error {
 
-	ctx = ctx.WithAppRelease(a)
+	ctx = ctx.WithAppDeploy(a)
 
 	ctx.Log.Info("Configuring app to route traffic to localhost.")
 
-	if a.App.Minikube == nil || len(a.App.Minikube.RoutableServices) == 0 {
+	if a.AppConfig.Minikube == nil || len(a.AppConfig.Minikube.RoutableServices) == 0 {
 		return errors.New(`to route to localhost, app must have a minikube entry like this:
   minikube:
     routableServices:
@@ -616,7 +611,7 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 		return errors.New("minikube.hostIP is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
 	}
 
-	for _, routableService := range a.App.Minikube.RoutableServices {
+	for _, routableService := range a.AppConfig.Minikube.RoutableServices {
 		log := ctx.Log.WithField("routable_service", routableService.Name)
 
 		log.Info("Updating service...")
@@ -636,10 +631,10 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 			localhostPort = routableService.ExternalPort
 		}
 
-		routedSvc.SetAtPath("spec.clusterIP", "")
-		routedSvc.SetAtPath("spec.type", "ExternalName")
-		routedSvc.SetAtPath("spec.externalName", hostIP)
-		routedSvc.SetAtPath("spec.ports", []Values{
+		_ = routedSvc.SetAtPath("spec.clusterIP", "")
+		_ = routedSvc.SetAtPath("spec.type", "ExternalName")
+		_ = routedSvc.SetAtPath("spec.externalName", hostIP)
+		_ = routedSvc.SetAtPath("spec.ports", []Values{
 			{
 				"port":     localhostPort,
 				"protocol": "TCP",
@@ -649,7 +644,7 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 
 		routedSvcYaml, _ := routedSvc.YAML()
 
-		{
+		err = func() error {
 			tmp, err := util.NewTempFile("routed-service", []byte(routedSvcYaml))
 			if err != nil {
 				return errors.Wrap(err, "create service file")
@@ -664,6 +659,10 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 			if err != nil {
 				return errors.Errorf("error applying service\n%s\n---\n%s", routedSvcYaml, err)
 			}
+			return nil
+		}()
+		if err != nil {
+			return errors.Wrapf(err, "updating service for %q", a.Name)
 		}
 
 		log.Info("Updated service.")
@@ -672,51 +671,46 @@ func (a *AppRelease) RouteToLocalhost(ctx BosunContext) error {
 	return nil
 }
 
-func (a *AppRelease) makeHelmArgs(ctx BosunContext) []string {
+func (a *AppDeploy) makeHelmArgs(ctx BosunContext) []string {
 
 	var args []string
+
+	if !a.AppDeploySettings.UseLocalContent {
+		args = append(args, "--version", a.Version.String())
+	}
 
 	args = append(args,
 		"--set", fmt.Sprintf("domain=%s", ctx.Env.Domain))
 
 	args = append(args, a.getHelmNamespaceArgs(ctx)...)
 
-	args = append(args, "-f", ctx.ReleaseValues.FilePath)
-
-	if ctx.Env.IsLocal {
-		args = append(args, "--set", "imagePullPolicy=IfNotPresent")
-		if a.DesiredState.Routing == RoutingLocalhost {
-			args = append(args, "--set", fmt.Sprintf("routeToHost=true"))
-		} else {
-			args = append(args, "--set", fmt.Sprintf("routeToHost=false"))
-		}
-	} else {
-		args = append(args, "--set", "routeToHost=false")
-	}
+	args = append(args, "-f", ctx.Values.FilePath)
 
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
 	return args
 }
 
-func (a *AppRelease) getHelmNamespaceArgs(ctx BosunContext) []string {
-	if a.Namespace != "" && a.Namespace != "default" {
-		return []string{"--namespace", a.Namespace}
+func (a *AppDeploy) getHelmNamespaceArgs(ctx BosunContext) []string {
+	namespace := "default"
+	if a.AppConfig.Namespace != "" {
+		namespace = a.AppConfig.Namespace
 	}
-	return []string{}
+
+	return []string{"--namespace", namespace}
 }
 
-func (a *AppRelease) getHelmDryRunArgs(ctx BosunContext) []string {
+func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
 	if ctx.IsDryRun() {
 		return []string{"--dry-run", "--debug"}
 	}
 	return []string{}
 }
 
-func (a *AppRelease) Recycle(ctx BosunContext) error {
-	ctx = ctx.WithAppRelease(a)
+func (a *AppDeploy) Recycle(ctx BosunContext) error {
+	ctx = ctx.WithAppDeploy(a)
 	ctx.Log.Info("Deleting pods...")
-	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.App.Namespace, "pods", "--selector=release="+a.App.Name).RunE()
+	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.AppConfig.GetNamespace(), "pods", "--selector=release="+a.AppConfig.Name).RunE()
 	if err != nil {
 		return err
 	}
@@ -724,7 +718,7 @@ func (a *AppRelease) Recycle(ctx BosunContext) error {
 
 	for {
 		podsReady := true
-		out, err := pkg.NewCommand("kubectl", "get", "pods", "--namespace", a.App.Namespace, "--selector=release="+a.App.Name,
+		out, err := pkg.NewCommand("kubectl", "get", "pods", "--namespace", a.AppConfig.GetNamespace(), "--selector=release="+a.AppConfig.Name,
 			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
 		if err != nil {
 			return err

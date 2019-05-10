@@ -2,7 +2,6 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
@@ -13,9 +12,10 @@ const logConfigs = false
 type Workspace struct {
 	Path               string                 `yaml:"-" json:"-"`
 	CurrentEnvironment string                 `yaml:"currentEnvironment" json:"currentEnvironment"`
+	CurrentPlatform    string                 `yaml:"currentPlatform" json:"currentPlatform"`
+	CurrentRelease     string                 `yaml:"currentRelease" json:"currentRelease"`
 	Imports            []string               `yaml:"imports,omitempty" json:"imports"`
 	GitRoots           []string               `yaml:"gitRoots" json:"gitRoots"`
-	Release            string                 `yaml:"release" json:"release"`
 	HostIPInMinikube   string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
 	AppStates          AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
 	ClonePaths         map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
@@ -24,12 +24,6 @@ type Workspace struct {
 	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
 	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
 	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
-}
-
-type LocalRepo struct {
-	Name   string         `yaml:"-" json:""`
-	Path   string         `yaml:"path,omitempty" json:"path,omitempty"`
-	branch git.BranchName `yaml:"-" json:"-"`
 }
 
 func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {

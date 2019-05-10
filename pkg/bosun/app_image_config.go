@@ -9,8 +9,12 @@ type AppImageConfig struct {
 	ContextPath string `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
 }
 
-func (a AppImageConfig) GetPrefixedName() string {
+func (a AppImageConfig) GetFullName() string {
 	return fmt.Sprintf("docker.n5o.black/%s/%s", a.ProjectName, a.ImageName)
+}
+
+func (a AppImageConfig) GetFullNameWithTag(tag string) string {
+	return fmt.Sprintf("docker.n5o.black/%s/%s:%s", a.ProjectName, a.ImageName, tag)
 }
 
 func (a *AppImageConfig) MarshalYAML() (interface{}, error) {

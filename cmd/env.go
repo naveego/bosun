@@ -17,10 +17,12 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -181,6 +183,66 @@ var envGetOrCreateCert = addCommand(envCmd, &cobra.Command{
 			fmt.Println(string(cert))
 		}
 
+		return nil
+	},
+})
+
+var _ = addCommand(envCmd, &cobra.Command{
+	Use:     "show [name]",
+	Args:    cobra.MaximumNArgs(1),
+	Aliases: []string{"dump"},
+	Short:   "Shows the current environment with its valueSets.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		var env *bosun.EnvironmentConfig
+		var err error
+		if len(args) == 1 {
+			env, err = b.GetEnvironment(args[0])
+			if err != nil {
+				return err
+			}
+		} else {
+			env = b.GetCurrentEnvironment()
+		}
+
+		y, err := yaml.Marshal(env)
+		if err != nil {
+			return err
+		}
+
+		valueSets, err := b.GetValueSetsForEnv(env)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(string(y))
+		for _, vs := range valueSets {
+			y, err = yaml.Marshal(vs)
+			if err != nil {
+				return err
+			}
+			fmt.Println("---")
+			fmt.Println(string(y))
+		}
+
+		return nil
+	},
+})
+
+var _ = addCommand(envCmd, &cobra.Command{
+	Use:   "value-sets",
+	Short: "Lists known value-sets.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := mustGetBosun()
+		for _, vs := range b.GetValueSets() {
+			color.Blue("%s ", vs.Name)
+			color.White("(from %s):\n", vs.FromPath)
+			y, err := yaml.Marshal(vs)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(y))
+		}
 		return nil
 	},
 })

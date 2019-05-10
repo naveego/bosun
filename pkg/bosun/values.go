@@ -237,7 +237,7 @@ func (v Values) setAtPath(path []string, value interface{}) error {
 }
 
 // Merge takes the properties in src and merges them into Values. Maps
-// are merged while values and arrays are replaced.
+// are merged (keys are overwritten) while values and arrays are replaced.
 func (v Values) Merge(src Values) {
 	for key, srcVal := range src {
 		destVal, found := v[key]

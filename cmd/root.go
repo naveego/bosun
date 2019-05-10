@@ -17,7 +17,9 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"runtime/pprof"
 	"strings"
 
 	"os"
@@ -36,7 +38,7 @@ var Timestamp string
 var Commit string
 
 // rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
+var rootCmd = TraverseRunHooks(&cobra.Command{
 	Use:           "bosun",
 	Short:         "Devops tool.",
 	SilenceErrors: true,
@@ -73,14 +75,26 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			cmd.SilenceUsage = true
 		}
 
-		conditions := viper.GetStringSlice(ArgFilteringInclude)
-		if len(conditions) > 0 {
-
+		if viper.GetBool(ArgGlobalProfile) {
+			profilePath := "./bosun.prof"
+			f, err := os.Create(profilePath)
+			if err != nil {
+				return errors.Wrap(err, "creating profiling file")
+			}
+			err = pprof.StartCPUProfile(f)
+			if err != nil {
+				return errors.Wrap(err, "starting profiling")
+			}
 		}
 
 		return nil
 	},
-}
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		if viper.GetBool(ArgGlobalProfile) {
+			pprof.StopCPUProfile()
+		}
+	},
+})
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
@@ -90,7 +104,12 @@ func Execute() {
 		case handledError:
 			fmt.Println(e.Error())
 		default:
-			colorError.Fprintln(os.Stderr, err)
+			if viper.GetBool(ArgGlobalVerbose) {
+				colorError.Fprintf(os.Stderr, "%+v\n", err)
+
+			} else {
+				colorError.Fprintln(os.Stderr, err)
+			}
 		}
 
 		os.Exit(1)
@@ -108,6 +127,7 @@ const (
 	ArgGlobalForce        = "force"
 	ArgGlobalNoReport     = "no-report"
 	ArgGlobalOutput       = "output"
+	ArgGlobalProfile      = "profile"
 )
 
 func init() {
@@ -123,6 +143,8 @@ func init() {
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
 	rootCmd.PersistentFlags().String(ArgGlobalConfirmedEnv, "", "Set to confirm that the environment is correct when targeting a protected environment.")
 	rootCmd.PersistentFlags().MarkHidden(ArgGlobalConfirmedEnv)
+	rootCmd.PersistentFlags().Bool(ArgGlobalProfile, false, "Dump profiling info.")
+	rootCmd.PersistentFlags().MarkHidden(ArgGlobalProfile)
 
 	defaultCluster := ""
 	defaultDomain := ""

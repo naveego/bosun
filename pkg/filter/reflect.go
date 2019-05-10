@@ -12,11 +12,11 @@ type filterable struct {
 func newFilterable(mapOrSlice interface{}) filterable {
 	fromValue := reflect.ValueOf(mapOrSlice)
 	switch fromValue.Kind() {
-	case reflect.Map:
-	case reflect.Slice:
+	case reflect.Map,
+		reflect.Slice:
 		return filterable{val: fromValue}
 	}
-	panic(fmt.Sprintf("invalid type, must be a map or slice"))
+	panic(fmt.Sprintf("invalid type %T, must be a map or slice", mapOrSlice))
 }
 
 func (f filterable) len() int {

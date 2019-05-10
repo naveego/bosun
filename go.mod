@@ -7,7 +7,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Azure/go-autorest v11.2.8+incompatible
 	github.com/Jeffail/gabs v1.1.1 // indirect
-	github.com/Masterminds/semver v1.4.2
+	github.com/Masterminds/semver v1.4.2 // indirect
 	github.com/Masterminds/sprig v2.17.1+incompatible
 	github.com/Microsoft/go-winio v0.4.11 // indirect
 	github.com/NYTimes/gziphandler v1.0.1 // indirect
@@ -34,11 +34,9 @@ require (
 	github.com/containerd/continuity v0.0.0-20181203112020-004b46473808 // indirect
 	github.com/coreos/bbolt v1.3.2 // indirect
 	github.com/coreos/go-oidc v2.0.0+incompatible // indirect
-	github.com/coreos/go-semver v0.2.0
 	github.com/coreos/go-systemd v0.0.0-20190212144455-93d5ec2c7f76 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dancannon/gorethink v4.0.0+incompatible // indirect
-	github.com/davecgh/go-spew v1.1.1
 	github.com/denisenkom/go-mssqldb v0.0.0-20181014144952-4e0d7dc8888f // indirect
 	github.com/dghubble/sling v1.2.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
@@ -53,6 +51,7 @@ require (
 	github.com/gammazero/deque v0.0.0-20190130191400-2afb3858e9c7 // indirect
 	github.com/gammazero/workerpool v0.0.0-20181230203049-86a96b5d5d92 // indirect
 	github.com/garyburd/redigo v1.6.0 // indirect
+	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.1 // indirect
 	github.com/go-ldap/ldap v2.5.1+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.4.1 // indirect
@@ -66,7 +65,6 @@ require (
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/go-github/v20 v20.0.0
 	github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf // indirect
-	github.com/google/martian v2.1.0+incompatible
 	github.com/google/uuid v1.1.0
 	github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75 // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect
@@ -165,8 +163,10 @@ require (
 	github.com/spf13/viper v1.3.1
 	github.com/stevenle/topsort v0.0.0-20130922064739-8130c1d7596b
 	github.com/streadway/amqp v0.0.0-20190225234609-30f8ed68076e // indirect
+	github.com/tidwall/pretty v0.0.0-20190325153808-1166b9ac2b65 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/ugorji/go/codec v0.0.0-20181209151446-772ced7fd4c2 // indirect
+	github.com/vbauerster/mpb/v4 v4.7.0
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c // indirect
 	github.com/xdg/stringprep v1.0.0 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
@@ -176,9 +176,8 @@ require (
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1 // indirect
-	golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc
+	golang.org/x/crypto v0.0.0-20190426145343-a29dc8fdc734
 	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890
-	golang.org/x/sys v0.0.0-20190102155601-82a175fd1598 // indirect
 	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/alecthomas/kingpin.v3-unstable v3.0.0-20180810215634-df19058c872c // indirect
 	gopkg.in/asn1-ber.v1 v1.0.0-20181015200546-f715ec2f112d // indirect

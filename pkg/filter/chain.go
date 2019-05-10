@@ -108,9 +108,11 @@ func (c Chain) FromErr(from interface{}) (interface{}, error) {
 		return from, nil
 	}
 
-	steps := c.steps
 	if c.current != nil {
-		steps = append(steps, *c.current)
+		c.steps = append(c.steps, *c.current)
+	}
+	if len(c.steps) == 0 {
+		return from, nil
 	}
 	min := 1
 	max := math.MaxInt64
@@ -122,7 +124,7 @@ func (c Chain) FromErr(from interface{}) (interface{}, error) {
 	}
 
 	var after filterable
-	for _, s := range steps {
+	for _, s := range c.steps {
 		if len(s.include) > 0 && len(s.exclude) > 0 {
 			after = applyFilters(f, s.include, true)
 			after = applyFilters(after, s.exclude, false)
@@ -143,5 +145,10 @@ func (c Chain) FromErr(from interface{}) (interface{}, error) {
 		maxString = fmt.Sprint(max)
 	}
 
-	return f.cloneEmpty().val.Interface(), errors.Errorf("no steps in chain could reduce initial set of %d items to requested size of [%d,%s]\nsteps:\n%s", f.len(), min, maxString, c)
+	return f.cloneEmpty().val.Interface(), errors.Errorf("no steps in chain could reduce initial set of %d items (%T) to requested size of [%d,%s]\nsteps:\n%s",
+		f.len(),
+		from,
+		min,
+		maxString,
+		c)
 }

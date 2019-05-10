@@ -18,10 +18,8 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 		viper.SetDefault(ArgFilteringAll, true)
 
 		b := mustGetBosun()
-		apps, err := getApps(b, args)
-		if err != nil {
-			return err
-		}
+
+		apps := getFilterParams(b, args).GetApps()
 
 		gitRoots := b.GetGitRoots()
 		var trimGitRoot = func(p string) string {
@@ -44,12 +42,12 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 				} else {
 					branch = ""
 				}
-				version = app.Version
+				version = app.Version.String()
 			} else {
 				isCloned = emoji.Sprint("    :x:")
 				pathrepo = app.RepoName
 				branch = ""
-				version = app.Version
+				version = app.Version.String()
 				importedBy = trimGitRoot(app.FromPath)
 			}
 

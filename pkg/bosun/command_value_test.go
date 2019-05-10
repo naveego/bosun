@@ -146,7 +146,7 @@ echo %testVar%
 			})
 
 			It("should include env values", func() {
-				ctx = ctx.WithReleaseValues(&ReleaseValues{
+				ctx = ctx.WithPersistableValues(&PersistableValues{
 					Values: Values{
 						"test": Values{
 							"nested": "value",

@@ -187,9 +187,10 @@ func (a *AppAction) GetActions() []Action {
 }
 
 type VaultAction struct {
-	File    string           `yaml:"file,omitempty" json:"file,omitempty"`
-	Layout  *pkg.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
-	Literal string           `yaml:"literal,omitempty" json:"literal,omitempty"`
+	CacheKey string           `yaml:"cacheKey" json:"cacheKey"`
+	File     string           `yaml:"file,omitempty" json:"file,omitempty"`
+	Layout   *pkg.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
+	Literal  string           `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
 func (a *VaultAction) Execute(ctx BosunContext) error {
@@ -226,7 +227,7 @@ func (a *VaultAction) Execute(ctx BosunContext) error {
 		return nil
 	}
 
-	err = vaultLayout.Apply(vaultClient)
+	err = vaultLayout.Apply(a.CacheKey, ctx.GetParams().Force, vaultClient)
 	if err != nil {
 		return err
 	}
