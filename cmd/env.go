@@ -15,10 +15,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -88,15 +90,21 @@ var envCmd = addCommand(rootCmd, &cobra.Command{
 	cmd.Flags().Bool(ArgEnvCurrent, false, "Write script for setting current environment.")
 })
 
-var envNameCmd = &cobra.Command{
+var envNameCmd = addCommand(envCmd, &cobra.Command{
 	Use:   "name",
 	Short: "Prints the name of the current environment.",
-	Run: func(cmd *cobra.Command, args []string) {
-		b := mustGetBosun()
-		e := b.GetCurrentEnvironment()
-		fmt.Println(e.Name)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, err := bosun.LoadWorkspaceNoImports(viper.GetString(ArgBosunConfigFile))
+		if err != nil {
+			return err
+		}
+		if config.CurrentEnvironment == "" {
+			return errors.New("no current environment set")
+		}
+		fmt.Println(config.CurrentEnvironment)
+		return nil
 	},
-}
+})
 
 var envListCmd = addCommand(envCmd, &cobra.Command{
 	Use:   "list",
