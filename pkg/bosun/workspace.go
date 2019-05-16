@@ -99,6 +99,8 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 
 func LoadWorkspace(path string) (*Workspace, error) {
 
+	path, _ = filepath.Abs(os.ExpandEnv(path))
+
 	c, err := LoadWorkspaceNoImports(path)
 	if err != nil {
 		return nil, err

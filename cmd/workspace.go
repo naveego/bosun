@@ -17,6 +17,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/oliveagle/jsonpath"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -24,7 +25,6 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 func init() {
@@ -62,35 +62,15 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 		c := b.GetWorkspace()
 		visited := map[string]bool{}
 
-		var visit func(path string, depth int, last bool)
-		visit = func(path string, depth int, last bool) {
-			if file, ok := c.ImportedBosunFiles[path]; ok {
-				symbol := "├─"
-				if last {
-					symbol = "└─"
-				}
-				fmt.Printf("%s%s%s\n", strings.Repeat(" ", depth), symbol, path)
-
-				if visited[path] {
-					return
-				}
-
-				visited[path] = true
-
-				for i, importPath := range file.Imports {
-					if !filepath.IsAbs(importPath) {
-						importPath = filepath.Join(filepath.Dir(path), importPath)
-					}
-					visit(importPath, depth+1, i+1 >= len(file.Imports))
-				}
-			} else {
-
-			}
+		for path := range c.ImportedBosunFiles {
+			visited[path] = true
 		}
 
+		paths := util.SortedKeys(visited)
+
 		fmt.Println(c.Path)
-		for i, path := range c.Imports {
-			visit(path, 0, i+1 == len(c.Imports))
+		for _, path := range paths {
+			fmt.Println(path)
 		}
 
 		return nil
