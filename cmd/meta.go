@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/google/go-github/v20/github"
 	"github.com/hashicorp/go-getter"
@@ -43,9 +42,9 @@ var metaVersionCmd = addCommand(metaCmd, &cobra.Command{
 	Use:   "version",
 	Short: "Shows bosun version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf(`Version: %s\n
-Timestamp: %s\n
-Commit: %s\n
+		fmt.Printf(`Version: %s
+Timestamp: %s
+Commit: %s
 `, Version, Timestamp, Commit)
 	},
 })
@@ -60,10 +59,11 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		var err error
 		if Version == "" {
-			Version, err = pkg.NewCommand("bosun", "app", "version", "bosun").RunOut()
-			if err != nil {
-				return errors.Wrap(err, "could not get version")
+			confirmed := confirm("You are using a locally built version of bosun, are you sure you want to upgrade?")
+			if !confirmed {
+				return nil
 			}
+			Version = "0.0.0-local"
 		}
 
 		currentVersion, err := semver.NewVersion(Version)
@@ -121,7 +121,11 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		var err error
 		if Version == "" {
-			Version = "0.0.0-unset"
+			confirmed := confirm("You are using a locally built version of bosun, are you sure you want to upgrade?")
+			if !confirmed {
+				return nil
+			}
+			Version = "0.0.0-local"
 		}
 
 		currentVersion, err := semver.NewVersion(Version)
@@ -184,8 +188,8 @@ func downloadOtherVersion(release *github.RepositoryRelease) error {
 		return errors.Errorf("could not find an asset with name %q", expectedAssetName)
 	}
 
-	j, _ := json.MarshalIndent(asset, "", "  ")
-	fmt.Println(string(j))
+	// j, _ := json.MarshalIndent(asset, "", "  ")
+	// fmt.Println(string(j))
 
 	tempDir, err := ioutil.TempDir(os.TempDir(), "bosun-upgrade")
 	if err != nil {
