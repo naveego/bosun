@@ -98,7 +98,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		for _, manifest := range settings.Manifest.AppManifests {
 			if !settings.Manifest.DefaultDeployApps[manifest.Name] {
 				if !settings.ForceDeployApps[manifest.Name] {
-					ctx.Log.Debug("Skipping %q because it is not default nor forced.", manifest.Name)
+					ctx.Log.Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
 				}
 			}
 			appManifest := settings.Manifest.AppManifests[manifest.Name]
@@ -135,7 +135,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		deploy.Filtered = map[string]bool{}
 		for name := range appDeploys {
 			if _, ok := deploy.AppDeploys[name]; !ok {
-				ctx.Log.Warnf("App %q was filtered out of the release.")
+				ctx.Log.Warnf("App %q was filtered out of the release.", name)
 				deploy.Filtered[name] = true
 			}
 		}

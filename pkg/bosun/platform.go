@@ -26,6 +26,7 @@ var (
 // The platform contains a history of all releases created for the platform.
 type Platform struct {
 	ConfigShared        `yaml:",inline"`
+	DefaultChartRepo    string                      `yaml:"defaultChartRepo"`
 	ReleaseBranchFormat string                      `yaml:"releaseBranchFormat"`
 	MasterBranch        string                      `yaml:"masterBranch"`
 	ReleaseDirectory    string                      `yaml:"releaseDirectory" json:"releaseDirectory"`

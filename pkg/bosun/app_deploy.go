@@ -6,6 +6,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -63,20 +64,26 @@ type AppDeploy struct {
 	AppDeploySettings AppDeploySettings
 }
 
-// Chart gets the path to the chart.
-func (a *AppDeploy) Chart() string {
-	if a.AppConfig.IsFromManifest {
-		return a.AppConfig.Chart
-	}
+// Chart gets the path to the chart, or the full name of the chart.
+func (a *AppDeploy) Chart(ctx BosunContext) string {
 
-	if a.AppDeploySettings.UseLocalContent {
-		if a.AppConfig.ChartPath != "" {
-			return filepath.Join(filepath.Dir(a.AppConfig.FromPath), a.AppConfig.ChartPath)
+	var chartHandle helm.ChartHandle
+
+	if a.AppConfig.IsFromManifest || a.AppConfig.ChartPath == "" {
+		chartHandle = helm.ChartHandle(a.AppConfig.Chart)
+		if !chartHandle.HasRepo() {
+			p, err := ctx.Bosun.GetCurrentPlatform()
+			if err == nil {
+				defaultChartRepo := p.DefaultChartRepo
+				chartHandle = chartHandle.WithRepo(defaultChartRepo)
+			}
 		}
-		return a.AppConfig.Chart
+		return chartHandle.String()
+
 	}
 
-	return a.AppConfig.Chart
+	return filepath.Join(filepath.Dir(a.AppConfig.FromPath), a.AppConfig.ChartPath)
+
 }
 
 func NewAppDeploy(context BosunContext, settings DeploySettings, manifest *AppManifest) (*AppDeploy, error) {
@@ -521,7 +528,7 @@ func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
 
-	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.Chart()).
+	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.Chart(ctx)).
 		WithArgs(args...).
 		RunOut()
 
@@ -562,14 +569,14 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
-	args := append([]string{"install", "--name", a.Name, a.Chart()}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"install", "--name", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
 	return err
 }
 
 func (a *AppDeploy) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.Name, a.Chart()}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"upgrade", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}

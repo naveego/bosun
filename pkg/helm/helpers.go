@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"os"
@@ -8,6 +9,26 @@ import (
 	"regexp"
 	"strings"
 )
+
+type ChartHandle string
+
+func (c ChartHandle) String() string {
+	return string(c)
+}
+
+func (c ChartHandle) HasRepo() bool {
+	return strings.Contains(string(c), "/")
+}
+func (c ChartHandle) WithRepo(repo string) ChartHandle {
+	segs := strings.Split(string(c), "/")
+	switch len(segs) {
+	case 1:
+		return ChartHandle(fmt.Sprintf("%s/%s", repo, segs[0]))
+	case 2:
+		return ChartHandle(fmt.Sprintf("%s/%s", repo, segs[1]))
+	}
+	panic(fmt.Sprintf("invalid chart %q", string(c)))
+}
 
 // PublishChart publishes the chart at path using qualified name.
 // If force is true, an existing version of the chart will be overwritten.

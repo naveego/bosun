@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+func yamlize(y string) string {
+	return strings.Replace(y, "\t", "  ", -1)
+}
+
 type container struct {
 	DV *CommandValue `yaml:"dv" json:"dv"`
 }

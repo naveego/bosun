@@ -691,9 +691,9 @@ func (a *App) ExportActions(ctx BosunContext) ([]*AppAction, error) {
 
 func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 
-	// App already has a manifest, probably because it was created
-	// from an AppConfig that was obtained from an AppManifest.
 	if a.manifest != nil {
+		// App already has a manifest, probably because it was created
+		// from an AppConfig that was obtained from an AppManifest.
 		return a.manifest, nil
 	}
 
@@ -713,9 +713,6 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 		if err != nil {
 			return errors.Errorf("export actions for manifest: %s", err)
 		}
-
-		// empty chart path to force deployment to use published chart
-		appConfig.ChartPath = ""
 
 		hashes := AppHashes{}
 

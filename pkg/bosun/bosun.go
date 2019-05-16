@@ -67,12 +67,18 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 
 	for _, a := range b.file.Apps {
 		if a != nil {
-			b.addApp(a)
+			_, err := b.addApp(a)
+			if err != nil {
+				return nil, errors.Wrapf(err, "add app %q", a.Name)
+			}
 		}
 	}
 
 	if !params.NoCurrentEnv {
-		b.configureCurrentEnv()
+		err := b.configureCurrentEnv()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return b, nil
@@ -318,7 +324,10 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 
 	var name string
 	for _, m := range imported.Apps {
-		b.addApp(m)
+		_, err = b.addApp(m)
+		if err != nil {
+			return nil, err
+		}
 		name = m.Name
 	}
 
@@ -655,7 +664,7 @@ func (b *Bosun) UsePlatform(name string) error {
 			return nil
 		}
 	}
-	return errors.Errorf("no platform named %q")
+	return errors.Errorf("no platform named %q", name)
 }
 
 func (b *Bosun) UseRelease(name string) error {
