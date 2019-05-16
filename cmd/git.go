@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -87,6 +88,25 @@ func mustGetGithubClient() *github.Client {
 	token, err := getGithubToken()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	return getGithubClient(token)
+
+}
+
+func getMaybeAuthenticatedGithubClient() *github.Client {
+	token, _ := getGithubToken()
+	if token == "" {
+		pkg.Log.Warn("No github token could be found, you may be using up a quota with each request.")
+	}
+
+	return getGithubClient(token)
+}
+
+// getGithubClient gets a github client. If token == "" the client will not be authenticated.
+func getGithubClient(token string) *github.Client {
+	if token == "" {
+		return github.NewClient(http.DefaultClient)
 	}
 
 	ts := oauth2.StaticTokenSource(

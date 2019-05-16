@@ -387,7 +387,7 @@ func confirm(msg string, args ...string) bool {
 
 	label := fmt.Sprintf(msg, args)
 
-	if pkg.IsInteractive() {
+	if !pkg.IsInteractive() {
 		pkg.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
 		return true
 	}
