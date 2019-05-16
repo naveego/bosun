@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var _ = FDescribe("ValueSetMap", func() {
+var _ = Describe("ValueSetMap", func() {
 
 	input := yamlize(
 		// language=yaml

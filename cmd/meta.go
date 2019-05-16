@@ -19,17 +19,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/go-github/v20/github"
+	"github.com/hashicorp/go-getter"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"gopkg.in/inconshreveable/go-update.v0"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/hashicorp/go-getter"
-	"github.com/naveego/bosun/pkg"
-	"github.com/spf13/cobra"
 	"strings"
 	"time"
 )
@@ -74,12 +74,17 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 		}
 		var release *github.RepositoryRelease
 		var upgradeAvailable bool
+		includePreRelease := viper.GetBool(ArgMetaUpgradePreRelease)
 		for _, release = range releases {
+			if !includePreRelease && release.GetPrerelease() {
+				continue
+			}
 			tag := release.GetTagName()
 			tagVersion, err := semver.NewVersion(strings.TrimLeft(tag, "v"))
 			if err != nil {
 				continue
 			}
+
 			if currentVersion.LessThan(tagVersion) {
 				upgradeAvailable = true
 				break
@@ -93,57 +98,130 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 
 		pkg.Log.Infof("Found upgrade: %s", release.GetTagName())
 
-		expectedAssetName := fmt.Sprintf("bosun_%s_%s_%s.tar.gz", release.GetTagName(), runtime.GOOS, runtime.GOARCH)
-		var foundAsset bool
-		var asset github.ReleaseAsset
-		for _, asset = range release.Assets {
-			name := asset.GetName()
-			if name == expectedAssetName {
-				foundAsset = true
-				break
-			}
-		}
-		if !foundAsset {
-			return errors.Errorf("could not find an asset with name %q", expectedAssetName)
-		}
-
-		j, _ := json.MarshalIndent(asset, "", "  ")
-		fmt.Println(string(j))
-
-		tempDir, err := ioutil.TempDir(os.TempDir(), "bosun-upgrade")
+		err = downloadOtherVersion(release)
 		if err != nil {
 			return err
-		}
-		defer os.RemoveAll(tempDir)
-
-		downloadURL := asset.GetBrowserDownloadURL()
-		pkg.Log.Infof("Found upgrade asset, will download from %q to %q", downloadURL, tempDir)
-
-		err = getter.Get(tempDir, "http::"+downloadURL)
-		if err != nil {
-			return errors.Errorf("error downloading from %q: %s", downloadURL, err)
-		}
-
-		executable, err := os.Executable()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
-		newVersion := filepath.Join(tempDir, filepath.Base(executable))
-
-		err, errRecover := update.New().FromFile(newVersion)
-		if err != nil {
-			return err
-		}
-		if errRecover != nil {
-			return errRecover
 		}
 
 		fmt.Println("Upgrade completed.")
 
 		return nil
 	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().BoolP(ArgMetaUpgradePreRelease, "p", false, "Upgrade to pre-release version.")
 })
+
+var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
+	Use:          "downgrade",
+	Short:        "Downgrades bosun to a previous release.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		client := mustGetGithubClient()
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		var err error
+		if Version == "" {
+			Version = "0.0.0-unset"
+		}
+
+		currentVersion, err := semver.NewVersion(Version)
+
+		releases, _, err := client.Repositories.ListReleases(ctx, "naveego", "bosun", nil)
+		if err != nil {
+			return err
+		}
+		var release *github.RepositoryRelease
+		var downgradeAvailable bool
+		includePreRelease := viper.GetBool(ArgMetaUpgradePreRelease)
+		for _, release = range releases {
+			if !includePreRelease && release.GetPrerelease() {
+				continue
+			}
+			tag := release.GetTagName()
+			tagVersion, err := semver.NewVersion(strings.TrimLeft(tag, "v"))
+			if err != nil {
+				continue
+			}
+
+			if tagVersion.LessThan(currentVersion) {
+				downgradeAvailable = true
+				break
+			}
+		}
+
+		if !downgradeAvailable {
+			fmt.Printf("Current version (%s) is the oldest.\n", Version)
+			return nil
+		}
+
+		pkg.Log.Infof("Found downgrade: %s", release.GetTagName())
+
+		err = downloadOtherVersion(release)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("Upgrade completed.")
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().BoolP(ArgMetaUpgradePreRelease, "p", false, "Upgrade to pre-release version.")
+})
+
+func downloadOtherVersion(release *github.RepositoryRelease) error {
+	expectedAssetName := fmt.Sprintf("bosun_%s_%s_%s.tar.gz", release.GetTagName(), runtime.GOOS, runtime.GOARCH)
+	var foundAsset bool
+	var asset github.ReleaseAsset
+	for _, asset = range release.Assets {
+		name := asset.GetName()
+		if name == expectedAssetName {
+			foundAsset = true
+			break
+		}
+	}
+	if !foundAsset {
+		return errors.Errorf("could not find an asset with name %q", expectedAssetName)
+	}
+
+	j, _ := json.MarshalIndent(asset, "", "  ")
+	fmt.Println(string(j))
+
+	tempDir, err := ioutil.TempDir(os.TempDir(), "bosun-upgrade")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	downloadURL := asset.GetBrowserDownloadURL()
+	pkg.Log.Infof("Found upgrade asset, will download from %q to %q", downloadURL, tempDir)
+
+	err = getter.Get(tempDir, "http::"+downloadURL)
+	if err != nil {
+		return errors.Errorf("error downloading from %q: %s", downloadURL, err)
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	newVersion := filepath.Join(tempDir, filepath.Base(executable))
+
+	err, errRecover := update.New().FromFile(newVersion)
+	if err != nil {
+		return err
+	}
+	if errRecover != nil {
+		return errRecover
+	}
+
+	return nil
+}
+
+const (
+	ArgMetaUpgradePreRelease = "pre-release"
+)
 
 func init() {
 	rootCmd.AddCommand(metaUpgradeCmd)
