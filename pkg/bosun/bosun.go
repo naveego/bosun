@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -119,8 +120,22 @@ func (b *Bosun) addApp(config *AppConfig) (*App, error) {
 			}
 			b.repos[app.RepoName] = repo
 			config.Parent.Repos = append(config.Parent.Repos, &repo.RepoConfig)
+
 		}
 		app.Repo = repo
+		var ok bool
+
+		if repo.LocalRepo, ok = b.ws.LocalRepos[app.RepoName]; !ok {
+			localRepoPath, err := git.GetRepoPath(app.FromPath)
+			if err == nil {
+				repo.LocalRepo = &LocalRepo{
+					Name: app.RepoName,
+					Path: localRepoPath,
+				}
+			}
+			b.ws.LocalRepos[app.RepoName] = repo.LocalRepo
+		}
+
 	}
 
 	b.apps[config.Name] = app
