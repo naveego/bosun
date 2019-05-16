@@ -81,7 +81,7 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 					if !filepath.IsAbs(importPath) {
 						importPath = filepath.Join(filepath.Dir(path), importPath)
 					}
-					visit(importPath, depth+1, i + 1 >= len(file.Imports))
+					visit(importPath, depth+1, i+1 >= len(file.Imports))
 				}
 			} else {
 
@@ -90,7 +90,7 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 
 		fmt.Println(c.Path)
 		for i, path := range c.Imports {
-			visit(path, 0, i + 1 == len(c.Imports))
+			visit(path, 0, i+1 == len(c.Imports))
 		}
 
 		return nil
@@ -98,9 +98,9 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 })
 
 var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
-	Use:     "get {JSONPath}",
-	Args: cobra.ExactArgs(1),
-	Short:   "Gets a value in the workspace config. Use a dotted path to reference the value.",
+	Use:   "get {JSONPath}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Gets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		ws := b.GetWorkspace()
@@ -124,9 +124,9 @@ var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
 })
 
 var configSetImports = addCommand(workspaceCmd, &cobra.Command{
-	Use:     "set {path} {value}",
-	Args: cobra.ExactArgs(2),
-	Short:   "Sets a value in the workspace config. Use a dotted path to reference the value.",
+	Use:   "set {path} {value}",
+	Args:  cobra.ExactArgs(2),
+	Short: "Sets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		err := b.SetInWorkspace(args[0], args[1])
@@ -148,7 +148,7 @@ var configDumpCmd = addCommand(workspaceCmd, &cobra.Command{
 			if err != nil {
 				return err
 			}
-			data, _ := yaml.Marshal(app.AppRepoConfig)
+			data, _ := yaml.Marshal(app.AppConfig)
 			fmt.Println(string(data))
 			return nil
 		}

@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"os"
@@ -9,16 +10,38 @@ import (
 	"strings"
 )
 
-func PublishChart(chart string, force bool) error {
-	stat, err := os.Stat(chart)
+type ChartHandle string
+
+func (c ChartHandle) String() string {
+	return string(c)
+}
+
+func (c ChartHandle) HasRepo() bool {
+	return strings.Contains(string(c), "/")
+}
+func (c ChartHandle) WithRepo(repo string) ChartHandle {
+	segs := strings.Split(string(c), "/")
+	switch len(segs) {
+	case 1:
+		return ChartHandle(fmt.Sprintf("%s/%s", repo, segs[0]))
+	case 2:
+		return ChartHandle(fmt.Sprintf("%s/%s", repo, segs[1]))
+	}
+	panic(fmt.Sprintf("invalid chart %q", string(c)))
+}
+
+// PublishChart publishes the chart at path using qualified name.
+// If force is true, an existing version of the chart will be overwritten.
+func PublishChart(qualifiedName, path string, force bool) error {
+	stat, err := os.Stat(path)
 	if !stat.IsDir() {
-		return errors.Errorf("%q is not a directory", chart)
+		return errors.Errorf("%q is not a directory", path)
 	}
 
-	chartName := filepath.Base(chart)
-	log := pkg.Log.WithField("chart", chart).WithField("@chart", chartName)
+	chartName := filepath.Base(path)
+	log := pkg.Log.WithField("chart", path).WithField("@chart", chartName)
 
-	chartText, err := new(pkg.Command).WithExe("helm").WithArgs("inspect", "chart", chart).RunOut()
+	chartText, err := new(pkg.Command).WithExe("helm").WithArgs("inspect", "chart", path).RunOut()
 	if err != nil {
 		return errors.Wrap(err, "Could not inspect chart")
 
@@ -30,7 +53,6 @@ func PublishChart(chart string, force bool) error {
 	thisVersion := thisVersionMatch[1]
 
 	log = log.WithField("@version", thisVersion)
-	qualifiedName := "helm.n5o.black/" + chartName
 
 	repoContent, err := new(pkg.Command).WithExe("helm").WithEnvValue("AWS_DEFAULT_PROFILE", "black").WithArgs("search", qualifiedName, "--versions").RunOut()
 	if err != nil {
@@ -50,7 +72,7 @@ func PublishChart(chart string, force bool) error {
 		return errors.New("version already exists (use --force to overwrite)")
 	}
 
-	out, err := pkg.NewCommand("helm", "package", chart).RunOut()
+	out, err := pkg.NewCommand("helm", "package", path).RunOut()
 	if err != nil {
 		return errors.Wrap(err, "could not create package")
 	}

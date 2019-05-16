@@ -5,6 +5,7 @@ import (
 	"fmt"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
@@ -16,14 +17,14 @@ import (
 )
 
 type BosunContext struct {
-	Bosun           *Bosun
-	Env             *EnvironmentConfig
-	Dir             string
-	Log             *logrus.Entry
-	ReleaseValues   *ReleaseValues
-	Release         *Release
-	AppRepo         *AppRepo
-	AppRelease      *AppRelease
+	Bosun  *Bosun
+	Env    *EnvironmentConfig
+	Dir    string
+	Log    *logrus.Entry
+	Values *PersistableValues
+	// Release         *Deploy
+	AppRepo         *App
+	AppRelease      *AppDeploy
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
 	contextValues   map[string]interface{}
@@ -79,36 +80,37 @@ func (c BosunContext) GetKeyedValue(key string) interface{} {
 	return c.contextValues[key]
 }
 
-func (c BosunContext) WithRelease(r *Release) BosunContext {
-	c.Release = r
-	c.Log = c.Log.WithField("release", r.Name)
-	c.LogLine(1, "[Context] Changed Release.")
-	return c
-}
+//
+// func (c BosunContext) WithRelease(r *Deploy) BosunContext {
+// 	c.Release = r
+// 	c.Log = c.Log.WithField("release", r.Name)
+// 	c.LogLine(1, "[Context] Changed Deploy.")
+// 	return c
+// }
 
-func (c BosunContext) WithAppRepo(a *AppRepo) BosunContext {
+func (c BosunContext) WithApp(a *App) BosunContext {
 	if c.AppRepo == a {
 		return c
 	}
 	c.AppRepo = a
-	c.Log = c.Log.WithField("repo", a.Name)
+	c.Log = c.Log.WithField("app", a.Name)
 	c.Log.Debug("")
-	c.LogLine(1, "[Context] Changed AppRepo.")
+	c.LogLine(1, "[Context] Changed App.")
 	return c.WithDir(a.FromPath)
 }
 
-func (c BosunContext) WithAppRelease(a *AppRelease) BosunContext {
+func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 	if c.AppRelease == a {
 		return c
 	}
 	c.AppRelease = a
-	c.Log = c.Log.WithField("app", a.Name)
-	c.LogLine(1, "[Context] Changed AppRelease.")
-	return c
+	c.Log = c.Log.WithField("appDeploy", a.Name)
+	c.LogLine(1, "[Context] Changed AppDeploy.")
+	return c.WithDir(a.AppConfig.FromPath)
 }
 
-func (c BosunContext) WithReleaseValues(v *ReleaseValues) BosunContext {
-	c.ReleaseValues = v
+func (c BosunContext) WithPersistableValues(v *PersistableValues) BosunContext {
+	c.Values = v
 	c.valuesAsEnvVars = nil
 
 	yml, _ := yaml.Marshal(v.Values)
@@ -119,12 +121,15 @@ func (c BosunContext) WithReleaseValues(v *ReleaseValues) BosunContext {
 
 func (c BosunContext) GetValuesAsEnvVars() map[string]string {
 	if c.valuesAsEnvVars == nil {
-		if c.ReleaseValues != nil {
-			c.valuesAsEnvVars = c.ReleaseValues.Values.ToEnv("BOSUN_")
+		if c.Values != nil {
+			c.valuesAsEnvVars = c.Values.Values.ToEnv("BOSUN_")
 		} else {
-			c.valuesAsEnvVars = map[string]string{
-				EnvCluster: c.Env.Cluster,
-				EnvDomain:  c.Env.Domain,
+			if c.Env != nil {
+
+				c.valuesAsEnvVars = map[string]string{
+					EnvCluster: c.Env.Cluster,
+					EnvDomain:  c.Env.Domain,
+				}
 			}
 		}
 	}
@@ -163,7 +168,10 @@ func (c BosunContext) WithTimeout(timeout time.Duration) BosunContext {
 // It will also expand some environment variables:
 // $ENVIRONMENT and $BOSUN_ENVIRONMENT => Env.Name
 // $DOMAIN AND BOSUN_DOMAIN => Env.Domain
-func (c BosunContext) ResolvePath(path string) string {
+// It will also include any additional expansions provided.
+func (c BosunContext) ResolvePath(path string, expansions ...string) string {
+
+	expMap := util.StringSliceToMap(expansions...)
 	path = os.Expand(path, func(name string) string {
 		switch name {
 		case "ENVIRONMENT", "BOSUN_ENVIRONMENT":
@@ -171,6 +179,9 @@ func (c BosunContext) ResolvePath(path string) string {
 		case "DOMAIN", "BOSUN_DOMAIN":
 			return c.Env.Domain
 		default:
+			if v, ok := expMap[name]; ok {
+				return v
+			}
 			return name
 		}
 	})
@@ -193,8 +204,8 @@ func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
 		Cluster: c.Env.Cluster,
 		Domain:  c.Env.Domain,
 	}
-	if c.ReleaseValues != nil {
-		values := c.ReleaseValues.Values
+	if c.Values != nil {
+		values := c.Values.Values
 		values.MustSetAtPath("cluster", c.Env.Cluster)
 		values.MustSetAtPath("domain", c.Env.Domain)
 		tv.Values = values
@@ -240,33 +251,34 @@ func (c BosunContext) UseMinikubeForDockerIfAvailable() {
 	})
 }
 
-func (c BosunContext) AddAppFileToReleaseBundle(path string, content []byte) (string, error) {
-	app := c.AppRepo
-	if app == nil {
-		return "", errors.New("no app set in context")
-	}
-	release := c.Release
-	if release == nil {
-		return "", errors.New("no release set in context")
-	}
-
-	bundleFilePath := release.AddBundleFile(app.Name, path, content)
-	return bundleFilePath, nil
-}
-
-func (c BosunContext) GetAppFileFromReleaseBundle(path string) ([]byte, string, error) {
-	app := c.AppRepo
-	if app == nil {
-		return nil, "", errors.New("no app set in context")
-	}
-	release := c.Release
-	if release == nil {
-		return nil, "", errors.New("no release set in context")
-	}
-
-	content, bundleFilePath, err := release.GetBundleFileContent(app.Namespace, path)
-	return content, bundleFilePath, err
-}
+//
+// func (c BosunContext) AddAppFileToReleaseBundle(path string, content []byte) (string, error) {
+// 	app := c.AppRepo
+// 	if app == nil {
+// 		return "", errors.New("no app set in context")
+// 	}
+// 	release := c.Release
+// 	if release == nil {
+// 		return "", errors.New("no release set in context")
+// 	}
+//
+// 	bundleFilePath := release.AddBundleFile(app.Name, path, content)
+// 	return bundleFilePath, nil
+// }
+//
+// func (c BosunContext) GetAppFileFromReleaseBundle(path string) ([]byte, string, error) {
+// 	app := c.AppRepo
+// 	if app == nil {
+// 		return nil, "", errors.New("no app set in context")
+// 	}
+// 	release := c.Release
+// 	if release == nil {
+// 		return nil, "", errors.New("no release set in context")
+// 	}
+//
+// 	content, bundleFilePath, err := release.GetBundleFileContent(app.Namespace, path)
+// 	return content, bundleFilePath, err
+// }
 
 func (c BosunContext) IsVerbose() bool {
 	return c.GetParams().Verbose

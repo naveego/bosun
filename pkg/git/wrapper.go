@@ -20,6 +20,17 @@ func NewGitWrapper(pathHint string) (GitWrapper, error) {
 	}, nil
 }
 
+func (g GitWrapper) ExecLines(args ...string) ([]string, error) {
+	text, err := g.Exec(args...)
+	if err != nil {
+		return nil, err
+	}
+	if len(text) == 0 {
+		return nil, nil
+	}
+	return strings.Split(text, "\n"), nil
+}
+
 func (g GitWrapper) Exec(args ...string) (string, error) {
 	args = append([]string{"-C", g.dir}, args...)
 
@@ -37,7 +48,7 @@ func (g GitWrapper) Branch() string {
 
 func (g GitWrapper) Commit() string {
 	o, _ := pkg.NewCommand("git", "-C", g.dir, "log", "--pretty=format:'%h'", "-n", "1").RunOut()
-	return o
+	return strings.Trim(o, "'")
 }
 
 func (g GitWrapper) Tag() string {
@@ -68,7 +79,6 @@ func (g GitWrapper) IsDirty() bool {
 
 	return false
 }
-
 
 func (g GitWrapper) Log(args ...string) ([]string, error) {
 	args = append([]string{"-C", g.dir, "log"}, args...)

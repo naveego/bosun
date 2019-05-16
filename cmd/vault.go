@@ -90,7 +90,9 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			return nil
 		}
 
-		err = vaultLayout.Apply(vaultClient)
+		key := strings.Join(args, "-")
+		force := viper.GetBool(ArgGlobalForce)
+		err = vaultLayout.Apply(key, force, vaultClient)
 
 		return err
 	},
@@ -228,7 +230,6 @@ var vaultJWTCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
 
 		role := viper.GetString(ArgVaultJWTRole)
 		tenant := viper.GetString(ArgVaultJWTTenant)

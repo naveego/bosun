@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
@@ -21,7 +22,6 @@ import (
 	"strings"
 	"time"
 )
-
 
 type VaultLayout struct {
 	Auth      map[string]map[string]interface{}
@@ -49,7 +49,7 @@ type TemplateValues struct {
 
 func NewTemplateValues(args ...string) (TemplateValues, error) {
 	t := TemplateValues{}
-	for _, kv := range args{
+	for _, kv := range args {
 		segs := strings.Split(kv, "=")
 		if len(segs) != 2 {
 			return t, errors.Errorf("invalid values flag value: %q (should be Key=value)", kv)
@@ -124,7 +124,7 @@ func LoadVaultLayoutFromBytes(label string, data []byte, templateArgs TemplateVa
 		return nil, err
 	}
 
-	return  vl, nil
+	return vl, nil
 }
 
 var lineExtractor = regexp.MustCompile(`line (\d+):`)
@@ -151,7 +151,11 @@ func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[str
 	return m
 }
 
-func (v VaultLayout) Apply(client *api.Client) error {
+// Apply applies the vault layout to vault, first checking if
+// it has changed since the last time it was applied based on the
+// hashKey. If hashKey is empty, or force is true, the change detection
+// step is skipped.
+func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error {
 
 	hadErrors := false
 
@@ -160,6 +164,21 @@ func (v VaultLayout) Apply(client *api.Client) error {
 		log.WithField("data", string(b)).Debug("Attempted data.")
 		log.WithError(err).Error()
 		hadErrors = true
+	}
+
+	// create change detection hash
+	hashPath := fmt.Sprintf("naveego-secrets/bosun-vault/%s", hashKey)
+	hash, _ := util.HashToStringViaYaml(v)
+
+	if !force && hashKey != "" {
+		previousHashSecret, err := client.Logical().Read(hashPath)
+		if err == nil && previousHashSecret != nil && previousHashSecret.Data != nil {
+			previousHash := previousHashSecret.Data["hash"].(string)
+			if previousHash == hash {
+				Log.Warnf("Hash of vault layout %q has not changed since last applied. Use the --force flag to force it to be applied again.", hashKey)
+				return nil
+			}
+		}
 	}
 
 	for path, data := range v.Auth {
@@ -251,7 +270,7 @@ func (v VaultLayout) Apply(client *api.Client) error {
 	for path, data := range v.Policies {
 		log := Log.WithField("@type", "Policy").WithField("Path", path)
 		var policy string
-		switch d := data.(type){
+		switch d := data.(type) {
 		case string:
 			policy = d
 		default:
@@ -273,6 +292,16 @@ func (v VaultLayout) Apply(client *api.Client) error {
 
 	if hadErrors {
 		return errors.New("Vault apply failed. See log for errors.")
+	}
+
+	if hashKey != "" {
+		// Store the change detection hash
+		_, err := client.Logical().Write(hashPath, map[string]interface{}{
+			"hash": hash,
+		})
+		if err != nil {
+			Log.WithError(err).Warn("Could not store change detection hash in Vault.")
+		}
 	}
 
 	return nil
@@ -317,7 +346,7 @@ func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
 
 	vaultConfig := api.DefaultConfig()
 	vaultConfig.Address = vaultAddr
-	vaultConfig.Timeout = 60*time.Second
+	vaultConfig.Timeout = 60 * time.Second
 	vaultConfig.MaxRetries = 6
 
 	err := vaultConfig.ReadEnvironment()
@@ -478,8 +507,7 @@ func CreateWrappedAppRoleToken(vaultClient *api.Client, appRole string) (string,
 	return wrappedToken, nil
 }
 
-
-func cleanUpMap(m interface{}) interface{}{
+func cleanUpMap(m interface{}) interface{} {
 	switch t := m.(type) {
 	case map[string]interface{}:
 		for k, child := range t {

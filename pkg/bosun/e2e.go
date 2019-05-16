@@ -144,7 +144,7 @@ func (s *E2ESuite) LoadTests(ctx BosunContext) error {
 func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) {
 
 	runID := xid.New().String()
-	releaseValues := &ReleaseValues{
+	releaseValues := &PersistableValues{
 		Values: Values{
 			"e2e": Values{
 				"runID": runID,
@@ -154,7 +154,7 @@ func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) 
 
 	ctx = ctx.WithDir(s.FromPath).
 		WithLogField("suite", s.Name).
-		WithReleaseValues(releaseValues)
+		WithPersistableValues(releaseValues)
 
 	err := s.LoadTests(ctx)
 	if err != nil {

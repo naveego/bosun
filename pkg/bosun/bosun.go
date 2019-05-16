@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -22,13 +24,14 @@ type Bosun struct {
 	params               Parameters
 	ws                   *Workspace
 	file                 *File
-	repos                map[string]*AppRepo
-	release              *Release
+	apps                 map[string]*App
 	vaultClient          *vault.Client
 	env                  *EnvironmentConfig
 	clusterAvailable     *bool
 	log                  *logrus.Entry
 	environmentConfirmed *bool
+	repos                map[string]*Repo
+	platform             *Platform
 }
 
 type Parameters struct {
@@ -48,8 +51,9 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 		params: params,
 		ws:     ws,
 		file:   ws.MergedBosunFile,
-		repos:  make(map[string]*AppRepo),
+		apps:   make(map[string]*App),
 		log:    pkg.Log,
+		repos:  map[string]*Repo{},
 	}
 
 	if params.DryRun {
@@ -58,47 +62,112 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	}
 
 	for _, dep := range b.file.AppRefs {
-		b.repos[dep.Name] = NewRepoFromDependency(dep)
+		b.apps[dep.Name] = NewAppFromDependency(dep)
 	}
 
 	for _, a := range b.file.Apps {
 		if a != nil {
-			b.addApp(a)
+			_, err := b.addApp(a)
+			if err != nil {
+				return nil, errors.Wrapf(err, "add app %q", a.Name)
+			}
 		}
 	}
 
 	if !params.NoCurrentEnv {
-		b.configureCurrentEnv()
+		err := b.configureCurrentEnv()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return b, nil
 }
 
-func (b *Bosun) addApp(config *AppRepoConfig) *AppRepo {
+func (b *Bosun) addApp(config *AppConfig) (*App, error) {
+	if config.Name == "" {
+		return nil, errors.New("cannot accept an app with no name")
+	}
 	app := NewApp(config)
-	b.repos[config.Name] = app
-
-	for _, d2 := range app.DependsOn {
-		if _, ok := b.repos[d2.Name]; !ok {
-			b.repos[d2.Name] = NewRepoFromDependency(&d2)
+	if app.RepoName == "" {
+		repos := b.GetRepos()
+		for _, r := range repos {
+			if r.LocalRepo != nil {
+				if strings.HasPrefix(app.FromPath, r.LocalRepo.Path) {
+					// This app is part of this repo, whether the app knows it or not.
+					app.RepoName = r.Name
+					app.Repo = r
+					r.Apps[app.Name] = config
+				}
+			}
 		}
 	}
 
-	return app
+	if app.RepoName != "" {
+		// find or add repo for app
+		repo, err := b.GetRepo(app.RepoName)
+		if err != nil {
+			repo = &Repo{
+				Apps: map[string]*AppConfig{
+					app.Name: config,
+				},
+				RepoConfig: RepoConfig{
+					ConfigShared: ConfigShared{
+						Name: app.Name,
+					},
+				},
+			}
+			b.repos[app.RepoName] = repo
+			config.Parent.Repos = append(config.Parent.Repos, &repo.RepoConfig)
+		}
+		app.Repo = repo
+	}
+
+	b.apps[config.Name] = app
+
+	// for _, d2 := range app.DependsOn {
+	// 	if _, ok := b.apps[d2.Name]; !ok {
+	// 		b.apps[d2.Name] = NewAppFromDependency(&d2)
+	// 	}
+	// }
+
+	return app, nil
 }
 
-func (b *Bosun) GetAppsSortedByName() ReposSortedByName {
-	var ms ReposSortedByName
+func (b *Bosun) GetAppsSortedByName() []*App {
+	var ms AppsSortedByName
 
-	for _, x := range b.repos {
-		ms = append(ms, x)
+	apps := b.GetApps()
+
+	for _, x := range apps {
+		if x.Name != "" {
+			ms = append(ms, x)
+		}
 	}
 	sort.Sort(ms)
 	return ms
 }
 
-func (b *Bosun) GetApps() map[string]*AppRepo {
-	return b.repos
+func (b *Bosun) GetApps() map[string]*App {
+	out := map[string]*App{}
+
+	for _, app := range b.apps {
+		out[app.Name] = app
+	}
+
+	p, err := b.GetCurrentPlatform()
+	if err == nil {
+		master, err := p.GetMasterManifest()
+		if err == nil {
+			for appName, appManifest := range master.AppManifests {
+				if _, ok := out[appName]; !ok {
+					out[appName] = NewApp(appManifest.AppConfig)
+				}
+			}
+		}
+	}
+
+	return out
 }
 
 func (b *Bosun) GetAppDesiredStates() map[string]AppState {
@@ -113,6 +182,39 @@ func (b *Bosun) GetAppDependencyMap() map[string][]string {
 		}
 	}
 	return deps
+}
+
+func (b *Bosun) GetAppDependencies(name string) ([]string, error) {
+
+	visited := map[string]bool{}
+
+	return b.getAppDependencies(name, visited)
+}
+
+func (b *Bosun) getAppDependencies(name string, visited map[string]bool) ([]string, error) {
+	visited[name] = true
+
+	app, err := b.GetApp(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []string
+
+	for _, dep := range app.DependsOn {
+		if visited[dep.Name] {
+			continue
+		}
+		visited[dep.Name] = true
+		out = append(out, dep.Name)
+
+		children, err := b.getAppDependencies(dep.Name, visited)
+		if err != nil {
+			return nil, errors.Errorf("%s:%s", name, err)
+		}
+		out = append(out, children...)
+	}
+	return out, nil
 }
 
 func (b *Bosun) GetVaultClient() (*vault.Client, error) {
@@ -149,16 +251,62 @@ func (b *Bosun) GetScript(name string) (*Script, error) {
 	return nil, errors.Errorf("no script found with name %q", name)
 }
 
-func (b *Bosun) GetApp(name string) (*AppRepo, error) {
-	m, ok := b.repos[name]
+func (b *Bosun) GetAppWithRepo(name string) (*App, error) {
+	m, ok := b.apps[name]
 	if !ok {
-		return nil, errors.Errorf("no service named %q", name)
+		return nil, errors.Errorf("no app with name %q has been cloned", name)
 	}
 	return m, nil
 }
 
-func (b *Bosun) GetOrAddAppForPath(path string) (*AppRepo, error) {
-	for _, m := range b.repos {
+func (b *Bosun) GetApp(name string) (*App, error) {
+	m, ok := b.apps[name]
+	if !ok {
+
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return nil, errors.Errorf("no app named %q, and no platform available for finding latest release", name)
+		}
+
+		manifest, err := p.GetLatestAppManifestByName(name)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewApp(manifest.AppConfig), nil
+	}
+	return m, nil
+}
+
+func (b *Bosun) ReloadApp(name string) (*App, error) {
+	app, ok := b.apps[name]
+	if !ok {
+		return nil, errors.Errorf("no app named %q", name)
+	}
+
+	file := &File{
+		AppRefs: map[string]*Dependency{},
+	}
+
+	err := pkg.LoadYaml(app.FromPath, &file)
+	if err != nil {
+		return nil, err
+	}
+
+	file.SetFromPath(app.FromPath)
+
+	for _, updatedApp := range file.Apps {
+		if updatedApp.Name == name {
+			app, err = b.addApp(updatedApp)
+			return app, err
+		}
+	}
+
+	return nil, errors.Errorf("could not find app in source file at %q", app.FromPath)
+}
+
+func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
+	for _, m := range b.apps {
 		if m.FromPath == path {
 			return m, nil
 		}
@@ -176,7 +324,10 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*AppRepo, error) {
 
 	var name string
 	for _, m := range imported.Apps {
-		b.addApp(m)
+		_, err = b.addApp(m)
+		if err != nil {
+			return nil, err
+		}
 		name = m.Name
 	}
 
@@ -354,6 +505,71 @@ func (b *Bosun) GetEnvironments() []*EnvironmentConfig {
 	return b.file.Environments
 }
 
+func (b *Bosun) GetValueSet(name string) (*ValueSet, error) {
+	for _, vs := range b.file.ValueSets {
+		if vs.Name == name {
+			return vs, nil
+		}
+	}
+	return nil, errors.Errorf("no valueSet named %q", name)
+}
+
+func (b *Bosun) GetValueSetSlice(names []string) ([]ValueSet, error) {
+	var out []ValueSet
+	want := map[string]bool{}
+	for _, name := range names {
+		want[name] = false
+	}
+
+	for _, vs := range b.file.ValueSets {
+		if _, wanted := want[vs.Name]; wanted {
+			out = append(out, *vs)
+			want[vs.Name] = true
+		}
+	}
+
+	for name, found := range want {
+		if !found {
+			return nil, errors.Errorf("wanted value set %q was not found", name)
+		}
+	}
+
+	return out, nil
+}
+
+func (b *Bosun) GetValueSetsForEnv(env *EnvironmentConfig) ([]*ValueSet, error) {
+	vss := map[string]*ValueSet{}
+	for _, vs := range b.file.ValueSets {
+		vss[vs.Name] = vs
+	}
+
+	var out []*ValueSet
+	for _, name := range env.ValueSets {
+		vs, ok := vss[name]
+		if !ok {
+			return nil, errors.Errorf("no valueSet with name %q", name)
+		}
+		out = append(out, vs)
+	}
+
+	mirror.Sort(out, func(a, b *ValueSet) bool {
+		return a.Name < b.Name
+	})
+
+	return out, nil
+}
+
+func (b *Bosun) GetValueSets() []*ValueSet {
+	out := make([]*ValueSet, len(b.file.ValueSets))
+	copy(out, b.file.ValueSets)
+
+	mirror.Sort(out, func(a, b *ValueSet) bool {
+		return a.Name < b.Name
+	})
+
+	return out
+}
+
 func (b *Bosun) NewContext() BosunContext {
 
 	dir, _ := os.Getwd()
@@ -366,60 +582,103 @@ func (b *Bosun) NewContext() BosunContext {
 
 }
 
-func (b *Bosun) GetCurrentRelease() (*Release, error) {
+func (b *Bosun) GetCurrentReleaseManifest(loadAppManifests bool) (*ReleaseManifest, error) {
 	var err error
-	if b.release == nil {
-		if b.ws.Release == "" {
-			return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
+	if b.ws.CurrentRelease == "" {
+		return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
+	}
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return nil, err
+	}
+
+	rm, err := p.GetReleaseManifestByName(b.ws.CurrentRelease, loadAppManifests)
+	return rm, err
+}
+
+func (b *Bosun) GetCurrentReleaseMetadata() (*ReleaseMetadata, error) {
+	var err error
+	if b.ws.CurrentRelease == "" {
+		return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
+	}
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return nil, err
+	}
+
+	rm, err := p.GetReleaseMetadataByName(b.ws.CurrentRelease)
+	return rm, err
+}
+
+func (b *Bosun) GetCurrentPlatform() (*Platform, error) {
+	if b.platform != nil {
+		return b.platform, nil
+	}
+
+	switch len(b.file.Platforms) {
+	case 0:
+		return nil, errors.New("no platforms found")
+	case 1:
+		b.platform = b.file.Platforms[0]
+		return b.platform, nil
+	default:
+		if b.ws.CurrentPlatform == "" {
+			return nil, errors.New("no current platform selected; use `bosun ws use-platform` to set it")
 		}
-		if b.ws.Release != "" {
-			for _, r := range b.file.Releases {
-				if r.Name == b.ws.Release {
-					b.release, err = NewRelease(b.NewContext(), r)
-					if err != nil {
-						return nil, errors.Errorf("creating release from config %q: %s", r.Name, err)
-					}
-				}
+		for _, p := range b.file.Platforms {
+			if p.Name == b.ws.CurrentPlatform {
+				b.platform = p
+				return b.platform, nil
 			}
 		}
+		return nil, errors.Errorf("current platform %q is not found", b.ws.CurrentPlatform)
 	}
-	if b.release == nil {
-		return nil, errors.Errorf("current release %q could not be found, call `bosun release use {name}` to set current release", b.ws.Release)
-	}
-
-	return b.release, nil
 }
 
-func (b *Bosun) GetReleaseConfigs() []*ReleaseConfig {
-	var releases []*ReleaseConfig
-	for _, r := range b.file.Releases {
-		releases = append(releases, r)
-	}
-	return releases
-}
-
-func (b *Bosun) GetReleaseConfig(name string) (*ReleaseConfig, error) {
-	for _, r := range b.file.Releases {
-		if r.Name == name {
-			return r, nil
+func (b *Bosun) GetPlatform(name string) (*Platform, error) {
+	for _, p := range b.file.Platforms {
+		if p.Name == name {
+			b.platform = p
+			return b.platform, nil
 		}
 	}
-	return nil, errors.Errorf("no release with name %q", name)
+	return nil, errors.Errorf("current platform %q is not found", b.ws.CurrentPlatform)
+}
+
+func (b *Bosun) GetPlatforms() ([]*Platform, error) {
+	out := make([]*Platform, len(b.file.Platforms))
+	copy(out, b.file.Platforms)
+	mirror.Sort(out, func(a, b *Platform) bool {
+		return a.Name < b.Name
+	})
+
+	return out, nil
+}
+
+func (b *Bosun) UsePlatform(name string) error {
+	for _, p := range b.file.Platforms {
+		if p.Name == name {
+			b.ws.CurrentPlatform = name
+			return nil
+		}
+	}
+	return errors.Errorf("no platform named %q", name)
 }
 
 func (b *Bosun) UseRelease(name string) error {
 
-	rc, err := b.GetReleaseConfig(name)
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return err
+	}
+	_, err = p.GetReleaseMetadataByName(name)
 	if err != nil {
 		return err
 	}
 
-	b.release, err = NewRelease(b.NewContext(), rc)
-	if err != nil {
-		return err
-	}
-
-	b.ws.Release = name
+	b.ws.CurrentRelease = name
 	return nil
 }
 
@@ -437,15 +696,60 @@ func (b *Bosun) TidyWorkspace() {
 	log := ctx.Log
 	var importMap = map[string]struct{}{}
 
+	for _, repo := range b.GetRepos() {
+		if repo.CheckCloned() != nil {
+			for _, root := range b.ws.GitRoots {
+				clonedFolder := filepath.Join(root, repo.Name)
+				if _, err := os.Stat(clonedFolder); err != nil {
+					if os.IsNotExist(err) {
+						log.Debugf("Repo %s not found at %s", repo.Name, clonedFolder)
+					} else {
+						log.Warnf("Error looking for app %s: %s", repo.Name, err)
+					}
+				}
+				bosunFilePath := filepath.Join(clonedFolder, "bosun.yaml")
+				if _, err := os.Stat(bosunFilePath); err != nil {
+					if os.IsNotExist(err) {
+						log.Warnf("Repo %s seems to be cloned to %s, but there is no bosun.yaml file in that folder", repo.Name, clonedFolder)
+					} else {
+						log.Warnf("Error looking for bosun.yaml in repo %s: %s", repo.Name, err)
+					}
+				} else {
+					log.Infof("Found cloned repo %s at %s, will add to known local repos.", repo.Name, bosunFilePath)
+					localRepo := &LocalRepo{
+						Name: repo.Name,
+						Path: clonedFolder,
+					}
+					b.AddLocalRepo(localRepo)
+					break
+				}
+			}
+		}
+	}
+
 	for _, app := range b.GetApps() {
 		if app.IsRepoCloned() {
 			importMap[app.FromPath] = struct{}{}
 			log.Debugf("App %s found at %s", app.Name, app.FromPath)
+
+			repo, err := b.GetRepo(app.RepoName)
+			if err != nil || repo.LocalRepo == nil {
+				log.Infof("App %s is cloned but its repo is not registered. Registering repo %s...", app.Name, app.RepoName)
+				path, err := app.GetLocalRepoPath()
+				if err != nil {
+					log.WithError(err).Errorf("Error getting local repo path for %s.", app.Name)
+				}
+				b.AddLocalRepo(&LocalRepo{
+					Name: app.RepoName,
+					Path: path,
+				})
+			}
+
 			continue
 		}
-		log.Debugf("Found app with no cloned repo: %s from %s", app.Name, app.Repo)
+		log.Debugf("Found app with no cloned repo: %s from %s", app.Name, app.RepoName)
 		for _, root := range b.ws.GitRoots {
-			clonedFolder := filepath.Join(root, app.Repo)
+			clonedFolder := filepath.Join(root, app.RepoName)
 			if _, err := os.Stat(clonedFolder); err != nil {
 				if os.IsNotExist(err) {
 					log.Debugf("App %s not found at %s", app.Name, clonedFolder)
@@ -466,6 +770,7 @@ func (b *Bosun) TidyWorkspace() {
 				break
 			}
 		}
+
 	}
 
 	for _, importPath := range b.ws.Imports {
@@ -543,13 +848,13 @@ func (b *Bosun) ConfirmEnvironment() error {
 	return errors.Errorf("The %q environment is protected, so you must confirm that you want to perform this action.\n(you can do this by setting the --confirm-env to the name of the environment)", b.env.Name)
 }
 
-func (b *Bosun) GetTools() []ToolDef {
+func (b *Bosun) GetTools() []*ToolDef {
 	return b.ws.MergedBosunFile.Tools
 }
 func (b *Bosun) GetTool(name string) (ToolDef, error) {
 	for _, tool := range b.ws.MergedBosunFile.Tools {
 		if tool.Name == name {
-			return tool, nil
+			return *tool, nil
 		}
 	}
 	return ToolDef{}, errors.Errorf("no tool named %q is known", name)
@@ -603,4 +908,67 @@ func (b *Bosun) GetTestSuite(name string) (*E2ESuite, error) {
 	}
 
 	return nil, errors.Errorf("no test suite found with name %q", name)
+}
+
+func (b *Bosun) GetRepo(name string) (*Repo, error) {
+	repos := b.GetRepos()
+	for _, repo := range repos {
+		if repo.Name == name {
+			return repo, nil
+		}
+	}
+	return nil, errors.Errorf("no repo with name %q", name)
+}
+
+func (b *Bosun) GetRepos() []*Repo {
+
+	if len(b.repos) == 0 {
+		b.repos = map[string]*Repo{}
+		for _, repoConfig := range b.ws.MergedBosunFile.Repos {
+			for _, app := range b.ws.MergedBosunFile.Apps {
+				if app.RepoName == repoConfig.Name {
+					var repo *Repo
+					var ok bool
+					if repo, ok = b.repos[repoConfig.Name]; !ok {
+						repo = &Repo{
+							RepoConfig: *repoConfig,
+							Apps:       map[string]*AppConfig{},
+						}
+						if lr, ok := b.ws.LocalRepos[repo.Name]; ok {
+							repo.LocalRepo = lr
+						}
+						b.repos[repo.Name] = repo
+					}
+					repo.Apps[app.Name] = app
+				}
+			}
+		}
+
+	}
+
+	var names []string
+	for name := range b.repos {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	var out []*Repo
+
+	for _, name := range names {
+		out = append(out, b.repos[name])
+	}
+
+	return out
+}
+
+func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
+	if b.ws.LocalRepos == nil {
+		b.ws.LocalRepos = map[string]*LocalRepo{}
+	}
+	b.ws.LocalRepos[localRepo.Name] = localRepo
+
+	if repo, ok := b.repos[localRepo.Name]; ok {
+		repo.LocalRepo = localRepo
+	}
 }

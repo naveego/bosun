@@ -5,7 +5,8 @@ import (
 	"github.com/kyokomi/emoji"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"strings"
+	"os"
+	"path/filepath"
 )
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
@@ -15,45 +16,43 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		viper.SetDefault(ArgAppAll, true)
+		viper.SetDefault(ArgFilteringAll, true)
 
 		b := mustGetBosun()
-		apps, err := getAppRepos(b, args)
-		if err != nil {
-			return err
-		}
 
-		gitRoots := b.GetGitRoots()
-		var trimGitRoot = func(p string) string {
-			for _, gitRoot := range gitRoots {
-				p = strings.Replace(p, gitRoot, "$GITROOT", -1)
-			}
-			return p
-		}
+		apps := getFilterParams(b, args).GetApps()
+
+		wd, _ := os.Getwd()
+
+		ctx := b.NewContext()
 
 		t := tabby.New()
-		t.AddHeader("APP", "CLONED", "VERSION", "PATH or REPO", "BRANCH", "IMPORTED BY")
+		t.AddHeader("APP", "CLONED", "VERSION", "REPO", "PATH", "BRANCH")
 		for _, app := range apps {
-			var isCloned, pathrepo, branch, version, importedBy string
+			var isCloned, repo, path, branch, version string
+			repo = app.RepoName
 
 			if app.IsRepoCloned() {
-				isCloned = emoji.Sprint( ":heavy_check_mark:")
-				pathrepo = trimGitRoot(app.FromPath)
+				isCloned = emoji.Sprint(":heavy_check_mark:")
 				if app.BranchForRelease {
-					branch = app.GetBranch()
+					branch = app.GetBranchName().String()
 				} else {
 					branch = ""
 				}
-				version = app.Version
+				version = app.Version.String()
 			} else {
 				isCloned = emoji.Sprint("    :x:")
-				pathrepo = app.Repo
 				branch = ""
-				version = app.Version
-				importedBy = trimGitRoot(app.FromPath)
+				version = app.Version.String()
 			}
 
-			t.AddLine(app.Name, isCloned, version, pathrepo, branch, importedBy)
+			if app.IsFromManifest {
+				manifest, _ := app.GetManifest(ctx)
+				path, _ = filepath.Rel(wd, manifest.AppConfig.FromPath)
+			} else {
+				path, _ = filepath.Rel(wd, app.AppConfig.FromPath)
+			}
+			t.AddLine(app.Name, isCloned, version, repo, path, branch)
 		}
 
 		t.Print()
@@ -69,13 +68,10 @@ var appListActionsCmd = addCommand(appListCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		viper.SetDefault(ArgAppAll, true)
+		viper.SetDefault(ArgFilteringAll, true)
 
 		b := mustGetBosun()
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoFiltersGetCurrent: true})
-		if err != nil {
-			return err
-		}
+		apps := getFilterParams(b, args).GetApps()
 
 		t := tabby.New()
 		t.AddHeader("APP", "ACTION", "WHEN", "WHERE", "DESCRIPTION")
