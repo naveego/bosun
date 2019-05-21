@@ -43,6 +43,10 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		proxy.HostIPInMinikube = ""
 	}
 
+	if r.LocalRepos == nil {
+		r.LocalRepos = map[string]*LocalRepo{}
+	}
+
 	*r = Workspace(proxy)
 	return nil
 }
