@@ -83,7 +83,7 @@ var toolsInstallCmd = addCommand(toolsCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		tools := b.GetTools()
-		var tool bosun.ToolDef
+		var tool *bosun.ToolDef
 		var ok bool
 		name := args[0]
 		for _, tool = range tools {
@@ -108,7 +108,3 @@ var toolsInstallCmd = addCommand(toolsCmd, &cobra.Command{
 		return err
 	},
 })
-
-func init() {
-	rootCmd.AddCommand(metaUpgradeCmd)
-}

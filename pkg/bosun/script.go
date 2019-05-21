@@ -116,16 +116,16 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 	}
 
 	if len(s.Params) > 0 {
-		if ctx.ReleaseValues == nil {
+		if ctx.Values == nil {
 			return errors.New("script has params but no release values provided")
 		}
-		releaseValues := *ctx.ReleaseValues
+		releaseValues := *ctx.Values
 
 		for _, param := range s.Params {
 			_, ok := releaseValues.Values[param.Name]
 			if !ok {
 				if param.DefaultValue == nil {
-					return errors.Errorf("script param %q does not have a value set")
+					return errors.Errorf("script param %q does not have a value set", param.Name)
 				}
 				releaseValues.Values[param.Name] = param.DefaultValue
 			}

@@ -16,12 +16,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/aryann/difflib"
 	"github.com/cheynewallace/tabby"
-	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
@@ -29,33 +28,32 @@ import (
 	"github.com/spf13/viper"
 	"io/ioutil"
 	"os"
-	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
 	ArgSvcToggleLocalhost = "localhost"
 	ArgSvcToggleMinikube  = "minikube"
-	ArgAppAll             = "all"
-	ArgAppLabels          = "labels"
+	ArgFilteringAll       = "all"
+	ArgFilteringLabels    = "labels"
 	ArgAppListDiff        = "diff"
 	ArgAppListSkipActual  = "skip-actual"
-	ArgAppDeploySet       = "set"
+	ArgAppValueSet        = "value-sets"
+	ArgAppSet             = "set"
 	ArgAppDeployDeps      = "deploy-deps"
 	ArgAppDeletePurge     = "purge"
 	ArgAppCloneDir        = "dir"
-	ArgInclude            = "include"
-	ArgExclude            = "exclude"
+	ArgFilteringInclude   = "include"
+	ArgFilteringExclude   = "exclude"
 )
 
 func init() {
-	appCmd.PersistentFlags().BoolP(ArgAppAll, "a", false, "Apply to all known microservices.")
-	appCmd.PersistentFlags().StringSliceP(ArgAppLabels, "i", []string{}, "Apply to microservices with the provided labels.")
-	appCmd.PersistentFlags().StringSlice(ArgInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
-	appCmd.PersistentFlags().StringSlice(ArgExclude, []string{}, `Don't include apps which match the provided selectors.".`)
+	appCmd.PersistentFlags().BoolP(ArgFilteringAll, "a", false, "Apply to all known microservices.")
+	appCmd.PersistentFlags().StringSliceP(ArgFilteringLabels, "i", []string{}, "Apply to microservices with the provided labels.")
+	appCmd.PersistentFlags().StringSlice(ArgFilteringInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
+	appCmd.PersistentFlags().StringSlice(ArgFilteringExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 
 	appCmd.AddCommand(appToggleCmd)
 	appToggleCmd.Flags().Bool(ArgSvcToggleLocalhost, false, "Run service at localhost.")
@@ -81,7 +79,7 @@ func init() {
 var appCmd = &cobra.Command{
 	Use:     "app",
 	Aliases: []string{"apps", "a"},
-	Short:   "AppRepo commands",
+	Short:   "App commands",
 }
 
 var _ = addCommand(appCmd, configImportCmd)
@@ -142,7 +140,7 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 		}
 
 		if wantsTag {
-			_, err = g.Exec("tag", app.Version)
+			_, err = g.Exec("tag", app.Version.String())
 			if err != nil {
 				return err
 			}
@@ -159,7 +157,7 @@ const (
 )
 
 // appBump is the implementation of appBumpCmd
-func appBump(b *bosun.Bosun, app *bosun.AppRepo, bump string) error {
+func appBump(b *bosun.Bosun, app *bosun.App, bump string) error {
 	ctx := b.NewContext()
 
 	err := app.BumpVersion(ctx, bump)
@@ -167,9 +165,9 @@ func appBump(b *bosun.Bosun, app *bosun.AppRepo, bump string) error {
 		return err
 	}
 
-	err = app.Fragment.Save()
+	err = app.Parent.Save()
 	if err == nil {
-		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Fragment.FromPath)
+		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Parent.FromPath)
 	}
 	return err
 }
@@ -184,7 +182,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		apps := mustGetAppRepos(b, args)
+		apps := mustGetAppsIncludeCurrent(b, args)
 		env := b.GetCurrentEnvironment()
 		ip := pkg.NewCommand("minikube", "ip").MustOut()
 
@@ -250,7 +248,7 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := mustGetBosun()
-		apps := mustGetAppRepos(b, args)
+		apps := mustGetAppsIncludeCurrent(b, args)
 		env := b.GetCurrentEnvironment()
 
 		toRemove := map[string]bool{}
@@ -327,34 +325,43 @@ var appAcceptActualCmd = &cobra.Command{
 
 		b := mustGetBosun()
 
-		apps, err := getAppRepos(b, args)
+		apps, err := getAppsIncludeCurrent(b, args)
 		if err != nil {
 			return err
 		}
 
 		p := progressbar.New(len(apps))
+		ctx := b.NewContext()
 
+		deploySettings := bosun.DeploySettings{
+			Environment: ctx.Env,
+		}
 		for _, app := range apps {
 			if !app.HasChart() {
 				continue
 			}
-			ctx := b.NewContext().WithAppRepo(app)
-			appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
+
+			ctx = ctx.WithApp(app)
+			appManifest, err := app.GetManifest(ctx)
 			if err != nil {
-				ctx.Log.WithError(err).Error("Error creating app release for current state analysis.")
+				return errors.Wrapf(err, "get manifest for %q", app.Name)
+			}
+			appDeploy, err := bosun.NewAppDeploy(ctx, deploySettings, appManifest)
+			if err != nil {
+				ctx.Log.WithError(err).Error("Error creating app deploy for current state analysis.")
 				continue
 			}
-			ctx = ctx.WithAppRelease(appRelease)
+			ctx = ctx.WithAppDeploy(appDeploy)
 
 			log := ctx.Log
 			log.Debug("Getting actual state...")
-			err = appRelease.LoadActualState(ctx, false)
+			err = appDeploy.LoadActualState(ctx, false)
 			p.Add(1)
 			if err != nil {
 				log.WithError(err).Error("Could not get actual state.")
 				return err
 			}
-			b.SetDesiredState(app.Name, appRelease.ActualState)
+			b.SetDesiredState(app.Name, appDeploy.ActualState)
 			log.Debug("Updated.")
 		}
 
@@ -372,10 +379,10 @@ var appStatusCmd = &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 
 		b := mustGetBosun()
-
 		env := b.GetCurrentEnvironment()
-
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{ifNoMatchGetAll: true})
+		f := getFilterParams(b, args)
+		chain := f.Chain().Then().Including(filter.FilterMatchAll())
+		apps, err := f.GetAppsChain(chain)
 		if err != nil {
 			return err
 		}
@@ -385,7 +392,7 @@ var appStatusCmd = &cobra.Command{
 		diff := viper.GetBool(ArgAppListDiff)
 		skipActual := viper.GetBool(ArgAppListSkipActual)
 
-		appReleases, err := getAppReleasesFromApps(b, apps)
+		appReleases, err := getAppDeploysFromApps(b, apps)
 		if err != nil {
 			return err
 		}
@@ -400,7 +407,7 @@ var appStatusCmd = &cobra.Command{
 				appRelease := appReleases[i]
 				go func() {
 					defer wg.Done()
-					ctx := b.NewContext().WithAppRelease(appRelease)
+					ctx := b.NewContext().WithAppDeploy(appRelease)
 					err := appRelease.LoadActualState(ctx, false)
 					if err != nil {
 						ctx.Log.WithError(err).Fatal()
@@ -446,7 +453,7 @@ var appStatusCmd = &cobra.Command{
 				fmtDesiredActual(desired.Status, actual.Status),
 				routing,
 				fmtTableEntry(diffStatus),
-				fmtTableEntry(fmt.Sprintf("%#v", m.AppRepo.AppLabels)))
+				fmtTableEntry(fmt.Sprintf("%#v", m.AppConfig.Labels)))
 		}
 
 		t.Print()
@@ -489,11 +496,11 @@ var appToggleCmd = &cobra.Command{
 			return errors.New("Environment must be set to 'red' to toggle services.")
 		}
 
-		repos, err := getAppRepos(b, args)
+		repos, err := getAppsIncludeCurrent(b, args)
 		if err != nil {
 			return err
 		}
-		apps, err := getAppReleasesFromApps(b, repos)
+		apps, err := getAppDeploysFromApps(b, repos)
 		if err != nil {
 			return err
 		}
@@ -502,7 +509,7 @@ var appToggleCmd = &cobra.Command{
 
 		for _, app := range apps {
 
-			ctx = ctx.WithAppRelease(app)
+			ctx = ctx.WithAppDeploy(app)
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
 			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
 			if wantsLocalhost {
@@ -562,31 +569,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		valueOverrides := map[string]string{}
-		for _, set := range viper.GetStringSlice(ArgAppDeploySet) {
-
-			segs := strings.Split(set, "=")
-			if len(segs) != 2 {
-				return errors.Errorf("invalid set (should be key=value): %q", set)
-			}
-			valueOverrides[segs[0]] = segs[1]
-		}
-
-		ipp := strings.ToUpper(viper.GetString(AppDeployPullPolicy))
-		if strings.HasPrefix(ipp, "A") {
-			ipp = "Always"
-		} else if strings.HasPrefix(ipp, "I") {
-			ipp = "IfNotPresent"
-		}
-		if ipp != "" {
-			valueOverrides["imagePullPolicy"] = ipp
-		}
-
-		valueOverrides["tag"] = viper.GetString(AppDeployTag)
-
-		b := mustGetBosun(bosun.Parameters{
-			ValueOverrides: valueOverrides,
-		})
+		b := mustGetBosun()
 
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err
@@ -594,41 +577,53 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		apps, err := getAppReposOpt(b, args, getAppReposOptions{})
+		apps := mustGetAppsIncludeCurrent(b, args)
+
+		// fmt.Println("App Configs:")
+		// for _, app := range apps {
+		// 	fmt.Println(MustYaml(app.AppConfig))
+		// }
+
+		valueSets, err := getValueSetSlice(b, b.GetCurrentEnvironment())
 		if err != nil {
 			return err
 		}
-
-		ctx.Log.Debugf("AppReleaseConfigs: \n%s\n", MustYaml(apps))
-
-		ctx.Log.Debug("Creating transient release...")
-		rc := &bosun.ReleaseConfig{
-			Name: time.Now().Format(time.RFC3339),
+		includeDeps := viper.GetBool(ArgAppDeployDeps)
+		deploySettings := bosun.DeploySettings{
+			Environment:        ctx.Env,
+			ValueSets:          valueSets,
+			UseLocalContent:    true,
+			IgnoreDependencies: !includeDeps,
+			Apps:               map[string]*bosun.App{},
 		}
-		r, err := bosun.NewRelease(ctx, rc)
-		if err != nil {
-			return err
-		}
-
-		r.Transient = true
 
 		for _, app := range apps {
 			ctx.Log.WithField("app", app.Name).Debug("Including in release.")
-			err = r.IncludeApp(ctx, app)
-			if err != nil {
-				return errors.Errorf("error including app %q in release: %s", app.Name, err)
+			deploySettings.Apps[app.Name] = app
+			if includeDeps {
+				ctx.Log.Debug("Including dependencies of all apps...")
+				deps, err := b.GetAppDependencies(app.Name)
+				if err != nil {
+					return errors.Wrapf(err, "getting deps for %q", app.Name)
+				}
+				for _, depName := range deps {
+					if _, ok := deploySettings.Apps[depName]; !ok {
+
+						depApp, err := b.GetApp(depName)
+						if err != nil {
+							return errors.Wrapf(err, "getting app for dep %q", app.Name)
+						}
+						deploySettings.Apps[depApp.Name] = depApp
+					}
+				}
 			}
 		}
-
-		if viper.GetBool(ArgAppDeployDeps) {
-			ctx.Log.Debug("Including dependencies of all apps...")
-			err = r.IncludeDependencies(ctx)
-			if err != nil {
-				return errors.Wrap(err, "include dependencies")
-			}
+		r, err := bosun.NewDeploy(ctx, deploySettings)
+		if err != nil {
+			return err
 		}
 
-		ctx.Log.Debugf("Created transient release to define deploy: \n%s\n", r.Name)
+		ctx.Log.Debugf("Created deploy")
 
 		err = r.Deploy(ctx)
 
@@ -641,16 +636,10 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 		return err
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().StringP(AppDeployPullPolicy, "p", "", "Set the imagePullPolicy in the chart. (A = Always, I = IfNotPresent)")
-	cmd.Flags().StringP(AppDeployTag, "t", "latest", "Set the tag used in the chart.")
 	cmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
-	cmd.Flags().StringSlice(ArgAppDeploySet, []string{}, "Additional values to pass to helm for this deploy.")
+	cmd.Flags().StringSliceP(ArgAppValueSet, "v", []string{}, "Additional value sets to include in this deploy.")
+	cmd.Flags().StringSliceP(ArgAppSet, "s", []string{}, "Value overrides to set in this deploy, as key=value pairs.")
 })
-
-const (
-	AppDeployPullPolicy = "pull-policy"
-	AppDeployTag        = "tag"
-)
 
 var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "recycle [name] [name...]",
@@ -670,18 +659,18 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		releases := mustGetAppReleases(b, args)
+		releases := getFilterParams(b, args).IncludeCurrent().MustGetAppDeploys()
 
 		pullLatest := viper.GetBool(ArgAppRecyclePullLatest)
 
 		for _, appRelease := range releases {
-			ctx := ctx.WithAppRelease(appRelease)
+			ctx := ctx.WithAppDeploy(appRelease)
 
 			if env.IsLocal && pullLatest {
 				ctx.Log.Info("Pulling latest version of image(s) on minikube...")
-				for _, imageName := range appRelease.ImageNames {
-					image := fmt.Sprintf("%s:latest", imageName)
-					err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", image)).RunE()
+				for _, image := range appRelease.AppConfig.GetImages() {
+					imageName := image.GetFullNameWithTag("latest")
+					err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
 					if err != nil {
 						return err
 					}
@@ -717,7 +706,7 @@ var appDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		appReleases := mustGetAppReleases(b, args)
+		appReleases := getFilterParams(b, args).IncludeCurrent().MustGetAppDeploys()
 
 		ctx := b.NewContext()
 
@@ -750,68 +739,70 @@ var appRunCmd = &cobra.Command{
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		viper.BindPFlags(cmd.Flags())
-
-		b := mustGetBosun()
-		c := b.GetCurrentEnvironment()
-
-		if err := b.ConfirmEnvironment(); err != nil {
-			return err
-		}
-
-		if c.Name != "red" {
-			return errors.New("Environment must be set to 'red' to run apps.")
-		}
-
-		app := mustGetApp(b, args)
-
-		run, err := app.GetRunCommand()
-		if err != nil {
-			return err
-		}
-
-		ctx := b.NewContext()
-
-		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
-		if err != nil {
-			return err
-		}
-
-		appRelease.DesiredState.Routing = bosun.RoutingLocalhost
-		appRelease.DesiredState.Status = bosun.StatusDeployed
-		b.SetDesiredState(app.Name, appRelease.DesiredState)
-		err = appRelease.Reconcile(ctx)
-		if err != nil {
-			return err
-		}
-
-		err = b.Save()
-
-		done := make(chan struct{})
-		s := make(chan os.Signal)
-		signal.Notify(s, os.Kill, os.Interrupt)
-		log := pkg.Log.WithField("cmd", run.Args)
-
-		go func() {
-			log.Info("Running child process.")
-			err = run.Run()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-s:
-			log.Info("Killing child process.")
-			run.Process.Signal(os.Interrupt)
-		}
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			log.Warn("Child process did not exit when signalled.")
-			run.Process.Kill()
-		}
-
-		return err
+		return errors.New("this needs to be refactored to use new deploy paradigm")
+		//
+		// viper.BindPFlags(cmd.Flags())
+		//
+		// b := mustGetBosun()
+		// c := b.GetCurrentEnvironment()
+		//
+		// if err := b.ConfirmEnvironment(); err != nil {
+		// 	return err
+		// }
+		//
+		// if c.Name != "red" {
+		// 	return errors.New("Environment must be set to 'red' to run apps.")
+		// }
+		//
+		// app := mustGetApp(b, args)
+		//
+		// run, err := app.GetRunCommand()
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// ctx := b.NewContext()
+		//
+		// appRelease, err := bosun.NewAppReleaseFromApp(ctx, app)
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// appRelease.DesiredState.Routing = bosun.RoutingLocalhost
+		// appRelease.DesiredState.Status = bosun.StatusDeployed
+		// b.SetDesiredState(app.Name, appRelease.DesiredState)
+		// err = appRelease.Reconcile(ctx)
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// err = b.Save()
+		//
+		// done := make(chan struct{})
+		// s := make(chan os.Signal)
+		// signal.Notify(s, os.Kill, os.Interrupt)
+		// log := pkg.Log.WithField("cmd", run.Args)
+		//
+		// go func() {
+		// 	log.Info("Running child process.")
+		// 	err = run.Run()
+		// 	close(done)
+		// }()
+		//
+		// select {
+		// case <-done:
+		// case <-s:
+		// 	log.Info("Killing child process.")
+		// 	run.Process.Signal(os.Interrupt)
+		// }
+		// select {
+		// case <-done:
+		// case <-time.After(3 * time.Second):
+		// 	log.Warn("Child process did not exit when signalled.")
+		// 	run.Process.Kill()
+		// }
+		//
+		// return err
 	},
 }
 
@@ -874,7 +865,7 @@ var appBuildImageCmd = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := mustGetBosun()
 			app := mustGetApp(b, args)
-			ctx := b.NewContext().WithAppRepo(app)
+			ctx := b.NewContext().WithApp(app)
 			err := app.BuildImages(ctx)
 			return err
 		},
@@ -883,7 +874,7 @@ var appBuildImageCmd = addCommand(
 var appPullCmd = addCommand(
 	appCmd,
 	&cobra.Command{
-		Use:           "pull [app]",
+		Use:           "pull [app] [app...]",
 		Short:         "Pulls the repo for the app.",
 		Long:          "If app is not provided, the current directory is used.",
 		SilenceUsage:  true,
@@ -891,26 +882,31 @@ var appPullCmd = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := mustGetBosun()
 			ctx := b.NewContext()
-			apps, err := getAppRepos(b, args)
+			apps, err := getAppsIncludeCurrent(b, args)
 			if err != nil {
 				return err
 			}
-			repos := map[string]*bosun.AppRepo{}
+			repos := map[string]*bosun.Repo{}
 			for _, app := range apps {
-				repos[app.Repo] = app
+				if app.Repo == nil {
+					ctx.Log.Errorf("no repo identified for app %q", app.Name)
+				}
+				repos[app.RepoName] = app.Repo
 			}
 
-			for _, app := range repos {
-				log := ctx.Log.WithField("repo", app.Repo)
+			var lastFailure error
+			for _, repo := range repos {
+				log := ctx.Log.WithField("repo", repo.Name)
 				log.Info("Pulling...")
-				err := app.PullRepo(ctx)
+				err = repo.Pull(ctx)
 				if err != nil {
+					lastFailure = err
 					log.WithError(err).Error("Error pulling.")
 				} else {
 					log.Info("Pulled.")
 				}
 			}
-			return err
+			return lastFailure
 		},
 	})
 
@@ -930,7 +926,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		var app *bosun.AppRepo
+		var app *bosun.App
 		var scriptName string
 		switch len(args) {
 		case 1:
@@ -957,18 +953,12 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			return errors.Errorf("no script named %q in app %q\navailable scripts:\n-%s", scriptName, app.Name, strings.Join(scriptNames, "\n-"))
 		}
 
-		ctx := b.NewContext().WithDir(app.FromPath)
-
-		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
+		ctx := b.NewContext()
+		values, err := getResolvedValuesFromApp(b, app)
 		if err != nil {
 			return err
 		}
-
-		values, err := appRelease.GetReleaseValues(ctx)
-		if err != nil {
-			return err
-		}
-		ctx = ctx.WithReleaseValues(values)
+		ctx = ctx.WithPersistableValues(values)
 
 		err = script.Execute(ctx, scriptStepsSlice...)
 
@@ -994,7 +984,7 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		var app *bosun.AppRepo
+		var app *bosun.App
 		var actionName string
 		switch len(args) {
 		case 1:
@@ -1024,16 +1014,11 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, app)
+		values, err := getResolvedValuesFromApp(b, app)
 		if err != nil {
 			return err
 		}
-
-		values, err := appRelease.GetReleaseValues(ctx)
-		if err != nil {
-			return err
-		}
-		ctx = ctx.WithReleaseValues(values)
+		ctx = ctx.WithPersistableValues(values)
 
 		err = action.Execute(ctx)
 
@@ -1083,159 +1068,34 @@ var appCloneCmd = addCommand(
 				b = mustGetBosun()
 			}
 
-			apps, err := getAppRepos(b, args)
+			apps, err := getAppsIncludeCurrent(b, args)
 			if err != nil {
 				return err
 			}
 
 			ctx := b.NewContext()
+			var lastErr error
 			for _, app := range apps {
 				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
 
 				if app.IsRepoCloned() {
-					pkg.Log.Infof("AppRepo already cloned to %q", app.FromPath)
+					pkg.Log.Infof("App already cloned to %q", app.FromPath)
 					continue
 				}
 				log.Info("Cloning...")
 
-				err := app.CloneRepo(ctx, dir)
+				err = app.Repo.Clone(ctx, dir)
 				if err != nil {
+					lastErr = err
 					log.WithError(err).Error("Error cloning.")
 				} else {
 					log.Info("Cloned.")
 				}
 			}
 
-			return err
+			return lastErr
 		},
 	},
 	func(cmd *cobra.Command) {
 		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into.")
 	})
-
-var appDiffCmd = addCommand(
-	appCmd,
-	&cobra.Command{
-		Use:   "diff {app} [release/]{env} [release]/{env}",
-		Short: "Reports the differences between the values for an app in two scenarios.",
-		Long:  `If the release part of the scenario is not provided, a transient release will be created and used instead.`,
-		Example: `This command will show the differences between the values deployed 
-to the blue environment in release 2.4.2 and the current values for the
-green environment:
-
-diff go-between 2.4.2/blue green
-`,
-		Args:          cobra.ExactArgs(3),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			b := mustGetBosun()
-			app := mustGetApp(b, []string{args[0]})
-
-			env1 := args[1]
-			env2 := args[2]
-
-			getValuesForEnv := func(scenario string) (string, error) {
-
-				segs := strings.Split(scenario, "/")
-				var releaseName, envName string
-				var appRelease *bosun.AppRelease
-				switch len(segs) {
-				case 1:
-					envName = segs[0]
-				case 2:
-					releaseName = segs[0]
-					envName = segs[1]
-				default:
-					return "", errors.Errorf("invalid scenario %q", scenario)
-				}
-
-				env, err := b.GetEnvironment(envName)
-				if err != nil {
-					return "", errors.Wrap(err, "environment")
-				}
-				ctx := b.NewContext().WithEnv(env)
-
-				if releaseName != "" {
-					releaseConfig, err := b.GetReleaseConfig(releaseName)
-					release, err := bosun.NewRelease(ctx, releaseConfig)
-					if err != nil {
-						return "", err
-					}
-					appReleaseConfig, ok := release.AppReleaseConfigs[app.Name]
-					if !ok {
-						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
-					}
-					ctx = ctx.WithRelease(release)
-					appRelease, err = bosun.NewAppRelease(ctx, appReleaseConfig)
-					if err != nil {
-						return "", err
-					}
-				} else {
-					rc := &bosun.ReleaseConfig{
-						Name: time.Now().Format(time.RFC3339),
-					}
-					r, err := bosun.NewRelease(ctx, rc)
-					if err != nil {
-						return "", err
-					}
-					r.Transient = true
-					ctx = ctx.WithRelease(r)
-					config, err := app.GetAppReleaseConfig(ctx)
-					if err != nil {
-						return "", errors.Wrap(err, "make app release config")
-					}
-
-					appRelease, err = bosun.NewAppRelease(ctx, config)
-					if err != nil {
-						return "", errors.Wrap(err, "make app release")
-					}
-				}
-
-				values, err := appRelease.GetReleaseValues(ctx)
-				if err != nil {
-					return "", errors.Wrap(err, "get release values")
-				}
-
-				valueYaml, err := values.Values.YAML()
-				if err != nil {
-					return "", errors.Wrap(err, "get release values yaml")
-				}
-
-				return valueYaml, nil
-			}
-
-			env1yaml, err := getValuesForEnv(env1)
-			if err != nil {
-				return errors.Errorf("error for env1 %q: %s", env1, err)
-			}
-
-			env2yaml, err := getValuesForEnv(env2)
-			if err != nil {
-				return errors.Errorf("error for env2 %q: %s", env2, err)
-			}
-
-			env1lines := strings.Split(env1yaml, "\n")
-			env2lines := strings.Split(env2yaml, "\n")
-			diffs := difflib.Diff(env1lines, env2lines)
-
-			for _, diff := range diffs {
-				fmt.Println(renderDiff(diff))
-			}
-
-			return nil
-
-		},
-	})
-
-func renderDiff(diff difflib.DiffRecord) string {
-	switch diff.Delta {
-	case difflib.Common:
-		return fmt.Sprintf("  %s", diff.Payload)
-	case difflib.LeftOnly:
-		return color.RedString("- %s", diff.Payload)
-	case difflib.RightOnly:
-		return color.GreenString("+ %s", diff.Payload)
-	}
-	panic(fmt.Sprintf("invalid delta %v", diff.Delta))
-}

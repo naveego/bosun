@@ -7,10 +7,11 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"log"
@@ -28,15 +29,6 @@ const (
 	OutputYaml  = "yaml"
 )
 
-func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
-	for _, fn := range flags {
-		fn(child)
-	}
-	parent.AddCommand(child)
-
-	return child
-}
-
 func mustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 	b, err := getBosun(optionalParams...)
 	if err != nil {
@@ -46,7 +38,7 @@ func mustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 	envFromEnv := os.Getenv(bosun.EnvEnvironment)
 	envFromConfig := b.GetCurrentEnvironment().Name
 	if envFromConfig != envFromEnv {
-		colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)",
+		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)",
 			envFromConfig,
 			bosun.EnvEnvironment,
 			envFromEnv)
@@ -55,37 +47,44 @@ func mustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 	return b
 }
 
-func mustGetCurrentRelease(b *bosun.Bosun) *bosun.Release {
-	r, err := b.GetCurrentRelease()
+func mustGetCurrentRelease(b *bosun.Bosun) *bosun.ReleaseManifest {
+	r, err := b.GetCurrentReleaseManifest(true)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	whitelist := viper.GetStringSlice(ArgInclude)
-	if len(whitelist) > 0 {
-		toReleaseSet := map[string]bool{}
-		for _, r := range whitelist {
-			toReleaseSet[r] = true
-		}
-		for k, app := range r.AppReleases {
-			if !toReleaseSet[k] {
-				pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgInclude)
-				app.DesiredState.Status = bosun.StatusUnchanged
-				app.Excluded = true
-			}
-		}
-	}
-
-	blacklist := viper.GetStringSlice(ArgExclude)
-	for _, name := range blacklist {
-		pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgExclude)
-		if app, ok := r.AppReleases[name]; ok {
-			app.DesiredState.Status = bosun.StatusUnchanged
-			app.Excluded = true
-		}
-	}
-
 	return r
+
+	// r, err := b.GetCurrentRelease()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	//
+	// whitelist := viper.GetStringSlice(ArgFilteringInclude)
+	// if len(whitelist) > 0 {
+	// 	toReleaseSet := map[string]bool{}
+	// 	for _, r := range whitelist {
+	// 		toReleaseSet[r] = true
+	// 	}
+	// 	for k, app := range r.AppReleases {
+	// 		if !toReleaseSet[k] {
+	// 			pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgFilteringInclude)
+	// 			app.DesiredState.Status = bosun.StatusUnchanged
+	// 			app.Excluded = true
+	// 		}
+	// 	}
+	// }
+	//
+	// blacklist := viper.GetStringSlice(ArgFilteringExclude)
+	// for _, name := range blacklist {
+	// 	pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgFilteringExclude)
+	// 	if app, ok := r.AppReleases[name]; ok {
+	// 		app.DesiredState.Status = bosun.StatusUnchanged
+	// 		app.Excluded = true
+	// 	}
+	// }
+	//
+	// return r
 }
 
 func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
@@ -120,33 +119,9 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	return bosun.New(params, config)
 }
 
-func getAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) (*bosun.AppRepo, error) {
-	apps, err := getAppReposOpt(b, names, options)
-	if err != nil {
-		return nil, err
-	}
-	if len(apps) == 0 {
-		return nil, errors.Errorf("no apps matched %v", names)
-	}
-	if len(apps) > 1 {
-		if len(names) > 0 {
-			return nil, errors.Errorf("%d apps match %v", len(apps), names)
-		}
-		return nil, errors.Errorf("%d apps found, please provide a filter", len(apps))
-	}
-	return apps[0], nil
-}
-
-func mustGetAppOpt(b *bosun.Bosun, names []string, options getAppReposOptions) *bosun.AppRepo {
-	app, err := getAppOpt(b, names, options)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return app
-}
-
-func mustGetApp(b *bosun.Bosun, names []string) *bosun.AppRepo {
-	return mustGetAppOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
+func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {
+	f := getFilterParams(b, names).IncludeCurrent()
+	return f.MustGetApp()
 }
 
 func MustYaml(i interface{}) string {
@@ -157,17 +132,38 @@ func MustYaml(i interface{}) string {
 	return string(b)
 }
 
-func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.AppRepo) ([]*bosun.AppRelease, error) {
-	var appReleases []*bosun.AppRelease
+func getAppDeploysFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppDeploy, error) {
+	var appReleases []*bosun.AppDeploy
 
-	for _, appRepo := range repos {
-		if !appRepo.HasChart() {
+	for _, app := range repos {
+		if !app.HasChart() {
 			continue
 		}
 		ctx := b.NewContext()
-		appRelease, err := bosun.NewAppReleaseFromRepo(ctx, appRepo)
+		ctx.Log.Debug("Creating transient release...")
+		valueSetNames := util.ConcatStrings(ctx.Env.ValueSets, viper.GetStringSlice(ArgAppValueSet))
+		valueSets, err := b.GetValueSetSlice(valueSetNames)
 		if err != nil {
-			return nil, errors.Errorf("error creating release for repo %q: %s", appRepo.Name, err)
+			return nil, err
+		}
+
+		includeDeps := viper.GetBool(ArgAppDeployDeps)
+		deploySettings := bosun.DeploySettings{
+			Environment:        ctx.Env,
+			ValueSets:          valueSets,
+			UseLocalContent:    true,
+			IgnoreDependencies: !includeDeps,
+			Apps:               map[string]*bosun.App{},
+		}
+
+		manifest, err := app.GetManifest(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		appRelease, err := bosun.NewAppDeploy(ctx, deploySettings, manifest)
+		if err != nil {
+			return nil, errors.Errorf("error creating release for repo %q: %s", app.Name, err)
 		}
 		appReleases = append(appReleases, appRelease)
 	}
@@ -175,8 +171,115 @@ func getAppReleasesFromApps(b *bosun.Bosun, repos []*bosun.AppRepo) ([]*bosun.Ap
 	return appReleases, nil
 }
 
-func mustGetAppRepos(b *bosun.Bosun, names []string) []*bosun.AppRepo {
-	repos, err := getAppRepos(b, names)
+type FilterParams struct {
+	b       *bosun.Bosun
+	Names   []string
+	All     bool
+	Include []string
+	Exclude []string
+	Labels  []string
+}
+
+func (f FilterParams) IsEmpty() bool {
+	return len(f.Names) == 0 && len(f.Include) == 0 && len(f.Exclude) == 0 && len(f.Labels) == 0
+}
+
+func getFilterParams(b *bosun.Bosun, names []string) FilterParams {
+	p := FilterParams{
+		b:     b,
+		Names: names,
+		All:   viper.GetBool(ArgFilteringAll),
+	}
+	p.Labels = viper.GetStringSlice(ArgFilteringLabels)
+	p.Include = viper.GetStringSlice(ArgFilteringInclude)
+	p.Exclude = viper.GetStringSlice(ArgFilteringExclude)
+
+	return p
+}
+
+// ApplyToDeploySettings will set a filter on the deploy settings if
+// the filter is not empty.
+func (f FilterParams) ApplyToDeploySettings(d *bosun.DeploySettings) {
+	if !f.IsEmpty() {
+		chain := f.Chain()
+		d.Filter = &chain
+	}
+}
+
+func (f FilterParams) IncludeCurrent() FilterParams {
+	if f.IsEmpty() {
+		app, err := getCurrentApp(f.b)
+		if err == nil && app != nil {
+			f.Names = []string{app.Name}
+		}
+	}
+	return f
+}
+
+func (f FilterParams) Chain() filter.Chain {
+	var include []filter.Filter
+	var exclude []filter.Filter
+
+	if viper.GetBool(ArgFilteringAll) {
+		include = append(include, filter.FilterMatchAll())
+	} else if len(f.Names) > 0 {
+		for _, name := range f.Names {
+			include = append(include, filter.MustParse(bosun.LabelName, "==", name))
+		}
+	} else {
+		labels := append(viper.GetStringSlice(ArgFilteringLabels), viper.GetStringSlice(ArgFilteringInclude)...)
+		for _, label := range labels {
+			include = append(include, filter.MustParse(label))
+		}
+	}
+
+	if len(f.Exclude) > 0 {
+		for _, label := range f.Exclude {
+			exclude = append(exclude, filter.MustParse(label))
+		}
+	}
+
+	chain := filter.Try().Including(include...).Excluding(exclude...)
+	return chain
+}
+
+func (f FilterParams) MustGetApp() *bosun.App {
+	app, err := f.GetApp()
+	if err != nil {
+		panic(err)
+	}
+	return app
+}
+
+func (f FilterParams) GetApp() (*bosun.App, error) {
+	apps := f.b.GetAppsSortedByName()
+
+	result, err := f.Chain().ToGetExactly(1).FromErr(apps)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.([]*bosun.App)[0], nil
+}
+
+func (f FilterParams) GetApps() []*bosun.App {
+	apps := f.b.GetAppsSortedByName()
+
+	result := f.Chain().From(apps)
+
+	return result.([]*bosun.App)
+}
+
+func (f FilterParams) GetAppsChain(chain filter.Chain) ([]*bosun.App, error) {
+	apps := f.b.GetAppsSortedByName()
+
+	result, err := chain.FromErr(apps)
+
+	return result.([]*bosun.App), err
+}
+
+func mustGetAppsIncludeCurrent(b *bosun.Bosun, names []string) []*bosun.App {
+	repos, err := getAppsIncludeCurrent(b, names)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -186,88 +289,25 @@ func mustGetAppRepos(b *bosun.Bosun, names []string) []*bosun.AppRepo {
 	return repos
 }
 
-func mustGetAppReleases(b *bosun.Bosun, names []string) []*bosun.AppRelease {
-	repos, err := getAppRepos(b, names)
+func (f FilterParams) GetAppDeploys() ([]*bosun.AppDeploy, error) {
+	apps := f.GetApps()
+
+	releases, err := getAppDeploysFromApps(f.b, apps)
+	return releases, err
+}
+
+func (f FilterParams) MustGetAppDeploys() []*bosun.AppDeploy {
+	appReleases, err := f.GetAppDeploys()
 	if err != nil {
 		log.Fatal(err)
 	}
-	releases, err := getAppReleasesFromApps(b, repos)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return releases
+	return appReleases
 }
 
-type getAppReposOptions struct {
-	ifNoFiltersGetAll     bool
-	ifNoFiltersGetCurrent bool
-	ifNoMatchGetAll       bool
-	ifNoMatchGetCurrent   bool
-}
-
-// gets one or more apps matching names, or if names
-// are valid file paths, imports the file at that path.
-// if names is empty, tries to find a apps starting
-// from the current directory
-func getAppReposOpt(b *bosun.Bosun, names []string, opt getAppReposOptions) ([]*bosun.AppRepo, error) {
-
-	apps := b.GetAppsSortedByName()
-
-	for i := range names {
-		name := names[i]
-		if strings.HasSuffix(name, "yaml") {
-			if _, err := os.Stat(name); err == nil {
-				name, _ = filepath.Abs(name)
-			}
-		}
-		names[i] = name
-	}
-
-	includeFilters := getIncludeFilters(names)
-	excludeFilters := getExcludeFilters()
-
-	if opt.ifNoFiltersGetAll && len(includeFilters) == 0 && len(excludeFilters) == 0 {
-		return apps, nil
-	}
-
-	if opt.ifNoFiltersGetCurrent && len(includeFilters) == 0 && len(excludeFilters) == 0 {
-		app, err := getCurrentApp(b)
-		if err != nil {
-			return nil, errors.Wrap(err, "no filters provided but current directory is not associated with an app")
-		}
-		return []*bosun.AppRepo{app}, nil
-	}
-
-	filtered := bosun.ApplyFilter(apps, true, includeFilters).(bosun.ReposSortedByName)
-	filtered = bosun.ApplyFilter(filtered, false, excludeFilters).(bosun.ReposSortedByName)
-
-	if len(filtered) > 0 {
-		return filtered, nil
-	}
-
-	if opt.ifNoMatchGetAll {
-		return apps, nil
-	}
-
-	var err error
-
-	if opt.ifNoMatchGetCurrent {
-		var app *bosun.AppRepo
-		app, err = getCurrentApp(b)
-		if err != nil {
-			return nil, err
-		}
-		apps = append(apps, app)
-		return apps, nil
-	}
-
-	return nil, errors.New("no apps matched")
-}
-
-func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
+func getCurrentApp(b *bosun.Bosun) (*bosun.App, error) {
 	var bosunFile string
 	var err error
-	var app *bosun.AppRepo
+	var app *bosun.App
 
 	wd, _ := os.Getwd()
 	bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
@@ -283,7 +323,7 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 	bosunFileDir := filepath.Dir(bosunFile)
 
 	var appsUnderDirNames []string
-	var appsUnderDir []*bosun.AppRepo
+	var appsUnderDir []*bosun.App
 	for _, app = range b.GetApps() {
 		if app.IsRepoCloned() && strings.HasPrefix(app.FromPath, bosunFileDir) {
 			appsUnderDirNames = append(appsUnderDirNames, app.Name)
@@ -291,6 +331,10 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 		}
 	}
 	sort.Strings(appsUnderDirNames)
+
+	if len(appsUnderDir) == 0 {
+		return nil, errors.Errorf("no apps found under current path %s", wd)
+	}
 
 	if len(appsUnderDir) == 1 {
 		return appsUnderDir[0], nil
@@ -313,33 +357,24 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.AppRepo, error) {
 // are valid file paths, imports the file at that path.
 // if names is empty, tries to find a apps starting
 // from the current directory
-func getAppRepos(b *bosun.Bosun, names []string) ([]*bosun.AppRepo, error) {
-	return getAppReposOpt(b, names, getAppReposOptions{ifNoMatchGetCurrent: true})
+func getAppsIncludeCurrent(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
+	f := getFilterParams(b, names).IncludeCurrent()
+	return f.GetApps(), nil
 }
 
-func getIncludeFilters(names []string) []bosun.Filter {
-	if viper.GetBool(ArgAppAll) {
-		return bosun.FilterMatchAll()
+// gets all known apps, without attempting to discover new ones
+func mustGetKnownApps(b *bosun.Bosun, names []string) []*bosun.App {
+	apps, err := getKnownApps(b, names)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	out := bosun.FiltersFromNames(names...)
-
-	labels := viper.GetStringSlice(ArgAppLabels)
-	if len(labels) > 0 {
-		out = append(out, bosun.FiltersFromAppLabels(labels...)...)
-	}
-
-	conditions := viper.GetStringSlice(ArgInclude)
-	if len(conditions) > 0 {
-		out = append(out, bosun.FiltersFromArgs(conditions...)...)
-	}
-
-	return out
+	return apps
 }
 
-func getExcludeFilters() []bosun.Filter {
-	conditions := viper.GetStringSlice(ArgExclude)
-	return bosun.FiltersFromArgs(conditions...)
+// gets all known apps
+func getKnownApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
+	f := getFilterParams(b, names)
+	return f.GetApps(), nil
 }
 
 func checkExecutableDependency(exe string) {
@@ -352,7 +387,7 @@ func confirm(msg string, args ...string) bool {
 
 	label := fmt.Sprintf(msg, args)
 
-	if pkg.IsInteractive() {
+	if !pkg.IsInteractive() {
 		pkg.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
 		return true
 	}
@@ -515,52 +550,6 @@ var (
 	colorOK     = color.New(color.FgGreen, color.Bold)
 )
 
-func filterApps(apps []*bosun.AppRepo) []*bosun.AppRepo {
-	var out []*bosun.AppRepo
-	for _, app := range apps {
-		if passesConditions(app) {
-			out = append(out, app)
-		}
-	}
-	if len(apps) > 0 && len(out) == 0 && len(viper.GetStringSlice(ArgInclude)) > 0 {
-		color.Yellow("All apps excluded by conditions.")
-		os.Exit(0)
-	}
-	return out
-}
-
-func passesConditions(app *bosun.AppRepo) bool {
-	conditions := viper.GetStringSlice(ArgInclude)
-	if len(conditions) == 0 {
-		return true
-	}
-
-	for _, cs := range conditions {
-
-		segs := strings.Split(cs, "=")
-		if len(segs) != 2 {
-			check(errors.Errorf("invalid condition %q (should be x=y)", cs))
-		}
-		kind, arg := segs[0], segs[1]
-
-		switch kind {
-		case "branch":
-			re, err := regexp.Compile(arg)
-			check(errors.Wrapf(err, "branch must be regex (was %q)", arg))
-			branch := app.GetBranch()
-			if !re.MatchString(branch) {
-				color.Yellow("Skipping command for app %s because it did not match condition %q", app.Name, cs)
-				return false
-			}
-			return true
-		default:
-			check(errors.Errorf("invalid condition %q (should be branch=y)", cs))
-		}
-	}
-
-	return true
-}
-
 func printOutput(out interface{}, columns ...string) error {
 
 	format := viper.GetString(ArgGlobalOutput)
@@ -579,53 +568,67 @@ func printOutput(out interface{}, columns ...string) error {
 		enc := yaml.NewEncoder(os.Stdout)
 		return enc.Encode(out)
 	case "t":
-		segs := strings.Split(format, "=")
-		if len(segs) > 1 {
-			columns = strings.Split(segs[1], ",")
-		}
-		j, err := json.Marshal(out)
-		if err != nil {
-			return err
-		}
-		var mapSlice []map[string]json.RawMessage
-		err = json.Unmarshal(j, &mapSlice)
-		if err != nil {
-			return errors.Wrapf(err, "only slices of structs or maps can be rendered as a table, but got %T", out)
-		}
-		if len(mapSlice) == 0 {
-			return nil
-		}
 
-		first := mapSlice[0]
-
-		var keys []string
-		if len(columns) > 0 {
-			keys = columns
-		} else {
-			for k := range first {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-		}
 		var header []string
-		for _, k := range keys {
-			header = append(header, k)
+		var rows [][]string
+
+		switch t := out.(type) {
+		case util.Tabler:
+			header = t.Headers()
+			rows = t.Rows()
+		default:
+			segs := strings.Split(format, "=")
+			if len(segs) > 1 {
+				columns = strings.Split(segs[1], ",")
+			}
+			j, err := json.Marshal(out)
+			if err != nil {
+				return err
+			}
+			var mapSlice []map[string]json.RawMessage
+			err = json.Unmarshal(j, &mapSlice)
+			if err != nil {
+				return errors.Wrapf(err, "only slices of structs or maps can be rendered as a table, but got %T", out)
+			}
+			if len(mapSlice) == 0 {
+				return nil
+			}
+
+			first := mapSlice[0]
+
+			var keys []string
+			if len(columns) > 0 {
+				keys = columns
+			} else {
+				for k := range first {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+			}
+			for _, k := range keys {
+				header = append(header, k)
+			}
+			for _, m := range mapSlice {
+				var values []string
+
+				for _, k := range keys {
+					if v, ok := m[k]; ok && len(v) > 0 {
+						values = append(values, strings.Trim(string(v), `"`))
+					} else {
+						values = append(values, "")
+					}
+				}
+				rows = append(rows, values)
+			}
 		}
+
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader(header)
 		table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
 		table.SetCenterSeparator("|")
-		for _, m := range mapSlice {
-			var values []string
 
-			for _, k := range keys {
-				if v, ok := m[k]; ok && len(v) > 0 {
-					values = append(values, strings.Trim(string(v), `"`))
-				} else {
-					values = append(values, "")
-				}
-			}
-			table.Append(values)
+		for _, row := range rows {
+			table.Append(row)
 		}
 
 		table.Render()
@@ -635,4 +638,61 @@ func printOutput(out interface{}, columns ...string) error {
 		return errors.Errorf("Unrecognized format %q (valid formats are 'json', 'yaml', and 'table')", format)
 	}
 
+}
+
+func getResolvedValuesFromApp(b *bosun.Bosun, app *bosun.App) (*bosun.PersistableValues, error) {
+	ctx := b.NewContext().WithDir(app.FromPath)
+
+	appManifest, err := app.GetManifest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return getResolvedValuesFromAppManifest(b, appManifest)
+}
+
+func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppManifest) (*bosun.PersistableValues, error) {
+
+	ctx := b.NewContext()
+
+	appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{}, appManifest)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err := appDeploy.GetResolvedValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return values, nil
+}
+
+// getValueSetSlice gets the value sets for the provided environment
+// and for any additional value sets specified using --value-sets,
+// and creates an additional valueSet from any --set parameters.
+func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]bosun.ValueSet, error) {
+	valueSetNames := util.ConcatStrings(env.ValueSets, viper.GetStringSlice(ArgAppValueSet))
+	valueSets, err := b.GetValueSetSlice(valueSetNames)
+	if err != nil {
+		return nil, err
+	}
+	valueOverrides := map[string]string{}
+	for _, set := range viper.GetStringSlice(ArgAppSet) {
+		segs := strings.Split(set, "=")
+		if len(segs) != 2 {
+			return nil, errors.Errorf("invalid set (should be key=value): %q", set)
+		}
+		valueOverrides[segs[0]] = segs[1]
+	}
+	if len(valueOverrides) > 0 {
+		overrideValueSet := bosun.ValueSet{
+			Dynamic: map[string]*bosun.CommandValue{},
+		}
+		for k, v := range valueOverrides {
+			overrideValueSet.Dynamic[k] = &bosun.CommandValue{Value: v}
+		}
+		valueSets = append(valueSets, overrideValueSet)
+	}
+
+	return valueSets, err
 }

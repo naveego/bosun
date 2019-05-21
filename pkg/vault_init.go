@@ -41,22 +41,21 @@ func (v VaultInitializer) InitNonProd() error {
 
 }
 
-
-func (v VaultInitializer) installPlugin()error {
+func (v VaultInitializer) installPlugin() error {
 	vaultClient := v.Client
 
 	Log.Debug("Getting hash for JOSE...")
 
-	joseSHA, err := NewCommand("kubectl exec vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
+	joseSHA, err := NewCommand("kubectl exec -n default vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
 	if err != nil {
 		return err
 	}
 
 	Log.Debug("Registering JOSE...")
 	err = vaultClient.Sys().RegisterPlugin(&api.RegisterPluginInput{
-		Name:"jose",
-		SHA256:joseSHA,
-		Command:"jose-plugin",
+		Name:    "jose",
+		SHA256:  joseSHA,
+		Command: "jose-plugin",
 	})
 
 	if err != nil {
@@ -84,7 +83,7 @@ func (v VaultInitializer) Unseal(path string) error {
 	var keys []string
 
 	if path == "" {
-		secretYaml, err := NewCommand("kubectl get secret vault-unseal-keys -o yaml").RunOut()
+		secretYaml, err := NewCommand("kubectl get secret  -n default vault-unseal-keys -o yaml").RunOut()
 		if err != nil {
 			return err
 		}
@@ -99,14 +98,13 @@ func (v VaultInitializer) Unseal(path string) error {
 			keys = append(keys, string(shard))
 		}
 	} else {
-		files, _ := filepath.Glob(path +"/Key*")
+		files, _ := filepath.Glob(path + "/Key*")
 		Log.WithField("files", files).Debug("Found Key files.")
 		for _, file := range files {
 			key, _ := ioutil.ReadFile(file)
 			keys = append(keys, string(key))
 		}
 	}
-
 
 	for k, v := range keys {
 		fmt.Printf("Unsealing with Key %v: %q\n", k, v)
@@ -122,21 +120,21 @@ func (v VaultInitializer) Unseal(path string) error {
 func (v VaultInitializer) initialize() (keys []string, rootToken string, err error) {
 	vaultClient := v.Client
 
-	err = NewCommand("kubectl delete secret vault-unseal-keys --ignore-not-found=true").RunE()
-	err = NewCommand("kubectl delete secret vault-root-token --ignore-not-found=true").RunE()
+	err = NewCommand("kubectl delete secret -n default vault-unseal-keys --ignore-not-found=true").RunE()
+	err = NewCommand("kubectl delete secret -n default vault-root-token --ignore-not-found=true").RunE()
 	if err != nil {
 		return nil, "", err
 	}
 
 	initResp, err := vaultClient.Sys().Init(&api.InitRequest{
-		SecretShares:1,
-		SecretThreshold:1,
+		SecretShares:    1,
+		SecretThreshold: 1,
 	})
 	if err != nil {
 		return nil, "", err
 	}
 
-	err = NewCommand("kubectl", "create", "secret", "generic", "vault-root-token", fmt.Sprintf("--from-literal=root=%s", initResp.RootToken)).RunE()
+	err = NewCommand("kubectl", "create", "-n", "default", "secret", "generic", "vault-root-token", fmt.Sprintf("--from-literal=root=%s", initResp.RootToken)).RunE()
 	if err != nil {
 		return nil, "", err
 	}
@@ -144,7 +142,7 @@ func (v VaultInitializer) initialize() (keys []string, rootToken string, err err
 	for i, key := range initResp.Keys {
 		fmt.Printf("Seal Key %d: %q", i, key)
 
-		err = NewCommand("kubectl", "create", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=Key%d=%s", i, key)).RunE()
+		err = NewCommand("kubectl", "create", "-n", "default", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=Key%d=%s", i, key)).RunE()
 		if err != nil {
 			return nil, "", err
 		}
@@ -157,10 +155,9 @@ func (v VaultInitializer) initialize() (keys []string, rootToken string, err err
 	vaultClient.SetToken(root)
 
 	_, err = vaultClient.Auth().Token().Create(&api.TokenCreateRequest{
-		ID:"root",
-		Policies:[]string{"root"},
+		ID:       "root",
+		Policies: []string{"root"},
 	})
-
 
 	return initResp.Keys, initResp.RootToken, err
 }

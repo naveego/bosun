@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-type ToolDefs []ToolDef
+type ToolDefs []*ToolDef
 
 func (t ToolDefs) Len() int { return len(t) }
 

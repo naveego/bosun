@@ -22,8 +22,9 @@ type EnvironmentConfig struct {
 	Scripts   []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues *AppValuesConfig `yaml:"appValues" json:"appValues"`
+	AppValues *ValueSet  `yaml:"appValues" json:"appValues"`
 	HelmRepos []HelmRepo `yaml:"helmRepos,omitempty" json:"helmRepos,omitempty"`
+	ValueSets []string   `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 }
 
 type EnvironmentVariable struct {
@@ -40,8 +41,8 @@ type EnvironmentCommand struct {
 }
 
 type HelmRepo struct {
-	Name string `yaml:"name" json:"name"`
-	URL string `yaml:"url" json:"url"`
+	Name        string            `yaml:"name" json:"name"`
+	URL         string            `yaml:"url" json:"url"`
 	Environment map[string]string `yaml:"environment" json:"environment"`
 }
 
@@ -117,7 +118,7 @@ func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 	_, err := pkg.NewCommand("kubectl", "config", "use-context", e.Cluster).RunOut()
 	if err != nil {
 		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
-		log.Println(color.YellowString(`try running "bosun kube add-eks %s"`, e.Cluster ))
+		log.Println(color.YellowString(`try running "bosun kube add-eks %s"`, e.Cluster))
 	}
 
 	for _, v := range e.Variables {

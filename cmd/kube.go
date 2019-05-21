@@ -170,7 +170,7 @@ var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
 	cmd.Flags().Bool(ArgKubeDashboardUrl, false, "Display dashboard URL instead of opening a browser")
 })
 
-var pullSecretCmd = &cobra.Command{
+var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "pull-secret [username] [password]",
 	Args:  cobra.RangeArgs(0, 2),
 	Short: "Sets a pull secret in kubernetes for https://docker.n5o.black.",
@@ -179,16 +179,19 @@ var pullSecretCmd = &cobra.Command{
 		var err error
 		viper.BindPFlags(cmd.Flags())
 
+		namespace := viper.GetString(ArgKubePullSecretNamespace)
+
 		force := viper.GetBool("force")
 		if !force {
-			out, err := pkg.NewCommand("kubectl get secret docker-n5o-black").RunOut()
+			out, err := pkg.NewCommand(fmt.Sprintf("kubectl get secret docker-n5o-black -n %s", namespace)).RunOut()
 			fmt.Println(out)
 			if err == nil {
 				color.Yellow("Pull secret already exists (run with --force parameter to overwrite).")
 				return nil
 			}
 		} else {
-			pkg.NewCommand("kubectl delete secret docker-n5o-black").RunE()
+			_ = pkg.NewCommand("kubectl delete secret docker-n5o-black -n " + namespace).RunE()
+
 		}
 
 		var username string
@@ -250,6 +253,7 @@ var pullSecretCmd = &cobra.Command{
 		err = pkg.NewCommand("kubectl",
 			"create", "secret", "docker-registry",
 			"docker-n5o-black",
+			"-n", namespace,
 			"--docker-server=https://docker.n5o.black",
 			fmt.Sprintf("--docker-username=%s", username),
 			fmt.Sprintf("--docker-password=%s", password),
@@ -261,7 +265,13 @@ var pullSecretCmd = &cobra.Command{
 
 		return err
 	},
-}
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(ArgKubePullSecretNamespace, "default", "The namespace to deploy the secret into.")
+})
+
+const (
+	ArgKubePullSecretNamespace = "namespace"
+)
 
 // kubectlProxy runs "kubectl proxy", returning host:port
 func kubectlProxy() (*exec.Cmd, string, error) {
