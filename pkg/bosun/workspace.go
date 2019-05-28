@@ -22,6 +22,7 @@ type Workspace struct {
 	MergedBosunFile    *File                  `yaml:"-" json:"merged"`
 	ImportedBosunFiles map[string]*File       `yaml:"-" json:"imported"`
 	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
+	ZenhubToken		   *CommandValue		  `yaml:"zenhubToken" json:"zenhubToken"`
 	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
 	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
 }

@@ -1,12 +1,10 @@
 imports:
 - integration/testdata/e2e/simple-http-test/suite.yaml
 - integration/testdata/e2e/mongo-test/suite.yaml
-environments: []
-appRefs: {}
 apps:
 - name: bosun
   repo: naveego/bosun
-  version: 1.0.0-beta
+  version: 1.1.0-beta1
   images: []
   scripts:
   - name: publish
@@ -46,4 +44,8 @@ apps:
           authSource: admin
       databaseFile: test/mongo/db.yaml
       rebuildDb: false
-repos: []
+repos:
+- name: bosun
+  labels: {}
+- name: bosun
+  labels: {}
