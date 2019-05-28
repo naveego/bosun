@@ -58,7 +58,24 @@ type Dependency struct {
 	Blocked DependencyIssue `json:"blocked"`
 }
 
+func NewDependency(blocking, blocked DependencyIssue) Dependency {
+	d := Dependency{
+		Blocking: blocking,
+		Blocked: blocked,
+	}
+	return d
+}
+
 type DependencyIssue struct {
 	RepoID      int `json:"repo_id"`
 	IssueNumber int `json:"issue_number"`
+}
+
+func NewDependencyIssue(repoId, issueNumber int) DependencyIssue {
+
+	di := DependencyIssue{
+		RepoID: repoId,
+		IssueNumber: issueNumber,
+	}
+	return di
 }
