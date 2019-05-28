@@ -198,41 +198,7 @@ var gitDeployUpdateCmd = &cobra.Command{
 
 var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
 
-var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
-	Use:     "pull-request",
-	Aliases: []string{"pr"},
-	Short:   "Opens a pull request.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		viper.BindPFlags(cmd.Flags())
 
-		repoPath, err := git.GetCurrentRepoPath()
-		if err != nil {
-			return err
-		}
-
-		g, err := git.NewGitWrapper(repoPath)
-		if err != nil {
-			return err
-		}
-
-		prCmd := GitPullRequestCommand{
-			LocalRepoPath: repoPath,
-			Reviewers:     viper.GetStringSlice(ArgPullRequestReviewers),
-			Base:          viper.GetString(ArgPullRequestBase),
-			FromBranch:    g.Branch(),
-			Body:          viper.GetString(ArgPullRequestBody),
-		}
-
-		_, err = prCmd.Execute()
-
-		return err
-	},
-}, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgPullRequestReviewers, []string{}, "Reviewers to request.")
-	cmd.Flags().String(ArgPullRequestTitle, "", "Title of PR")
-	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
-	cmd.Flags().String(ArgPullRequestBase, "master", "Target branch for merge.")
-})
 
 type GitPullRequestCommand struct {
 	Reviewers     []string
@@ -243,7 +209,7 @@ type GitPullRequestCommand struct {
 	LocalRepoPath string
 }
 
-func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
+func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 	client := mustGetGithubClient()
 
 	repoPath := c.LocalRepoPath
@@ -252,17 +218,23 @@ func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
 	branch := c.FromBranch
 	m := issueNumberRE.FindStringSubmatch(branch)
 	var issueNumber string
+	var issueNum int
 	if len(m) == 0 {
 		color.Yellow("No issue number in branch.")
 	} else {
 		issueNumber = m[1]
 	}
 
+
 	title := c.Title
 	if title == "" {
 		title = fmt.Sprintf("Merge %s into %s", branch, c.Base)
 	}
 
+	issueNum, err = strconv.Atoi(issueNumber)
+	if err != nil {
+		return 0,0, err
+	}
 	body := fmt.Sprintf("%s\nCloses #%s", c.Body, issueNumber)
 
 	target := c.Base
@@ -280,7 +252,7 @@ func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
 	issue, _, err := client.PullRequests.Create(context.Background(), org, repo, req)
 
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	fmt.Printf("Created PR #%d.\n", issue.GetNumber())
@@ -291,11 +263,11 @@ func (c GitPullRequestCommand) Execute() (prNumber int, err error) {
 		}
 		_, _, err = client.PullRequests.RequestReviewers(context.Background(), org, repo, *issue.Number, revRequest)
 		if err != nil {
-			return 0, err
+			return 0,0, err
 		}
 	}
 
-	return issue.GetNumber(), nil
+	return issueNum, issue.GetNumber(), nil
 }
 
 const (

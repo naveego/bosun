@@ -155,9 +155,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 
 	//issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
 
-
-	//TODO: Connect zenhub dependencies if there was a parent issue
-
 	// the below issueNumber used to be issue.Number
 	newIssueRef := issues.NewIssueRef(issue.Org, issue.Repo, issueNumber)
 	if parent != nil {
@@ -166,8 +163,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 			return errors.Wrap(err, "add dependency;" + newIssueRef.String() + ", parent " + (parent).String())
 		}
 	}
-
-
 
 	// Move the task and issue to In Progress column
 	column := "In Progress"

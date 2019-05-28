@@ -47,9 +47,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		// Temporally hard-coded for test
-		// Needs to use similar get method like what is done for github token
-		//zenhubToken := "c009263e9b2b89920a2e27d918b0aaeda9d67f86323bdb9d9c0c873d1752697afc37c38014ea6b10"
 		zenhubToken, err := getZenhubToken()
 		if err != nil {
 			return errors.Wrap(err, "get zenhub token")
@@ -66,11 +63,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrapf(err, "get story service with tokens %q, %q", githubToken, zenhubToken)
 		}
 
-		issue := issues.Issue{
-			Title:title,
-			Body:body,
-		}
-
 		var parent *issues.IssueRef
 
 		storyNumber := viper.GetInt(ArgGitTaskStory)
@@ -82,30 +74,11 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			tmp := issues.NewIssueRef(parentOrg, parentRepo, storyNumber)
 			parent = &tmp
 
+		}
 
-			/*parentIssue, _, err := client.Issues.Get(ctx, parentOrg, parentRepo, storyNumber)
-			if err != nil {
-				return errors.Wrap(err, "get issue")
-			} */
-
-			//body = fmt.Sprintf("%s\n\nrequired by %s/%s#%d", body, parentOrg, parentRepo, storyNumber)
-			// dumpJSON("story", story)
-
-			/*if story.Milestone != nil {
-				milestones, _, err := client.Issues.ListMilestones(ctx, org, repo, nil)
-				dumpJSON("milestones", milestones)
-
-				if err != nil {
-					return err
-				}
-				for _, m := range milestones {
-					if *m.Title == *story.Milestone.Title {
-						pkg.Log.WithField("title", *m.Title).Info("Attaching milestone.")
-						issueRequest.Milestone = m.Number
-						break
-					}
-				}
-			} */
+		issue := issues.Issue{
+			Title:title,
+			Body:body,
 		}
 
 		err = svc.Create(issue, parent)
@@ -113,30 +86,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		//issueRequest.Body = &body
-		//dumpJSON("creating issue", issueRequest)
-
-		/*issue, _, err := client.Issues.Create(ctx, org, repo, issueRequest)
-		if err != nil {
-			return errors.Wrap(err, "creating issue")
-		}
-
-		issueNumber := *issue.Number
-		pkg.Log.WithField("issue", issueNumber).Info("Created issue.") */
-
-		/*slug := regexp.MustCompile(`\W+`).ReplaceAllString(strings.ToLower(taskName), "-")
-		branchName := fmt.Sprintf("issue/#%d/%s", issueNumber, slug)
-		pkg.Log.WithField("branch", branchName).Info("Creating branch.")
-		err = pkg.NewCommand("git", "checkout", "-b", branchName).RunE()
-		if err != nil {
-			return err
-		}
-
-		pkg.Log.WithField("branch", branchName).Info("Pushing branch.")
-		err = pkg.NewCommand("git", "push", "-u", "origin", branchName).RunE()
-		if err != nil {
-			return err
-		} */
 
 		return nil
 	},
