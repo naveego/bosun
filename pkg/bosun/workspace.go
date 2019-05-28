@@ -22,7 +22,7 @@ type Workspace struct {
 	MergedBosunFile    *File                  `yaml:"-" json:"merged"`
 	ImportedBosunFiles map[string]*File       `yaml:"-" json:"imported"`
 	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
-	ZenhubToken		   *CommandValue		  `yaml:"zenhubToken" json:"zenhubToken"`
+	ZenhubToken        *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
 	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
 	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
 }
@@ -48,13 +48,18 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		r.LocalRepos = map[string]*LocalRepo{}
 	}
 
+	if r.Minikube.DiskSize == "" {
+		r.Minikube.DiskSize = "40g"
+	}
+
 	*r = Workspace(proxy)
 	return nil
 }
 
 type MinikubeConfig struct {
-	HostIP string `yaml:"hostIP" json:"hostIP"`
-	Driver string `yaml:"driver" json:"driver"`
+	HostIP   string `yaml:"hostIP" json:"hostIP"`
+	Driver   string `yaml:"driver" json:"driver"`
+	DiskSize string `yaml:"diskSize" json:"diskSize"`
 }
 
 type State struct {
