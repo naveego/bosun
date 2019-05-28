@@ -335,7 +335,8 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			ecmd.VersionBump = args[1]
 			b := mustGetBosun()
 
-			app, err := getFilterParams(b, args).IncludeCurrent().GetApp()
+			appsToBump := viper.GetStringSlice(ArgGitAcceptPRAppVersion)
+			app, err := getFilterParams(b, appsToBump).IncludeCurrent().GetApp()
 
 			if err != nil {
 				return errors.Wrap(err, "could not get app to version")
