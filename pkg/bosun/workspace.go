@@ -77,11 +77,11 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && path == defaultPath {
-			err = os.MkdirAll(filepath.Dir(defaultPath), 0600)
+			err = os.MkdirAll(filepath.Dir(defaultPath), 0700)
 			if err != nil {
 				return nil, errors.Errorf("could not create directory for default mergedFragments file path: %s", err)
 			}
-			f, err := os.Open(defaultPath)
+			f, err := os.OpenFile(defaultPath, os.O_CREATE|os.O_RDWR, 0600)
 			if err != nil {
 				return nil, errors.Errorf("could not create default mergedFragments file: %s", err)
 			}

@@ -804,11 +804,18 @@ func (b *Bosun) TidyWorkspace() {
 }
 
 func (b *Bosun) configureCurrentEnv() error {
-	// if only one environment exists, it's the current one
 	if b.ws.CurrentEnvironment == "" {
-		if len(b.file.Environments) == 1 {
+		switch len(b.file.Environments) {
+		case 0:
+			b.log.Warn("No environments found, using a dummy environment.")
+			return b.useEnvironment(&EnvironmentConfig{
+				Name:     "",
+				FromPath: b.ws.Path,
+			})
+		case 1:
+			// if only one environment exists, it's the current one
 			b.ws.CurrentEnvironment = b.file.Environments[0].Name
-		} else {
+		default:
 			var envNames []string
 			for _, env := range b.file.Environments {
 				envNames = append(envNames, env.Name)
