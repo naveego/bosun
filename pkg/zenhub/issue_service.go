@@ -283,7 +283,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 	issueSplitted := strings.FieldsFunc(issueString, Split)
 	org := issueSplitted[0]
 	repoIdString := issueSplitted[1]
-	repoId, err := strconv.Atoi(issueSplitted[1])
+	repoId, err := s.GetRepoIdbyName(org, repoIdString)
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +306,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		currIssue.Repo = repoIdString
 		currIssue.Number = parentIssueNums[i]
 		parentIssues = append(parentIssues, currIssue)
+		i++
 	}
 
 	//s.log.Warn("Getting parents not implemented yet.")
@@ -321,7 +322,7 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 	issueSplitted := strings.FieldsFunc(issueString, Split)
 	org := issueSplitted[0]
 	repoIdString := issueSplitted[1]
-	repoId, err := strconv.Atoi(issueSplitted[1])
+	repoId, err := s.GetRepoIdbyName(org, repoIdString)
 	if err != nil {
 		return nil, err
 	}
@@ -344,6 +345,7 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 		currIssue.Repo = repoIdString
 		currIssue.Number = childIssueNums[i]
 		childIssues = append(childIssues, currIssue)
+		i++
 	}
 
 	return childIssues, nil

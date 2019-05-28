@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"strings"
 )
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
@@ -70,7 +71,10 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		} */
 		//body := viper.GetString(ArgPullRequestBody)
 
-		org, repo := git.GetCurrentOrgAndRepo()
+		_, repo0 := git.GetCurrentOrgAndRepo()
+		repoSplitted := strings.FieldsFunc(repo0, zenhub.Split)
+		org := repoSplitted[0]
+		repo := repoSplitted[1]
 
 		prCmd := GitPullRequestCommand{
 			LocalRepoPath: repoPath,
@@ -87,6 +91,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		issueRf := issues.NewIssueRef(org, repo, issueNmb)
+		//zenhub.log.WithField("title", issue.Title).Info("Setting assignee")
 		parents, err := svc.GetParents(issueRf)
 		if err != nil {
 			return errors.Wrap(err, "get parents for current issue")
