@@ -122,6 +122,10 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 		b := mustGetBosun()
 		app := mustGetApp(b, args)
 
+		if app.IsFromManifest {
+			return errors.New("bump is only available for apps which you have added to bosun")
+		}
+
 		g, err := git.NewGitWrapper(app.FromPath)
 		if err != nil {
 			return err
