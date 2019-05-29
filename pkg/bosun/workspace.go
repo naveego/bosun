@@ -44,6 +44,8 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		proxy.HostIPInMinikube = ""
 	}
 
+	*r = Workspace(proxy)
+
 	if r.LocalRepos == nil {
 		r.LocalRepos = map[string]*LocalRepo{}
 	}
@@ -51,8 +53,13 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if r.Minikube.DiskSize == "" {
 		r.Minikube.DiskSize = "40g"
 	}
+	if r.Minikube.Driver == "" {
+		r.Minikube.Driver = "virtualbox"
+	}
+	if r.Minikube.HostIP == "" {
+		r.Minikube.HostIP = "192.168.99.1"
+	}
 
-	*r = Workspace(proxy)
 	return nil
 }
 
