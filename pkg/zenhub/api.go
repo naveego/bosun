@@ -158,7 +158,7 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unmarshal json")
 	}
-	dumpJSON("depResponse", depResponse)
+	//dumpJSON("depResponse", depResponse)
 
 	i := 0
 	for ;i < len(depResponse.Dependencies);i++ {
@@ -168,10 +168,10 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 			children = append(children, depResponse.Dependencies[i].Blocking.IssueNumber)
 		}
 	}
-	dumpJSON("issueNum", issueNum)
-	dumpJSON("depResponse.Dependencies[1].Blocking.IssueNumber", depResponse.Dependencies[1].Blocking.IssueNumber)
-	dumpJSON("parents", parents)
-	dumpJSON("children", children)
+	//dumpJSON("issueNum", issueNum)
+	//dumpJSON("depResponse.Dependencies[1].Blocking.IssueNumber", depResponse.Dependencies[1].Blocking.IssueNumber)
+	//dumpJSON("parents", parents)
+	//dumpJSON("children", children)
 
 	return parents, children, nil
 }

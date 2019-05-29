@@ -44,16 +44,6 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		//taskName := args[0]
 
-		/*title := viper.GetString(ArgGitTitle)
-		if title == "" {
-			if len(taskName) > 50 {
-				title = taskName[:50] + "..."
-			} else {
-				title = taskName
-			}
-		} */
-		//body := viper.GetString(ArgPullRequestBody)
-
 		org0 := "naveegoinc"
 		repo0 := "stories"
 		//git.GetCurrentOrgAndRepo()
