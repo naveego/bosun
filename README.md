@@ -19,9 +19,11 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
     - helm
     - vault
     - mkcert
+    - awscli
     - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/)
 7. Add docker login for our private repo: `sudo docker login docker.n5o.black`. Get username/password from your mentor.
-8. Add our private helm repo: `helm repo add helm.n5o.black http://helm.n5o.black.s3-website-us-east-1.amazonaws.com`
+8. Add aws login for CLI: `aws configure`. Get key/secret from your mentor.
+8. Add our private helm repo: `helm repo add helm.n5o.black s3://helm.n5o.black`
 8. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
    - You may need to run this a few times if things are slow to come up and subsequent steps time out.
    - After minikube has started you can run `minikube dashboard` to open the dashboard and see what things have been deployed.
