@@ -50,6 +50,20 @@ func (s IssueService) ctx() context.Context {
 
 func (s IssueService) GetIssue(ref issues.IssueRef) (issues.Issue, error) {
 	panic("implement me")
+
+	/*var returnedIssue issues.Issue
+	var issuePointer *github.Issue
+	var returnedIssue1 github.Issue
+	org, repo, num, err := s.SplitIssueRef(ref)
+	if err != nil {
+		return returnedIssue, errors.Wrap(err, "split IssueRef")
+	}
+	issuePointer, _, err =  s.github.Issues.Get(s.ctx(), org, repo, num)
+	if err != nil {
+		return returnedIssue, errors.Wrap(err, "split IssueRef")
+	}
+	returnedIssue1 = *issuePointer
+	return returnedIssue, nil*/
 }
 
 func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error {
@@ -276,6 +290,41 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 	return nil
 }
 
+func (s IssueService) SplitIssueRef(issue issues.IssueRef) (string, string, int, error) {
+
+	issueString := issue.String()
+	issueSplitted := strings.FieldsFunc(issueString, Split)
+	org := issueSplitted[0]
+	repoIdString := issueSplitted[1]
+	/*repoId, err := s.GetRepoIdbyName(org, repoIdString)
+	if err != nil {
+		return "", "", 0,  err
+	} */
+	issueNum, err := strconv.Atoi(issueSplitted[2])
+	if err != nil {
+		return "", "", 0, err
+	}
+	return org, repoIdString, issueNum, nil
+}
+
+func (s IssueService) GetIssueState(issue issues.IssueRef) (string, error) {
+
+	var issuePointer *github.Issue
+	var returnedIssue github.Issue
+	var state string
+	org, repo, num, err := s.SplitIssueRef(issue)
+	if err != nil {
+		return state, errors.Wrap(err, "split IssueRef")
+	}
+	issuePointer, _, err =  s.github.Issues.Get(s.ctx(), org, repo, num)
+	if err != nil {
+		return state, errors.Wrap(err, "get a single issue with github api")
+	}
+	returnedIssue = *issuePointer
+	state = *returnedIssue.State
+	return state, nil
+}
+
 func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) {
 
 	var parentIssues []issues.Issue
@@ -295,21 +344,20 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 	var parentIssueNums []int
 	parentIssueNums, _, err = s.zenhub.GetDependencies(repoId, issueNum)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "get dependencies")
 	}
 
 	i := 0
-	var currIssue issues.Issue
+
 	for i < len(parentIssueNums) {
 		// reconstruct issue with given org, repoId and issueNum
+		var currIssue issues.Issue
 		currIssue.Org = org
 		currIssue.Repo = repoIdString
 		currIssue.Number = parentIssueNums[i]
 		parentIssues = append(parentIssues, currIssue)
 		i++
 	}
-
-	//s.log.Warn("Getting parents not implemented yet.")
 
 	return parentIssues, nil
 
@@ -337,6 +385,10 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 		return nil, err
 	}
 
+	if len(childIssueNums) < 1 {
+		return nil, nil
+	}
+
 	i := 0
 	var currIssue issues.Issue
 	for i < len(childIssueNums) {
@@ -349,6 +401,26 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 	}
 
 	return childIssues, nil
+}
+
+func (s IssueService) ChildrenAllClosed(children []issues.Issue) (bool, error) {
+
+	allClosed := true
+	var issuerf issues.IssueRef
+
+	i := 0
+	for i < len(children) {
+		issuerf = issues.NewIssueRef(children[i].Org, children[i].Repo, children[i].Number)
+		childState, err := s.GetIssueState(issuerf)
+		if err != nil {
+			return allClosed, err
+		}
+		if childState == "open" {
+			allClosed = false
+		}
+		i++
+	}
+	return allClosed, nil
 }
 
 //type Issue issues.Issue

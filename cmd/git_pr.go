@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"strings"
 )
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
@@ -43,22 +42,6 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrapf(err, "get story service with tokens %q, %q", githubToken, zenhubToken)
 		}
 
-		/*var parent *issues.IssueRef
-		storyNumber := viper.GetInt(ArgGitTaskStory)
-		var pOrg, pRepo string
-		if storyNumber > 0 {
-
-			parentOrg := viper.GetString(ArgGitTaskParentOrg)
-			pOrg = parentOrg
-			parentRepo := viper.GetString(ArgGitTaskParentRepo)
-			pRepo = parentRepo
-
-			tmp := issues.NewIssueRef(parentOrg, parentRepo, storyNumber)
-			parent = &tmp
-
-		} */
-
-
 		//taskName := args[0]
 
 		/*title := viper.GetString(ArgGitTitle)
@@ -71,10 +54,13 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		} */
 		//body := viper.GetString(ArgPullRequestBody)
 
-		_, repo0 := git.GetCurrentOrgAndRepo()
-		repoSplitted := strings.FieldsFunc(repo0, zenhub.Split)
-		org := repoSplitted[0]
-		repo := repoSplitted[1]
+		org0 := "naveegoinc"
+		repo0 := "stories"
+		//git.GetCurrentOrgAndRepo()
+		//dumpJSON("org0", org0)
+		//dumpJSON("repo0", repo0)
+		pkg.Log.WithField("org", org0).Info("org from GetCurrentOrgAndRepo")
+		pkg.Log.WithField("repo", repo0).Info("repo from...")
 
 		prCmd := GitPullRequestCommand{
 			LocalRepoPath: repoPath,
@@ -90,12 +76,15 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrap(err, "execute pr")
 		}
 
-		issueRf := issues.NewIssueRef(org, repo, issueNmb)
-		//zenhub.log.WithField("title", issue.Title).Info("Setting assignee")
+		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
+		pkg.Log.WithField("issueRf", issueRf).Info("show issueRf")
+
 		parents, err := svc.GetParents(issueRf)
 		if err != nil {
 			return errors.Wrap(err, "get parents for current issue")
 		}
+		//pkg.Log.WithField("parents", parents).Info("parents returned")
+
 		var parent issues.IssueRef
 		if len(parents) > 0 {
 			parentOrg := parents[0].Org
@@ -104,15 +93,33 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
 		}
 
+
 		column := "Waiting for Merge"
 		err = svc.SetProgress(issueRf, column)
 		if err != nil {
 			return errors.Wrap(err, "move issue to Waiting for Merge")
 		}
-		err = svc.SetProgress(parent, column)
-		if err != nil {
-			return errors.Wrap(err, "move parent story to Waiting for Merge")
+
+		children, err := svc.GetChildren(parent)
+
+		if children == nil {
+			err = svc.SetProgress(parent, column)
+			if err != nil {
+				return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
+			}
+		} else {
+			ok, err := svc.ChildrenAllClosed(children)
+			if err != nil {
+				return errors.Wrap(err, "check if children are all closed")
+			}
+			if ok {
+				err = svc.SetProgress(parent, column)
+				if err != nil {
+					return errors.Wrap(err, "move parent story to Waiting for Merge when all children closed")
+				}
+			}
 		}
+
 
 		return err
 	},
@@ -122,4 +129,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
 	cmd.Flags().String(ArgPullRequestBase, "master", "Target branch for merge.")
 })
+
+
+
 
