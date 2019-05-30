@@ -22,7 +22,7 @@ type Workspace struct {
 	MergedBosunFile    *File                  `yaml:"-" json:"merged"`
 	ImportedBosunFiles map[string]*File       `yaml:"-" json:"imported"`
 	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
-	ZenhubToken		   *CommandValue		  `yaml:"zenhubToken" json:"zenhubToken"`
+	ZenhubToken        *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
 	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
 	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
 }
@@ -44,17 +44,29 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		proxy.HostIPInMinikube = ""
 	}
 
+	*r = Workspace(proxy)
+
 	if r.LocalRepos == nil {
 		r.LocalRepos = map[string]*LocalRepo{}
 	}
 
-	*r = Workspace(proxy)
+	if r.Minikube.DiskSize == "" {
+		r.Minikube.DiskSize = "40g"
+	}
+	if r.Minikube.Driver == "" {
+		r.Minikube.Driver = "virtualbox"
+	}
+	if r.Minikube.HostIP == "" {
+		r.Minikube.HostIP = "192.168.99.1"
+	}
+
 	return nil
 }
 
 type MinikubeConfig struct {
-	HostIP string `yaml:"hostIP" json:"hostIP"`
-	Driver string `yaml:"driver" json:"driver"`
+	HostIP   string `yaml:"hostIP" json:"hostIP"`
+	Driver   string `yaml:"driver" json:"driver"`
+	DiskSize string `yaml:"diskSize" json:"diskSize"`
 }
 
 type State struct {
@@ -72,11 +84,11 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && path == defaultPath {
-			err = os.MkdirAll(filepath.Dir(defaultPath), 0600)
+			err = os.MkdirAll(filepath.Dir(defaultPath), 0700)
 			if err != nil {
 				return nil, errors.Errorf("could not create directory for default mergedFragments file path: %s", err)
 			}
-			f, err := os.Open(defaultPath)
+			f, err := os.OpenFile(defaultPath, os.O_CREATE|os.O_RDWR, 0600)
 			if err != nil {
 				return nil, errors.Errorf("could not create default mergedFragments file: %s", err)
 			}
