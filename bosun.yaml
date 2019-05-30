@@ -4,7 +4,7 @@ imports:
 apps:
 - name: bosun
   repo: naveego/bosun
-  version: 1.1.0-beta5
+  version: 1.1.0-beta6
   images: []
   scripts:
   - name: publish
