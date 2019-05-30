@@ -90,25 +90,28 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrap(err, "move issue to Waiting for Merge")
 		}
 
-		children, err := svc.GetChildren(parent)
+		if len(parent) > 0 {
+			children, err := svc.GetChildren(parent)
 
-		if children == nil {
-			err = svc.SetProgress(parent, column)
-			if err != nil {
-				return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
-			}
-		} else {
-			ok, err := svc.ChildrenAllClosed(children)
-			if err != nil {
-				return errors.Wrap(err, "check if children are all closed")
-			}
-			if ok {
+			if children == nil {
 				err = svc.SetProgress(parent, column)
 				if err != nil {
-					return errors.Wrap(err, "move parent story to Waiting for Merge when all children closed")
+					return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
+				}
+			} else {
+				ok, err := svc.ChildrenAllClosed(children)
+				if err != nil {
+					return errors.Wrap(err, "check if children are all closed")
+				}
+				if ok {
+					err = svc.SetProgress(parent, column)
+					if err != nil {
+						return errors.Wrap(err, "move parent story to Waiting for Merge when all children closed")
+					}
 				}
 			}
 		}
+
 
 
 		return err

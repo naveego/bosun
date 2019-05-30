@@ -348,16 +348,18 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 	}
 
 	i := 0
-
-	for i < len(parentIssueNums) {
-		// reconstruct issue with given org, repoId and issueNum
-		var currIssue issues.Issue
-		currIssue.Org = org
-		currIssue.Repo = repoIdString
-		currIssue.Number = parentIssueNums[i]
-		parentIssues = append(parentIssues, currIssue)
-		i++
+	if len(parentIssueNums) > 0 {
+		for i < len(parentIssueNums) {
+			// reconstruct issue with given org, repoId and issueNum
+			var currIssue issues.Issue
+			currIssue.Org = org
+			currIssue.Repo = repoIdString
+			currIssue.Number = parentIssueNums[i]
+			parentIssues = append(parentIssues, currIssue)
+			i++
+		}
 	}
+
 
 	return parentIssues, nil
 
@@ -390,15 +392,18 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 	}
 
 	i := 0
-	var currIssue issues.Issue
-	for i < len(childIssueNums) {
-		// reconstruct issue with given org, repoId and issueNum
-		currIssue.Org = org
-		currIssue.Repo = repoIdString
-		currIssue.Number = childIssueNums[i]
-		childIssues = append(childIssues, currIssue)
-		i++
+	if len(childIssueNums) > 0 {
+		for i < len(childIssueNums) {
+			// reconstruct issue with given org, repoId and issueNum
+			var currIssue issues.Issue
+			currIssue.Org = org
+			currIssue.Repo = repoIdString
+			currIssue.Number = childIssueNums[i]
+			childIssues = append(childIssues, currIssue)
+			i++
+		}
 	}
+
 
 	return childIssues, nil
 }
