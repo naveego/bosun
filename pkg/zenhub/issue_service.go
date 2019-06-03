@@ -21,14 +21,14 @@ import (
 type IssueService struct {
 	github *github.Client
 	zenhub *API
-	git git.GitWrapper
-	log *logrus.Entry
+	git    git.GitWrapper
+	log    *logrus.Entry
 }
 
 func NewIssueService(githubToken, zenhubToken string, gitWrapper git.GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
 	s := IssueService{
-		git:gitWrapper,
-		log:log,
+		git: gitWrapper,
+		log: log,
 	}
 
 	ts := oauth2.StaticTokenSource(
@@ -65,7 +65,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 	}
 
 	issueRequest := &github.IssueRequest{
-		Title: github.String(issue.Title),
+		Title:    github.String(issue.Title),
 		Assignee: user.Login,
 	}
 	dumpJSON("assignee", issueRequest.Assignee)
@@ -89,9 +89,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 			return errors.Wrap(err, "get issue")
 		}
 
-		issue.Org = parentOrg
-		issue.Repo = parentRepo
-
 		if parentIssue.Milestone != nil {
 			milestones, _, err := s.github.Issues.ListMilestones(s.ctx(), issue.Org, issue.Repo, nil)
 			//dumpJSON("milestones", milestones)
@@ -108,8 +105,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 			}
 		}
 	}
-
-
 
 	/*if &issue.Assignee != nil {
 		issueRequest.Assignee = &issue.Assignee
@@ -155,7 +150,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 
 	//issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
 
-
 	//TODO: Connect zenhub dependencies if there was a parent issue
 
 	// the below issueNumber used to be issue.Number
@@ -163,11 +157,9 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 	if parent != nil {
 		err = s.AddDependency(newIssueRef, *parent, parentIssueNumber)
 		if err != nil {
-			return errors.Wrap(err, "add dependency;" + newIssueRef.String() + ", parent " + (parent).String())
+			return errors.Wrap(err, "add dependency;"+newIssueRef.String()+", parent "+(parent).String())
 		}
 	}
-
-
 
 	// Move the task and issue to In Progress column
 	column := "In Progress"
@@ -181,7 +173,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 			return errors.Wrap(err, "set parent progress")
 		}
 	}
-
 
 	return nil
 
@@ -357,8 +348,7 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 //type Issue issues.Issue
 type IssueRef issues.IssueRef
 
-
 func dumpJSON(label string, data interface{}) {
-		j, _ := json.MarshalIndent(data, "", "  ")
-		fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
+	j, _ := json.MarshalIndent(data, "", "  ")
+	fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
 }

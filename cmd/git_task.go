@@ -67,9 +67,11 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		issue := issues.Issue{
-			Title:title,
-			Body:body,
+			Title: title,
+			Body:  body,
 		}
+
+		issue.Org, issue.Repo = git.GetCurrentOrgAndRepo()
 
 		var parent *issues.IssueRef
 
@@ -81,7 +83,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 
 			tmp := issues.NewIssueRef(parentOrg, parentRepo, storyNumber)
 			parent = &tmp
-
 
 			/*parentIssue, _, err := client.Issues.Get(ctx, parentOrg, parentRepo, storyNumber)
 			if err != nil {
