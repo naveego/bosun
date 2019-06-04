@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -37,6 +38,7 @@ type Platform struct {
 	Repos               []*Repo                     `yaml:"repos" json:"repos"`
 	Apps                []*AppMetadata              `yaml:"apps"`
 	ReleaseManifests    map[string]*ReleaseManifest `yaml:"-" json:"-"`
+	ZenHubConfig *zenhub.Config `yaml:"zenHubConfig"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {

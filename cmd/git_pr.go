@@ -8,7 +8,56 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"log"
 )
+
+func mustGetIssueService() issues.IssueService {
+	svc, err := getIssueService()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return svc
+}
+
+func getIssueService() (issues.IssueService, error) {
+
+
+	b := mustGetBosun()
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return nil, errors.Wrap(err, "get current platform")
+	}
+	zc := *p.ZenHubConfig
+
+
+	zc.GithubToken, err = getGithubToken()
+	if err != nil {
+		return nil, err
+	}
+
+	zc.ZenhubToken, err = getZenhubToken()
+	if err != nil {
+		return nil,errors.Wrap(err, "get zenhub token")
+	}
+
+	repoPath, err := git.GetCurrentRepoPath()
+	if err != nil {
+		return nil, err
+	}
+
+	g, err := git.NewGitWrapper(repoPath)
+	if err != nil {
+		return nil,err
+	}
+
+	svc, err := zenhub.NewIssueService(zc, g, pkg.Log.WithField("cmp", "zenhub"))
+	if err != nil {
+		return nil,errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
+	}
+	return svc, nil
+
+}
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	Use:     "pull-request",
@@ -16,16 +65,6 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	Short:   "Opens a pull request.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-
-		githubToken, err := getGithubToken()
-		if err != nil {
-			return err
-		}
-
-		zenhubToken, err := getZenhubToken()
-		if err != nil {
-			return errors.Wrap(err, "get zenhub token")
-		}
 
 		repoPath, err := git.GetCurrentRepoPath()
 		if err != nil {
@@ -37,18 +76,13 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		svc, err := zenhub.NewIssueService(githubToken, zenhubToken, g, pkg.Log.WithField("cmp", "zenhub"))
-		if err != nil {
-			return errors.Wrapf(err, "get story service with tokens %q, %q", githubToken, zenhubToken)
-		}
+		svc := mustGetIssueService()
 
 		//taskName := args[0]
 
 		org0 := "naveegoinc"
 		repo0 := "stories"
-		//git.GetCurrentOrgAndRepo()
-		//dumpJSON("org0", org0)
-		//dumpJSON("repo0", repo0)
+
 		pkg.Log.WithField("org", org0).Info("org from GetCurrentOrgAndRepo")
 		pkg.Log.WithField("repo", repo0).Info("repo from...")
 
@@ -99,14 +133,17 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 					return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
 				}
 			} else {
-				ok, err := svc.ChildrenAllClosed(children)
-				if err != nil {
-					return errors.Wrap(err, "check if children are all closed")
+				i := 0
+				ok := true
+				for i < len(children) {
+					if !children[i].IsClosed {
+						ok = false
+					}
 				}
 				if ok {
 					err = svc.SetProgress(parent, column)
 					if err != nil {
-						return errors.Wrap(err, "move parent story to Waiting for Merge when all children closed")
+						return errors.Wrap(err, "move parent story to Waiting for merge after checking children")
 					}
 				}
 			}

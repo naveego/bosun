@@ -20,6 +20,8 @@ type Issue struct {
 	Releases  []string
 	Title     string
 
+	IsClosed bool
+
 	GithubRepoID *int
 }
 

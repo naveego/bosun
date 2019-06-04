@@ -6,7 +6,6 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -28,7 +27,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		taskName := args[0]
-		//org, repo := git.GetCurrentOrgAndRepo()
+		org, repo := git.GetCurrentOrgAndRepo()
 		title := viper.GetString(ArgGitTitle)
 		if title == "" {
 			if len(taskName) > 50 {
@@ -42,26 +41,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			body = taskName
 		}
 
-		githubToken, err := getGithubToken()
-		if err != nil {
-			return err
-		}
-
-		zenhubToken, err := getZenhubToken()
-		if err != nil {
-			return errors.Wrap(err, "get zenhub token")
-		}
-
-		currentRepoPath, err := git.GetCurrentRepoPath()
-		if err != nil {
-			return err
-		}
-		g, err := git.NewGitWrapper(currentRepoPath)
-
-		svc, err := zenhub.NewIssueService(githubToken, zenhubToken, g, pkg.Log.WithField("cmp", "zenhub"))
-		if err != nil {
-			return errors.Wrapf(err, "get story service with tokens %q, %q", githubToken, zenhubToken)
-		}
+		svc := mustGetIssueService()
 
 		var parent *issues.IssueRef
 
@@ -79,6 +59,9 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		issue := issues.Issue{
 			Title:title,
 			Body:body,
+			Org:org,
+			Repo:repo,
+			IsClosed:false,
 		}
 
 		err = svc.Create(issue, parent)

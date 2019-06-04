@@ -640,7 +640,7 @@ func (b *Bosun) GetCurrentPlatform() (*Platform, error) {
 		return b.platform, nil
 	default:
 		if b.ws.CurrentPlatform == "" {
-			return nil, errors.New("no current platform selected; use `bosun ws use-platform` to set it")
+			return nil, errors.New("no current platform selected; use `bosun platform use-platform` to set it")
 		}
 		for _, p := range b.file.Platforms {
 			if p.Name == b.ws.CurrentPlatform {
