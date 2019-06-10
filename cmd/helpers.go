@@ -383,9 +383,9 @@ func checkExecutableDependency(exe string) {
 	pkg.Log.WithFields(logrus.Fields{"exe": exe, "path": path}).Debug("Found dependency.")
 }
 
-func confirm(msg string, args ...string) bool {
+func confirm(msg string, args ...interface{}) bool {
 
-	label := fmt.Sprintf(msg, args)
+	label := fmt.Sprintf(msg, args...)
 
 	if !pkg.IsInteractive() {
 		pkg.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")

@@ -8,17 +8,19 @@ import (
 )
 
 type Issue struct {
-	Number    int
-	Org       string
-	Repo      string
-	Body      string
-	Assignee  string
-	Assignees []string
-	Milestone *int
-	Estimate  int
-	Epics     []string
-	Releases  []string
-	Title     string
+	Number          int
+	Org             string
+	Repo            string
+	Body            string
+	Assignee        string
+	Assignees       []string
+	Milestone       *int
+	Estimate        int
+	Epics           []string
+	Releases        []string
+	Title           string
+	ProgressState   string
+	ProgressStateID int
 
 	GithubRepoID *int
 }
@@ -67,4 +69,3 @@ type IssueService interface {
 	GetChildren(issue IssueRef) ([]Issue, error)
 	GetIssue(ref IssueRef) (Issue, error)
 }
-

@@ -36,7 +36,7 @@ func (g GitWrapper) Exec(args ...string) (string, error) {
 
 	out, err := pkg.NewCommand("git", args...).RunOut()
 	if err != nil {
-		return "", errors.Errorf("git %s: %s", strings.Join(args, " "), err)
+		return "", errors.Errorf("git %s: %s\n%s", strings.Join(args, " "), err, out)
 	}
 	return out, err
 }
@@ -64,6 +64,11 @@ func (g GitWrapper) Pull() error {
 
 func (g GitWrapper) Fetch() error {
 	err := pkg.NewCommand("git", "-C", g.dir, "fetch").RunE()
+	return err
+}
+
+func (g GitWrapper) FetchAll() error {
+	err := pkg.NewCommand("git", "-C", g.dir, "fetch", "--all").RunE()
 	return err
 }
 

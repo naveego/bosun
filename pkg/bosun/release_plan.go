@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"strings"
@@ -13,7 +14,7 @@ type ReleasePlan struct {
 }
 
 func (ReleasePlan) Headers() []string {
-	return []string{"Name", "Previous Release", "From Branch", "To Branch", "Bump", "Deploy"}
+	return []string{"Name", "Previous Release", "Previous Version", "Version", "From Branch", "To Branch", "Bump", "Deploy"}
 }
 
 func (r ReleasePlan) Rows() [][]string {
@@ -21,12 +22,16 @@ func (r ReleasePlan) Rows() [][]string {
 	for _, name := range util.SortedKeys(r.Apps) {
 		appPlan := r.Apps[name]
 
-		previousVersion := appPlan.PreviousReleaseName
+		version := appPlan.CurrentVersionInMaster
+		if version != appPlan.PreviousReleaseVersion {
+			version = color.YellowString("%s", version)
+		}
 
 		out = append(out, []string{
 			appPlan.Name,
-			previousVersion,
 			appPlan.PreviousReleaseName,
+			appPlan.PreviousReleaseVersion,
+			version,
 			appPlan.FromBranch,
 			appPlan.ToBranch,
 			appPlan.Bump,
@@ -53,11 +58,12 @@ func NewReleasePlan(releaseMetadata *ReleaseMetadata) *ReleasePlan {
 type AppPlan struct {
 	Name                        string   `yaml:"name"`
 	Repo                        string   `yaml:"repo"`
+	Bump                        string   `yaml:"bump"`
+	Upgrade                     bool     `yaml:"upgrade"`
 	Deploy                      bool     `yaml:"deploy"`
 	ToBranch                    string   `yaml:"toBranch"`
 	FromBranch                  string   `yaml:"fromBranch"`
-	Bump                        string   `yaml:"bump"`
-	Reason                      string   `yaml:"reason,omitempty"`
+	Reason                      string   `yaml:"reason"`
 	PreviousReleaseName         string   `yaml:"previousRelease"`
 	PreviousReleaseVersion      string   `yaml:"previousReleaseVersion"`
 	CurrentVersionInMaster      string   `yaml:"currentVersionInMaster"`

@@ -7,12 +7,24 @@ import (
 )
 
 type AppMetadata struct {
-	Name      string         `yaml:"name" json:"name"`
-	Repo      string         `yaml:"repo" json:"repo"`
-	Version   semver.Version `yaml:"version" json:"version"`
-	Hashes    AppHashes      `yaml:"hashes"`
-	Timestamp time.Time      `yaml:"timestamp" json:"timestamp"`
-	Branch    string         `yaml:"branch" json:"branch"`
+	Name                 string          `yaml:"name" json:"name"`
+	Repo                 string          `yaml:"repo" json:"repo"`
+	Version              semver.Version  `yaml:"version" json:"version"`
+	PinnedReleaseVersion *semver.Version `yaml:"pinnedReleaseVersion,omitempty"`
+	Hashes               AppHashes       `yaml:"hashes"`
+	Timestamp            time.Time       `yaml:"timestamp" json:"timestamp"`
+	Branch               string          `yaml:"branch" json:"branch"`
+}
+
+func (a *AppMetadata) PinToRelease(release *ReleaseMetadata) {
+	a.PinnedReleaseVersion = &release.Version
+}
+
+func (a *AppMetadata) GetImageTag() string {
+	if a.PinnedReleaseVersion == nil {
+		return a.Version.String()
+	}
+	return fmt.Sprintf("%s-%s", a.Version, a.PinnedReleaseVersion)
 }
 
 func (a AppMetadata) Format(f fmt.State, c rune) {

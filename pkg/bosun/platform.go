@@ -3,6 +3,8 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -253,6 +255,58 @@ func (p *Platform) RePlanRelease(ctx BosunContext, metadata *ReleaseMetadata) (*
 	return p.Plan, nil
 }
 
+type AppValidationResult struct {
+	Message string
+	Err     error
+}
+
+func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResult, error) {
+
+	if p.Plan == nil {
+		return nil, errors.New("no plan active")
+	}
+
+	plan := p.Plan
+
+	results := map[string]AppValidationResult{}
+
+	for appName, appPlan := range plan.Apps {
+
+		r := AppValidationResult{}
+
+		me := multierr.New()
+
+		if appPlan.Upgrade == true {
+			if appPlan.FromBranch == "" {
+				me.Collect(errors.Errorf("upgrade was true but fromBranch was empty"))
+			}
+			if appPlan.ToBranch == "" {
+				me.Collect(errors.Errorf("upgrade was true but toBranch was empty"))
+			}
+			if appPlan.Bump == "" {
+				me.Collect(errors.New("upgrade was true but bump was empty (should be 'none', 'patch', 'minor', or 'major')"))
+			}
+		} else {
+			if appPlan.Reason == "" {
+
+				if len(appPlan.CommitsNotInPreviousRelease) > 0 {
+					me.Collect(errors.Errorf("%d change commits detected: if not upgrading, you must provide a reason", len(appPlan.CommitsNotInPreviousRelease)))
+				}
+
+				if appPlan.CurrentVersionInMaster != appPlan.PreviousReleaseVersion {
+					me.Collect(errors.Errorf("version changed from %q to %q: if not upgrading, you must provide a reason", appPlan.PreviousReleaseVersion, appPlan.CurrentVersionInMaster))
+				}
+			}
+		}
+
+		r.Err = me.ToError()
+
+		results[appName] = r
+	}
+
+	return results, nil
+}
+
 func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 	if p.Plan == nil {
@@ -264,9 +318,37 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	releaseMetadata := plan.ReleaseMetadata
 	releaseManifest := NewReleaseManifest(releaseMetadata)
 
-	for appName, appPlan := range plan.Apps {
+	releaseManifest.Plan = plan
 
-		if appPlan.ToBranch == "" {
+	validationResults, err := p.ValidatePlan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	appErrs := multierr.New()
+	for appName, validationResult := range validationResults {
+		if validationResult.Err != nil {
+			appErrs.Collect(fmt.Errorf("%s invalid: %s", appName, validationResult.Err))
+		}
+	}
+	if err = appErrs.ToError(); err != nil {
+		return nil, err
+	}
+
+	for _, appName := range util.SortedKeys(plan.Apps) {
+		appPlan := plan.Apps[appName]
+
+		validationResult := validationResults[appName]
+		if validationResult.Err != nil {
+			return nil, errors.Errorf("app %q failed validation: %s", appName, validationResult.Err)
+		}
+
+		if appPlan.Upgrade {
+			err = releaseManifest.UpgradeApp(ctx, appName, appPlan.FromBranch, appPlan.ToBranch, appPlan.Bump)
+			if err != nil {
+				return nil, errors.Wrapf(err, "upgrading app %s", appName)
+			}
+		} else {
 			ctx.Log.Infof("No upgrade available for app %q; adding version from release %q, with no deploy requested.", appName, appPlan.PreviousReleaseName)
 			var appManifest *AppManifest
 			var err error
@@ -276,26 +358,16 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 			}
 
 			appManifest, err = p.GetAppManifestFromRelease(previousReleaseName, appName)
-
 			if err != nil {
 				return nil, err
 			}
 
+			previousReleaseMetadata, _ := p.GetReleaseMetadataByName(previousReleaseName)
+			if previousReleaseMetadata != nil {
+				appManifest.PinToRelease(previousReleaseMetadata)
+			}
+
 			releaseManifest.AddApp(appManifest, appPlan.Deploy)
-			continue
-		}
-
-		if appPlan.FromBranch == "" {
-			return nil, errors.Errorf("app %s: toBranch set to %q but fromBranch was empty", appName, appPlan.ToBranch)
-		}
-
-		if appPlan.Bump == "" {
-			return nil, errors.Errorf("app %s: branching from %q to %q, but bump was empty (should be 'none', 'patch', 'minor', or 'major'", appName, appPlan.FromBranch, appPlan.ToBranch)
-		}
-
-		err := releaseManifest.UpgradeApp(ctx, appName, appPlan.FromBranch, appPlan.ToBranch, appPlan.Bump)
-		if err != nil {
-			return nil, errors.Wrapf(err, "upgrading app %s", appName)
 		}
 
 	}

@@ -11,7 +11,6 @@ import (
 	"strings"
 )
 
-
 const (
 	zenhubRoot = "https://api.zenhub.io"
 )
@@ -91,14 +90,12 @@ func (a *API) MovePipeline(repoID int, issue int, pipelineID string) error {
 	return nil
 }
 
-
 func (a *API) AddDependency(dependency *Dependency) error {
 
 	dependencyJSON, err := json.Marshal(dependency)
 	if err != nil {
 		return err
 	}
-
 
 	client := http.DefaultClient
 	getPipelinesURI := fmt.Sprintf("%v/p1/dependencies", zenhubRoot)
@@ -149,7 +146,7 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, nil,err
+		return nil, nil, err
 	}
 
 	err = json.Unmarshal(body, depResponse)
@@ -161,7 +158,7 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 		if err := dec.Decode(&dep); err == io.EOF {
 			break
 		} else if err != nil {
-			return nil, nil,err
+			return nil, nil, err
 		}
 		if dep.Blocking.IssueNumber == issueNum {
 			parents = append(parents, dep.Blocked.IssueNumber)
@@ -203,5 +200,3 @@ func (a *API) createDefaultRequest(method, uri string) (*http.Request, error) {
 	request.Header.Add("X-Authentication-Token", a.zenHubAuthToken)
 	return request, nil
 }
-
-

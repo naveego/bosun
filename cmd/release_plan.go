@@ -70,6 +70,31 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 	},
 })
 
+//
+// var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.Command{
+// 	Use:          "add {name}",
+// 	Args:         cobra.ExactArgs(1),
+// 	Short:        "Adds an app to the release plan.",
+// 	SilenceUsage: true,
+// 	RunE: func(cmd *cobra.Command, args []string) error {
+// 		b, p := getReleaseCmdDeps()
+//
+// 		if p.Plan == nil {
+// 			return errors.New("no release plan active")
+// 		}
+//
+// 		ctx := b.NewContext()
+// 		err := p.CreateReleasePlan().IncludeApp(ctx, args[0])
+// 		if err != nil {
+// 			return err
+// 		}
+//
+// 		err = p.Save(ctx)
+//
+// 		return err
+// 	},
+// })
+
 var releasePlanStartCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"create"},
@@ -127,6 +152,44 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
 			err := p.DiscardPlan(b.NewContext())
 			return err
+		}
+		return nil
+	},
+})
+
+var releasePlanValidateCmd = addCommand(releasePlanCmd, &cobra.Command{
+	Use:          "validate",
+	Args:         cobra.NoArgs,
+	Short:        "Validates the current release plan.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b, p := getReleaseCmdDeps()
+		ctx := b.NewContext()
+		results, err := p.ValidatePlan(ctx)
+		if err != nil {
+			return err
+		}
+
+		hadErrs := false
+
+		for _, k := range util.SortedKeys(results) {
+			result := results[k]
+			fmt.Println(k)
+			if result.Err != nil {
+				lines := strings.Split(result.Err.Error(), "\n")
+				for _, line := range lines {
+					color.Red("  %s\n", line)
+				}
+				hadErrs = true
+			} else if result.Message != "" {
+				color.Green("  %s\n", result.Message)
+			} else {
+				color.Green("  OK\n")
+			}
+		}
+
+		if hadErrs {
+			return errors.New("at least one app invalid")
 		}
 		return nil
 	},
