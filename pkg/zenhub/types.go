@@ -53,6 +53,17 @@ type PipelineMove struct {
 	Position   string `json:"position"`
 }
 
+type DependenciesPackage struct {
+	Dependencies []Dependency
+}
+
+/*func (d *DependenciesPackage) ExtractDependency() (Dependency) {
+	blockingIssue := d.Dependencies.Collection.Blocking
+	blockedIssue := d.Dependencies.Collection.Blocked
+	dep := NewDependency(blockingIssue, blockedIssue)
+	return dep
+} */
+
 type Dependency struct {
 	Blocking DependencyIssue `json:"blocking"`
 	Blocked DependencyIssue `json:"blocked"`

@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/go-github/v20/github"
-	"io"
+	"github.com/pkg/errors"
+	//"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -126,13 +127,13 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 
 	var parents []int
 	var children []int
-	var depResponse []Dependency
+	var depResponse DependenciesPackage
 	client := http.DefaultClient
 
-	getDependenciesURI := fmt.Sprintf("/p1/repositories/%v/dependencies", repoID)
+	getDependenciesURI := fmt.Sprintf("%v/p1/repositories/%v/dependencies", zenhubRoot, repoID)
 	request, err := a.createDefaultRequest(http.MethodGet, getDependenciesURI)
 	if err != nil {
-		return parents, children, err
+		return nil, nil, errors.Wrap(err, "create zenhub request")
 	}
 
 	response, err := client.Do(request)
@@ -149,23 +150,24 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 		return nil, nil, err
 	}
 
-	err = json.Unmarshal(body, depResponse)
+	err = json.Unmarshal(body, &depResponse)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "unmarshal json")
+	}
+	//dumpJSON("depResponse", depResponse)
 
-	//jsonResponse := json.NewDecoder(response.Body).Decode(depResponse)
-	dec := json.NewDecoder(response.Body)
-	for {
-		var dep Dependency
-		if err := dec.Decode(&dep); err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, nil, err
-		}
-		if dep.Blocking.IssueNumber == issueNum {
-			parents = append(parents, dep.Blocked.IssueNumber)
-		} else if dep.Blocked.IssueNumber == issueNum {
-			children = append(children, dep.Blocking.IssueNumber)
+	i := 0
+	for ; i < len(depResponse.Dependencies); i++ {
+		if depResponse.Dependencies[i].Blocking.IssueNumber == issueNum {
+			parents = append(parents, depResponse.Dependencies[i].Blocked.IssueNumber)
+		} else if depResponse.Dependencies[i].Blocked.IssueNumber == issueNum {
+			children = append(children, depResponse.Dependencies[i].Blocking.IssueNumber)
 		}
 	}
+	//dumpJSON("issueNum", issueNum)
+	//dumpJSON("depResponse.Dependencies[1].Blocking.IssueNumber", depResponse.Dependencies[1].Blocking.IssueNumber)
+	//dumpJSON("parents", parents)
+	//dumpJSON("children", children)
 
 	return parents, children, nil
 }
