@@ -51,13 +51,15 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "use [name]",
 	Args:  cobra.ExactArgs(1),
 	Short: "Sets the platform.",
+	SilenceUsage:true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := mustGetBosun()
 		err := b.UsePlatform(args[0])
 		if err != nil {
-			err = b.Save()
+			return err
 		}
-		return err
+
+		return b.Save()
 	},
 })
 

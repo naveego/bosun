@@ -1,0 +1,13 @@
+platforms:
+  - name: example
+    defaultChartRepo: helm.n5o.black
+    releaseBranchFormat: release/*
+    masterBranch: master
+    releaseDirectory: releases
+    zenHubConfig:
+      storyBoardName: Release Planning
+      taskBoardName: Team One
+    master:
+      name: latest
+      version: 0.0.0
+      branch: master

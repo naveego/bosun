@@ -22,6 +22,8 @@ type Issue struct {
 	ProgressState   string
 	ProgressStateID int
 
+	IsClosed bool
+
 	GithubRepoID *int
 }
 

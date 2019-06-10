@@ -19,26 +19,28 @@ import (
 )
 
 type IssueService struct {
+	Config
 	github *github.Client
 	zenhub *API
 	git    git.GitWrapper
 	log    *logrus.Entry
 }
 
-func NewIssueService(githubToken, zenhubToken string, gitWrapper git.GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
+func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
 	s := IssueService{
-		git: gitWrapper,
-		log: log,
+		Config: config,
+		git:    gitWrapper,
+		log:    log,
 	}
 
 	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: githubToken},
+		&oauth2.Token{AccessToken: config.GithubToken},
 	)
 	tc := oauth2.NewClient(context.Background(), ts)
 
 	s.github = github.NewClient(tc)
 
-	s.zenhub = New(zenhubToken, s.github)
+	s.zenhub = New(config.ZenhubToken, s.github)
 
 	return s, nil
 }
@@ -102,6 +104,9 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 		if err != nil {
 			return errors.Wrap(err, "get issue")
 		}
+
+		//issue.Org = parentOrg
+		//issue.Repo = parentRepo
 
 		if parentIssue.Milestone != nil {
 			milestones, _, err := s.github.Issues.ListMilestones(s.ctx(), issue.Org, issue.Repo, nil)
@@ -346,9 +351,21 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		for i < len(parentIssueNums) {
 			// reconstruct issue with given org, repoId and issueNum
 			var currIssue issues.Issue
+			var currIssueRef issues.IssueRef
+			var state string
 			currIssue.Org = org
 			currIssue.Repo = repoIdString
 			currIssue.Number = parentIssueNums[i]
+			currIssueRef = issues.NewIssueRef(org, repoIdString, parentIssueNums[i])
+			state, err = s.GetIssueState(currIssueRef)
+			if err != nil {
+				return nil, errors.Wrap(err, "add parent to result")
+			}
+			if state == "closed" {
+				currIssue.IsClosed = true
+			} else {
+				currIssue.IsClosed = false
+			}
 			parentIssues = append(parentIssues, currIssue)
 			i++
 		}
@@ -389,9 +406,22 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 		for i < len(childIssueNums) {
 			// reconstruct issue with given org, repoId and issueNum
 			var currIssue issues.Issue
+			var currIssueRef issues.IssueRef
+			var state string
 			currIssue.Org = org
 			currIssue.Repo = repoIdString
 			currIssue.Number = childIssueNums[i]
+			currIssueRef = issues.NewIssueRef(org, repoIdString, childIssueNums[i])
+			state, err = s.GetIssueState(currIssueRef)
+			if err != nil {
+				return nil, errors.Wrap(err, "add child to result")
+			}
+			if state == "closed" {
+				currIssue.IsClosed = true
+			} else {
+				currIssue.IsClosed = false
+			}
+
 			childIssues = append(childIssues, currIssue)
 			i++
 		}
