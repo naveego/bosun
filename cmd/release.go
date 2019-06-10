@@ -809,7 +809,7 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 				log.Info("Deploy branch has diverged from master, will merge back...")
 
 				log.Info("Creating pull request.")
-				prNumber, err := GitPullRequestCommand{
+				_, prNumber, err := GitPullRequestCommand{
 					LocalRepoPath: repoDir,
 					Base:          "master",
 					FromBranch:    releaseBranch,
