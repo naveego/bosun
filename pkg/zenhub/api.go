@@ -12,10 +12,8 @@ import (
 	"strings"
 )
 
-
 const (
 	zenhubRoot = "https://api.zenhub.io"
-
 )
 
 // API provides methods for interacting with ZenHub.
@@ -93,14 +91,12 @@ func (a *API) MovePipeline(repoID int, issue int, pipelineID string) error {
 	return nil
 }
 
-
 func (a *API) AddDependency(dependency *Dependency) error {
 
 	dependencyJSON, err := json.Marshal(dependency)
 	if err != nil {
 		return err
 	}
-
 
 	client := http.DefaultClient
 	getPipelinesURI := fmt.Sprintf("%v/p1/dependencies", zenhubRoot)
@@ -151,7 +147,7 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, nil,err
+		return nil, nil, err
 	}
 
 	err = json.Unmarshal(body, &depResponse)
@@ -161,7 +157,7 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 	//dumpJSON("depResponse", depResponse)
 
 	i := 0
-	for ;i < len(depResponse.Dependencies);i++ {
+	for ; i < len(depResponse.Dependencies); i++ {
 		if depResponse.Dependencies[i].Blocking.IssueNumber == issueNum {
 			parents = append(parents, depResponse.Dependencies[i].Blocked.IssueNumber)
 		} else if depResponse.Dependencies[i].Blocked.IssueNumber == issueNum {
@@ -206,5 +202,3 @@ func (a *API) createDefaultRequest(method, uri string) (*http.Request, error) {
 	request.Header.Add("X-Authentication-Token", a.zenHubAuthToken)
 	return request, nil
 }
-
-

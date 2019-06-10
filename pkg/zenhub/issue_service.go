@@ -22,15 +22,15 @@ type IssueService struct {
 	Config
 	github *github.Client
 	zenhub *API
-	git git.GitWrapper
-	log *logrus.Entry
+	git    git.GitWrapper
+	log    *logrus.Entry
 }
 
 func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
 	s := IssueService{
 		Config: config,
-		git:gitWrapper,
-		log:log,
+		git:    gitWrapper,
+		log:    log,
 	}
 
 	ts := oauth2.StaticTokenSource(
@@ -81,7 +81,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 	}
 
 	issueRequest := &github.IssueRequest{
-		Title: github.String(issue.Title),
+		Title:    github.String(issue.Title),
 		Assignee: user.Login,
 	}
 	dumpJSON("assignee", issueRequest.Assignee)
@@ -124,8 +124,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 			}
 		}
 	}
-
-
 
 	/*if &issue.Assignee != nil {
 		issueRequest.Assignee = &issue.Assignee
@@ -176,7 +174,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 	if parent != nil {
 		err = s.AddDependency(newIssueRef, *parent, parentIssueNumber)
 		if err != nil {
-			return errors.Wrap(err, "add dependency;" + newIssueRef.String() + ", parent " + (parent).String())
+			return errors.Wrap(err, "add dependency;"+newIssueRef.String()+", parent "+(parent).String())
 		}
 	}
 
@@ -192,7 +190,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 			return errors.Wrap(err, "set parent progress")
 		}
 	}
-
 
 	return nil
 
@@ -318,7 +315,7 @@ func (s IssueService) GetIssueState(issue issues.IssueRef) (string, error) {
 	if err != nil {
 		return state, errors.Wrap(err, "split IssueRef")
 	}
-	issuePointer, _, err =  s.github.Issues.Get(s.ctx(), org, repo, num)
+	issuePointer, _, err = s.github.Issues.Get(s.ctx(), org, repo, num)
 	if err != nil {
 		return state, errors.Wrap(err, "get a single issue with github api")
 	}
@@ -373,7 +370,6 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 			i++
 		}
 	}
-
 
 	return parentIssues, nil
 
@@ -431,7 +427,6 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 		}
 	}
 
-
 	return childIssues, nil
 }
 
@@ -458,8 +453,7 @@ func (s IssueService) ChildrenAllClosed(children []issues.Issue) (bool, error) {
 //type Issue issues.Issue
 type IssueRef issues.IssueRef
 
-
 func dumpJSON(label string, data interface{}) {
-		j, _ := json.MarshalIndent(data, "", "  ")
-		fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
+	j, _ := json.MarshalIndent(data, "", "  ")
+	fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
 }

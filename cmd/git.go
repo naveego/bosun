@@ -12,9 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/oauth2"
 	"log"
-	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -39,48 +37,9 @@ func init() {
 
 func getGithubToken() (string, error) {
 	b := mustGetBosun()
-	ws := b.GetWorkspace()
-	ctx := b.NewContext().WithDir(ws.Path)
-	if ws.GithubToken == nil {
-		fmt.Println("Github token was not found. Please provide a command that can be run to obtain a github token.")
-		fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
-		fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
-		fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-		script := pkg.RequestStringFromUser("Command")
+	token, err := b.GetGithubToken()
 
-		ws.GithubToken = &bosun.CommandValue{
-			Command: bosun.Command{
-				Script: script,
-			},
-		}
-
-		_, err := ws.GithubToken.Resolve(ctx)
-		if err != nil {
-			return "", errors.Errorf("script failed: %s\nscript:\n%s", err, script)
-		}
-
-		err = b.Save()
-		if err != nil {
-			return "", errors.Errorf("save failed: %s", err)
-		}
-	}
-
-	token, err := ws.GithubToken.Resolve(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	err = os.Setenv("GITHUB_TOKEN", token)
-	if err != nil {
-		return "", err
-	}
-
-	token, ok := os.LookupEnv("GITHUB_TOKEN")
-	if !ok {
-		return "", errors.Errorf("GITHUB_TOKEN must be set")
-	}
-
-	return token, nil
+	return token, err
 }
 
 func mustGetGithubClient() *github.Client {
@@ -90,8 +49,8 @@ func mustGetGithubClient() *github.Client {
 		log.Fatal(err)
 	}
 
-	return getGithubClient(token)
-
+	client := git.NewGithubClient(token)
+	return client
 }
 
 func getMaybeAuthenticatedGithubClient() *github.Client {
@@ -100,23 +59,7 @@ func getMaybeAuthenticatedGithubClient() *github.Client {
 		pkg.Log.Warn("No github token could be found, you may be using up a quota with each request.")
 	}
 
-	return getGithubClient(token)
-}
-
-// getGithubClient gets a github client. If token == "" the client will not be authenticated.
-func getGithubClient(token string) *github.Client {
-	if token == "" {
-		return github.NewClient(http.DefaultClient)
-	}
-
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: token},
-	)
-	tc := oauth2.NewClient(context.Background(), ts)
-
-	client := github.NewClient(tc)
-
-	return client
+	return git.NewGithubClient(token)
 }
 
 var gitDeployCmd = &cobra.Command{
@@ -481,7 +424,6 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	return nil
 }
-
 
 func getOrgAndRepo() (string, string) {
 	return git.GetCurrentOrgAndRepo()

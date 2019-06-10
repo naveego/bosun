@@ -522,6 +522,8 @@ func (a *App) BumpVersion(ctx BosunContext, bump string) error {
 			a.Version = a.Version.BumpMinor()
 		case "patch":
 			a.Version = a.Version.BumpPatch()
+		case "none":
+			return nil
 		default:
 			return errors.Errorf("invalid version component %q (want major, minor, or patch)", bump)
 		}
@@ -655,6 +657,10 @@ func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
 	valueCopy := a.Values.CanonicalizedCopy()
 
 	for name, values := range valueCopy {
+
+		if env, ok := envs[name]; ok {
+			ctx = ctx.WithEnv(env)
+		}
 
 		values, err = values.WithFilesLoaded(ctx)
 		if err != nil {

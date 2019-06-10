@@ -16,6 +16,7 @@ type Workspace struct {
 	CurrentRelease     string                 `yaml:"currentRelease" json:"currentRelease"`
 	Imports            []string               `yaml:"imports,omitempty" json:"imports"`
 	GitRoots           []string               `yaml:"gitRoots" json:"gitRoots"`
+	ScratchDir         string                 `yaml:"scratchDir" json:"scratchDir"`
 	HostIPInMinikube   string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
 	AppStates          AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
 	ClonePaths         map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
@@ -58,6 +59,9 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if r.Minikube.HostIP == "" {
 		r.Minikube.HostIP = "192.168.99.1"
+	}
+	if r.ScratchDir == "" {
+		r.ScratchDir = "/tmp/bosun"
 	}
 
 	return nil

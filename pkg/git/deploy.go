@@ -9,20 +9,18 @@ import (
 	"strings"
 )
 
-func CreateDeploy(orgSlashRepo, ref, environment string)(int64, error) {
+func CreateDeploy(client *github.Client, orgSlashRepo, ref, environment string) (int64, error) {
 
 	org, repo, err := parseOrgSlashRepo(orgSlashRepo)
 
 	deploymentRequest := &github.DeploymentRequest{
-		Description: github.String(fmt.Sprintf("Deployment to %s", environment)),
-		Environment: &environment,
-		Ref:         &ref,
-		Task:github.String("deploy"),
-		AutoMerge:github.Bool(false),
+		Description:      github.String(fmt.Sprintf("Deployment to %s", environment)),
+		Environment:      &environment,
+		Ref:              &ref,
+		Task:             github.String("deploy"),
+		AutoMerge:        github.Bool(false),
 		RequiredContexts: &[]string{},
 	}
-
-	client := mustGetGitClient()
 
 	deployment, _, err := client.Repositories.CreateDeployment(context.Background(), org, repo, deploymentRequest)
 	if err != nil {
@@ -34,10 +32,10 @@ func CreateDeploy(orgSlashRepo, ref, environment string)(int64, error) {
 	return id, nil
 }
 
-func UpdateDeploy(orgSlashRepo string, deployID int64, state string) error {
+func UpdateDeploy(client *github.Client, orgSlashRepo string, deployID int64, state string) error {
 
 	req := &github.DeploymentStatusRequest{
-		State:&state,
+		State: &state,
 	}
 
 	buildID, ok := os.LookupEnv("TEAMCITY_BUILD_ID")
@@ -46,7 +44,6 @@ func UpdateDeploy(orgSlashRepo string, deployID int64, state string) error {
 	}
 
 	org, repo, err := parseOrgSlashRepo(orgSlashRepo)
-	client := mustGetGitClient()
 
 	_, _, err = client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deployID, req)
 
@@ -58,7 +55,7 @@ func parseOrgSlashRepo(orgSlashRepo string) (org string, repo string, err error)
 	if len(segs) != 2 {
 		return "", "", errors.Errorf("orgSlashRepo must be org/repo, not like %q", orgSlashRepo)
 	}
-	org, repo =  segs[0], segs[1]
+	org, repo = segs[0], segs[1]
 
 	return
 }

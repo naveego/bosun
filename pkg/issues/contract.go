@@ -8,17 +8,19 @@ import (
 )
 
 type Issue struct {
-	Number    int
-	Org       string
-	Repo      string
-	Body      string
-	Assignee  string
-	Assignees []string
-	Milestone *int
-	Estimate  int
-	Epics     []string
-	Releases  []string
-	Title     string
+	Number          int
+	Org             string
+	Repo            string
+	Body            string
+	Assignee        string
+	Assignees       []string
+	Milestone       *int
+	Estimate        int
+	Epics           []string
+	Releases        []string
+	Title           string
+	ProgressState   string
+	ProgressStateID int
 
 	IsClosed bool
 
@@ -71,4 +73,3 @@ type IssueService interface {
 	// Check if a story's children are all closed before moving it to Waiting for Merge
 	ChildrenAllClosed(children []Issue) (bool, error)
 }
-

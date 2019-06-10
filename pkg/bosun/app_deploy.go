@@ -93,6 +93,13 @@ func NewAppDeploy(context BosunContext, settings DeploySettings, manifest *AppMa
 		AppDeploySettings: settings.GetAppDeploySettings(manifest.Name),
 	}
 
+	appDeploy.AppDeploySettings.ValueSets = append(appDeploy.AppDeploySettings.ValueSets,
+		ValueSet{
+			Static: Values{
+				"tag": manifest.GetImageTag(),
+			},
+		})
+
 	return appDeploy, nil
 }
 
@@ -484,15 +491,20 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	if reportDeploy {
 		log.Info("Deploy progress will be reported to github.")
+		gitToken, err := ctx.Bosun.GetGithubToken()
+		if err != nil {
+			return err
+		}
+		client := git.NewGithubClient(gitToken)
 		// create the deployment
-		deployID, err := git.CreateDeploy(a.Repo, a.Branch, env.Name)
+		deployID, err := git.CreateDeploy(client, a.Repo, a.Branch, env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {
 			if err != nil {
-				_ = git.UpdateDeploy(a.Repo, deployID, "failure")
+				_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
 			} else {
-				_ = git.UpdateDeploy(a.Repo, deployID, "success")
+				_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
 			}
 		}()
 

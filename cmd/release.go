@@ -6,6 +6,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
@@ -408,6 +409,8 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 	// pass &wg (optional), so p will wait for it eventually
 	p := mpb.New(mpb.WithWaitGroup(&wg))
 
+	errmu := new(sync.Mutex)
+
 	errs := map[string][]error{}
 	start := time.Now()
 	for i := range apps {
@@ -422,6 +425,8 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 		go func() {
 			err := app.Validate(ctx)
 			if err != nil {
+				errmu.Lock()
+				defer errmu.Unlock()
 				errs[app.Name] = err
 			}
 			bar.IncrBy(100, time.Since(start))
@@ -431,20 +436,25 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 	}
 	p.Wait()
 
-	for _, app := range apps {
-		errl := errs[app.Name]
-		fmt.Printf("%s: ", app.Name)
+	t := tablewriter.NewWriter(os.Stdout)
+	t.SetHeader([]string{"app", "state"})
 
-		if len(errl) == 0 {
-			_, _ = colorOK.Println("OK")
+	for _, appName := range util.SortedKeys(apps) {
+		appErrs := errs[appName]
+		var state []string
+
+		if len(appErrs) == 0 {
+			state = append(state, colorOK.Sprint("OK"))
 		} else {
-			_, _ = colorError.Println("Failed")
-			for _, err := range errs {
-				hasErrors = true
-				_, _ = colorError.Printf(" - %s\n", err)
+			hasErrors = true
+			for _, err := range appErrs {
+				state = append(state, colorError.Sprint(err))
 			}
 		}
+		t.Append([]string{appName, strings.Join(state, "\n")})
 	}
+
+	t.Render()
 
 	if hasErrors {
 		return errors.New("Some apps are invalid.")
@@ -620,11 +630,21 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
+		color.Yellow("About to deploy the following apps:")
+		for _, name := range util.SortedKeys(deploy.AppDeploys) {
+			app := deploy.AppDeploys[name]
+			fmt.Printf("- %s: %s (tag %s)\n", name, app.Version, app.GetImageTag())
+		}
+
+		if !confirm("Is this what you expected") {
+			return errors.New("Deploy cancelled.")
+		}
+
 		if viper.GetBool(ArgReleaseSkipValidate) {
 			ctx.Log.Warn("Validation disabled.")
 		} else {
 			ctx.Log.Info("Validating...")
-			err := validateDeploy(b, ctx, deploy)
+			err = validateDeploy(b, ctx, deploy)
 			if err != nil {
 				return err
 			}
@@ -647,105 +667,174 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		return errors.New("not implemented")
-		// b := mustGetBosun()
-		// ctx := b.NewContext()
 
-		// force := viper.GetBool(ArgGlobalForce)
+		b := mustGetBosun()
+		ctx := b.NewContext()
 
-		// release, err := b.GetCurrentRelease()
-		// if err != nil {
-		// 	return err
-		// }
-		// appReleases := getFilterParams(b, args).MustGetAppDeploys()
-		//
-		// releaseBranch := fmt.Sprintf("release/%s", release.Name)
-		//
-		// repoDirs := make(map[string]string)
-		//
-		// for _, appRelease := range appReleases {
-		// 	appRepo := appRelease.App
-		// 	if !appRepo.IsRepoCloned() {
-		// 		ctx.Log.Error("Repo is not cloned, cannot merge.")
-		// 		continue
-		// 	}
-		// 	repoDir, err := git.GetRepoPath(appRepo.FromPath)
-		// 	if err != nil {
-		// 		ctx.Log.WithError(err).Error("Could not get git repository from path, cannot merge.")
-		// 		continue
-		// 	}
-		// 	repoDirs[repoDir] = appRelease.Version.String()
-		// }
-		//
-		// for repoDir, version := range repoDirs {
-		//
-		// 	ctx = ctx.WithDir(repoDir)
-		//
-		// 	g, _ := git.NewGitWrapper(repoDir)
-		//
-		// 	g.Pull()
-		//
-		// 	_, err := g.Exec("checkout", releaseBranch)
-		// 	if err != nil {
-		// 		return errors.Errorf("checkout %s: %s", repoDir, releaseBranch)
-		// 	}
-		//
-		// 	tagArgs := []string{"tag", fmt.Sprintf("%s-%s", version, release.Version)}
-		// 	if force {
-		// 		tagArgs = append(tagArgs, "--force")
-		// 	}
-		//
-		// 	_, err = g.Exec(tagArgs...)
-		// 	if err != nil {
-		// 		ctx.Log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
-		// 		continue
-		// 	}
-		//
-		// 	pushArgs := []string{"push", "--tags"}
-		// 	if force {
-		// 		pushArgs = append(pushArgs, "--force")
-		// 	}
-		// 	_, err = g.Exec(pushArgs...)
-		// 	if err != nil {
-		// 		return errors.Errorf("push tags: %s", err)
-		// 	}
-		//
-		// 	diff, err := g.Exec("log", "origin/master..origin/"+releaseBranch, "--oneline")
-		// 	if err != nil {
-		// 		return errors.Errorf("find diffs: %s", err)
-		// 	}
-		//
-		// 	if len(diff) > 0 {
-		//
-		// 		ctx.Log.Info("Deploy branch has diverged from master, will merge back...")
-		//
-		// 		ctx.Log.Info("Creating pull request.")
-		// 		prNumber, err := GitPullRequestCommand{
-		// 			LocalRepoPath: repoDir,
-		// 			Base:          "master",
-		// 			FromBranch:    releaseBranch,
-		// 		}.Execute()
-		// 		if err != nil {
-		// 			ctx.Log.WithError(err).Error("Could not create pull request.")
-		// 			continue
-		// 		}
-		//
-		// 		ctx.Log.Info("Accepting pull request.")
-		// 		err = GitAcceptPRCommand{
-		// 			PRNumber:                 prNumber,
-		// 			RepoDirectory:            repoDir,
-		// 			DoNotMergeBaseIntoBranch: true,
-		// 		}.Execute()
-		//
-		// 		if err != nil {
-		// 			ctx.Log.WithError(err).Error("Could not accept pull request.")
-		// 			continue
-		// 		}
-		//
-		// 		ctx.Log.Info("Merged back to master.")
-		// 	}
-		//
-		// }
+		force := viper.GetBool(ArgGlobalForce)
+
+		release, err := b.GetCurrentReleaseManifest(false)
+		if err != nil {
+			return err
+		}
+
+		repoToManifestMap := make(map[*bosun.Repo]*bosun.AppManifest)
+
+		releaseBranch := fmt.Sprintf("release/%s", release.Version)
+
+		appsNames := map[string]bool{}
+		for _, appName := range args {
+			appsNames[appName] = true
+		}
+
+		for _, appDeploy := range release.AppManifests {
+
+			if len(args) > 0 && !appsNames[appDeploy.Name] {
+				// not listed as an arg
+				continue
+			}
+
+			app, err := b.GetApp(appDeploy.Name)
+
+			if err != nil {
+				ctx.Log.WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+				continue
+			}
+
+			manifest, err := app.GetManifest(ctx)
+			if err != nil {
+				ctx.Log.WithError(err).Errorf("App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+				continue
+			}
+
+			if !app.BranchForRelease {
+				ctx.Log.Warnf("App repo (%s) for app %s is not branched for release.", app.RepoName, app.Name)
+				continue
+			}
+
+			if appDeploy.Branch != releaseBranch {
+				ctx.Log.Warnf("App repo (%s) does not have a release branch for release %s (%s), nothing to merge.", app.RepoName, release.Name, release.Version)
+				continue
+			}
+
+			if !app.IsRepoCloned() {
+				ctx.Log.Errorf("App repo (%s) for app %s is not cloned, cannot merge.", app.RepoName, app.Name)
+				continue
+			}
+
+			repoToManifestMap[app.Repo] = manifest
+		}
+
+		if len(repoToManifestMap) == 0 {
+			return errors.New("no apps found")
+		}
+
+		fmt.Println("About to merge back to master:")
+		for _, appDeploy := range repoToManifestMap {
+			fmt.Printf("- %s: %s (tag %s)\n", appDeploy.Name, appDeploy.Version, appDeploy.Branch)
+		}
+
+		if !confirm("Is this what you expected") {
+			return errors.New("Merge cancelled.")
+		}
+
+		for repo, appDeploy := range repoToManifestMap {
+
+			log := ctx.Log.WithField("repo", repo.Name)
+
+			localRepo := repo.LocalRepo
+
+			if localRepo.IsDirty() {
+				log.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
+				continue
+			}
+
+			repoDir := localRepo.Path
+
+			g, _ := git.NewGitWrapper(repoDir)
+
+			err := g.FetchAll()
+			if err != nil {
+				return err
+			}
+
+			releaseBranch := appDeploy.Branch
+
+			log.Info("Checking out release branch...")
+
+			_, err = g.Exec("checkout", releaseBranch)
+			if err != nil {
+				return errors.Errorf("checkout %s: %s", repoDir, releaseBranch)
+			}
+
+			log.Info("Pulling release branch...")
+			err = g.Pull()
+			if err != nil {
+				return err
+			}
+
+			log.Info("Tagging release branch...")
+			tagArgs := []string{"tag", fmt.Sprintf("%s-%s", appDeploy.Version, release.Version)}
+			if force {
+				tagArgs = append(tagArgs, "--force")
+			}
+
+			_, err = g.Exec(tagArgs...)
+			if err != nil {
+				log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
+			} else {
+				log.Info("Pushing tags...")
+
+				pushArgs := []string{"push", "--tags"}
+				if force {
+					pushArgs = append(pushArgs, "--force")
+				}
+				_, err = g.Exec(pushArgs...)
+				if err != nil {
+					return errors.Errorf("push tags: %s", err)
+				}
+			}
+
+			log.Info("Checking for changes...")
+
+			diff, err := g.Exec("log", "origin/master..origin/"+releaseBranch, "--oneline")
+			if err != nil {
+				return errors.Errorf("find diffs: %s", err)
+			}
+
+			if len(diff) == 0 {
+				log.Info("No diffs found between release branch and master...")
+			} else {
+
+				log.Info("Deploy branch has diverged from master, will merge back...")
+
+				log.Info("Creating pull request.")
+				prNumber, err := GitPullRequestCommand{
+					LocalRepoPath: repoDir,
+					Base:          "master",
+					FromBranch:    releaseBranch,
+				}.Execute()
+				if err != nil {
+					ctx.Log.WithError(err).Error("Could not create pull request.")
+					continue
+				}
+
+				log.Info("Accepting pull request.")
+				err = GitAcceptPRCommand{
+					PRNumber:                 prNumber,
+					RepoDirectory:            repoDir,
+					DoNotMergeBaseIntoBranch: true,
+				}.Execute()
+
+				if err != nil {
+					ctx.Log.WithError(err).Error("Could not accept pull request.")
+					continue
+				}
+
+				log.Info("Merged back to master.")
+			}
+
+		}
 
 		return nil
 	},

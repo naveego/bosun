@@ -49,10 +49,13 @@ func GetOrgAndRepoFromPath(path string) (string, string) {
 	return org, repo
 }
 
-func mustGetGitClient() *github.Client {
-	token, ok := os.LookupEnv("GITHUB_TOKEN")
-	if !ok {
-		pkg.Log.Fatal("GITHUB_TOKEN must be set")
+func mustGetGitClient(token string) *github.Client {
+	if token == "" {
+		var ok bool
+		token, ok = os.LookupEnv("GITHUB_TOKEN")
+		if !ok {
+			pkg.Log.Fatal("GITHUB_TOKEN must be set")
+		}
 	}
 
 	ctx := context.Background()

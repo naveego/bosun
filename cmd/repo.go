@@ -21,6 +21,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -227,16 +228,16 @@ func forEachRepo(args []string, fn func(ctx bosun.BosunContext, repo *bosun.Repo
 		return err
 	}
 
-	var errs error
+	errs := multierr.New()
 	for _, repo := range repos.([]*bosun.Repo) {
 		ctx.Log.Infof("Processing %q...", repo.Name)
 		err = fn(ctx, repo)
 		if err != nil {
-			errs = util.MultiErr(errs, err)
+			errs.Collect(err)
 			ctx.Log.WithError(err).Errorf("Error on repo %q", repo.Name)
 		} else {
 			ctx.Log.Infof("Completed %q.", repo.Name)
 		}
 	}
-	return errs
+	return errs.ToError()
 }

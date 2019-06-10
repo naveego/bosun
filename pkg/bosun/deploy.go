@@ -92,6 +92,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 	deploy := &Deploy{
 		DeploySettings: &settings,
 		AppDeploys:     AppDeployMap{},
+		Filtered:       map[string]bool{},
 	}
 
 	if settings.Manifest != nil {
@@ -99,6 +100,8 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			if !settings.Manifest.DefaultDeployApps[manifest.Name] {
 				if !settings.ForceDeployApps[manifest.Name] {
 					ctx.Log.Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
+					deploy.Filtered[manifest.Name] = true
+					continue
 				}
 			}
 			appManifest := settings.Manifest.AppManifests[manifest.Name]
@@ -132,7 +135,6 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			return nil, errors.Wrap(err, "all apps were filtered out")
 		}
 		deploy.AppDeploys = filtered.(map[string]*AppDeploy)
-		deploy.Filtered = map[string]bool{}
 		for name := range appDeploys {
 			if _, ok := deploy.AppDeploys[name]; !ok {
 				ctx.Log.Warnf("App %q was filtered out of the release.", name)
@@ -161,7 +163,7 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
 	var errs []error
 
-	out, err := pkg.NewCommand("helm", "search", a.AppConfig.Chart, "-v", a.Version.String()).RunOut()
+	out, err := pkg.NewCommand("helm", "search", a.Chart(ctx), "-v", a.Version.String()).RunOut()
 	if err != nil {
 		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.AppConfig.Chart, a.Version, err))
 	}

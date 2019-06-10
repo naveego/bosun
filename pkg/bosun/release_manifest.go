@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
@@ -91,7 +92,7 @@ func (r *ReleaseManifest) init() {
 }
 
 func (r *ReleaseManifest) Headers() []string {
-	return []string{"Name", "Version", "Timestamp", "Commit Hash", "Deploying"}
+	return []string{"Name", "Version", "From Release", "Commit Hash", "Deploying"}
 }
 
 func (r *ReleaseManifest) Rows() [][]string {
@@ -99,11 +100,19 @@ func (r *ReleaseManifest) Rows() [][]string {
 	for _, name := range util.SortedKeys(r.AppMetadata) {
 		deploy := r.DefaultDeployApps[name]
 		app := r.AppMetadata[name]
+		fromReleaseText := ""
+		if app.PinnedReleaseVersion != nil {
+			fromReleaseText = app.PinnedReleaseVersion.String()
+			if *app.PinnedReleaseVersion == r.Version {
+				fromReleaseText = color.GreenString(fromReleaseText)
+			}
+		}
+
 		deploying := ""
 		if deploy {
-			deploying = "YES"
+			deploying = color.GreenString("YES")
 		}
-		out = append(out, []string{app.Name, app.Version.String(), app.Timestamp.String(), app.Hashes.Commit, deploying})
+		out = append(out, []string{app.Name, app.Version.String(), fromReleaseText, app.Hashes.Commit, deploying})
 	}
 	return out
 }
@@ -140,21 +149,6 @@ func (r *ReleaseManifest) UpgradeApp(ctx BosunContext, name, fromBranch, toBranc
 			return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
 		}
 
-		err = app.BumpVersion(ctx, bump)
-		if err != nil {
-			return errors.Wrap(err, "bumping version")
-		}
-
-		err = localRepo.Commit(fmt.Sprintf("chore(version): Bump version to %s for release %s.", app.Version, r.Name), ".")
-		if err != nil {
-			return errors.Wrap(err, "committing bumped version")
-		}
-
-		err = localRepo.Push()
-		if err != nil {
-			return errors.Wrap(err, "pushing bumped version")
-		}
-
 		ctx.Log.Info("Creating branch if needed...")
 
 		err = localRepo.Branch(ctx, fromBranch, toBranch)
@@ -163,20 +157,17 @@ func (r *ReleaseManifest) UpgradeApp(ctx BosunContext, name, fromBranch, toBranc
 			return errors.Wrap(err, "create branch for release")
 		}
 
-		if bump == "" {
-			bump = "patch"
-		}
+		if bump != "none" {
 
-		ctx.Log.Info("Committing updated files after bumping version...")
-		err = localRepo.Commit("chore(version): Bumping version for release.", ".")
-		if err != nil {
-			return err
-		}
+			err = app.BumpVersion(ctx, bump)
+			if err != nil {
+				return errors.Wrap(err, "bumping version")
+			}
 
-		ctx.Log.Info("Pushing bumped version commit...")
-		err = localRepo.Push()
-		if err != nil {
-			return err
+			err = localRepo.Commit(fmt.Sprintf("chore(version): Bump version to %s for release %s.", app.Version, r.Name), ".")
+			if err != nil {
+				return errors.Wrap(err, "committing bumped version")
+			}
 		}
 
 		ctx.Log.Info("Branching and version bumping completed.")
@@ -191,6 +182,8 @@ func (r *ReleaseManifest) UpgradeApp(ctx BosunContext, name, fromBranch, toBranc
 	if err != nil {
 		return err
 	}
+
+	appManifest.PinToRelease(r.ReleaseMetadata)
 
 	r.AddApp(appManifest, true)
 
@@ -247,6 +240,7 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string) error {
 
 	if appManifest.DiffersFrom(currentAppManifest.AppMetadata) {
 		ctx.Log.Info("Updating manifest.")
+		appManifest.PinToRelease(r.ReleaseMetadata)
 		r.AddApp(appManifest, true)
 	} else {
 		ctx.Log.Debug("No changes detected.")
@@ -308,6 +302,9 @@ func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool
 	r.AppManifests[manifest.Name] = manifest
 	r.AppMetadata[manifest.Name] = manifest.AppMetadata
 	if addToDefaultDeploys {
+		if r.DefaultDeployApps == nil {
+			r.DefaultDeployApps = map[string]bool{}
+		}
 		r.DefaultDeployApps[manifest.Name] = true
 	}
 }

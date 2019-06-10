@@ -57,18 +57,17 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		issue := issues.Issue{
-			Title:title,
-			Body:body,
-			Org:org,
-			Repo:repo,
-			IsClosed:false,
+			Title:    title,
+			Body:     body,
+			Org:      org,
+			Repo:     repo,
+			IsClosed: false,
 		}
 
 		err = svc.Create(issue, parent)
 		if err != nil {
 			return err
 		}
-
 
 		return nil
 	},

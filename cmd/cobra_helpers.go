@@ -3,6 +3,10 @@ package cmd
 import "github.com/spf13/cobra"
 
 func addCommand(parent *cobra.Command, child *cobra.Command, flags ...func(cmd *cobra.Command)) *cobra.Command {
+	// don't show usage when the command returns an error,
+	// errors aren't usually caused by bad parameters
+
+	child.SilenceUsage = true
 	for _, fn := range flags {
 		fn(child)
 	}

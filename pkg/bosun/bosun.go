@@ -994,3 +994,49 @@ func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
 		repo.LocalRepo = localRepo
 	}
 }
+
+func (b *Bosun) GetGithubToken() (string, error) {
+	ws := b.ws
+	var err error
+
+	token, ok := os.LookupEnv("GITHUB_TOKEN")
+	if !ok {
+
+		ctx := b.NewContext().WithDir(ws.Path)
+		if ws.GithubToken == nil {
+			fmt.Println("Github token was not found. Please provide a command that can be run to obtain a github token.")
+			fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
+			fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
+			fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
+			script := pkg.RequestStringFromUser("Command")
+
+			ws.GithubToken = &CommandValue{
+				Command: Command{
+					Script: script,
+				},
+			}
+
+			_, err := ws.GithubToken.Resolve(ctx)
+			if err != nil {
+				return "", errors.Errorf("script failed: %s\nscript:\n%s", err, script)
+			}
+
+			err = b.Save()
+			if err != nil {
+				return "", errors.Errorf("save failed: %s", err)
+			}
+		}
+
+		token, err = ws.GithubToken.Resolve(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		err = os.Setenv("GITHUB_TOKEN", token)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return token, nil
+}
