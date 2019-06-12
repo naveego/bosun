@@ -78,6 +78,12 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if p.MasterMetadata != nil {
 		p.MasterMetadata.Branch = p.MasterBranch
 	}
+	if p.ZenHubConfig == nil {
+		p.ZenHubConfig = &zenhub.Config{
+			StoryBoardName: "Sprint Planning",
+			TaskBoardName:  "Team One",
+		}
+	}
 
 	return err
 }
