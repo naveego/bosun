@@ -141,8 +141,6 @@ var gitDeployUpdateCmd = &cobra.Command{
 
 var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
 
-
-
 type GitPullRequestCommand struct {
 	Reviewers     []string
 	Title         string
@@ -160,25 +158,28 @@ func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 
 	branch := c.FromBranch
 	m := issueNumberRE.FindStringSubmatch(branch)
-	var issueNumber string
+	var rawIssueNumber string
 	var issueNum int
 	if len(m) == 0 {
 		color.Yellow("No issue number in branch.")
 	} else {
-		issueNumber = m[1]
+		rawIssueNumber = m[1]
+		issueNum, err = strconv.Atoi(rawIssueNumber)
+		if err != nil {
+			color.Yellow("Invalid issue number %q, will not be able to close issue.", rawIssueNumber)
+		}
 	}
-
 
 	title := c.Title
 	if title == "" {
 		title = fmt.Sprintf("Merge %s into %s", branch, c.Base)
 	}
 
-	issueNum, err = strconv.Atoi(issueNumber)
-	if err != nil {
-		return 0,0, err
+	body := c.Body
+
+	if issueNum > 0 {
+		body = fmt.Sprintf("%s\nCloses #%s", c.Body, rawIssueNumber)
 	}
-	body := fmt.Sprintf("%s\nCloses #%s", c.Body, issueNumber)
 
 	target := c.Base
 	if target == "" {
@@ -206,7 +207,7 @@ func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 		}
 		_, _, err = client.PullRequests.RequestReviewers(context.Background(), org, repo, *issue.Number, revRequest)
 		if err != nil {
-			return 0,0, err
+			return 0, 0, err
 		}
 	}
 
