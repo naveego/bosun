@@ -1,15 +1,13 @@
 package cmd
 
 import (
-	"fmt"
-	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/bosun"
+	"errors"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	"github.com/pkg/errors"
+	//"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"os"
+	//"os"
 )
 
 var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
@@ -41,7 +39,11 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			body = taskName
 		}
 
-		svc := mustGetIssueService()
+		b := MustGetBosun()
+		svc, err := b.GetIssueService()
+		if err != nil {
+			return errors.New("get issue service")
+		}
 
 		var parent *issues.IssueRef
 
@@ -87,48 +89,4 @@ const (
 	ArgGitTaskParentRepo = "parent-repo"
 )
 
-func getZenhubToken() (string, error) {
-	b := mustGetBosun()
-	ws := b.GetWorkspace()
-	ctx := b.NewContext().WithDir(ws.Path)
-	if ws.ZenhubToken == nil {
-		fmt.Println("Zenhub token was not found. Please generate a new Zenhub token. https://app.zenhub.com/dashboard/tokens")
-		fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
-		fmt.Println(`Better example: cat $HOME/.tokens/zenhub.token"`)
-		fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-		script := pkg.RequestStringFromUser("Command")
 
-		ws.ZenhubToken = &bosun.CommandValue{
-			Command: bosun.Command{
-				Script: script,
-			},
-		}
-
-		_, err := ws.ZenhubToken.Resolve(ctx)
-		if err != nil {
-			return "", errors.Errorf("script failed: %s\nscript:\n%s", err, script)
-		}
-
-		err = b.Save()
-		if err != nil {
-			return "", errors.Errorf("save failed: %s", err)
-		}
-	}
-
-	token, err := ws.ZenhubToken.Resolve(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	err = os.Setenv("ZENHUB_TOKEN", token)
-	if err != nil {
-		return "", err
-	}
-
-	token, ok := os.LookupEnv("ZENHUB_TOKEN")
-	if !ok {
-		return "", errors.Errorf("ZENHUB_TOKEN must be set")
-	}
-
-	return token, nil
-}

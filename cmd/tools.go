@@ -34,7 +34,7 @@ var toolsListCmd = addCommand(toolsCmd, &cobra.Command{
 	Use:   "list",
 	Short: "Lists known tools",
 	Run: func(cmd *cobra.Command, args []string) {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		tools := b.GetTools()
 
 		byFromPath := map[string]bosun.ToolDefs{}
@@ -81,7 +81,7 @@ var toolsInstallCmd = addCommand(toolsCmd, &cobra.Command{
 	SilenceUsage: true,
 	Args:         cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		tools := b.GetTools()
 		var tool *bosun.ToolDef
 		var ok bool

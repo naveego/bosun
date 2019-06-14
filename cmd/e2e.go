@@ -32,7 +32,7 @@ var e2eListCmd = addCommand(e2eCmd, &cobra.Command{
 	Use:   "list",
 	Short: "Lists E2E test suites.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		suites := b.GetTestSuiteConfigs()
 
@@ -51,7 +51,7 @@ var e2eRunCmd = addCommand(e2eCmd, &cobra.Command{
 			return err
 		}
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		suite, err := b.GetTestSuite(args[0])
 

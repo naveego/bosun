@@ -31,8 +31,10 @@ require (
 	github.com/centrify/cloud-golang-sdk v0.0.0-20190214225812-119110094d0f // indirect
 	github.com/cheynewallace/tabby v1.1.0
 	github.com/chrismalek/oktasdk-go v0.0.0-20181212195951-3430665dfaa0 // indirect
+	github.com/christopherhein/go-version v0.0.0-20180807222509-fee8dd1f7c24 // indirect
 	github.com/containerd/continuity v0.0.0-20181203112020-004b46473808 // indirect
 	github.com/coreos/bbolt v1.3.2 // indirect
+	github.com/coreos/etcd v3.3.10+incompatible
 	github.com/coreos/go-oidc v2.0.0+incompatible // indirect
 	github.com/coreos/go-systemd v0.0.0-20190212144455-93d5ec2c7f76 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
@@ -59,6 +61,7 @@ require (
 	github.com/go-stomp/stomp v2.0.2+incompatible // indirect
 	github.com/go-test/deep v1.0.1 // indirect
 	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
+	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef // indirect
@@ -111,6 +114,7 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/keybase/go-crypto v0.0.0-20181127160227-255a5089e85a // indirect
 	github.com/kr/binarydist v0.1.0 // indirect
+	github.com/kubernetes-sigs/aws-iam-authenticator v0.4.0 // indirect
 	github.com/kyokomi/emoji v2.1.0+incompatible
 	github.com/lib/pq v1.0.0 // indirect
 	github.com/manifoldco/promptui v0.3.2
@@ -186,6 +190,7 @@ require (
 	gotest.tools v2.2.0+incompatible // indirect
 	k8s.io/api v0.0.0-20190301173355-16f65c82b8fa // indirect
 	k8s.io/apimachinery v0.0.0-20190301173222-2f7e9cae4418 // indirect
+	k8s.io/client-go v11.0.0+incompatible // indirect
 	k8s.io/klog v0.2.0 // indirect
 	layeh.com/radius v0.0.0-20190118135028-0f678f039617 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect

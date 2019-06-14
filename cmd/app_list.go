@@ -18,7 +18,7 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 		viper.SetDefault(ArgFilteringAll, true)
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		apps := getFilterParams(b, args).GetApps()
 
@@ -70,7 +70,7 @@ var appListActionsCmd = addCommand(appListCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 		viper.SetDefault(ArgFilteringAll, true)
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		apps := getFilterParams(b, args).GetApps()
 
 		t := tabby.New()

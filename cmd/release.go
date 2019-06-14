@@ -58,7 +58,7 @@ var releaseCmd = addCommand(rootCmd, &cobra.Command{
 
 		releaseOverride := viper.GetString(ArgReleaseName)
 		if releaseOverride != "" {
-			b := mustGetBosun()
+			b := MustGetBosun()
 			currentReleaseMetadata, err := b.GetCurrentReleaseMetadata()
 			if err == nil {
 				originalCurrentRelease = &currentReleaseMetadata.Name
@@ -77,7 +77,7 @@ var releaseCmd = addCommand(rootCmd, &cobra.Command{
 	},
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 		if originalCurrentRelease != nil {
-			b := mustGetBosun()
+			b := MustGetBosun()
 			err := b.UseRelease(*originalCurrentRelease)
 			if err != nil {
 				return errors.Wrap(err, "resetting current release")
@@ -105,7 +105,7 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 	Aliases: []string{"ls"},
 	Short:   "Lists known releases.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		t := tablewriter.NewWriter(os.Stdout)
 		t.SetCenterSeparator("")
@@ -166,7 +166,7 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 	Aliases: []string{"dump"},
 	Short:   "Lists the apps in the current release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		rm, err := b.GetCurrentReleaseManifest(false)
 		if err != nil {
 			return err
@@ -181,7 +181,7 @@ var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "dot",
 	Short: "Prints a dot diagram of the release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		rm, err := b.GetCurrentReleaseManifest(true)
 		if err != nil {
 			return err
@@ -194,7 +194,7 @@ var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 func getReleaseCmdDeps() (*bosun.Bosun, *bosun.Platform) {
-	b := mustGetBosun()
+	b := MustGetBosun()
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		log.Fatal(err)
@@ -312,7 +312,7 @@ var releaseUseCmd = addCommand(releaseCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Sets the release which release commands will work against.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		err := b.UseRelease(args[0])
 		if err != nil {
@@ -346,7 +346,7 @@ var releaseDeleteCmd = addCommand(releaseCmd, &cobra.Command{
 // 		"removed from the exclude list.",
 // 	RunE: func(cmd *cobra.Command, args []string) error {
 // 		viper.BindPFlags(cmd.Flags())
-// 		b := mustGetBosun()
+// 		b := MustGetBosun()
 // 		release := mustGetCurrentRelease(b)
 //
 // 		apps, err := getAppsIncludeCurrent(b, args)
@@ -372,7 +372,7 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		b := mustGetBosun()
+		b := MustGetBosun()
 		release := mustGetCurrentRelease(b)
 
 		valueSets, err := getValueSetSlice(b, b.GetCurrentEnvironment())
@@ -471,7 +471,7 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 // 	SilenceUsage:  true,
 // 	RunE: func(cmd *cobra.Command, args []string) error {
 // 		viper.BindPFlags(cmd.Flags())
-// 		b := mustGetBosun()
+// 		b := MustGetBosun()
 // 		release := mustGetCurrentRelease(b)
 // 		ctx := b.NewContext()
 //
@@ -571,7 +571,7 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
-		b := mustGetBosun()
+		b := MustGetBosun()
 		ctx := b.NewContext()
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err
@@ -605,7 +605,7 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		release := mustGetCurrentRelease(b)
 		ctx := b.NewContext()
 		if err := b.ConfirmEnvironment(); err != nil {
@@ -668,7 +668,7 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		ctx := b.NewContext()
 
 		force := viper.GetBool(ArgGlobalForce)
@@ -858,7 +858,7 @@ diff go-between 2.4.2/blue green
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := mustGetBosun()
+			b := MustGetBosun()
 			app := mustGetApp(b, []string{args[0]})
 
 			env1 := args[1]
