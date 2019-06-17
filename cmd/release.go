@@ -687,7 +687,7 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 			appsNames[appName] = true
 		}
 
-		for _, appDeploy := range release.AppManifests {
+		for _, appDeploy := range release.AppMetadata {
 
 			if len(args) > 0 && !appsNames[appDeploy.Name] {
 				// not listed as an arg
