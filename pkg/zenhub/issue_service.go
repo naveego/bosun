@@ -259,16 +259,16 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 
 	pipelineID, err := s.zenhub.GetPipelineID(repoId, column)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "set progress - get pipeline id")
 	}
 	issueNum, err := strconv.Atoi(issueSplitted[2])
 	if err != nil {
-		return err
+		return errors.Wrap(err, "set progress - issue number to int")
 	}
 
 	err = s.zenhub.MovePipeline(repoId, issueNum, pipelineID)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "set progress - move issue between pipelines")
 	}
 
 	return nil

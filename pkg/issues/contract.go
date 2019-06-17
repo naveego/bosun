@@ -15,7 +15,7 @@ type Issue struct {
 	Assignee        string
 	Assignees       []string
 	Milestone       *int
-	Estimate        int
+	Estimate        Estimate
 	Epics           []string
 	Releases        []string
 	Title           string
@@ -26,6 +26,10 @@ type Issue struct {
 
 	GithubRepoID        *int
 	MappedProgressState string
+}
+
+type Estimate struct {
+	Value int
 }
 
 var issueRefRE = regexp.MustCompile(`(.+)/(.+)#(\d+)`)
@@ -76,10 +80,10 @@ type IssueService interface {
 }
 
 const (
-	ColumnInDevelopment = "InDevelopment"
-	ColumnWaitingForMerge = "WaitingForMerge"
-	ColumnWaitingForDeploy = "WaitingForDeploy"
-	ColumnWaitingForUAT = "WaitingForUAT"
+	ColumnInDevelopment = "In Development"
+	ColumnWaitingForMerge = "Waiting for merge"
+	ColumnWaitingForDeploy = "Waiting for Deploy"
+	ColumnWaitingForUAT = "Waiting for UAT"
 	ColumnDone = "Done"
 	ColumnClosed = "Closed"
 )

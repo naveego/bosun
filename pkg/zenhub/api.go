@@ -84,7 +84,7 @@ func (a *API) MovePipeline(repoID int, issue int, pipelineID string) error {
 	response, err := client.Do(request)
 
 	if err != nil {
-		return err
+		return errors.New("cannot move issue")
 	}
 
 	if response.StatusCode != http.StatusOK {
