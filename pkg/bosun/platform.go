@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
@@ -80,8 +81,22 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if p.ZenHubConfig == nil {
 		p.ZenHubConfig = &zenhub.Config{
-			StoryBoardName: "Sprint Planning",
-			TaskBoardName:  "Team One",
+			StoryBoardName:"Sprint Planning",
+			TaskBoardName:"Development",
+			StoryColumnMapping:issues.ColumnMapping{
+				issues.ColumnInDevelopment: "In Development",
+				issues.ColumnWaitingForMerge: "WaitingForMerge",
+				issues.ColumnWaitingForDeploy: "WaitingForDeploy",
+				issues.ColumnWaitingForUAT: "UAT",
+				issues.ColumnDone: "Done",
+				issues.ColumnClosed: "Closed",
+			},
+			TaskColumnMapping:issues.ColumnMapping{
+				issues.ColumnInDevelopment: "In Progress",
+				issues.ColumnWaitingForMerge: "Ready for Merge",
+				issues.ColumnWaitingForDeploy: "Done",
+				issues.ColumnClosed: "Closed",
+			},
 		}
 	}
 

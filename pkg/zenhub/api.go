@@ -30,6 +30,8 @@ func New(zenHubAuthToken string, githubAPI *github.Client) *API {
 	}
 }
 
+
+
 // GetPipelines returns a list of pipelines.
 func (a *API) GetPipelines(repoID int) (*Pipelines, error) {
 	client := http.DefaultClient
@@ -82,7 +84,7 @@ func (a *API) MovePipeline(repoID int, issue int, pipelineID string) error {
 	response, err := client.Do(request)
 
 	if err != nil {
-		return err
+		return errors.New("cannot move issue")
 	}
 
 	if response.StatusCode != http.StatusOK {
@@ -123,7 +125,7 @@ func (a *API) AddDependency(dependency *Dependency) error {
 }
 
 // GetParents returns dependencies of the specified issue in the repo.
-func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error) {
+func (a *API) GetDependencies(repoID, issueNum int) ([]Dependency, error) {
 
 	var parents []int
 	var children []int
@@ -133,26 +135,26 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 	getDependenciesURI := fmt.Sprintf("%v/p1/repositories/%v/dependencies", zenhubRoot, repoID)
 	request, err := a.createDefaultRequest(http.MethodGet, getDependenciesURI)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "create zenhub request")
+		return nil,  errors.Wrap(err, "create zenhub request")
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, nil, err
+		return nil,  err
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("the get dependencies endpoint returned %v", response.StatusCode)
+		return nil, fmt.Errorf("the get dependencies endpoint returned %v", response.StatusCode)
 	}
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	err = json.Unmarshal(body, &depResponse)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unmarshal json")
+		return nil, errors.Wrap(err, "unmarshal json")
 	}
 	//dumpJSON("depResponse", depResponse)
 
@@ -169,7 +171,36 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 	//dumpJSON("parents", parents)
 	//dumpJSON("children", children)
 
-	return parents, children, nil
+	return depResponse.Dependencies, nil
+}
+
+func (a *API) GetIssueData(repoID, issueNumber int) (*ZenhubIssue, error) {
+
+	client := http.DefaultClient
+	// Use the Get Issue Data api
+	getCurrentPipelineURI := fmt.Sprintf("%v/p1/repositories/%v/issues/%v", zenhubRoot, repoID, issueNumber)
+	request, err := a.createDefaultRequest(http.MethodGet, getCurrentPipelineURI)
+	if err != nil {
+		return nil, errors.New("create default request")
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the get issue data endpoint returned %v", response.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	issue := new(ZenhubIssue)
+	err = json.Unmarshal(body, issue)
+	return issue, nil
 }
 
 // GetPipelineID returns the ZenHub ID for the specified pipeline name. If the specified pipeline

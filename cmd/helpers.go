@@ -29,7 +29,7 @@ const (
 	OutputYaml  = "yaml"
 )
 
-func mustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
+func MustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 	b, err := getBosun(optionalParams...)
 	if err != nil {
 		log.Fatal(err)
