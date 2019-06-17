@@ -1,4 +1,4 @@
 ## Changelog
 
-29ead5a chore(version): bump version for continuous deployment
-0413af0 chore(version): bump version for continuous deployment
+6558ab2 chore(version): bump version for continuous deployment
+9ab24d6 feat(git): continuous deployment
