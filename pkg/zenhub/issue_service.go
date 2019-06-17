@@ -188,35 +188,42 @@ func Split(r rune) bool {
 
 func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum int) error {
 
-	fromString := from.String() // convert IssueRef to string
+	/*fromString := from.String() // convert IssueRef to string
 	toString := to.String()
 	fromSplitted := strings.FieldsFunc(fromString, Split)
-	toSplitted := strings.FieldsFunc(toString, Split)
+	toSplitted := strings.FieldsFunc(toString, Split)*/
 
-	org := fromSplitted[0]
+	orgFrom, repoFrom, numFrom, err := from.Parts()
+	if err != nil {
+		return errors.Wrap(err, "split 'from' IssueRef")
+	}
 
-	blockingRepo := fromSplitted[1]
+	/*blockingRepo := fromSplitted[1]
 	blockingNum, err := strconv.Atoi(fromSplitted[2])
 	if err != nil {
 		return errors.Wrap(err, strings.Join(fromSplitted, " "))
-	}
+	}*/
 
-	blockedRepo := toSplitted[1]
+	orgTo, repoTo, _, err := to.Parts()
+	if err != nil {
+		return errors.Wrap(err, "split 'to' IssueRef")
+	}
+	//blockedRepo := toSplitted[1]
 	/*blockedNum, err := strconv.Atoi(toSplitted[2])
 	if err != nil {
 		return err
 	} */
 
-	blockingId, err := s.GetRepoIdbyName(org, blockingRepo)
+	blockingId, err := s.GetRepoIdbyName(orgFrom, repoFrom)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "getting blocking issue id")
 	}
-	blockedId, err := s.GetRepoIdbyName(org, blockedRepo)
+	blockedId, err := s.GetRepoIdbyName(orgTo, repoTo)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "getting blocked issue id")
 	}
 
-	blockingIssue := NewDependencyIssue(blockingId, blockingNum)
+	blockingIssue := NewDependencyIssue(blockingId, numFrom)
 	//fmt.Printf("blocking di:%v, %v", blockingId, blockingNum)
 	blockedIssue := NewDependencyIssue(blockedId, parentIssueNum)
 	depToAdd := NewDependency(blockingIssue, blockedIssue)
