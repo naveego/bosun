@@ -84,6 +84,9 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		if len(parent) > 0 {
 			children, err := svc.GetChildren(parent)
+			if err != nil {
+				return errors.Wrap(err, "get children for parent issue")
+			}
 
 			if children == nil {
 				err = svc.SetProgress(parent, column)
