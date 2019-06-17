@@ -1,3 +1,0 @@
-034cfaa83f0c4108e5f1fedb0a47a1b2d47c6b15afac6b49db46a398f27c0924  bosun_1.1.0-beta12_windows_amd64.tar.gz
-eb745241aa0ba364a3d1bea199c26f06a4f77b767257978074e01f79ec5a6241  bosun_1.1.0-beta12_linux_amd64.tar.gz
-3ca759de9b42b3e30285aa3b74d035b2b8b16bd74793137b3a88b5f6065c4783  bosun_1.1.0-beta12_darwin_amd64.tar.gz
