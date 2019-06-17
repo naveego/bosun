@@ -1,5 +1,7 @@
 package zenhub
 
+import "github.com/naveego/bosun/pkg/issues"
+
 type RepoConfig struct {
 	ID int `yaml:"id" json:"id"`
 }
@@ -29,17 +31,22 @@ type Pipelines struct {
 type Pipeline struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
-	Issues      []Issue `json:"issues"`
+	Issues      []issues.Issue `json:"issues"`
 	IssueNumber int     `json:"issue_number"`
 	IsEpic      bool    `json:"is_epic"`
 }
 
 // Issue represents a zenhub issue.
-type Issue struct {
+type ZenhubIssue struct {
 	IssueNumber int      `json:"issue_number"`
 	Estimate    Estimate `json:"estimate"`
 	Position    int      `json:"position"`
 	IsEpic      bool     `json:"is_epic"`
+	Pipeline ZenhubIssuePipelineData `json:"pipeline"`
+}
+
+type ZenhubIssuePipelineData struct {
+	Name string `json:"name"`
 }
 
 // Estimate represents a zenhub estimate.

@@ -7,12 +7,14 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -490,27 +492,26 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	}
 
 	if reportDeploy {
-		log.Info("Deploy progress will be reported to github.")
-		gitToken, err := ctx.Bosun.GetGithubToken()
+
+		cleanup, err := a.ReportDeployment(ctx)
 		if err != nil {
 			return err
 		}
-		client := git.NewGithubClient(gitToken)
-		// create the deployment
-		deployID, err := git.CreateDeploy(client, a.Repo, a.Branch, env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {
-			if err != nil {
-				_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
-			} else {
-				_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+			if r := recover(); r != nil {
+				var ok bool
+				err, ok = r.(error)
+				if ok {
+					err = errors.Errorf("%s: panicked with error: %s\n%s", err, debug.Stack())
+				} else {
+					err = errors.Errorf("%s: panicked: %v\n%s", r, debug.Stack())
+				}
 			}
-		}()
 
-		if err != nil {
-			return err
-		}
+			cleanup(err)
+		}()
 	}
 
 	for _, step := range plan {
@@ -524,7 +525,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	for _, step := range plan {
 		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
 		stepCtx.Log.Info("Executing step...")
-		err := step.Action(stepCtx)
+		err = step.Action(stepCtx)
 		if err != nil {
 			return err
 		}
@@ -534,6 +535,62 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	log.Debug("Plan executed.")
 
 	return nil
+}
+
+func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err error){
+
+	log := ctx.Log
+	env := ctx.Env
+
+	log.Info("Deploy progress will be reported to github.")
+	gitToken, err := ctx.Bosun.GetGithubToken()
+	if err != nil {
+		return nil, err
+	}
+	client := git.NewGithubClient(gitToken)
+	// create the deployment
+	deployID, err := git.CreateDeploy(client, a.Repo, a.Branch, env.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	issueSvc , err := ctx.Bosun.GetIssueService()
+
+	org, repoName := git.GetCurrentOrgAndRepo()
+
+	closedIssues, err := issueSvc.GetClosedIssue(org, repoName)
+	if err != nil {
+		return nil, errors.New("get closed issues")
+	}
+
+	for _, closedIssue := range closedIssues {
+		issueRef := issues.NewIssueRef(org, repoName,closedIssue.Number)
+		parents, err := issueSvc.GetParents(issueRef)
+		if err != nil {
+			return nil, errors.New("get parents for closed issue")
+		}
+		if len(parents) <= 0 {
+			continue
+		}
+		parent := parents[0]
+		if parent.ProgressState == issues.ColumnWaitingForDeploy {
+			parentRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+			err = issueSvc.SetProgress(parentRef, issues.ColumnWaitingForUAT)
+			if err != nil {
+				return nil, errors.New("move parent story to Waiting for UAT")
+			}
+		}
+	}
+
+
+	// ensure that the deployment is updated when we return.
+	return func(failure error) {
+		if failure != nil {
+			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
+		} else {
+			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+		}
+	}, nil
 }
 
 func (a *AppDeploy) diff(ctx BosunContext) (string, error) {

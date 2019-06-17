@@ -112,7 +112,7 @@ var envListCmd = addCommand(envCmd, &cobra.Command{
 	Use:   "list",
 	Short: "Lists environments.",
 	Run: func(cmd *cobra.Command, args []string) {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		for _, e := range b.GetEnvironments() {
 			fmt.Println(e.Name)
 		}
@@ -126,7 +126,7 @@ var envGetOrCreateCert = addCommand(envCmd, &cobra.Command{
 	Long:  "Requires mkcert to be installed.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		err := b.EnsureTool("mkcert")
 		if err != nil {
@@ -193,7 +193,7 @@ var _ = addCommand(envCmd, &cobra.Command{
 	Aliases: []string{"dump"},
 	Short:   "Shows the current environment with its valueSets.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		var env *bosun.EnvironmentConfig
 		var err error
 		if len(args) == 1 {
@@ -233,7 +233,7 @@ var _ = addCommand(envCmd, &cobra.Command{
 	Use:   "value-sets",
 	Short: "Lists known value-sets.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		for _, vs := range b.GetValueSets() {
 			color.Blue("%s ", vs.Name)
 			color.White("(from %s):\n", vs.FromPath)
