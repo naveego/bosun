@@ -3,8 +3,10 @@
   <component name="ChangeListManager">
     <list default="true" id="824c6c18-bfde-4f8e-a117-bf5f04ed6cbc" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/git.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/git.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pkg/bosun/app_deploy.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/bosun/app_deploy.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pkg/zenhub/issue_service.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/zenhub/issue_service.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pkg/bosun/platform.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/bosun/platform.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pkg/issues/contract.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/issues/contract.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -34,7 +36,7 @@
       <file pinned="true" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pkg/bosun/deploy.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="197">
+            <state relative-caret-position="930">
               <caret line="72" column="37" selection-start-line="72" selection-start-column="21" selection-end-line="72" selection-end-column="38" />
             </state>
           </provider>
@@ -43,8 +45,17 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pkg/issues/contract.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="188">
-              <caret line="53" column="18" selection-start-line="53" selection-start-column="18" selection-end-line="53" selection-end-column="18" />
+            <state relative-caret-position="292">
+              <caret line="86" column="23" lean-forward="true" selection-start-line="86" selection-start-column="23" selection-end-line="86" selection-end-column="23" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/pkg/bosun/platform.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="176">
+              <caret line="86" column="61" selection-start-line="86" selection-start-column="61" selection-end-line="86" selection-end-column="61" />
             </state>
           </provider>
         </entry>
@@ -58,11 +69,14 @@
           </provider>
         </entry>
       </file>
-      <file pinned="true" current-in-tab="false">
+      <file pinned="true" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pkg/bosun/app_deploy.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="15">
-              <caret line="553" column="51" selection-start-line="553" selection-start-column="51" selection-end-line="553" selection-end-column="51" />
+            <state relative-caret-position="153">
+              <caret line="595" column="45" lean-forward="true" selection-start-line="595" selection-start-column="45" selection-end-line="595" selection-end-column="45" />
+              <folding>
+                <element signature="e#15#395#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -70,16 +84,16 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/cmd/git_task.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="420">
-              <caret line="45" column="9" lean-forward="true" selection-start-line="45" selection-start-column="9" selection-end-line="45" selection-end-column="9" />
+            <state relative-caret-position="555">
+              <caret line="45" column="9" selection-start-line="45" selection-start-column="9" selection-end-line="45" selection-end-column="9" />
             </state>
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="true">
+      <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pkg/zenhub/issue_service.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="23">
+            <state relative-caret-position="203">
               <caret line="206" column="20" selection-start-line="206" selection-start-column="20" selection-end-line="206" selection-end-column="20" />
               <folding>
                 <element signature="e#16#369#0" expanded="true" />
@@ -89,19 +103,10 @@
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$USER_HOME$/go/pkg/mod/github.com/google/go-github/v20@v20.0.0/github/repos.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="196">
-              <caret line="338" column="30" selection-start-line="338" selection-start-column="30" selection-end-line="338" selection-end-column="30" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/cmd/git.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="3315">
-              <caret line="435" column="44" selection-start-line="435" selection-start-column="44" selection-end-line="435" selection-end-column="44" />
+            <state relative-caret-position="243">
+              <caret line="467" column="32" lean-forward="true" selection-start-line="458" selection-start-column="8" selection-end-line="477" selection-end-column="9" />
             </state>
           </provider>
         </entry>
@@ -118,7 +123,7 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/cmd/git_pr.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="880">
+            <state relative-caret-position="1125">
               <caret line="84" column="8" selection-start-line="84" selection-start-column="8" selection-end-line="84" selection-end-column="8" />
             </state>
           </provider>
@@ -171,17 +176,17 @@
         <option value="$USER_HOME$/.bosun/bosun.yaml" />
         <option value="$PROJECT_DIR$/cmd/platform.go" />
         <option value="$PROJECT_DIR$/pkg/zenhub/config.go" />
-        <option value="$PROJECT_DIR$/pkg/bosun/platform.go" />
         <option value="$PROJECT_DIR$/cmd/helpers.go" />
         <option value="$PROJECT_DIR$/pkg/bosun/bosun.go" />
-        <option value="$PROJECT_DIR$/cmd/git.go" />
         <option value="$PROJECT_DIR$/cmd/git_task.go" />
         <option value="$PROJECT_DIR$/pkg/zenhub/api.go" />
         <option value="$PROJECT_DIR$/cmd/git_pr.go" />
         <option value="$PROJECT_DIR$/pkg/zenhub/types.go" />
+        <option value="$PROJECT_DIR$/pkg/zenhub/issue_service.go" />
+        <option value="$PROJECT_DIR$/pkg/bosun/platform.go" />
+        <option value="$PROJECT_DIR$/cmd/git.go" />
         <option value="$PROJECT_DIR$/pkg/issues/contract.go" />
         <option value="$PROJECT_DIR$/pkg/bosun/app_deploy.go" />
-        <option value="$PROJECT_DIR$/pkg/zenhub/issue_service.go" />
       </list>
     </option>
   </component>
@@ -210,12 +215,7 @@
             <path>
               <item name="bosun" type="b2602c69:ProjectViewProjectNode" />
               <item name="bosun" type="462c0819:PsiDirectoryNode" />
-              <item name="dist" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="bosun" type="b2602c69:ProjectViewProjectNode" />
-              <item name="bosun" type="462c0819:PsiDirectoryNode" />
-              <item name="examples" type="462c0819:PsiDirectoryNode" />
+              <item name="cmd" type="462c0819:PsiDirectoryNode" />
             </path>
             <path>
               <item name="bosun" type="b2602c69:ProjectViewProjectNode" />
@@ -227,12 +227,6 @@
               <item name="bosun" type="462c0819:PsiDirectoryNode" />
               <item name="pkg" type="462c0819:PsiDirectoryNode" />
               <item name="bosun" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="bosun" type="b2602c69:ProjectViewProjectNode" />
-              <item name="bosun" type="462c0819:PsiDirectoryNode" />
-              <item name="pkg" type="462c0819:PsiDirectoryNode" />
-              <item name="filter" type="462c0819:PsiDirectoryNode" />
             </path>
             <path>
               <item name="bosun" type="b2602c69:ProjectViewProjectNode" />
@@ -320,7 +314,7 @@
   <component name="ToolWindowManager">
     <frame x="0" y="-2" width="1680" height="1052" extended-state="6" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" sideWeight="0.4989858" visible="true" weight="0.2239902" />
+      <window_info content_ui="combo" id="Project" order="0" sideWeight="0.4989858" visible="true" weight="0.22705019" />
       <window_info id="Structure" order="1" sideWeight="0.5010142" side_tool="true" weight="0.2239902" />
       <window_info id="Favorites" order="2" sideWeight="0.5010142" side_tool="true" weight="0.2239902" />
       <window_info anchor="bottom" id="Message" order="0" />
@@ -508,13 +502,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pkg/bosun/platform.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="341">
-          <caret line="97" column="46" lean-forward="true" selection-start-line="97" selection-start-column="46" selection-end-line="97" selection-end-column="46" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pkg/bosun/app_image_config.go">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
@@ -572,13 +559,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pkg/bosun/deploy.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="197">
-          <caret line="72" column="37" selection-start-line="72" selection-start-column="21" selection-end-line="72" selection-end-column="38" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/bosun.yaml">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
@@ -599,23 +579,9 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/cmd/git.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="3315">
-          <caret line="435" column="44" selection-start-line="435" selection-start-column="44" selection-end-line="435" selection-end-column="44" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pkg/helpers.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-3035" />
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/.gitignore">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="120">
-          <caret line="8" column="5" selection-start-line="8" selection-start-column="5" selection-end-line="8" selection-end-column="5" />
-        </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/pkg/zenhub/config.go">
@@ -625,24 +591,31 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pkg/zenhub/types.go">
+    <entry file="file://$PROJECT_DIR$/pkg/bosun/deploy.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="55">
-          <caret line="55" selection-start-line="55" selection-end-line="55" />
+        <state relative-caret-position="930">
+          <caret line="72" column="37" selection-start-line="72" selection-start-column="21" selection-end-line="72" selection-end-column="38" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="8" column="5" selection-start-line="8" selection-start-column="5" selection-end-line="8" selection-end-column="5" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/cmd/git_task.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="555">
+          <caret line="45" column="9" selection-start-line="45" selection-start-column="9" selection-end-line="45" selection-end-column="9" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/cmd/git_pr.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="880">
+        <state relative-caret-position="1125">
           <caret line="84" column="8" selection-start-line="84" selection-start-column="8" selection-end-line="84" selection-end-column="8" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pkg/bosun/app_deploy.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="15">
-          <caret line="553" column="51" selection-start-line="553" selection-start-column="51" selection-end-line="553" selection-end-column="51" />
         </state>
       </provider>
     </entry>
@@ -653,26 +626,50 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/cmd/git_task.go">
+    <entry file="file://$PROJECT_DIR$/pkg/zenhub/types.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="420">
-          <caret line="45" column="9" lean-forward="true" selection-start-line="45" selection-start-column="9" selection-end-line="45" selection-end-column="9" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pkg/issues/contract.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="188">
-          <caret line="53" column="18" selection-start-line="53" selection-start-column="18" selection-end-line="53" selection-end-column="18" />
+        <state relative-caret-position="55">
+          <caret line="55" selection-start-line="55" selection-end-line="55" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/pkg/zenhub/issue_service.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="23">
+        <state relative-caret-position="203">
           <caret line="206" column="20" selection-start-line="206" selection-start-column="20" selection-end-line="206" selection-end-column="20" />
           <folding>
             <element signature="e#16#369#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pkg/bosun/platform.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="176">
+          <caret line="86" column="61" selection-start-line="86" selection-start-column="61" selection-end-line="86" selection-end-column="61" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pkg/issues/contract.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="292">
+          <caret line="86" column="23" lean-forward="true" selection-start-line="86" selection-start-column="23" selection-end-line="86" selection-end-column="23" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/cmd/git.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="243">
+          <caret line="467" column="32" lean-forward="true" selection-start-line="458" selection-start-column="8" selection-end-line="477" selection-end-column="9" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pkg/bosun/app_deploy.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="153">
+          <caret line="595" column="45" lean-forward="true" selection-start-line="595" selection-start-column="45" selection-end-line="595" selection-end-column="45" />
+          <folding>
+            <element signature="e#15#395#0" expanded="true" />
           </folding>
         </state>
       </provider>

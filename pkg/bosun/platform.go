@@ -85,8 +85,6 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			TaskBoardName:"Development",
 			StoryColumnMapping:issues.ColumnMapping{
 				issues.ColumnInDevelopment: "In Development",
-				issues.ColumnWaitingForMerge: "WaitingForMerge",
-				issues.ColumnWaitingForDeploy: "WaitingForDeploy",
 				issues.ColumnWaitingForUAT: "UAT",
 				issues.ColumnDone: "Done",
 				issues.ColumnClosed: "Closed",
