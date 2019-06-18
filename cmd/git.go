@@ -443,7 +443,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	prIssRef := issues.NewIssueRef(org, repo, issNum)
 
 	// move task to "Done"
-	err = svc.SetProgress(prIssRef, issues.ColumnWaitingForDeploy)
+	err = svc.SetProgress(prIssRef, issues.ColumnDone)
 	if err != nil {
 		return errors.Wrap(err, "move task to done")
 	}
