@@ -573,11 +573,24 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			continue
 		}
 		parent := parents[0]
-		if parent.ProgressState == issues.ColumnWaitingForDeploy {
-			parentRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
-			err = issueSvc.SetProgress(parentRef, issues.ColumnWaitingForUAT)
+		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+
+		allChildren, err := issueSvc.GetChildren(parentIssueRef)
+		if err != nil {
+			return nil, errors.Wrap(err,"get all children of parent issue")
+		}
+
+		var ok = true
+		for _, child := range allChildren {
+			if !child.IsClosed {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
 			if err != nil {
-				return nil, errors.New("move parent story to Waiting for UAT")
+				return nil, errors.Wrap(err, "move parent story to waiting for UAT")
 			}
 		}
 	}

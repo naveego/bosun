@@ -443,7 +443,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	prIssRef := issues.NewIssueRef(org, repo, issNum)
 
 	// move task to "Done"
-	err = svc.SetProgress(prIssRef, issues.ColumnWaitingForDeploy)
+	err = svc.SetProgress(prIssRef, issues.ColumnDone)
 	if err != nil {
 		return errors.New("move task to done")
 	}
@@ -471,7 +471,7 @@ func (c GitAcceptPRCommand) Execute() error {
 			}
 		}
 		if ok {
-			err = svc.SetProgress(parentIssueRef, issues.ColumnWaitingForDeploy)
+			err = svc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
 			if err != nil {
 				return errors.New("move parent story to waiting for UAT")
 			}
