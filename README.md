@@ -16,11 +16,11 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
     - You'll need to install some of these tools to proceed, using `bosun tool install {name}`
     - virtualbox
     - minikube 
-    - helm
+    - helm (https://helm.sh/docs/using_helm/#from-script) & helm diff plugin (https://github.com/databus23/helm-diff)
     - vault
     - mkcert
     - awscli
-    - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/)
+    - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/ and `sudo chmod 777 .docker && sudo chmod 777 .docker/config`)
 7. Add docker login for our private repo: `sudo docker login docker.n5o.black`. Get username/password from your mentor.
 8. Add aws login for CLI: `aws configure --profile black`. Get key/secret from your mentor.
 8. Add our private helm repo: `helm repo add helm.n5o.black s3://helm.n5o.black`
