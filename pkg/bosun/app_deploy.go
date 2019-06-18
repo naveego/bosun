@@ -580,11 +580,9 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 
 		allChildren, err := issueSvc.GetChildren(parentIssueRef)
 		if err != nil {
-<<<<<<< HEAD
+
 			return nil, errors.Wrap(err,"get all children of parent issue")
-=======
-			return nil, errors.Wrap(err, "get all children of parent issue")
->>>>>>> master
+
 		}
 
 		var ok = true
@@ -597,11 +595,9 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 		if ok {
 			err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
 			if err != nil {
-<<<<<<< HEAD
-				return nil, errors.Wrap(err, "move parent story to waiting for UAT")
-=======
+
 				return nil, errors.Wrap(err, "move parent story to Waiting for UAT")
->>>>>>> master
+
 			}
 		}
 	}
