@@ -322,7 +322,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}()
 
 	if err = checkHandle(g.Fetch()); err != nil {
-		return err
+		return errors.Wrap(err, "checking handle")
 	}
 
 	mergeBranch := pr.GetHead().GetRef()
@@ -445,7 +445,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	// move task to "Done"
 	err = svc.SetProgress(prIssRef, issues.ColumnDone)
 	if err != nil {
-		return errors.New("move task to done")
+		return errors.Wrap(err, "move task to done")
 	}
 
 	parents, err := svc.GetParents(prIssRef)
@@ -473,7 +473,7 @@ func (c GitAcceptPRCommand) Execute() error {
 		if ok {
 			err = svc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
 			if err != nil {
-				return errors.New("move parent story to waiting for UAT")
+				return errors.New("move parent story to Waiting for UAT")
 			}
 		}
 	}
