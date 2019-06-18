@@ -165,7 +165,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 	}
 
 	// Move the task and issue to In Progress column
-	column := "In Progress"
+	column := issues.ColumnInDevelopment
 	err = s.SetProgress(newIssueRef, column)
 	if err != nil {
 		return errors.Wrap(err, "set task progress")
