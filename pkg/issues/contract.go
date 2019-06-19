@@ -83,7 +83,7 @@ const (
 	ColumnInDevelopment = "In Development"
 	ColumnWaitingForMerge = "Waiting for merge"
 	ColumnWaitingForDeploy = "WaitingForDeploy"
-	ColumnWaitingForUAT = "Waiting for UAT"
+	ColumnWaitingForUAT = "UAT"
 	ColumnDone = "Done"
 	ColumnClosed = "Closed"
 )
