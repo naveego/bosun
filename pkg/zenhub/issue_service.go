@@ -413,9 +413,26 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 	return childIssues, nil
 }
 
-func (s IssueService) GetClosedIssue(org, repoName string) ([]issues.Issue, error) {
-	repoID, err := s.GetRepoIdbyName(org, repoName)
-	pipelines, err := s.zenhub.GetPipelines(repoID)
+func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
+
+	opt := github.IssueListByRepoOptions{
+		State: "closed",
+	}
+
+	closedIssues, _, err := s.github.Issues.ListByRepo(s.ctx(), org, repoName, &opt)
+	if err != nil {
+		return nil, errors.Wrap(err, "get closed issues by repo")
+	}
+	dumpJSON("closed issues", closedIssues)
+
+	i := 0
+	var closedIssueNumbers []int
+	for i<len(closedIssues){
+		closedIssueNumbers = append(closedIssueNumbers, closedIssues[i].GetNumber())
+		i++
+	}
+
+	/*pipelines, err := s.zenhub.GetPipelines(repoID)
 	if err != nil {
 		return nil, errors.New("get pipelines")
 	}
@@ -428,8 +445,8 @@ func (s IssueService) GetClosedIssue(org, repoName string) ([]issues.Issue, erro
 		}
 		closedIssues = pipeline.Issues
 		break
-	}
-	return closedIssues, nil
+	} */
+	return closedIssueNumbers, nil
 }
 
 func (s IssueService) ChildrenAllClosed(children []issues.Issue) (bool, error) {

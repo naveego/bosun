@@ -81,8 +81,8 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if p.ZenHubConfig == nil {
 		p.ZenHubConfig = &zenhub.Config{
-			StoryBoardName:"Sprint Planning",
-			TaskBoardName:"Development",
+			StoryBoardName:"Stories",
+			TaskBoardName:"Tasks",
 			StoryColumnMapping:issues.ColumnMapping{
 				issues.ColumnInDevelopment: "In Development",
 				issues.ColumnWaitingForUAT: "UAT",

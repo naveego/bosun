@@ -554,53 +554,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 		return nil, errors.Wrap(err, "create deploy")
 	}
 
-	issueSvc , err := ctx.Bosun.GetIssueService()
-	if err != nil {
-		return nil, errors.Wrap(err, "get issue service")
-	}
 
-	org, repoName := git.GetCurrentOrgAndRepo()
-
-	closedIssues, err := issueSvc.GetClosedIssue(org, repoName)
-	if err != nil {
-		return nil, errors.New("get closed issues")
-	}
-
-	for _, closedIssue := range closedIssues {
-		issueRef := issues.NewIssueRef(org, repoName,closedIssue.Number)
-		parents, err := issueSvc.GetParents(issueRef)
-		if err != nil {
-			return nil, errors.New("get parents for closed issue")
-		}
-		if len(parents) <= 0 {
-			continue
-		}
-		parent := parents[0]
-		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
-
-		allChildren, err := issueSvc.GetChildren(parentIssueRef)
-		if err != nil {
-
-			return nil, errors.Wrap(err,"get all children of parent issue")
-
-		}
-
-		var ok = true
-		for _, child := range allChildren {
-			if !child.IsClosed {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
-			if err != nil {
-
-				return nil, errors.Wrap(err, "move parent story to Waiting for UAT")
-
-			}
-		}
-	}
 
 
 	// ensure that the deployment is updated when we return.
@@ -609,8 +563,53 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
 		} else {
 			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+
+			log.Info("Move ready to go stories to UAT if deploy succeed")
+			issueSvc , err := ctx.Bosun.GetIssueService()
+			if err != nil {
+				err = errors.Wrap(err, "get issue service")
+			}
+
+			org, repoName := git.GetCurrentOrgAndRepo()
+
+			closedIssueNumbers, err := issueSvc.GetClosedIssue(org, repoName)
+			if err != nil {
+				err = errors.Wrap(err, "get closed issues")
+			}
+
+			for _, closedIssueNum := range closedIssueNumbers {
+				issueRef := issues.NewIssueRef(org, repoName,closedIssueNum)
+				parents, err := issueSvc.GetParents(issueRef)
+				if err != nil {
+					err = errors.Wrap(err, "get parents for closed issue")
+				}
+				if len(parents) <= 0 {
+					continue
+				}
+				parent := parents[0]
+				parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+
+				allChildren, err := issueSvc.GetChildren(parentIssueRef)
+				if err != nil {
+					err = errors.Wrap(err,"get all children of parent issue")
+				}
+
+				var ok = true
+				for _, child := range allChildren {
+					if !child.IsClosed {
+						ok = false
+						break
+					}
+				}
+				if ok {
+					err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
+					if err != nil {
+						err =  errors.Wrap(err, "move parent story to Waiting for UAT")
+					}
+				}
+			}
 		}
-	}, nil
+	} , err
 }
 
 func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
