@@ -254,10 +254,7 @@ func (s IssueService) RemoveDependency(from, to issues.IssueRef) error {
 
 func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 
-	issueString := issue.String()
-	issueSplitted := strings.FieldsFunc(issueString, Split)
-	org := issueSplitted[0]
-	repoName := issueSplitted[1]
+	org, repoName, issueNum, err := issue.Parts()
 
 	repoId, err := s.GetRepoIdbyName(org, repoName)
 	if err != nil {
@@ -267,10 +264,6 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 	pipelineID, err := s.zenhub.GetPipelineID(repoId, column)
 	if err != nil {
 		return errors.Wrap(err, "set progress - get pipeline id")
-	}
-	issueNum, err := strconv.Atoi(issueSplitted[2])
-	if err != nil {
-		return errors.Wrap(err, "set progress - issue number to int")
 	}
 
 	err = s.zenhub.MovePipeline(repoId, issueNum, pipelineID)
@@ -353,9 +346,9 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 			continue
 		}
 
-		data, err := s.zenhub.GetIssueData(dep.Blocking.RepoID, dep.Blocking.IssueNumber)
+		parentData, err := s.zenhub.GetIssueData(dep.Blocked.RepoID, dep.Blocked.IssueNumber)
 		if err != nil {
-			return nil, errors.Wrap(err, "add parent to result")
+			return nil, errors.Wrap(err, "get parent data")
 		}
 
 		// TODO: get repo name from github?
@@ -363,22 +356,27 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		currIssue := issues.Issue{
 			Org:org,
 			Repo:repo,
-			Number: dep.Blocked.IssueNumber,
+			Number: parentData.IssueNumber,
 			GithubRepoID: &dep.Blocked.RepoID,
-			ProgressState: data.Pipeline.Name,
-			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
-			IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+			ProgressState: parentData.Pipeline.Name,
+			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(parentData.Pipeline.Name),
+			IsClosed: parentData.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
 		}
 
-		parentIssues = append(parentIssues, currIssue)
+		if currIssue.Number != 0 {
+			parentIssues = append(parentIssues, currIssue)
+		}
+
 	}
+
+	//dumpJSON("parentIssues 0", parentIssues)
 
 	for _, depis := range depsInStories{
 		if depis.Blocking.RepoID != repoId || depis.Blocking.IssueNumber != number {
 			continue
 		}
 
-		data, err := s.zenhub.GetIssueData(depis.Blocking.RepoID, depis.Blocking.IssueNumber)
+		data, err := s.zenhub.GetIssueData(depis.Blocked.RepoID, depis.Blocked.IssueNumber)
 		if err != nil {
 			return nil, errors.Wrap(err, "add parent to result")
 		}
@@ -386,19 +384,21 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		// TODO: get repo name from github?
 
 		currIssue := issues.Issue{
-			Org:org,
-			Repo:repo,
+			Org:storiesOrg,
+			Repo:storiesRepo,
 			Number: depis.Blocked.IssueNumber,
-			GithubRepoID: &depis.Blocked.RepoID,
+			GithubRepoID: &storiesId,
 			ProgressState: data.Pipeline.Name,
 			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
 			IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
 		}
 
-		parentIssues = append(parentIssues, currIssue)
+		if currIssue.Number != 0 {
+			parentIssues = append(parentIssues, currIssue)
+		}
 	}
 
-	dumpJSON("parentIssues", parentIssues)
+	//dumpJSON("parentIssues 1", parentIssues)
 
 	return parentIssues, nil
 
@@ -431,10 +431,13 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 				continue
 			}
 
+			//dumpJSON("dep", dep)
+
 			data, err := s.zenhub.GetIssueData(dep.Blocking.RepoID, dep.Blocking.IssueNumber)
 			if err != nil {
 				return nil, errors.Wrap(err, "add child to result")
 			}
+			//dumpJSON("issue data", data)
 
 			// TODO: get repo name from github?
 
@@ -445,11 +448,15 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 				GithubRepoID: &dep.Blocking.RepoID,
 				ProgressState: data.Pipeline.Name,
 				MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
-				IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+				IsClosed: data.Pipeline.Name == "",
+					//s.Config.StoryColumnMapping[issues.ColumnClosed],
 			}
+
+			//dumpJSON("child issue pipeline name", data.Pipeline.Name)
 
 			childIssues = append(childIssues, currIssue)
 	}
+		//dumpJSON("childIssues", childIssues)
 
 	return childIssues, nil
 }

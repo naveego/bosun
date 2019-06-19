@@ -196,6 +196,10 @@ func (a *API) GetIssueData(repoID, issueNumber int) (*ZenhubIssue, error) {
 
 	issue := new(ZenhubIssue)
 	err = json.Unmarshal(body, issue)
+	if err != nil {
+		return nil, errors.Wrap(err, "get issue data")
+	}
+
 	return issue, nil
 }
 

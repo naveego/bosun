@@ -588,6 +588,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 				}
 				parent := parents[0]
 				parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+				log.Info("dealing with parent story #", parent.Number)
 
 				allChildren, err := issueSvc.GetChildren(parentIssueRef)
 				if err != nil {
@@ -606,6 +607,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 					if err != nil {
 						err =  errors.Wrap(err, "move parent story to Waiting for UAT")
 					}
+					log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
 				}
 			}
 		}
