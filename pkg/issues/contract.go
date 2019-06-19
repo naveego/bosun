@@ -74,7 +74,7 @@ type IssueService interface {
 	SetProgress(issue IssueRef, column string) error
 	GetParents(issue IssueRef) ([]Issue, error)
 	GetChildren(issue IssueRef) ([]Issue, error)
-	GetClosedIssue(org, repoName string) ([]Issue, error)
+	GetClosedIssue(org, repoName string) ([]int, error)
 	// Check if a story's children are all closed before moving it to Waiting for Merge
 	//ChildrenAllClosed(children []Issue) (bool, error)
 }
