@@ -330,7 +330,21 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		return nil, err
 	}
 
-	if len(deps) < 1 {
+	// Make sure we find parent story in "stories" repo if the task is not in that repo
+	storiesOrg := "naveegoinc"
+	storiesRepo := "stories"
+	storiesId, err := s.GetRepoIdbyName(storiesOrg, storiesRepo)
+	if err != nil {
+		return nil, errors.Wrap(err, "find parent in naveegoinc/stories")
+	}
+	depsInStories, err := s.zenhub.GetDependencies(storiesId, number)
+	if err != nil {
+		return nil, err
+	}
+
+	//dumpJSON("depsInStories", depsInStories)
+
+	if len(deps) < 1 && len(depsInStories) < 1{ // no parent found
 		return nil, nil
 	}
 
@@ -341,7 +355,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 
 		data, err := s.zenhub.GetIssueData(dep.Blocking.RepoID, dep.Blocking.IssueNumber)
 		if err != nil {
-			return nil, errors.Wrap(err, "add child to result")
+			return nil, errors.Wrap(err, "add parent to result")
 		}
 
 		// TODO: get repo name from github?
@@ -349,8 +363,8 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		currIssue := issues.Issue{
 			Org:org,
 			Repo:repo,
-			Number: dep.Blocking.IssueNumber,
-			GithubRepoID: &dep.Blocking.RepoID,
+			Number: dep.Blocked.IssueNumber,
+			GithubRepoID: &dep.Blocked.RepoID,
 			ProgressState: data.Pipeline.Name,
 			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
 			IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
@@ -358,6 +372,33 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 
 		parentIssues = append(parentIssues, currIssue)
 	}
+
+	for _, depis := range depsInStories{
+		if depis.Blocking.RepoID != repoId || depis.Blocking.IssueNumber != number {
+			continue
+		}
+
+		data, err := s.zenhub.GetIssueData(depis.Blocking.RepoID, depis.Blocking.IssueNumber)
+		if err != nil {
+			return nil, errors.Wrap(err, "add parent to result")
+		}
+
+		// TODO: get repo name from github?
+
+		currIssue := issues.Issue{
+			Org:org,
+			Repo:repo,
+			Number: depis.Blocked.IssueNumber,
+			GithubRepoID: &depis.Blocked.RepoID,
+			ProgressState: data.Pipeline.Name,
+			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
+			IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+		}
+
+		parentIssues = append(parentIssues, currIssue)
+	}
+
+	dumpJSON("parentIssues", parentIssues)
 
 	return parentIssues, nil
 
@@ -423,7 +464,7 @@ func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "get closed issues by repo")
 	}
-	dumpJSON("closed issues", closedIssues)
+	//dumpJSON("closed issues", closedIssues)
 
 	i := 0
 	var closedIssueNumbers []int
