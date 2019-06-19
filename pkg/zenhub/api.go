@@ -166,10 +166,6 @@ func (a *API) GetDependencies(repoID, issueNum int) ([]Dependency, error) {
 			children = append(children, depResponse.Dependencies[i].Blocking.IssueNumber)
 		}
 	}
-	//dumpJSON("issueNum", issueNum)
-	//dumpJSON("depResponse.Dependencies[1].Blocking.IssueNumber", depResponse.Dependencies[1].Blocking.IssueNumber)
-	//dumpJSON("parents", parents)
-	//dumpJSON("children", children)
 
 	return depResponse.Dependencies, nil
 }
