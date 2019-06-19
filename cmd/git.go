@@ -448,7 +448,7 @@ func (c GitAcceptPRCommand) Execute() error {
 		return errors.Wrap(err, "move task to done")
 	}
 
-	/*parents, err := svc.GetParents(prIssRef)
+	/* parents, err := svc.GetParents(prIssRef)
 	if err != nil {
 		return errors.Wrap(err, "get parents for current issue")
 	}
@@ -475,8 +475,8 @@ func (c GitAcceptPRCommand) Execute() error {
 			if err != nil {
 				return errors.New("move parent story to Waiting for UAT")
 			}
-		} */
-	//}
+		}
+	} */
 
 
 	return nil
