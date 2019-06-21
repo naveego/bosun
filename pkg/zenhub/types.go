@@ -73,7 +73,7 @@ type IssueDataPipeline struct {
 }
 
 type PlusOne struct {
-	CreatedAt string
+	CreatedAt string `json:"created_at"`
 }
 
 type ZenhubIssuePipelineData struct {
