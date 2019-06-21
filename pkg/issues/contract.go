@@ -81,7 +81,7 @@ type IssueService interface {
 
 const (
 	ColumnInDevelopment = "In Development"
-	ColumnWaitingForMerge = "Waiting for merge"
+	ColumnWaitingForMerge = "Ready for Merge"
 	ColumnWaitingForDeploy = "WaitingForDeploy"
 	ColumnWaitingForUAT = "UAT"
 	ColumnDone = "Done"
