@@ -583,6 +583,9 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 				if err != nil {
 					err = errors.Wrap(err, "get parents for closed issue")
 				}
+
+				//log.Info("get parents ", parents)
+
 				if len(parents) <= 0 {
 					continue
 				}
@@ -605,7 +608,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 				if ok {
 					err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
 					if err != nil {
-						err =  errors.Wrap(err, "move parent story to Waiting for UAT")
+						err = errors.Wrap(err, "error when move parent story to Waiting for UAT")
 					}
 					log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
 				}

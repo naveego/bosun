@@ -22,6 +22,18 @@ type Assignees struct {
 	List []string `json:"assignees"`
 }
 
+// Workspace represents a zenhub workspace
+type Workspace struct {
+	Name string `json:"name"`
+	Description string `json:"description"`
+	ID string `json:"id"`
+	Repositories []int `json:"repositories"`
+}
+
+type Workspaces struct {
+	List []Workspace
+}
+
 // Pipelines represents a slice of zenhub pipelines.
 type Pipelines struct {
 	List []Pipeline `json:"pipelines"`
@@ -43,6 +55,25 @@ type ZenhubIssue struct {
 	Position    int      `json:"position"`
 	IsEpic      bool     `json:"is_epic"`
 	Pipeline ZenhubIssuePipelineData `json:"pipeline"`
+}
+
+// IssueData is used for response of zenhub api
+type IssueData struct {
+	Estimate Estimate `json:"estimate"`
+	PlusOnes PlusOnes `json:"plus_ones"`
+	Pipeline IssueDataPipeline `json:"pipeline"`
+	Pipelines []IssueDataPipeline `json:"pipelines"`
+	IsEpic bool `json:"is_epic"`
+}
+
+type IssueDataPipeline struct {
+	Name string `json:"name"`
+	PipelineID string `json:"pipeline_id"`
+	WorkspaceID string `json:"workspace_id"`
+}
+
+type PlusOnes struct {
+	CreatedAt string
 }
 
 type ZenhubIssuePipelineData struct {
