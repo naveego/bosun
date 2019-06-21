@@ -60,7 +60,7 @@ type ZenhubIssue struct {
 // IssueData is used for response of zenhub api
 type IssueData struct {
 	Estimate Estimate `json:"estimate"`
-	PlusOnes PlusOnes `json:"plus_ones"`
+	PlusOnes []PlusOnes `json:"plus_ones"`
 	Pipeline IssueDataPipeline `json:"pipeline"`
 	Pipelines []IssueDataPipeline `json:"pipelines"`
 	IsEpic bool `json:"is_epic"`
@@ -73,7 +73,7 @@ type IssueDataPipeline struct {
 }
 
 type PlusOnes struct {
-	CreatedAt string
+	CreatedAt string `json:"created_at"`
 }
 
 type ZenhubIssuePipelineData struct {
