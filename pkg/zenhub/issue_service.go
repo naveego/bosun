@@ -27,6 +27,7 @@ type IssueService struct {
 	log    *logrus.Entry
 }
 
+
 func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry) (IssueService, error) {
 
 	s := IssueService{
@@ -50,6 +51,22 @@ func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry
 func (s IssueService) ctx() context.Context {
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	return ctx
+}
+
+func (s IssueService) GetIssuesFromCommitsSince(since string) ([]issues.Issue, error) {
+
+	currentHash := s.git.Commit()
+	changes, err := s.git.ExecLines("log", "--left-right", "--cherry-pick", "--no-merges", "--oneline", "--no-color", fmt.Sprintf("%s...%s", since, currentHash))
+
+	if err != nil {
+		return nil, err
+	}
+
+
+
+
+
+
 }
 
 
@@ -261,12 +278,14 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 		return errors.Wrap(err, "set progress - get repo id")
 	}
 
+	//log.Infof("set progress - get repo id", repoId)
 	dumpJSON("repoId", repoId)
 
     issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
 	if err != nil {
 		return errors.Wrap(err, "get issue data")
 	}
+    //log.Infof("set progress - get issue data", issueData)
     dumpJSON("issueData", issueData)
 
     workspaceId := issueData.Pipeline.WorkspaceID

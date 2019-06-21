@@ -562,20 +562,31 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 		if failure != nil {
 			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
 		} else {
-			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
 
-			log.Info("Move ready to go stories to UAT if deploy succeed")
-			issueSvc , err := ctx.Bosun.GetIssueService()
+
+
+			log.Info("Move ready to go stories to UAT")
+			repoPath, err := git.GetRepoPath(a.AppConfig.FromPath)
+
+			// TODO check err
+			issueSvc , err := ctx.Bosun.GetIssueService(repoPath)
 			if err != nil {
 				err = errors.Wrap(err, "get issue service")
 			}
 
-			org, repoName := git.GetCurrentOrgAndRepo()
+			segs := strings.Split(a.Repo, "/")
+	// TODO check we have 2 segments
+			org, repoName := segs[0], segs[1]
+			log.Info("current org", org)
 
 			closedIssueNumbers, err := issueSvc.GetClosedIssue(org, repoName)
 			if err != nil {
 				err = errors.Wrap(err, "get closed issues")
 			}
+
+
+
+			log.Info("closed issues:", closedIssueNumbers)
 
 			for _, closedIssueNum := range closedIssueNumbers {
 				issueRef := issues.NewIssueRef(org, repoName,closedIssueNum)
@@ -584,12 +595,13 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 					err = errors.Wrap(err, "get parents for closed issue")
 				}
 
-				//log.Info("get parents ", parents)
+				log.Info("get parents ", parents)
 
 				if len(parents) <= 0 {
 					continue
 				}
 				parent := parents[0]
+				parent.Repo = "stories"
 				parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
 				log.Info("dealing with parent story #", parent.Number)
 
@@ -613,6 +625,9 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 					log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
 				}
 			}
+
+			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+
 		}
 	} , err
 }
