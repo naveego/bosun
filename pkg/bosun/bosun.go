@@ -998,7 +998,7 @@ func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
 }
 
 
-func (b *Bosun) GetIssueService() (issues.IssueService, error) {
+func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
@@ -1021,11 +1021,6 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 	zc.ZenhubToken, err = b.GetZenhubToken()
 	if err != nil {
 		return nil,errors.Wrap(err, "get zenhub token")
-	}
-
-	repoPath, err := git.GetCurrentRepoPath()
-	if err != nil {
-		return nil, err
 	}
 
 	g, err := git.NewGitWrapper(repoPath)
