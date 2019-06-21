@@ -261,15 +261,29 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 		return errors.Wrap(err, "set progress - get repo id")
 	}
 
-	pipelineID, err := s.zenhub.GetPipelineID(repoId, column)
+	dumpJSON("repoId", repoId)
+
+    issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
+	if err != nil {
+		return errors.Wrap(err, "get issue data")
+	}
+    dumpJSON("issueData", issueData)
+
+    workspaceId := issueData.Pipeline.WorkspaceID
+
+	pipelineID, err := s.zenhub.GetPipelineID(workspaceId, repoId, column)
 	if err != nil {
 		return errors.Wrap(err, "set progress - get pipeline id")
 	}
 
-	err = s.zenhub.MovePipeline(repoId, issueNum, pipelineID)
+	dumpJSON("pipelineID", pipelineID)
+
+	err = s.zenhub.MovePipeline(workspaceId, repoId, issueNum, pipelineID)
 	if err != nil {
 		return errors.Wrap(err, "set progress - move issue between pipelines")
 	}
+
+	dumpJSON("moved", pipelineID)
 
 	return nil
 }
@@ -312,7 +326,6 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 
 	var parentIssues []issues.Issue
 	org, repo, number, err := issue.Parts()
-
 	repoId, err := s.GetRepoIdbyName(org, repo)
 	if err != nil {
 		return nil, err
@@ -322,6 +335,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 	if err != nil {
 		return nil, err
 	}
+	//dumpJSON("deps", deps)
 
 	// Make sure we find parent story in "stories" repo if the task is not in that repo
 	storiesOrg := "naveegoinc"
@@ -334,8 +348,6 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 	if err != nil {
 		return nil, err
 	}
-
-	//dumpJSON("depsInStories", depsInStories)
 
 	if len(deps) < 1 && len(depsInStories) < 1{ // no parent found
 		return nil, nil
@@ -356,7 +368,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		currIssue := issues.Issue{
 			Org:org,
 			Repo:repo,
-			Number: parentData.IssueNumber,
+			Number: dep.Blocked.IssueNumber,
 			GithubRepoID: &dep.Blocked.RepoID,
 			ProgressState: parentData.Pipeline.Name,
 			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(parentData.Pipeline.Name),

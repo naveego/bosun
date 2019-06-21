@@ -38,8 +38,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		//taskName := args[0]
 
-		org0 := "naveegoinc"
-		repo0 := "stories"
+		org0, repo0 := git.GetCurrentOrgAndRepo()
 
 		pkg.Log.WithField("org", org0).Info("org from GetCurrentOrgAndRepo")
 		pkg.Log.WithField("repo", repo0).Info("repo from...")
@@ -79,7 +78,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		column := issues.ColumnWaitingForMerge
 		err = svc.SetProgress(issueRf, column)
 		if err != nil {
-			return errors.Wrap(err, "move issue to Waiting for Merge")
+			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
 
 		if len(parent) > 0 {
