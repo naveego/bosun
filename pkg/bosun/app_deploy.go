@@ -7,7 +7,12 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
-	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/kube"
+	v1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -630,61 +635,99 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext) error {
 		return errors.New("minikube.hostIP is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
 	}
 
+	client, err := kube.GetKubeClient()
+	if err != nil {
+		return errors.Wrap(err, "get kube client for tweaking service")
+	}
+
 	for _, routableService := range a.AppConfig.Minikube.RoutableServices {
 		log := ctx.Log.WithField("routable_service", routableService.Name)
 
-		log.Info("Updating service...")
+		log.Info("Updating service and endpoint...")
 
-		realSvcYaml, err := pkg.NewCommand("kubectl", "get", "svc", routableService.Name, "-o", "yaml").RunOut()
-		if err != nil {
-			return errors.Errorf("getting service config for %q: %s", routableService.Name, err)
+		namespace := a.AppConfig.Namespace
+		if namespace == "" {
+			namespace = "default"
 		}
 
-		routedSvc, err := ReadValues([]byte(realSvcYaml))
+		svcClient := client.CoreV1().Services(namespace)
+		svc, err := svcClient.Get(routableService.Name, metav1.GetOptions{})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "get service if it exists")
 		}
 
 		localhostPort := routableService.LocalhostPort
 		if localhostPort == 0 {
 			localhostPort = routableService.ExternalPort
 		}
-
-		_ = routedSvc.SetAtPath("spec.clusterIP", "")
-		_ = routedSvc.SetAtPath("spec.type", "ExternalName")
-		_ = routedSvc.SetAtPath("spec.externalName", hostIP)
-		_ = routedSvc.SetAtPath("spec.ports", []Values{
-			{
-				"port":     localhostPort,
-				"protocol": "TCP",
-				"name":     routableService.PortName,
-			},
-		})
-
-		routedSvcYaml, _ := routedSvc.YAML()
-
-		err = func() error {
-			tmp, err := util.NewTempFile("routed-service", []byte(routedSvcYaml))
-			if err != nil {
-				return errors.Wrap(err, "create service file")
-			}
-			defer tmp.CleanUp()
-
-			err = pkg.NewCommand("kubectl", "delete", "service", routableService.Name).RunE()
-			if err != nil {
-				return errors.Wrap(err, "delete service")
-			}
-			err = pkg.NewCommand("kubectl", "apply", "-f", tmp.Path).RunE()
-			if err != nil {
-				return errors.Errorf("error applying service\n%s\n---\n%s", routedSvcYaml, err)
-			}
-			return nil
-		}()
-		if err != nil {
-			return errors.Wrapf(err, "updating service for %q", a.Name)
+		internalPort := routableService.InternalPort
+		if internalPort == 0 {
+			internalPort = routableService.LocalhostPort
 		}
 
+		svc.Spec.ClusterIP = ""
+		svc.Spec.Type = "ExternalName"
+		svc.Spec.Ports = []v1.ServicePort{
+			{
+				Port:       int32(internalPort),
+				TargetPort: intstr.IntOrString{},
+				Name:       routableService.PortName,
+				Protocol:   v1.ProtocolTCP,
+			},
+		}
+		svc.Spec.Selector = nil
+
+		log.Info("Updating service...")
+		svc, err = svcClient.Update(svc)
+
 		log.Info("Updated service.")
+
+		endpointClient := client.CoreV1().Endpoints(namespace)
+
+		endpoint, err := endpointClient.Get(routableService.Name, metav1.GetOptions{})
+		if err != nil && !kerrors.IsNotFound(err) {
+			return errors.Wrap(err, "get endpoint if it exists")
+		}
+
+		endpointExists := true
+		if endpoint == nil {
+			endpointExists = false
+			endpoint = &v1.Endpoints{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: routableService.Name,
+				},
+			}
+		}
+
+		endpoint.Subsets = []v1.EndpointSubset{
+			{
+				Addresses: []v1.EndpointAddress{
+					{IP: hostIP},
+				},
+				Ports: []v1.EndpointPort{
+					{
+						Port: int32(localhostPort),
+						Name: routableService.PortName,
+					},
+				},
+			},
+		}
+
+		if endpointExists {
+			log.Info("Creating endpoint...")
+			endpoint, err = endpointClient.Update(endpoint)
+			log.Info("Created endpoint.")
+		} else {
+			log.Info("Updating endpoint...")
+			endpoint, err = endpointClient.Create(endpoint)
+			log.Info("Updated endpoint.")
+		}
+
+		if err != nil {
+			return errors.Wrap(err, "creating endpoint")
+		}
+
+		log.Info("Updated service and endpoint.")
 	}
 
 	return nil
@@ -720,8 +763,11 @@ func (a *AppDeploy) getHelmNamespaceArgs(ctx BosunContext) []string {
 }
 
 func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
+	if ctx.IsVerbose() {
+		return []string{"--debug"}
+	}
 	if ctx.IsDryRun() {
-		return []string{"--dry-run", "--debug"}
+		return []string{"--dry-run"}
 	}
 	return []string{}
 }
