@@ -46,7 +46,7 @@ var _ = addCommand(repoCmd, &cobra.Command{
 	Short:        "Lists the known repos and their clone status.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		repos := getFilterParams(b, []string{}).Chain().Then().Including(filter.FilterMatchAll()).From(b.GetRepos()).([]*bosun.Repo)
 
 		t := tablewriter.NewWriter(os.Stdout)
@@ -98,7 +98,7 @@ var _ = addCommand(repoCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Outputs the path where the repo is cloned on the local system.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		repo, err := b.GetRepo(args[0])
 		if err != nil {
 			return err
@@ -120,7 +120,7 @@ var _ = addCommand(
 		Short: "Clones the named repo(s).",
 		Long:  "Uses the first directory in `gitRoots` from the root config.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := mustGetBosun()
+			b := MustGetBosun()
 
 			dir := viper.GetString(ArgAppCloneDir)
 			roots := b.GetGitRoots()
@@ -151,7 +151,7 @@ var _ = addCommand(
 				if err != nil {
 					return err
 				}
-				b = mustGetBosun()
+				b = MustGetBosun()
 			}
 
 			repos, err := getFilterParams(b, args).Chain().ToGetAtLeast(1).FromErr(b.GetRepos())
@@ -221,7 +221,7 @@ var _ = addCommand(
 	}, withFilteringFlags)
 
 func forEachRepo(args []string, fn func(ctx bosun.BosunContext, repo *bosun.Repo) error) error {
-	b := mustGetBosun()
+	b := MustGetBosun()
 	ctx := b.NewContext()
 	repos, err := getFilterParams(b, args).Chain().ToGetAtLeast(1).FromErr(b.GetRepos())
 	if err != nil {

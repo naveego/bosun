@@ -4,60 +4,14 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	"github.com/naveego/bosun/pkg/zenhub"
+	//"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"log"
+	//"log"
 )
 
-func mustGetIssueService() issues.IssueService {
-	svc, err := getIssueService()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return svc
-}
 
-func getIssueService() (issues.IssueService, error) {
-
-
-	b := mustGetBosun()
-
-	p, err := b.GetCurrentPlatform()
-	if err != nil {
-		return nil, errors.Wrap(err, "get current platform")
-	}
-	zc := *p.ZenHubConfig
-
-
-	zc.GithubToken, err = getGithubToken()
-	if err != nil {
-		return nil, err
-	}
-
-	zc.ZenhubToken, err = getZenhubToken()
-	if err != nil {
-		return nil,errors.Wrap(err, "get zenhub token")
-	}
-
-	repoPath, err := git.GetCurrentRepoPath()
-	if err != nil {
-		return nil, err
-	}
-
-	g, err := git.NewGitWrapper(repoPath)
-	if err != nil {
-		return nil,err
-	}
-
-	svc, err := zenhub.NewIssueService(zc, g, pkg.Log.WithField("cmp", "zenhub"))
-	if err != nil {
-		return nil,errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
-	}
-	return svc, nil
-
-}
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	Use:     "pull-request",
@@ -76,12 +30,15 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		svc := mustGetIssueService()
+		b := MustGetBosun()
+		svc, err := b.GetIssueService()
+		if err != nil {
+			return errors.New("get issue service")
+		}
 
 		//taskName := args[0]
 
-		org0 := "naveegoinc"
-		repo0 := "stories"
+		org0, repo0 := git.GetCurrentOrgAndRepo()
 
 		pkg.Log.WithField("org", org0).Info("org from GetCurrentOrgAndRepo")
 		pkg.Log.WithField("repo", repo0).Info("repo from...")
@@ -118,14 +75,17 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 
-		column := "Waiting for Merge"
+		column := issues.ColumnWaitingForMerge
 		err = svc.SetProgress(issueRf, column)
 		if err != nil {
-			return errors.Wrap(err, "move issue to Waiting for Merge")
+			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
 
 		if len(parent) > 0 {
 			children, err := svc.GetChildren(parent)
+			if err != nil {
+				return errors.Wrap(err, "get children for parent issue")
+			}
 
 			if children == nil {
 				err = svc.SetProgress(parent, column)

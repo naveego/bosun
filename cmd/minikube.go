@@ -57,7 +57,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		ctx := b.NewContext()
 		err := bosun.MinikubeUp(ctx)
 

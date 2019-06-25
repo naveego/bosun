@@ -92,7 +92,7 @@ var appVersionCmd = &cobra.Command{
 	Args:    cobra.RangeArgs(0, 1),
 	Short:   "Outputs the version of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		app := mustGetApp(b, args)
 		fmt.Println(app.Version)
 		return nil
@@ -104,7 +104,7 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 	Args:  cobra.RangeArgs(0, 1),
 	Short: "Outputs the path where the app is cloned on the local system.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		app := mustGetApp(b, args)
 		if !app.IsRepoCloned() {
 			return errors.New("repo is not cloned")
@@ -121,7 +121,7 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 	Short: "Updates the version of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		app := mustGetApp(b, args)
 
 		if app.IsFromManifest {
@@ -187,7 +187,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 	Example: "bosun apps add-hosts --all | sudo tee /etc/hosts",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		apps := mustGetAppsIncludeCurrent(b, args)
 		env := b.GetCurrentEnvironment()
 		ip := pkg.NewCommand("minikube", "ip").MustOut()
@@ -253,7 +253,7 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 	Short: "Removes apps with the current domain from the hosts file.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		apps := mustGetAppsIncludeCurrent(b, args)
 		env := b.GetCurrentEnvironment()
 
@@ -329,7 +329,7 @@ var appAcceptActualCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		apps, err := getAppsIncludeCurrent(b, args)
 		if err != nil {
@@ -384,7 +384,7 @@ var appStatusCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		env := b.GetCurrentEnvironment()
 		f := getFilterParams(b, args)
 		chain := f.Chain().Then().Including(filter.FilterMatchAll())
@@ -491,7 +491,7 @@ var appToggleCmd = &cobra.Command{
 
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		c := b.GetCurrentEnvironment()
 
 		if err := b.ConfirmEnvironment(); err != nil {
@@ -608,7 +608,7 @@ var appDeployCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err
@@ -689,7 +689,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		ctx := b.NewContext()
 
 		env := b.GetCurrentEnvironment()
@@ -739,7 +739,7 @@ var appDeleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err
@@ -782,7 +782,7 @@ var appRunCmd = &cobra.Command{
 		//
 		// viper.BindPFlags(cmd.Flags())
 		//
-		// b := mustGetBosun()
+		// b := MustGetBosun()
 		// c := b.GetCurrentEnvironment()
 		//
 		// if err := b.ConfirmEnvironment(); err != nil {
@@ -856,7 +856,7 @@ var appPublishChartCmd = addCommand(
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			b := mustGetBosun()
+			b := MustGetBosun()
 			app := mustGetApp(b, args)
 			ctx := b.NewContext()
 			err := app.PublishChart(ctx, viper.GetBool(ArgGlobalForce))
@@ -883,7 +883,7 @@ as "version-release".
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			b := mustGetBosun()
+			b := MustGetBosun()
 			app := mustGetApp(b, args)
 			ctx := b.NewContext()
 			err := app.PublishImages(ctx)
@@ -902,7 +902,7 @@ var appBuildImageCmd = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := mustGetBosun()
+			b := MustGetBosun()
 			app := mustGetApp(b, args)
 			ctx := b.NewContext().WithApp(app)
 			err := app.BuildImages(ctx)
@@ -919,7 +919,7 @@ var appPullCmd = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := mustGetBosun()
+			b := MustGetBosun()
 			ctx := b.NewContext()
 			apps, err := getAppsIncludeCurrent(b, args)
 			if err != nil {
@@ -959,7 +959,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err
@@ -1017,7 +1017,7 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err
@@ -1073,7 +1073,7 @@ var appCloneCmd = addCommand(
 		Long:  "Uses the first directory in `gitRoots` from the root config.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			viper.BindPFlags(cmd.Flags())
-			b := mustGetBosun()
+			b := MustGetBosun()
 
 			dir := viper.GetString(ArgAppCloneDir)
 			roots := b.GetGitRoots()
@@ -1104,7 +1104,7 @@ var appCloneCmd = addCommand(
 				if err != nil {
 					return err
 				}
-				b = mustGetBosun()
+				b = MustGetBosun()
 			}
 
 			apps, err := getAppsIncludeCurrent(b, args)

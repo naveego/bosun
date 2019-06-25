@@ -35,7 +35,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "list",
 	Short: "Lists platforms.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		platforms, err := b.GetPlatforms()
 		if err != nil {
 			return err
@@ -53,7 +53,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Short: "Sets the platform.",
 	SilenceUsage:true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		err := b.UsePlatform(args[0])
 		if err != nil {
 			return err
@@ -67,7 +67,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "pull [names...]",
 	Short: "Pulls the latest code, and updates the `latest` release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -101,7 +101,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "include [appNames...]",
 	Short: "Adds an app from the workspace to the platform.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -126,7 +126,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Aliases: []string{"dump"},
 	Short:   "Shows the named platform, or the current platform if no name provided.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		var platform *bosun.Platform
 		var err error
 		if len(args) == 1 {

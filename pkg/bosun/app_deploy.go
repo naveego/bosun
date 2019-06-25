@@ -13,11 +13,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -495,27 +497,26 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	}
 
 	if reportDeploy {
-		log.Info("Deploy progress will be reported to github.")
-		gitToken, err := ctx.Bosun.GetGithubToken()
+
+		cleanup, err := a.ReportDeployment(ctx)
 		if err != nil {
 			return err
 		}
-		client := git.NewGithubClient(gitToken)
-		// create the deployment
-		deployID, err := git.CreateDeploy(client, a.Repo, a.Branch, env.Name)
 
 		// ensure that the deployment is updated when we return.
 		defer func() {
-			if err != nil {
-				_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
-			} else {
-				_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+			if r := recover(); r != nil {
+				var ok bool
+				err, ok = r.(error)
+				if ok {
+					err = errors.Errorf("%s: panicked with error: %s\n%s", err, debug.Stack())
+				} else {
+					err = errors.Errorf("%s: panicked: %v\n%s", r, debug.Stack())
+				}
 			}
-		}()
 
-		if err != nil {
-			return err
-		}
+			cleanup(err)
+		}()
 	}
 
 	for _, step := range plan {
@@ -529,7 +530,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	for _, step := range plan {
 		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
 		stepCtx.Log.Info("Executing step...")
-		err := step.Action(stepCtx)
+		err = step.Action(stepCtx)
 		if err != nil {
 			return err
 		}
@@ -539,6 +540,83 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	log.Debug("Plan executed.")
 
 	return nil
+}
+
+func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err error) {
+
+	log := ctx.Log
+	env := ctx.Env
+
+	log.Info("Deploy progress will be reported to github.")
+	gitToken, err := ctx.Bosun.GetGithubToken()
+	if err != nil {
+		return nil, errors.Wrap(err, "get github token")
+	}
+	client := git.NewGithubClient(gitToken)
+	// create the deployment
+	deployID, err := git.CreateDeploy(client, a.Repo, a.Branch, env.Name)
+	if err != nil {
+		return nil, errors.Wrap(err, "create deploy")
+	}
+
+	// ensure that the deployment is updated when we return.
+	return func(failure error) {
+		if failure != nil {
+			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
+		} else {
+			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+
+			log.Info("Move ready to go stories to UAT if deploy succeed")
+			issueSvc, err := ctx.Bosun.GetIssueService()
+			if err != nil {
+				err = errors.Wrap(err, "get issue service")
+			}
+
+			org, repoName := git.GetCurrentOrgAndRepo()
+
+			closedIssueNumbers, err := issueSvc.GetClosedIssue(org, repoName)
+			if err != nil {
+				err = errors.Wrap(err, "get closed issues")
+			}
+
+			for _, closedIssueNum := range closedIssueNumbers {
+				issueRef := issues.NewIssueRef(org, repoName, closedIssueNum)
+				parents, err := issueSvc.GetParents(issueRef)
+				if err != nil {
+					err = errors.Wrap(err, "get parents for closed issue")
+				}
+
+				//log.Info("get parents ", parents)
+
+				if len(parents) <= 0 {
+					continue
+				}
+				parent := parents[0]
+				parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+				log.Info("dealing with parent story #", parent.Number)
+
+				allChildren, err := issueSvc.GetChildren(parentIssueRef)
+				if err != nil {
+					err = errors.Wrap(err, "get all children of parent issue")
+				}
+
+				var ok = true
+				for _, child := range allChildren {
+					if !child.IsClosed {
+						ok = false
+						break
+					}
+				}
+				if ok {
+					err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
+					if err != nil {
+						err = errors.Wrap(err, "error when move parent story to Waiting for UAT")
+					}
+					log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
+				}
+			}
+		}
+	}, err
 }
 
 func (a *AppDeploy) diff(ctx BosunContext) (string, error) {

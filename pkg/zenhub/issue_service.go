@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	//"github.com/coreos/etcd/client"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
@@ -26,7 +27,8 @@ type IssueService struct {
 	log    *logrus.Entry
 }
 
-func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
+func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry) (IssueService, error) {
+
 	s := IssueService{
 		Config: config,
 		git:    gitWrapper,
@@ -50,23 +52,7 @@ func (s IssueService) ctx() context.Context {
 	return ctx
 }
 
-func (s IssueService) GetIssue(ref issues.IssueRef) (issues.Issue, error) {
-	panic("implement me")
 
-	/*var returnedIssue issues.Issue
-	var issuePointer *github.Issue
-	var returnedIssue1 github.Issue
-	org, repo, num, err := s.SplitIssueRef(ref)
-	if err != nil {
-		return returnedIssue, errors.Wrap(err, "split IssueRef")
-	}
-	issuePointer, _, err =  s.github.Issues.Get(s.ctx(), org, repo, num)
-	if err != nil {
-		return returnedIssue, errors.Wrap(err, "split IssueRef")
-	}
-	returnedIssue1 = *issuePointer
-	return returnedIssue, nil*/
-}
 
 func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error {
 
@@ -179,7 +165,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error 
 	}
 
 	// Move the task and issue to In Progress column
-	column := "In Progress"
+	column := issues.ColumnInDevelopment
 	err = s.SetProgress(newIssueRef, column)
 	if err != nil {
 		return errors.Wrap(err, "set task progress")
@@ -202,35 +188,42 @@ func Split(r rune) bool {
 
 func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum int) error {
 
-	fromString := from.String() // convert IssueRef to string
+	/*fromString := from.String() // convert IssueRef to string
 	toString := to.String()
 	fromSplitted := strings.FieldsFunc(fromString, Split)
-	toSplitted := strings.FieldsFunc(toString, Split)
+	toSplitted := strings.FieldsFunc(toString, Split)*/
 
-	org := fromSplitted[0]
+	orgFrom, repoFrom, numFrom, err := from.Parts()
+	if err != nil {
+		return errors.Wrap(err, "split 'from' IssueRef")
+	}
 
-	blockingRepo := fromSplitted[1]
+	/*blockingRepo := fromSplitted[1]
 	blockingNum, err := strconv.Atoi(fromSplitted[2])
 	if err != nil {
 		return errors.Wrap(err, strings.Join(fromSplitted, " "))
-	}
+	}*/
 
-	blockedRepo := toSplitted[1]
+	orgTo, repoTo, _, err := to.Parts()
+	if err != nil {
+		return errors.Wrap(err, "split 'to' IssueRef")
+	}
+	//blockedRepo := toSplitted[1]
 	/*blockedNum, err := strconv.Atoi(toSplitted[2])
 	if err != nil {
 		return err
 	} */
 
-	blockingId, err := s.GetRepoIdbyName(org, blockingRepo)
+	blockingId, err := s.GetRepoIdbyName(orgFrom, repoFrom)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "getting blocking issue id")
 	}
-	blockedId, err := s.GetRepoIdbyName(org, blockedRepo)
+	blockedId, err := s.GetRepoIdbyName(orgTo, repoTo)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "getting blocked issue id")
 	}
 
-	blockingIssue := NewDependencyIssue(blockingId, blockingNum)
+	blockingIssue := NewDependencyIssue(blockingId, numFrom)
 	//fmt.Printf("blocking di:%v, %v", blockingId, blockingNum)
 	blockedIssue := NewDependencyIssue(blockedId, parentIssueNum)
 	depToAdd := NewDependency(blockingIssue, blockedIssue)
@@ -251,7 +244,6 @@ func (s IssueService) GetRepoIdbyName(org, repoName string) (int, error) {
 		return 0, errors.Wrap(err, "getting repo id")
 	}
 
-	//dumpJSON("repo from GetRepoIdbyName", repo)
 	repoId := int(repo.GetID())
 	return repoId, nil
 }
@@ -262,32 +254,41 @@ func (s IssueService) RemoveDependency(from, to issues.IssueRef) error {
 
 func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 
-	issueString := issue.String()
-	issueSplitted := strings.FieldsFunc(issueString, Split)
-	org := issueSplitted[0]
-	repoName := issueSplitted[1]
+	org, repoName, issueNum, err := issue.Parts()
 
 	repoId, err := s.GetRepoIdbyName(org, repoName)
 	if err != nil {
 		return errors.Wrap(err, "set progress - get repo id")
 	}
 
-	pipelineID, err := s.zenhub.GetPipelineID(repoId, column)
+	dumpJSON("repoId", repoId)
+
+    issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "get issue data")
 	}
-	issueNum, err := strconv.Atoi(issueSplitted[2])
+    dumpJSON("issueData", issueData)
+
+    workspaceId := issueData.Pipeline.WorkspaceID
+
+	pipelineID, err := s.zenhub.GetPipelineID(workspaceId, repoId, column)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "set progress - get pipeline id")
 	}
 
-	err = s.zenhub.MovePipeline(repoId, issueNum, pipelineID)
+	dumpJSON("pipelineID", pipelineID)
+
+	err = s.zenhub.MovePipeline(workspaceId, repoId, issueNum, pipelineID)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "set progress - move issue between pipelines")
 	}
-	//s.log.Warn("Setting progress not implemented yet.")
+
+	dumpJSON("moved", pipelineID)
+
 	return nil
 }
+
+
 
 func (s IssueService) SplitIssueRef(issue issues.IssueRef) (string, string, int, error) {
 
@@ -295,10 +296,7 @@ func (s IssueService) SplitIssueRef(issue issues.IssueRef) (string, string, int,
 	issueSplitted := strings.FieldsFunc(issueString, Split)
 	org := issueSplitted[0]
 	repoIdString := issueSplitted[1]
-	/*repoId, err := s.GetRepoIdbyName(org, repoIdString)
-	if err != nil {
-		return "", "", 0,  err
-	} */
+
 	issueNum, err := strconv.Atoi(issueSplitted[2])
 	if err != nil {
 		return "", "", 0, err
@@ -327,49 +325,92 @@ func (s IssueService) GetIssueState(issue issues.IssueRef) (string, error) {
 func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) {
 
 	var parentIssues []issues.Issue
-	issueString := issue.String()
-	issueSplitted := strings.FieldsFunc(issueString, Split)
-	org := issueSplitted[0]
-	repoIdString := issueSplitted[1]
-	repoId, err := s.GetRepoIdbyName(org, repoIdString)
-	if err != nil {
-		return nil, err
-	}
-	issueNum, err := strconv.Atoi(issueSplitted[2])
+	org, repo, number, err := issue.Parts()
+	repoId, err := s.GetRepoIdbyName(org, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	var parentIssueNums []int
-	parentIssueNums, _, err = s.zenhub.GetDependencies(repoId, issueNum)
+	deps, err := s.zenhub.GetDependencies(repoId, number)
 	if err != nil {
-		return nil, errors.Wrap(err, "get dependencies")
+		return nil, err
+	}
+	//dumpJSON("deps", deps)
+
+	// Make sure we find parent story in "stories" repo if the task is not in that repo
+	storiesOrg := "naveegoinc"
+	storiesRepo := "stories"
+	storiesId, err := s.GetRepoIdbyName(storiesOrg, storiesRepo)
+	if err != nil {
+		return nil, errors.Wrap(err, "find parent in naveegoinc/stories")
+	}
+	depsInStories, err := s.zenhub.GetDependencies(storiesId, number)
+	if err != nil {
+		return nil, err
 	}
 
-	i := 0
-	if len(parentIssueNums) > 0 {
-		for i < len(parentIssueNums) {
-			// reconstruct issue with given org, repoId and issueNum
-			var currIssue issues.Issue
-			var currIssueRef issues.IssueRef
-			var state string
-			currIssue.Org = org
-			currIssue.Repo = repoIdString
-			currIssue.Number = parentIssueNums[i]
-			currIssueRef = issues.NewIssueRef(org, repoIdString, parentIssueNums[i])
-			state, err = s.GetIssueState(currIssueRef)
-			if err != nil {
-				return nil, errors.Wrap(err, "add parent to result")
-			}
-			if state == "closed" {
-				currIssue.IsClosed = true
-			} else {
-				currIssue.IsClosed = false
-			}
+	if len(deps) < 1 && len(depsInStories) < 1{ // no parent found
+		return nil, nil
+	}
+
+	for _, dep := range deps{
+		if dep.Blocking.RepoID != repoId || dep.Blocking.IssueNumber != number {
+			continue
+		}
+
+		parentData, err := s.zenhub.GetIssueData(dep.Blocked.RepoID, dep.Blocked.IssueNumber)
+		if err != nil {
+			return nil, errors.Wrap(err, "get parent data")
+		}
+
+		// TODO: get repo name from github?
+
+		currIssue := issues.Issue{
+			Org:org,
+			Repo:repo,
+			Number: dep.Blocked.IssueNumber,
+			GithubRepoID: &dep.Blocked.RepoID,
+			ProgressState: parentData.Pipeline.Name,
+			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(parentData.Pipeline.Name),
+			IsClosed: parentData.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+		}
+
+		if currIssue.Number != 0 {
 			parentIssues = append(parentIssues, currIssue)
-			i++
+		}
+
+	}
+
+	//dumpJSON("parentIssues 0", parentIssues)
+
+	for _, depis := range depsInStories{
+		if depis.Blocking.RepoID != repoId || depis.Blocking.IssueNumber != number {
+			continue
+		}
+
+		data, err := s.zenhub.GetIssueData(depis.Blocked.RepoID, depis.Blocked.IssueNumber)
+		if err != nil {
+			return nil, errors.Wrap(err, "add parent to result")
+		}
+
+		// TODO: get repo name from github?
+
+		currIssue := issues.Issue{
+			Org:storiesOrg,
+			Repo:storiesRepo,
+			Number: depis.Blocked.IssueNumber,
+			GithubRepoID: &storiesId,
+			ProgressState: data.Pipeline.Name,
+			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
+			IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+		}
+
+		if currIssue.Number != 0 {
+			parentIssues = append(parentIssues, currIssue)
 		}
 	}
+
+	//dumpJSON("parentIssues 1", parentIssues)
 
 	return parentIssues, nil
 
@@ -378,56 +419,94 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error) {
 
 	var childIssues []issues.Issue
-	issueString := issue.String()
-	issueSplitted := strings.FieldsFunc(issueString, Split)
-	org := issueSplitted[0]
-	repoIdString := issueSplitted[1]
-	repoId, err := s.GetRepoIdbyName(org, repoIdString)
-	if err != nil {
-		return nil, err
-	}
-	issueNum, err := strconv.Atoi(issueSplitted[2])
+	org, repo, number, err := issue.Parts()
 	if err != nil {
 		return nil, err
 	}
 
-	var childIssueNums []int
-	_, childIssueNums, err = s.zenhub.GetDependencies(repoId, issueNum)
+	repoId, err := s.GetRepoIdbyName(org, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(childIssueNums) < 1 {
+	deps, err := s.zenhub.GetDependencies(repoId, number)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(deps) < 1 {
 		return nil, nil
 	}
 
-	i := 0
-	if len(childIssueNums) > 0 {
-		for i < len(childIssueNums) {
-			// reconstruct issue with given org, repoId and issueNum
-			var currIssue issues.Issue
-			var currIssueRef issues.IssueRef
-			var state string
-			currIssue.Org = org
-			currIssue.Repo = repoIdString
-			currIssue.Number = childIssueNums[i]
-			currIssueRef = issues.NewIssueRef(org, repoIdString, childIssueNums[i])
-			state, err = s.GetIssueState(currIssueRef)
+		for _, dep := range deps{
+			if dep.Blocked.RepoID != repoId || dep.Blocked.IssueNumber != number {
+				continue
+			}
+
+			//dumpJSON("dep", dep)
+
+			data, err := s.zenhub.GetIssueData(dep.Blocking.RepoID, dep.Blocking.IssueNumber)
 			if err != nil {
 				return nil, errors.Wrap(err, "add child to result")
 			}
-			if state == "closed" {
-				currIssue.IsClosed = true
-			} else {
-				currIssue.IsClosed = false
+			//dumpJSON("issue data", data)
+
+			// TODO: get repo name from github?
+
+			currIssue := issues.Issue{
+				Org:org,
+				Repo:repo,
+				Number: dep.Blocking.IssueNumber,
+				GithubRepoID: &dep.Blocking.RepoID,
+				ProgressState: data.Pipeline.Name,
+				MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
+				IsClosed: data.Pipeline.Name == "",
+					//s.Config.StoryColumnMapping[issues.ColumnClosed],
 			}
 
+			//dumpJSON("child issue pipeline name", data.Pipeline.Name)
+
 			childIssues = append(childIssues, currIssue)
-			i++
-		}
 	}
+		//dumpJSON("childIssues", childIssues)
 
 	return childIssues, nil
+}
+
+func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
+
+	opt := github.IssueListByRepoOptions{
+		State: "closed",
+	}
+
+	closedIssues, _, err := s.github.Issues.ListByRepo(s.ctx(), org, repoName, &opt)
+	if err != nil {
+		return nil, errors.Wrap(err, "get closed issues by repo")
+	}
+	//dumpJSON("closed issues", closedIssues)
+
+	i := 0
+	var closedIssueNumbers []int
+	for i<len(closedIssues){
+		closedIssueNumbers = append(closedIssueNumbers, closedIssues[i].GetNumber())
+		i++
+	}
+
+	/*pipelines, err := s.zenhub.GetPipelines(repoID)
+	if err != nil {
+		return nil, errors.New("get pipelines")
+	}
+	dumpJSON("get pipelines", pipelines)
+
+	var closedIssues []issues.Issue
+	for _, pipeline := range pipelines.List{
+		if pipeline.Name != "Closed" {
+			continue
+		}
+		closedIssues = pipeline.Issues
+		break
+	} */
+	return closedIssueNumbers, nil
 }
 
 func (s IssueService) ChildrenAllClosed(children []issues.Issue) (bool, error) {
