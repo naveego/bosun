@@ -82,7 +82,7 @@ var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Gets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		ws := b.GetWorkspace()
 
 		//spew.Dump(ws)
@@ -108,7 +108,7 @@ var configSetImports = addCommand(workspaceCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Sets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		err := b.SetInWorkspace(args[0], args[1])
 		return err
 	},
@@ -200,7 +200,7 @@ var wsTidyPathsCmd = addCommand(workspaceCmd, &cobra.Command{
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := mustGetBosun()
+		b := MustGetBosun()
 		b.TidyWorkspace()
 
 		if viper.GetBool(ArgGlobalDryRun) {

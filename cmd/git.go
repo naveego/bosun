@@ -9,6 +9,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -36,7 +37,7 @@ func init() {
 }
 
 func getGithubToken() (string, error) {
-	b := mustGetBosun()
+	b := MustGetBosun()
 	token, err := b.GetGithubToken()
 
 	return token, err
@@ -249,7 +250,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		if len(args) > 1 {
 			ecmd.VersionBump = args[1]
-			b := mustGetBosun()
+			b := MustGetBosun()
 
 			appsToBump := viper.GetStringSlice(ArgGitAcceptPRAppVersion)
 			app, err := getFilterParams(b, appsToBump).IncludeCurrent().GetApp()
@@ -321,7 +322,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}()
 
 	if err = checkHandle(g.Fetch()); err != nil {
-		return err
+		return errors.Wrap(err, "checking handle")
 	}
 
 	mergeBranch := pr.GetHead().GetRef()
@@ -361,7 +362,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}
 
 	if len(c.AppsToVersion) > 0 {
-		b := mustGetBosun()
+		b := MustGetBosun()
 		var finalVersion string
 		bump := c.VersionBump
 
@@ -423,8 +424,65 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	pkg.Log.Info("Merge completed.")
 
+
+	segs := regexp.MustCompile(`(issue)/\#(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
+	if len(segs) == 0 {
+		return errors.New("bad branch")
+	}
+
+	b := MustGetBosun()
+	svc, err := b.GetIssueService()
+	if err != nil {
+		return errors.New("get issue service")
+	}
+
+	issNum, err := strconv.Atoi(segs[2])
+	if err != nil {
+		return errors.New("get issue number from branch name")
+	}
+	prIssRef := issues.NewIssueRef(org, repo, issNum)
+
+	// move task to "Done"
+	err = svc.SetProgress(prIssRef, issues.ColumnDone)
+	if err != nil {
+		return errors.Wrap(err, "move task to done")
+	}
+
+	/* parents, err := svc.GetParents(prIssRef)
+	if err != nil {
+		return errors.Wrap(err, "get parents for current issue")
+	}
+	if len(parents) > 0 {
+
+		parent := parents[0]
+
+		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+
+		allChildren, err := svc.GetChildren(parentIssueRef)
+		if err != nil {
+			return errors.New("get all children of parent issue")
+		}
+
+		var ok = true
+		for _, child := range allChildren {
+			if !child.IsClosed {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			err = svc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
+			if err != nil {
+				return errors.New("move parent story to Waiting for UAT")
+			}
+		}
+	} */
+
+
 	return nil
 }
+
+
 
 func getOrgAndRepo() (string, string) {
 	return git.GetCurrentOrgAndRepo()

@@ -22,6 +22,9 @@ type API struct {
 	zenHubAuthToken string
 }
 
+
+
+
 // New returns a reference to a ZenHub API
 func New(zenHubAuthToken string, githubAPI *github.Client) *API {
 	return &API{
@@ -30,10 +33,61 @@ func New(zenHubAuthToken string, githubAPI *github.Client) *API {
 	}
 }
 
-// GetPipelines returns a list of pipelines.
-func (a *API) GetPipelines(repoID int) (*Pipelines, error) {
+// GetZenHubWorkspaces returns all workspaces containing repo_id
+func (a *API) GetWorkspaces(repoID int) (*Workspaces, error) {
+
 	client := http.DefaultClient
-	getPipelinesURI := fmt.Sprintf("%v/p1/repositories/%v/board", zenhubRoot, repoID)
+	getWorkspacesURI := fmt.Sprintf("%v/p2/repositories/%v/workspaces", zenhubRoot, repoID)
+	request, err := a.createDefaultRequest(http.MethodGet, getWorkspacesURI)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the get workspaces endpoint returned %v", response.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	workspaces := new(Workspaces)
+	err = json.Unmarshal(body, workspaces)
+
+	return workspaces, err
+}
+
+func (a *API) GetWorkspaceID(repoID int, workspaceName string) (string, error) {
+	workspaceID := ""
+	workspaces, err := a.GetWorkspaces(repoID)
+	if err != nil {
+		return "", errors.Wrap(err, "get workspaces")
+	}
+	for _, workspace := range workspaces.List {
+		if strings.ToLower(workspace.Name) == strings.ToLower(workspaceName) {
+			workspaceID = workspace.ID
+			break
+		}
+	}
+
+	if workspaceID == "" {
+		return "", fmt.Errorf("workspace '%v' does not exist for this board", workspaceName)
+	}
+
+	return workspaceID, nil
+}
+
+// GetPipelines returns a list of pipelines.
+// This function uses the zenhub API "Get a ZenHub Board for a repo"
+func (a *API) GetPipelines(workspaceID string, repoID int) (*Pipelines, error) {
+	client := http.DefaultClient
+	getPipelinesURI := fmt.Sprintf("%v/p2/workspaces/%v/repositories/%v/board", zenhubRoot, workspaceID, repoID)
 	request, err := a.createDefaultRequest(http.MethodGet, getPipelinesURI)
 	if err != nil {
 		return nil, err
@@ -60,18 +114,18 @@ func (a *API) GetPipelines(repoID int) (*Pipelines, error) {
 }
 
 // MovePipeline moves the specified issue to the specified pipeline.
-func (a *API) MovePipeline(repoID int, issue int, pipelineID string) error {
+func (a *API) MovePipeline(workspaceID string, repoID int, issue int, pipelineID string) error {
 	pipelineMove := &PipelineMove{
 		PipelineID: pipelineID,
 		Position:   "top",
 	}
 	pipelineMoveJSON, err := json.Marshal(pipelineMove)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "marshal move pipeline json")
 	}
 
 	client := http.DefaultClient
-	getPipelinesURI := fmt.Sprintf("%v/p1/repositories/%v/issues/%v/moves", zenhubRoot, repoID, issue)
+	getPipelinesURI := fmt.Sprintf("%v/p2/workspaces/%v/repositories/%v/issues/%v/moves", zenhubRoot, workspaceID, repoID, issue)
 	request, err := a.createDefaultRequest(http.MethodPost, getPipelinesURI)
 	if err != nil {
 		return err
@@ -82,12 +136,14 @@ func (a *API) MovePipeline(repoID int, issue int, pipelineID string) error {
 	response, err := client.Do(request)
 
 	if err != nil {
-		return err
+		return errors.New("cannot move issue")
 	}
 
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("the move issue endpoint returned %v", response.StatusCode)
 	}
+
+	dumpJSON("status code ", response.StatusCode)
 	return nil
 }
 
@@ -113,7 +169,10 @@ func (a *API) AddDependency(dependency *Dependency) error {
 		return err
 	}
 	if response.Body != nil {
-		response.Body.Close()
+		err = response.Body.Close()
+		if err != nil {
+			return errors.Wrap(err, "close response body")
+		}
 	}
 
 	if response.StatusCode != http.StatusOK {
@@ -123,7 +182,7 @@ func (a *API) AddDependency(dependency *Dependency) error {
 }
 
 // GetParents returns dependencies of the specified issue in the repo.
-func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error) {
+func (a *API) GetDependencies(repoID, issueNum int) ([]Dependency, error) {
 
 	var parents []int
 	var children []int
@@ -133,26 +192,26 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 	getDependenciesURI := fmt.Sprintf("%v/p1/repositories/%v/dependencies", zenhubRoot, repoID)
 	request, err := a.createDefaultRequest(http.MethodGet, getDependenciesURI)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "create zenhub request")
+		return nil,  errors.Wrap(err, "create zenhub request")
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, nil, err
+		return nil,  err
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("the get dependencies endpoint returned %v", response.StatusCode)
+		return nil, fmt.Errorf("the get dependencies endpoint returned %v", response.StatusCode)
 	}
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	err = json.Unmarshal(body, &depResponse)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unmarshal json")
+		return nil, errors.Wrap(err, "unmarshal json")
 	}
 	//dumpJSON("depResponse", depResponse)
 
@@ -164,21 +223,50 @@ func (a *API) GetDependencies(repoID, issueNum int) (p []int, c []int, err error
 			children = append(children, depResponse.Dependencies[i].Blocking.IssueNumber)
 		}
 	}
-	//dumpJSON("issueNum", issueNum)
-	//dumpJSON("depResponse.Dependencies[1].Blocking.IssueNumber", depResponse.Dependencies[1].Blocking.IssueNumber)
-	//dumpJSON("parents", parents)
-	//dumpJSON("children", children)
 
-	return parents, children, nil
+	return depResponse.Dependencies, nil
+}
+
+func (a *API) GetIssueData(repoID, issueNumber int) (*IssueData, error) {
+
+	client := http.DefaultClient
+	// Use the Get Issue Data api
+	getCurrentPipelineURI := fmt.Sprintf("%v/p1/repositories/%v/issues/%v", zenhubRoot, repoID, issueNumber)
+	request, err := a.createDefaultRequest(http.MethodGet, getCurrentPipelineURI)
+	if err != nil {
+		return nil, errors.New("create default request")
+	}
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the get issue data endpoint returned %v", response.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	issue := new(IssueData)
+	err = json.Unmarshal(body, issue)
+	if err != nil {
+		return nil, errors.Wrap(err, "get issue data")
+	}
+
+	return issue, nil
 }
 
 // GetPipelineID returns the ZenHub ID for the specified pipeline name. If the specified pipeline
 // does not exist for the current board, this method will return an empty string and an error.
-func (a *API) GetPipelineID(repoID int, pipelineName string) (string, error) {
+func (a *API) GetPipelineID(workspaceID string, repoID int, pipelineName string) (string, error) {
 	pipelineID := ""
-	pipelines, err := a.GetPipelines(repoID)
+	pipelines, err := a.GetPipelines(workspaceID, repoID)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "get pipelines")
 	}
 	for _, pipeline := range pipelines.List {
 		if strings.ToLower(pipeline.Name) == strings.ToLower(pipelineName) {

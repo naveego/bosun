@@ -15,7 +15,7 @@ type Issue struct {
 	Assignee        string
 	Assignees       []string
 	Milestone       *int
-	Estimate        int
+	Estimate        Estimate
 	Epics           []string
 	Releases        []string
 	Title           string
@@ -24,7 +24,12 @@ type Issue struct {
 
 	IsClosed bool
 
-	GithubRepoID *int
+	GithubRepoID        *int
+	MappedProgressState string
+}
+
+type Estimate struct {
+	Value int
 }
 
 var issueRefRE = regexp.MustCompile(`(.+)/(.+)#(\d+)`)
@@ -69,7 +74,27 @@ type IssueService interface {
 	SetProgress(issue IssueRef, column string) error
 	GetParents(issue IssueRef) ([]Issue, error)
 	GetChildren(issue IssueRef) ([]Issue, error)
-	GetIssue(ref IssueRef) (Issue, error)
+	GetClosedIssue(org, repoName string) ([]int, error)
 	// Check if a story's children are all closed before moving it to Waiting for Merge
-	ChildrenAllClosed(children []Issue) (bool, error)
+	//ChildrenAllClosed(children []Issue) (bool, error)
+}
+
+const (
+	ColumnInDevelopment = "In Development"
+	ColumnWaitingForMerge = "Waiting for Merge"
+	ColumnWaitingForDeploy = "WaitingForDeploy"
+	ColumnWaitingForUAT = "UAT"
+	ColumnDone = "Done"
+	ColumnClosed = "Closed"
+)
+
+type ColumnMapping map[string]string
+
+func (c ColumnMapping) ReverseLookup(name string) string {
+	for k, v := range c {
+		if v == name {
+			return k
+		}
+	}
+	return "NotFound"
 }
