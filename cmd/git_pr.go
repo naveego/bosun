@@ -81,6 +81,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
 
+		columnUAT := issues.ColumnWaitingForUAT
 		if len(parent) > 0 {
 			children, err := gitsvc.GetChildren(parent)
 			if err != nil {
@@ -88,7 +89,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			}
 
 			if children == nil {
-				err = zensvc.SetProgress(parent, column)
+				err = zensvc.SetProgress(parent, columnUAT)
 				if err != nil {
 					return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
 				}
@@ -101,7 +102,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 					}
 				}
 				if ok {
-					err = zensvc.SetProgress(parent, column)
+					err = zensvc.SetProgress(parent, columnUAT)
 					if err != nil {
 						return errors.Wrap(err, "move parent story to Waiting for merge after checking children")
 					}
