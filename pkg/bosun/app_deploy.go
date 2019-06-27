@@ -1,8 +1,10 @@
 package bosun
 
 import (
+	"context"
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
@@ -567,29 +569,36 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 
 			log.Info("Move ready to go stories to UAT")
 			repoPath, err := git.GetRepoPath(a.AppConfig.FromPath)
+			if err != nil {
+				err = errors.Wrap(err, "get repo path")
+			}
 
-			// TODO check err
 			issueSvc , err := ctx.Bosun.GetIssueService(repoPath)
 			if err != nil {
 				err = errors.Wrap(err, "get issue service")
 			}
 
 			segs := strings.Split(a.Repo, "/")
-	// TODO check we have 2 segments
+			if len(segs) < 2 {
+				err = errors.Wrap(err, "incorrect segs")
+			}
 			org, repoName := segs[0], segs[1]
 			log.Info("current org", org)
 
-			closedIssueNumbers, err := issueSvc.GetClosedIssue(org, repoName)
+			ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+			// find the last successful deployment time
+			since, err := getLastSuccessfulDeploymentTime(client.Repositories, ctx, org, repoName)
+
+			closedIssues, err := issueSvc.GetIssuesFromCommitsSince(org, repoName, since)
 			if err != nil {
 				err = errors.Wrap(err, "get closed issues")
 			}
 
+			log.Info("closed issues:", closedIssues)
 
-
-			log.Info("closed issues:", closedIssueNumbers)
-
-			for _, closedIssueNum := range closedIssueNumbers {
-				issueRef := issues.NewIssueRef(org, repoName,closedIssueNum)
+			for _, closedIssue := range closedIssues {
+				issueNum := closedIssue.Number
+				issueRef := issues.NewIssueRef(org, repoName,issueNum)
 				parents, err := issueSvc.GetParents(issueRef)
 				if err != nil {
 					err = errors.Wrap(err, "get parents for closed issue")
@@ -630,6 +639,20 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 
 		}
 	} , err
+}
+
+func getLastSuccessfulDeploymentTime(rs *github.RepositoriesService, ctx context.Context, org, repo string) (string, error) {
+
+	deployments, _, err := rs.ListDeployments(ctx, org, repo, nil)
+	if err != nil {
+		return "", errors.Wrap(err, "get deployments")
+	}
+	if len(deployments) < 1 {
+		return "", nil
+	}
+	mostRecent := deployments[0]
+	since := mostRecent.UpdatedAt
+	return since.String(), nil
 }
 
 func (a *AppDeploy) diff(ctx BosunContext) (string, error) {

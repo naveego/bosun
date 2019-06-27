@@ -69,7 +69,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			IsClosed: false,
 		}
 
-		err = svc.Create(issue, parent)
+		_, err = svc.Create(issue, parent)
 		if err != nil {
 			return err
 		}

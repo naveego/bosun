@@ -66,7 +66,7 @@ func (s IssueRef) Parts() (org string, repo string, number int, err error) {
 
 type IssueService interface {
 	// Assign the user who created the task, attach body and milestone
-	Create(issue Issue, parent *IssueRef) error
+	Create(issue Issue, parent *IssueRef) (int, error)
 	// Add dependency relationship : the newly created task should be a dependency of the issue issue on the ZenHub board
 	AddDependency(from, to IssueRef, parentIssueNum int) error
 	RemoveDependency(from, to IssueRef) error
@@ -74,16 +74,16 @@ type IssueService interface {
 	SetProgress(issue IssueRef, column string) error
 	GetParents(issue IssueRef) ([]Issue, error)
 	GetChildren(issue IssueRef) ([]Issue, error)
-	GetIssuesFromCommitsSince(since string) ([]Issue, error)
+	GetIssuesFromCommitsSince(org, repo, since string) ([]Issue, error)
 	GetClosedIssue(org, repoName string) ([]int, error)
 	// Check if a story's children are all closed before moving it to Waiting for Merge
-	//ChildrenAllClosed(children []Issue) (bool, error)
 }
 
 const (
 	ColumnInDevelopment = "In Development"
 	ColumnWaitingForMerge = "Waiting for Merge"
-	ColumnWaitingForDeploy = "WaitingForDeploy"
+	ColumnWaitingForDeploy = ""
+	ColumnInProgress = "In Progress"
 	ColumnWaitingForUAT = "UAT"
 	ColumnDone = "Done"
 	ColumnClosed = "Closed"

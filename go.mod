@@ -70,6 +70,7 @@ require (
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v20 v20.0.0
 	github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf // indirect
+	github.com/google/martian v2.1.0+incompatible
 	github.com/google/uuid v1.1.0
 	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
@@ -159,6 +160,7 @@ require (
 	github.com/spf13/viper v1.3.1
 	github.com/stevenle/topsort v0.0.0-20130922064739-8130c1d7596b
 	github.com/streadway/amqp v0.0.0-20190225234609-30f8ed68076e // indirect
+	github.com/thedevsaddam/gojsonq v2.2.2+incompatible // indirect
 	github.com/tidwall/pretty v0.0.0-20190325153808-1166b9ac2b65 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/ugorji/go/codec v0.0.0-20181209151446-772ced7fd4c2 // indirect
