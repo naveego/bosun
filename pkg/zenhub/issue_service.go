@@ -6,14 +6,12 @@ import (
 	"fmt"
 	//"github.com/coreos/etcd/client"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,19 +19,22 @@ import (
 
 type IssueService struct {
 	Config
-	github *github.Client
-	zenhub *API
-	git    git.GitWrapper
-	log    *logrus.Entry
+	//gitisvc git.IssueService
+	wrapped      issues.IssueService
+	zenhub       *API
+	git          git.GitWrapper
+	log          *logrus.Entry
+	githubClient *github.Client
 }
 
 
-func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry) (IssueService, error) {
+// TODO: take an injected IssueService parameter, delegate all non zenhub things to it.
+func NewIssueService(wrapped issues.IssueService, config Config, log *logrus.Entry) (IssueService, error) {
 
 	s := IssueService{
 		Config: config,
-		git:    gitWrapper,
-		log:    log,
+		log: log,
+		wrapped:wrapped,
 	}
 
 	ts := oauth2.StaticTokenSource(
@@ -41,9 +42,9 @@ func NewIssueService(config Config, gitWrapper git.GitWrapper, log *logrus.Entry
 	)
 	tc := oauth2.NewClient(context.Background(), ts)
 
-	s.github = github.NewClient(tc)
+	s.githubClient = github.NewClient(tc)
 
-	s.zenhub = New(config.ZenhubToken, s.github)
+	s.zenhub = New(config.ZenhubToken, s.githubClient)
 
 	return s, nil
 }
@@ -53,149 +54,54 @@ func (s IssueService) ctx() context.Context {
 	return ctx
 }
 
-func (s IssueService) GetIssuesFromCommitsSince(since string) ([]issues.Issue, error) {
-
-	currentHash := s.git.Commit()
-	changes, err := s.git.ExecLines("log", "--left-right", "--cherry-pick", "--no-merges", "--oneline", "--no-color", fmt.Sprintf("%s...%s", since, currentHash))
-
-	if err != nil {
-		return nil, err
-	}
-
-
-
-
-
-
+func (s IssueService) GetIssuesFromCommitsSince(org, repo, since string) ([]issues.Issue, error) {
+	return nil, nil
 }
 
+func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, error) {
 
+	issueNumber, err := s.wrapped.Create(issue, parent)
+	dumpJSON("issueNumber", issueNumber)
 
-func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) error {
-
-	log := s.log.WithField("title", issue.Title)
-
-	var parentOrg, parentRepo string
-	var parentIssueNumber int
-
-	user, _, err := s.github.Users.Get(s.ctx(), "")
-	if err != nil {
-		return err
-	}
-
-	issueRequest := &github.IssueRequest{
-		Title:    github.String(issue.Title),
-		Assignee: user.Login,
-	}
-	dumpJSON("assignee", issueRequest.Assignee)
-
-	if parent != nil {
-
-		issue.Body = fmt.Sprintf("%s\n\n required by %s", issue.Body, parent.String())
-
-		// Need to figure out where to get the title
-		//issue.Title = "tempTitle"
-
-		dumpJSON("issue", issue)
-
-		pOrg, pRepo, pIssueNumber, _ := parent.Parts()
-		parentOrg = pOrg
-		parentRepo = pRepo
-		parentIssueNumber = pIssueNumber
-
-		parentIssue, _, err := s.github.Issues.Get(s.ctx(), parentOrg, parentRepo, parentIssueNumber)
-		if err != nil {
-			return errors.Wrap(err, "get issue")
-		}
-
-		//issue.Org = parentOrg
-		//issue.Repo = parentRepo
-
-		if parentIssue.Milestone != nil {
-			milestones, _, err := s.github.Issues.ListMilestones(s.ctx(), issue.Org, issue.Repo, nil)
-			//dumpJSON("milestones", milestones)
-
-			if err != nil {
-				return errors.Wrap(err, "get milestones for new issue")
-			}
-			for _, m := range milestones {
-				if m.GetTitle() == parentIssue.Milestone.GetTitle() {
-					log.WithField("milestone", m.GetTitle()).Info("Attaching milestone.")
-					issueRequest.Milestone = m.Number
-					break
-				}
-			}
-		}
-	}
-
-	/*if &issue.Assignee != nil {
-		issueRequest.Assignee = &issue.Assignee
-		s.log.WithField("title", issue.Title).Info("Setting assignee")
-	} */
-	s.log.WithField("title", issue.Title).Info("Setting assignee")
-
-	issueRequest.Body = &issue.Body
-
-	dumpJSON("creating issue", issueRequest)
-	issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
-	if err != nil {
-		return errors.Wrap(err, "creating issue")
-	}
-
-	issueResponse.Repository.GetID()
-
-	issueNumber := issueResponse.GetNumber()
-	log = log.WithField("issue", issueNumber)
-
-	log.Info("Created issue.")
-
-	slug := regexp.MustCompile(`\W+`).ReplaceAllString(strings.ToLower(issue.Title), "-")
-	branchName := fmt.Sprintf("issue/#%d/%s", issueNumber, slug)
-	s.log.WithField("branch", branchName).Info("Creating branch.")
-	err = pkg.NewCommand("git", "checkout", "-b", branchName).RunE()
-	if err != nil {
-		return err
-	}
-
-	// Maybe figure out a better way than just commenting it out
-	//s.log.Infof("Creating branch %q.", branchName)
-	_, err = s.git.Exec("checkout", "-B", branchName)
-	if err != nil {
-		return errors.Wrap(err, "create branch")
-	}
-
-	s.log.WithField("branch", branchName).Info("Pushing branch.")
-	err = pkg.NewCommand("git", "push", "-u", "origin", branchName).RunE()
-	if err != nil {
-		return errors.Wrap(err, "push branch")
-	}
-
-	//issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
+	_, _, parentIssueNumber, err := parent.Parts()
 
 	// the below issueNumber used to be issue.Number
 	newIssueRef := issues.NewIssueRef(issue.Org, issue.Repo, issueNumber)
 	if parent != nil {
-		err = s.AddDependency(newIssueRef, *parent, parentIssueNumber)
+		err := s.AddDependency(newIssueRef, *parent, parentIssueNumber)
 		if err != nil {
-			return errors.Wrap(err, "add dependency;"+newIssueRef.String()+", parent "+(parent).String())
+			return -1, errors.Wrap(err, "add dependency;"+newIssueRef.String()+", parent "+(parent).String())
 		}
 	}
 
 	// Move the task and issue to In Progress column
-	column := issues.ColumnInDevelopment
+	column := issues.ColumnInProgress
 	err = s.SetProgress(newIssueRef, column)
 	if err != nil {
-		return errors.Wrap(err, "set task progress")
+		return -1, errors.Wrap(err, "set task progress")
 	}
+	parentColumn := issues.ColumnInDevelopment
 	if parent != nil {
-		err = s.SetProgress(*parent, column)
+		err = s.SetProgress(*parent, parentColumn)
 		if err != nil {
-			return errors.Wrap(err, "set parent progress")
+			return -1, errors.Wrap(err, "set parent progress")
 		}
 	}
 
-	return nil
+	return -1, nil
 
+}
+
+
+func (s IssueService) GetRepoIdbyName(org, repoName string) (int, error) {
+
+	repo, _, err := s.githubClient.Repositories.Get(s.ctx(), org, repoName)
+	if err != nil {
+		return 0, errors.Wrap(err, "getting repo id")
+	}
+
+	repoId := int(repo.GetID())
+	return repoId, nil
 }
 
 // Helper function to split IssueRef
@@ -205,31 +111,15 @@ func Split(r rune) bool {
 
 func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum int) error {
 
-	/*fromString := from.String() // convert IssueRef to string
-	toString := to.String()
-	fromSplitted := strings.FieldsFunc(fromString, Split)
-	toSplitted := strings.FieldsFunc(toString, Split)*/
-
 	orgFrom, repoFrom, numFrom, err := from.Parts()
 	if err != nil {
 		return errors.Wrap(err, "split 'from' IssueRef")
 	}
 
-	/*blockingRepo := fromSplitted[1]
-	blockingNum, err := strconv.Atoi(fromSplitted[2])
-	if err != nil {
-		return errors.Wrap(err, strings.Join(fromSplitted, " "))
-	}*/
-
 	orgTo, repoTo, _, err := to.Parts()
 	if err != nil {
 		return errors.Wrap(err, "split 'to' IssueRef")
 	}
-	//blockedRepo := toSplitted[1]
-	/*blockedNum, err := strconv.Atoi(toSplitted[2])
-	if err != nil {
-		return err
-	} */
 
 	blockingId, err := s.GetRepoIdbyName(orgFrom, repoFrom)
 	if err != nil {
@@ -243,6 +133,7 @@ func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum int
 	blockingIssue := NewDependencyIssue(blockingId, numFrom)
 	//fmt.Printf("blocking di:%v, %v", blockingId, blockingNum)
 	blockedIssue := NewDependencyIssue(blockedId, parentIssueNum)
+
 	depToAdd := NewDependency(blockingIssue, blockedIssue)
 	//dumpJSON("dependency", depToAdd)
 	err = s.zenhub.AddDependency(&depToAdd)
@@ -252,17 +143,6 @@ func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum int
 
 	//s.log.Warn("Adding dependencies not implemented yet.")
 	return nil
-}
-
-func (s IssueService) GetRepoIdbyName(org, repoName string) (int, error) {
-
-	repo, _, err := s.github.Repositories.Get(s.ctx(), org, repoName)
-	if err != nil {
-		return 0, errors.Wrap(err, "getting repo id")
-	}
-
-	repoId := int(repo.GetID())
-	return repoId, nil
 }
 
 func (s IssueService) RemoveDependency(from, to issues.IssueRef) error {
@@ -278,31 +158,32 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 		return errors.Wrap(err, "set progress - get repo id")
 	}
 
-	//log.Infof("set progress - get repo id", repoId)
-	dumpJSON("repoId", repoId)
+	//dumpJSON("repoId", repoId)
 
     issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
 	if err != nil {
 		return errors.Wrap(err, "get issue data")
 	}
-    //log.Infof("set progress - get issue data", issueData)
-    dumpJSON("issueData", issueData)
+
+    //dumpJSON("issueData", issueData)
 
     workspaceId := issueData.Pipeline.WorkspaceID
 
+    // Change the workspace id if it was still in "Team One"
+    if workspaceId == "5c00a1ba4b5806bc2bf951e1" {
+    	workspaceId = "5cee878e76309a690b06a240" // This is the workspace id of "Tasks" in naveegoinc
+	}
 	pipelineID, err := s.zenhub.GetPipelineID(workspaceId, repoId, column)
 	if err != nil {
 		return errors.Wrap(err, "set progress - get pipeline id")
 	}
-
-	dumpJSON("pipelineID", pipelineID)
 
 	err = s.zenhub.MovePipeline(workspaceId, repoId, issueNum, pipelineID)
 	if err != nil {
 		return errors.Wrap(err, "set progress - move issue between pipelines")
 	}
 
-	dumpJSON("moved", pipelineID)
+	//dumpJSON("moved", pipelineID)
 
 	return nil
 }
@@ -332,7 +213,7 @@ func (s IssueService) GetIssueState(issue issues.IssueRef) (string, error) {
 	if err != nil {
 		return state, errors.Wrap(err, "split IssueRef")
 	}
-	issuePointer, _, err = s.github.Issues.Get(s.ctx(), org, repo, num)
+	issuePointer, _, err = s.githubClient.Issues.Get(s.ctx(), org, repo, num)
 	if err != nil {
 		return state, errors.Wrap(err, "get a single issue with github api")
 	}
@@ -494,38 +375,40 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 
 func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
 
-	opt := github.IssueListByRepoOptions{
-		State: "closed",
-	}
-
-	closedIssues, _, err := s.github.Issues.ListByRepo(s.ctx(), org, repoName, &opt)
-	if err != nil {
-		return nil, errors.Wrap(err, "get closed issues by repo")
-	}
-	//dumpJSON("closed issues", closedIssues)
-
-	i := 0
-	var closedIssueNumbers []int
-	for i<len(closedIssues){
-		closedIssueNumbers = append(closedIssueNumbers, closedIssues[i].GetNumber())
-		i++
-	}
-
-	/*pipelines, err := s.zenhub.GetPipelines(repoID)
-	if err != nil {
-		return nil, errors.New("get pipelines")
-	}
-	dumpJSON("get pipelines", pipelines)
-
-	var closedIssues []issues.Issue
-	for _, pipeline := range pipelines.List{
-		if pipeline.Name != "Closed" {
-			continue
-		}
-		closedIssues = pipeline.Issues
-		break
-	} */
-	return closedIssueNumbers, nil
+	return nil, nil
+	//
+	//opt := github.IssueListByRepoOptions{
+	//	State: "closed",
+	//}
+	//
+	//closedIssues, _, err := s.github.Issues.ListByRepo(s.ctx(), org, repoName, &opt)
+	//if err != nil {
+	//	return nil, errors.Wrap(err, "get closed issues by repo")
+	//}
+	////dumpJSON("closed issues", closedIssues)
+	//
+	//i := 0
+	//var closedIssueNumbers []int
+	//for i<len(closedIssues){
+	//	closedIssueNumbers = append(closedIssueNumbers, closedIssues[i].GetNumber())
+	//	i++
+	//}
+	//
+	///*pipelines, err := s.zenhub.GetPipelines(repoID)
+	//if err != nil {
+	//	return nil, errors.New("get pipelines")
+	//}
+	//dumpJSON("get pipelines", pipelines)
+	//
+	//var closedIssues []issues.Issue
+	//for _, pipeline := range pipelines.List{
+	//	if pipeline.Name != "Closed" {
+	//		continue
+	//	}
+	//	closedIssues = pipeline.Issues
+	//	break
+	//} */
+	//return closedIssueNumbers, nil
 }
 
 func (s IssueService) ChildrenAllClosed(children []issues.Issue) (bool, error) {

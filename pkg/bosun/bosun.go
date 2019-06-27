@@ -1018,6 +1018,10 @@ func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
 		return nil, err
 	}
 
+	gc := &git.Config{
+		GithubToken: zc.GithubToken,
+	}
+
 	zc.ZenhubToken, err = b.GetZenhubToken()
 	if err != nil {
 		return nil,errors.Wrap(err, "get zenhub token")
@@ -1028,7 +1032,12 @@ func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
 		return nil,err
 	}
 
-	svc, err := zenhub.NewIssueService(zc, g, pkg.Log.WithField("cmp", "zenhub"))
+	gis, err := git.NewIssueService(*gc, g, pkg.Log.WithField("cmp", "github"))
+	if err != nil {
+		return nil, err
+	}
+
+	svc, err := zenhub.NewIssueService(gis, zc, pkg.Log.WithField("cmp", "zenhub"))
 	if err != nil {
 		return nil,errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
 	}
