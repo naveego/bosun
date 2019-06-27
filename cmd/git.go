@@ -431,7 +431,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}
 
 	b := MustGetBosun()
-	svc, err := b.GetIssueService(repoPath)
+	_, svc, err := b.GetIssueService(repoPath)
 	if err != nil {
 		return errors.New("get issue service")
 	}

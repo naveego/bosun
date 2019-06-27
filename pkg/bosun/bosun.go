@@ -998,11 +998,11 @@ func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
 }
 
 
-func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
+func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, issues.IssueService, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
-		return nil, errors.Wrap(err, "get current platform")
+		return nil, nil, errors.Wrap(err, "get current platform")
 	}
 	if p.ZenHubConfig==nil {
 		p.ZenHubConfig = &zenhub.Config{
@@ -1015,7 +1015,7 @@ func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
 
 	zc.GithubToken, err = b.GetGithubToken()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	gc := &git.Config{
@@ -1024,24 +1024,24 @@ func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
 
 	zc.ZenhubToken, err = b.GetZenhubToken()
 	if err != nil {
-		return nil,errors.Wrap(err, "get zenhub token")
+		return nil, nil, errors.Wrap(err, "get zenhub token")
 	}
 
 	g, err := git.NewGitWrapper(repoPath)
 	if err != nil {
-		return nil,err
+		return nil, nil,err
 	}
 
 	gis, err := git.NewIssueService(*gc, g, pkg.Log.WithField("cmp", "github"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	svc, err := zenhub.NewIssueService(gis, zc, pkg.Log.WithField("cmp", "zenhub"))
 	if err != nil {
-		return nil,errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
+		return nil, nil,errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
 	}
-	return svc, nil
+	return gis, svc, nil
 
 }
 

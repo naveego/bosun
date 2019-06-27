@@ -31,7 +31,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		b := MustGetBosun()
-		svc, err := b.GetIssueService(repoPath)
+		gitsvc, zensvc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
 		}
@@ -60,7 +60,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
 		pkg.Log.WithField("issueRf", issueRf).Info("show issueRf")
 
-		parents, err := svc.GetParents(issueRf)
+		parents, err := gitsvc.GetParents(issueRf)
 		if err != nil {
 			return errors.Wrap(err, "get parents for current issue")
 		}
@@ -76,19 +76,19 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 
 		column := issues.ColumnWaitingForMerge
-		err = svc.SetProgress(issueRf, column)
+		err = zensvc.SetProgress(issueRf, column)
 		if err != nil {
 			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
 
 		if len(parent) > 0 {
-			children, err := svc.GetChildren(parent)
+			children, err := gitsvc.GetChildren(parent)
 			if err != nil {
 				return errors.Wrap(err, "get children for parent issue")
 			}
 
 			if children == nil {
-				err = svc.SetProgress(parent, column)
+				err = zensvc.SetProgress(parent, column)
 				if err != nil {
 					return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
 				}
@@ -101,7 +101,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 					}
 				}
 				if ok {
-					err = svc.SetProgress(parent, column)
+					err = zensvc.SetProgress(parent, column)
 					if err != nil {
 						return errors.Wrap(err, "move parent story to Waiting for merge after checking children")
 					}
