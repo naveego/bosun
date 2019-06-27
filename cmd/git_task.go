@@ -43,7 +43,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 		b := MustGetBosun()
-		svc, err := b.GetIssueService(repoPath)
+		_, svc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
 		}
