@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+
 	//"github.com/naveego/bosun/pkg/git"
 
 	//"github.com/coreos/etcd/client"
@@ -112,6 +114,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 	}
 	dumpJSON("assignee", issueRequest.Assignee)
 
+	//var parentIssue *issues.Issue
 	if parent != nil {
 
 		issue.Body = fmt.Sprintf("%s\n\n required by %s", issue.Body, parent.String())
@@ -149,6 +152,8 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 				}
 			}
 		}
+
+
 	}
 
 	/*if &issue.Assignee != nil {
@@ -191,6 +196,31 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 	err = pkg.NewCommand("git", "push", "-u", "origin", branchName).RunE()
 	if err != nil {
 		return -1, errors.Wrap(err, "push branch")
+	}
+
+	// update parent issue body
+	if parent != nil {
+		parentIssue, _, err := s.github.Issues.Get(s.ctx(), parentOrg, parentRepo, parentIssueNumber)
+		if err != nil {
+			return -1, errors.Wrap(err, "get issue")
+		}
+		issueString := issue.Org + "/" + issue.Repo + "/#" + strconv.Itoa(issueNumber)
+		parentNewChild := fmt.Sprintf("\nrequires %s", issueString)
+		parentNewBody := *parentIssue.Body
+		parentNewBody += parentNewChild
+		newParentRequest := &github.IssueRequest{
+			Title: parentIssue.Title,
+			Body: &parentNewBody,
+		}
+
+		editedParent, response, err := s.github.Issues.Edit(context.Background(), parentOrg, parentRepo, parentIssueNumber, newParentRequest)
+		if err != nil {
+			return -1, errors.Wrap(err, "edit parent story")
+		}
+		if response.StatusCode != http.StatusOK {
+			return -1, fmt.Errorf("the edit issue endpoint returned %v", response.StatusCode)
+		}
+		s.log.WithField("new body", editedParent.Body)
 	}
 
 	return issueNumber, nil
@@ -269,7 +299,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 
 	githubIssue, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
 	body := *githubIssue.Body
-	regForParent := regexp.MustCompile(`required by #[0-9]+`)
+	regForParent := regexp.MustCompile(`required by [a-z]+\/[a-z]+\/#[0-9]+`)
 	regForParentNum := regexp.MustCompile(`[0-9]+`)
 	parents := regForParent.FindAllString(body,-1)
 	if len(parents) < 1 {
@@ -300,22 +330,57 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 	var childIssues []issues.Issue
 	org, repo, number, err := issue.Parts()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "parts of issue")
 	}
 
-	/*repoId, err := s.GetRepoIdbyName(org, repo)
-	if err != nil {
-		return nil, err
-	} */
+	// find children from an issue's body
+	githubIssuePointer, _,  err := s.github.Issues.Get(s.ctx(), org, repo, number)
+	githubIssue := *githubIssuePointer
+	issueBody := *githubIssue.Body
+	reg := regexp.MustCompile(`requires [a-z]+\/[a-z]+\/#[0-9]+`)
+	childrenMatch := reg.FindAllString(issueBody, -1)
+	if len(childrenMatch) < 1 {
+		return nil, nil
+	}
+	regOR := regexp.MustCompile(`[a-z]+\/[a-z]+`)
 
-	// use github issue timeline to find children
-	timeline, _, err := s.github.Issues.ListIssueTimeline(s.ctx(), org, repo, number, nil)
+	i := 0
+
+	for i < len(childrenMatch) {
+		childMatch := childrenMatch[i]
+
+		orMatch := regOR.FindAllString(childMatch, -1)
+		orMatchString := orMatch[0]
+		OR := strings.Split(orMatchString, "/")
+		childOrg := OR[0]
+		childRepo := OR[1]
+
+		regNum := regexp.MustCompile(`[0-9]+`)
+		childNumMatch := regNum.FindAllString(childMatch, -1)
+		childNumString := childNumMatch[0]
+		childNum, err := strconv.Atoi(childNumString)
+		if err != nil {
+			return nil, errors.Wrap(err, "child number")
+		}
+
+		child := issues.Issue {
+			Org: childOrg,
+			Repo: childRepo,
+			Number: childNum,
+		}
+		childIssues = append(childIssues, child)
+	}
+
+	/*timeline, _, err := s.github.Issues.ListIssueTimeline(s.ctx(), org, repo, number, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "list issue timeline")
+	}
 	for _, tl := range timeline {
 		event := *tl.Event
 		if event != "cross-referenced" {
 			continue
 		}
-		url := tl.GetURL()
+		url := tl.Source.URL
 
 		regUrl := regexp.MustCompile(`repos/[a-z]+/[a-z]+/issues/[0-9]+`)
 		urlMatch := regUrl.FindAllString(url, -1)
@@ -328,6 +393,9 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 			return childIssues, errors.Wrap(err, "get child issue information from url")
 		}
 		childIssuePointer,_, err := s.github.Issues.Get(s.ctx(), childOrg, childRepo, childNumber)
+		if err != nil {
+			return nil, errors.Wrap(err, "get child issue pointer")
+		}
 		childIssueContent := *childIssuePointer
 		childIssue := issues.Issue{
 			Number: childNumber,
@@ -344,9 +412,7 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 			childIssue.IsClosed = true
 		}
 		childIssues = append(childIssues, childIssue)
-
-
-	}
+	} */
 
 
 		//dumpJSON("childIssues", childIssues)

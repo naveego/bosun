@@ -72,6 +72,13 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			parentRepo := parents[0].Repo
 			parentNumber := parents[0].Number
 			parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
+			pkg.Log.WithField("parent ref", parent)
+			columnUAT := issues.ColumnWaitingForUAT
+			err = zensvc.SetProgress(parent, columnUAT)
+			if err != nil {
+				return errors.Wrap(err, "move parent story to UAT")
+			}
+
 		}
 
 
@@ -81,38 +88,8 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
 
-		columnUAT := issues.ColumnWaitingForUAT
-		if len(parent) > 0 {
-			children, err := gitsvc.GetChildren(parent)
-			if err != nil {
-				return errors.Wrap(err, "get children for parent issue")
-			}
-
-			if children == nil {
-				err = zensvc.SetProgress(parent, columnUAT)
-				if err != nil {
-					return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
-				}
-			} else {
-				i := 0
-				ok := true
-				for i < len(children) {
-					if !children[i].IsClosed {
-						ok = false
-					}
-				}
-				if ok {
-					err = zensvc.SetProgress(parent, columnUAT)
-					if err != nil {
-						return errors.Wrap(err, "move parent story to Waiting for merge after checking children")
-					}
-				}
-			}
-		}
-
-
-
 		return err
+
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(ArgPullRequestReviewers, []string{}, "Reviewers to request.")
