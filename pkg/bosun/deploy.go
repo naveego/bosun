@@ -96,7 +96,11 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 	}
 
 	if settings.Manifest != nil {
-		for _, manifest := range settings.Manifest.AppManifests {
+		appManifests, err := settings.Manifest.GetAppManifests()
+		if err != nil {
+			return nil, err
+		}
+		for _, manifest := range appManifests {
 			if !settings.Manifest.DefaultDeployApps[manifest.Name] {
 				if !settings.ForceDeployApps[manifest.Name] {
 					ctx.Log.Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
@@ -104,10 +108,10 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 					continue
 				}
 			}
-			appManifest := settings.Manifest.AppManifests[manifest.Name]
-			appDeploy, err := NewAppDeploy(ctx, settings, appManifest)
+
+			appDeploy, err := NewAppDeploy(ctx, settings, manifest)
 			if err != nil {
-				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", appManifest.Name)
+				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", manifest.Name)
 			}
 			deploy.AppDeploys[appDeploy.Name] = appDeploy
 		}
@@ -212,11 +216,10 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
 func checkImageExists(ctx BosunContext, name string) error {
 
-	ctx.UseMinikubeForDockerIfAvailable()
-
 	cmd := exec.Command("docker", "pull", name)
 	stdout, err := cmd.StdoutPipe()
 	stderr, err := cmd.StderrPipe()
+	//cmd.Env = ctx.GetMinikubeDockerEnv()
 	if err != nil {
 		return err
 	}

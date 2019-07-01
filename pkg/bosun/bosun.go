@@ -176,9 +176,13 @@ func (b *Bosun) GetApps() map[string]*App {
 	if err == nil {
 		master, err := p.GetMasterManifest()
 		if err == nil {
-			for appName, appManifest := range master.AppManifests {
-				if _, ok := out[appName]; !ok {
-					out[appName] = NewApp(appManifest.AppConfig)
+			appManifests, err := master.GetAppManifests()
+			if err == nil {
+
+				for appName, appManifest := range appManifests {
+					if _, ok := out[appName]; !ok {
+						out[appName] = NewApp(appManifest.AppConfig)
+					}
 				}
 			}
 		}
@@ -610,7 +614,7 @@ func (b *Bosun) GetCurrentReleaseManifest(loadAppManifests bool) (*ReleaseManife
 		return nil, err
 	}
 
-	rm, err := p.GetReleaseManifestByName(b.ws.CurrentRelease, loadAppManifests)
+	rm, err := p.GetReleaseManifestByName(b.ws.CurrentRelease)
 	return rm, err
 }
 
@@ -997,21 +1001,19 @@ func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
 	}
 }
 
-
 func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return nil, errors.Wrap(err, "get current platform")
 	}
-	if p.ZenHubConfig==nil {
+	if p.ZenHubConfig == nil {
 		p.ZenHubConfig = &zenhub.Config{
 			StoryBoardName: "Release Planning",
 			TaskBoardName:  "Development",
 		}
 	}
 	zc := *p.ZenHubConfig
-
 
 	zc.GithubToken, err = b.GetGithubToken()
 	if err != nil {
@@ -1020,7 +1022,7 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
 	zc.ZenhubToken, err = b.GetZenhubToken()
 	if err != nil {
-		return nil,errors.Wrap(err, "get zenhub token")
+		return nil, errors.Wrap(err, "get zenhub token")
 	}
 
 	repoPath, err := git.GetCurrentRepoPath()
@@ -1030,19 +1032,19 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
 	g, err := git.NewGitWrapper(repoPath)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	svc, err := zenhub.NewIssueService(zc, g, pkg.Log.WithField("cmp", "zenhub"))
 	if err != nil {
-		return nil,errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
+		return nil, errors.Wrapf(err, "get story service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
 	}
 	return svc, nil
 
 }
 
 func (b *Bosun) GetZenhubToken() (string, error) {
-	//b := cmd.MustGetBosun()
+	// b := cmd.MustGetBosun()
 	ws := b.GetWorkspace()
 	ctx := b.NewContext().WithDir(ws.Path)
 	if ws.ZenhubToken == nil {

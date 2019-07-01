@@ -18,7 +18,9 @@ import (
 )
 
 const (
-	MasterName = "master"
+	MasterName       = "master"
+	PlanFileName     = "plan.yaml"
+	ManifestFileName = "manifest.yaml"
 )
 
 var (
@@ -35,13 +37,16 @@ type Platform struct {
 	MasterBranch        string                      `yaml:"masterBranch"`
 	ReleaseDirectory    string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
 	MasterMetadata      *ReleaseMetadata            `yaml:"master" json:"master"`
-	Plan                *ReleasePlan                `yaml:"plan,omitempty"`
 	MasterManifest      *ReleaseManifest            `yaml:"-" json:"-"`
 	ReleaseMetadata     []*ReleaseMetadata          `yaml:"releases" json:"releases"`
 	Repos               []*Repo                     `yaml:"repos" json:"repos"`
 	Apps                []*AppMetadata              `yaml:"apps"`
 	ReleaseManifests    map[string]*ReleaseManifest `yaml:"-" json:"-"`
 	ZenHubConfig        *zenhub.Config              `yaml:"zenHubConfig"`
+	PlanningReleaseName string                      `yaml:"planningReleaseName,omitempty"`
+
+	// cache of repos which have been fetched during this run
+	fetched map[string][]string `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -81,19 +86,19 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if p.ZenHubConfig == nil {
 		p.ZenHubConfig = &zenhub.Config{
-			StoryBoardName:"Stories",
-			TaskBoardName:"Tasks",
-			StoryColumnMapping:issues.ColumnMapping{
+			StoryBoardName: "Stories",
+			TaskBoardName:  "Tasks",
+			StoryColumnMapping: issues.ColumnMapping{
 				issues.ColumnInDevelopment: "In Development",
 				issues.ColumnWaitingForUAT: "UAT",
-				issues.ColumnDone: "Done",
-				issues.ColumnClosed: "Closed",
+				issues.ColumnDone:          "Done",
+				issues.ColumnClosed:        "Closed",
 			},
-			TaskColumnMapping:issues.ColumnMapping{
-				issues.ColumnInDevelopment: "In Progress",
-				issues.ColumnWaitingForMerge: "Ready for Merge",
+			TaskColumnMapping: issues.ColumnMapping{
+				issues.ColumnInDevelopment:    "In Progress",
+				issues.ColumnWaitingForMerge:  "Ready for Merge",
 				issues.ColumnWaitingForDeploy: "Done",
-				issues.ColumnClosed: "Closed",
+				issues.ColumnClosed:           "Closed",
 			},
 		}
 	}
@@ -131,11 +136,18 @@ type ReleasePlanSettings struct {
 	Bump         string
 }
 
-func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSettings) (*ReleasePlan, error) {
-	ctx.Log.Debug("Creating new release plan.")
-	if p.Plan != nil {
-		return nil, errors.Errorf("another plan is currently being edited, commit or discard the plan before starting a new one")
+func (p *Platform) checkPlanningOngoing() error {
+	if p.PlanningReleaseName != "" {
+		return errors.Errorf("currently editing plan for release %q, commit or discard the plan before starting a new one", p.PlanningReleaseName)
 	}
+	return nil
+}
+
+func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSettings) (*ReleasePlan, error) {
+	if err := p.checkPlanningOngoing(); err != nil {
+		return nil, err
+	}
+	ctx.Log.Debug("Creating new release plan.")
 
 	var err error
 	if settings.Bump == "" && settings.Version.Empty() {
@@ -158,7 +170,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	metadata := &ReleaseMetadata{
 		Version: settings.Version,
 		Name:    settings.Name,
-		Branch:  p.MakeReleaseBranchName(settings.Name),
+		Branch:  p.MakeReleaseBranchName(settings.Version.String()),
 	}
 
 	if settings.BranchParent != "" {
@@ -184,32 +196,27 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	}
 	manifest.init()
 
-	latestManifest, err := p.GetMasterManifest()
+	masterManifest, err := p.GetMasterManifest()
 	if err != nil {
-		return nil, errors.Wrap(err, "get latest manifest")
+		return nil, errors.Wrap(err, "get master manifest")
 	}
 
 	plan := NewReleasePlan(metadata)
 
-	previousMetadata := p.GetPreviousReleaseMetadata(metadata.Version)
-	if previousMetadata == nil {
-		previousMetadata = p.GetMasterMetadata()
-	}
-
-	var previousManifest *ReleaseManifest
-	previousManifest, err = p.GetReleaseManifest(previousMetadata, true)
+	masterAppManifests, err := masterManifest.GetAppManifests()
 	if err != nil {
-		return nil, errors.Wrap(err, "get previous release manifest")
+		return nil, err
 	}
-	ctx.Log.Infof("Treating release %s as the previous release.", previousMetadata)
-	fetched := map[string][]string{}
 
-	for appName, appManifest := range latestManifest.AppManifests {
+	for appName, appManifest := range masterAppManifests {
 		log := ctx.Log.WithField("app", appName)
 
 		appPlan := &AppPlan{
-			Name: appName,
-			Repo: appManifest.Repo,
+			Name:                appName,
+			Repo:                appManifest.Repo,
+			PreviousReleaseName: MasterName,
+			FromBranch:          p.MasterBranch,
+			ToBranch:            manifest.Branch,
 		}
 		app, err := ctx.Bosun.GetApp(appName)
 		if err != nil {
@@ -220,60 +227,116 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 			continue
 		}
 
-		if previousAppMetadata, ok := previousManifest.AppMetadata[appName]; ok {
-			appPlan.PreviousReleaseName = previousManifest.Name
-			appPlan.FromBranch = previousAppMetadata.Branch
-			appPlan.PreviousReleaseVersion = previousAppMetadata.Version.String()
-			appPlan.CurrentVersionInMaster = app.Version.String()
-
-			if app.BranchForRelease && app.IsRepoCloned() {
-				var changes []string
-				if changes, ok = fetched[app.RepoName]; !ok {
-					localRepo := app.Repo.LocalRepo
-					g := localRepo.git()
-					log.Info("Fetching latest commits.")
-					err = g.Fetch()
-					if err != nil {
-						log.WithError(err).Warn("Couldn't fetch.")
-					} else {
-						changes, err = g.ExecLines("log", "--left-right", "--cherry-pick", "--no-merges", "--oneline", "--no-color", fmt.Sprintf("%s...origin/%s", p.MasterBranch, appPlan.FromBranch))
-						if err != nil {
-							log.WithError(err).Warn("Couldn't find unreleased commits.")
-						}
-					}
-					fetched[app.RepoName] = changes
-				}
-
-				appPlan.CommitsNotInPreviousRelease = changes
-			}
-		} else {
-			appPlan.PreviousReleaseName = MasterName
-			appPlan.FromBranch = p.MasterBranch
+		err = p.UpdateAppPlanWithChanges(ctx, appPlan, app, settings.BranchParent)
+		if err != nil {
+			return nil, errors.Wrapf(err, "updated app %q with changes", app.Name)
 		}
+
 		plan.Apps[appName] = appPlan
 	}
 
 	ctx.Log.Infof("Created new release plan %s.", manifest)
-	p.Plan = plan
+
+	manifest.plan = plan
+	p.PlanningReleaseName = settings.Name
+
+	p.AddReleaseManifest(manifest)
 
 	return plan, nil
 }
 
-func (p *Platform) RePlanRelease(ctx BosunContext, metadata *ReleaseMetadata) (*ReleasePlan, error) {
-	if p.Plan != nil {
-		return nil, errors.Errorf("another plan is currently being edited, commit or discard the plan before starting a new one")
+func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, app *App, branchParent string) error {
+	if p.fetched == nil {
+		p.fetched = map[string][]string{}
 	}
 
-	manifest, err := p.GetReleaseManifest(metadata, false)
+	appName := appPlan.Name
+	log := ctx.Log.WithField("app", appName)
+
+	previousAppMetadata, err := p.GetMostRecentlyReleasedAppMetadata(appPlan.Name)
+
+	if previousAppMetadata != nil {
+		var previousReleaseBranch string
+
+		appPlan.PreviousReleaseName = previousAppMetadata.PinnedReleaseVersion.String()
+		// if we have a branch parent, and this app was released in it
+		// then we should branch off that branch
+		if branchParent != "" && previousAppMetadata.Branch == branchParent {
+			appPlan.FromBranch = previousAppMetadata.Branch
+		} else {
+			appPlan.FromBranch = MasterName
+		}
+
+		previousReleaseBranch = previousAppMetadata.Branch
+
+		appPlan.PreviousReleaseVersion = previousAppMetadata.Version.String()
+		appPlan.CurrentVersionInMaster = app.Version.String()
+
+		if app.BranchForRelease && app.IsRepoCloned() {
+			var changes []string
+			var ok bool
+			if changes, ok = p.fetched[app.RepoName]; !ok {
+				localRepo := app.Repo.LocalRepo
+				log.Info("Fetching changes...")
+				g := localRepo.git()
+
+				err = g.Fetch()
+				if err != nil {
+					return errors.Wrapf(err, "fetching commits for %q", appName)
+				} else {
+					changes, err = g.ExecLines("log", "--left-right", "--cherry-pick", "--no-merges", "--oneline", "--no-color", fmt.Sprintf("%s...origin/%s", p.MasterBranch, previousReleaseBranch))
+					if err != nil {
+						return errors.Wrapf(err, "checking for changes for %q", appName)
+					}
+				}
+
+				log.Infof("Fetched changes (found %d)", len(changes))
+
+				p.fetched[app.RepoName] = changes
+			}
+
+			appPlan.CommitsNotInPreviousRelease = changes
+		}
+	}
+
+	return nil
+}
+
+func (p *Platform) RePlanRelease(ctx BosunContext, metadata *ReleaseMetadata) (*ReleasePlan, error) {
+	if err := p.checkPlanningOngoing(); err != nil {
+		return nil, err
+	}
+
+	manifest, err := p.GetReleaseManifest(metadata)
 	if err != nil {
 		return nil, err
 	}
 
-	p.Plan = manifest.Plan
+	plan, err := manifest.GetPlan()
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not load release plan; if release is old, move release plan from manifest.yaml to a new plan.yaml file")
+	}
+
+	for appName, appPlan := range plan.Apps {
+		app, err := ctx.Bosun.GetApp(appName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "getting app %q found in plan", appName)
+		}
+		if !app.HasChart() {
+			continue
+		}
+
+		err = p.UpdateAppPlanWithChanges(ctx, appPlan, app, manifest.PreferredParentBranch)
+		if err != nil {
+			return nil, errors.Wrapf(err, "updated app %q with changes", app.Name)
+		}
+	}
+
+	p.PlanningReleaseName = manifest.Name
 
 	ctx.Log.Infof("Readied new release plan for %s.", manifest)
 
-	return p.Plan, nil
+	return plan, nil
 }
 
 type AppValidationResult struct {
@@ -281,13 +344,26 @@ type AppValidationResult struct {
 	Err     error
 }
 
-func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResult, error) {
-
-	if p.Plan == nil {
-		return nil, errors.New("no plan active")
+func (p *Platform) GetPlan(ctx BosunContext) (*ReleasePlan, error) {
+	if p.PlanningReleaseName == "" {
+		return nil, errors.New("no release being planned")
 	}
 
-	plan := p.Plan
+	release, err := p.GetReleaseManifestByName(p.PlanningReleaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := release.GetPlan()
+	return plan, err
+}
+
+func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResult, error) {
+
+	plan, err := p.GetPlan(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	results := map[string]AppValidationResult{}
 
@@ -307,6 +383,7 @@ func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResul
 			if appPlan.Bump == "" {
 				me.Collect(errors.New("upgrade was true but bump was empty (should be 'none', 'patch', 'minor', or 'major')"))
 			}
+			appPlan.Deploy = true
 		} else {
 			if appPlan.Reason == "" {
 
@@ -330,16 +407,15 @@ func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResul
 
 func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
-	if p.Plan == nil {
-		return nil, errors.New("no plan active")
+	plan, err := p.GetPlan(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	plan := p.Plan
 
 	releaseMetadata := plan.ReleaseMetadata
 	releaseManifest := NewReleaseManifest(releaseMetadata)
 
-	releaseManifest.Plan = plan
+	releaseManifest.plan = plan
 
 	validationResults, err := p.ValidatePlan(ctx)
 	if err != nil {
@@ -365,14 +441,16 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		}
 
 		if appPlan.Upgrade {
-			err = releaseManifest.UpgradeApp(ctx, appName, appPlan.FromBranch, appPlan.ToBranch, appPlan.Bump)
+			// we pass the expected version here to avoid multiple bumps
+			// if something goes wrong during branching
+			expectedVersion := semver.New(appPlan.CurrentVersionInMaster)
+			err = releaseManifest.UpgradeApp(ctx, appName, appPlan.FromBranch, appPlan.ToBranch, appPlan.Bump, expectedVersion)
 			if err != nil {
 				return nil, errors.Wrapf(err, "upgrading app %s", appName)
 			}
 		} else {
 			ctx.Log.Infof("No upgrade available for app %q; adding version from release %q, with no deploy requested.", appName, appPlan.PreviousReleaseName)
 			var appManifest *AppManifest
-			var err error
 			previousReleaseName := appPlan.PreviousReleaseName
 			if previousReleaseName == "" {
 				previousReleaseName = MasterName
@@ -388,19 +466,21 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				appManifest.PinToRelease(previousReleaseMetadata)
 			}
 
-			releaseManifest.AddApp(appManifest, appPlan.Deploy)
+			err = releaseManifest.AddApp(appManifest, appPlan.Deploy)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 	}
 
-	p.ReleaseManifests[releaseManifest.Name] = releaseManifest
-	p.ReleaseMetadata = append(p.ReleaseMetadata, releaseMetadata)
+	p.AddReleaseManifest(releaseManifest)
 
 	ctx.Log.Infof("Added release %q to releases for platform.", releaseManifest.Name)
 
 	releaseManifest.MarkDirty()
 
-	p.Plan = nil
+	p.PlanningReleaseName = ""
 
 	return releaseManifest, nil
 }
@@ -429,10 +509,10 @@ func (p *Platform) DeleteRelease(ctx BosunContext, name string) error {
 
 // DiscardPlan discards the current plan; it calls save itself.
 func (p *Platform) DiscardPlan(ctx BosunContext) error {
-	if p.Plan != nil {
+	if p.PlanningReleaseName != "" {
 
-		ctx.Log.Warnf("Discarding plan for release %q.", p.Plan.ReleaseMetadata.Name)
-		p.Plan = nil
+		ctx.Log.Warnf("Discarding plan for release %q.", p.PlanningReleaseName)
+		p.PlanningReleaseName = ""
 		return p.Save(ctx)
 	}
 	return nil
@@ -466,21 +546,26 @@ func (p *Platform) Save(ctx BosunContext) error {
 			return errors.Wrapf(err, "create directory for release %q", manifest.Name)
 		}
 
-		y, err := yaml.Marshal(manifest)
+		err = writeYaml(filepath.Join(dir, ManifestFileName), manifest)
 		if err != nil {
-			return errors.Wrapf(err, "marshal manifest %q", manifest.Name)
+			return err
 		}
 
-		manifestPath := filepath.Join(dir, "manifest.yaml")
-		err = ioutil.WriteFile(manifestPath, y, 0600)
-
-		for _, appRelease := range manifest.AppManifests {
-			path := filepath.Join(dir, appRelease.Name+".yaml")
-			b, err := yaml.Marshal(appRelease)
+		if manifest.plan != nil {
+			err = writeYaml(filepath.Join(dir, PlanFileName), manifest.plan)
 			if err != nil {
-				return errors.Wrapf(err, "marshal app %q", appRelease.Name)
+				return err
 			}
-			err = ioutil.WriteFile(path, b, 0700)
+		}
+
+		appManifests, err := manifest.GetAppManifests()
+		if err != nil {
+			return err
+		}
+
+		for _, appRelease := range appManifests {
+			path := filepath.Join(dir, appRelease.Name+".yaml")
+			err = writeYaml(path, appRelease)
 			if err != nil {
 				return errors.Wrapf(err, "write app %q", appRelease.Name)
 			}
@@ -500,6 +585,16 @@ func (p *Platform) Save(ctx BosunContext) error {
 
 	ctx.Log.Info("Platform saved.")
 	return nil
+}
+
+func writeYaml(path string, value interface{}) error {
+	y, err := yaml.Marshal(value)
+	if err != nil {
+		return errors.Wrapf(err, "marshal value to be written to %q", path)
+	}
+
+	err = ioutil.WriteFile(path, y, 0600)
+	return err
 }
 
 func (p *Platform) GetReleaseMetadataByName(name string) (*ReleaseMetadata, error) {
@@ -542,12 +637,12 @@ func (p *Platform) GetManifestDirectoryPath(name string) string {
 	return dir
 }
 
-func (p *Platform) GetReleaseManifestByName(name string, loadAppReleases bool) (*ReleaseManifest, error) {
+func (p *Platform) GetReleaseManifestByName(name string) (*ReleaseManifest, error) {
 	releaseMetadata, err := p.GetReleaseMetadataByName(name)
 	if err != nil {
 		return nil, err
 	}
-	releaseManifest, err := p.GetReleaseManifest(releaseMetadata, loadAppReleases)
+	releaseManifest, err := p.GetReleaseManifest(releaseMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +650,7 @@ func (p *Platform) GetReleaseManifestByName(name string, loadAppReleases bool) (
 	return releaseManifest, nil
 }
 
-func (p *Platform) GetReleaseManifest(metadata *ReleaseMetadata, loadAppReleases bool) (*ReleaseManifest, error) {
+func (p *Platform) GetReleaseManifest(metadata *ReleaseMetadata) (*ReleaseManifest, error) {
 	dir := p.GetManifestDirectoryPath(metadata.Name)
 	manifestPath := filepath.Join(dir, "manifest.yaml")
 
@@ -570,28 +665,9 @@ func (p *Platform) GetReleaseManifest(metadata *ReleaseMetadata, loadAppReleases
 		return nil, errors.Wrapf(err, "unmarshal manifest for %q", metadata.Name)
 	}
 
+	manifest.dir = dir
+
 	manifest.Platform = p
-
-	if loadAppReleases {
-		allAppMetadata := manifest.GetAllAppMetadata()
-
-		for appName, _ := range allAppMetadata {
-			appReleasePath := filepath.Join(dir, appName+".yaml")
-			b, err = ioutil.ReadFile(appReleasePath)
-			if err != nil {
-				return nil, errors.Wrapf(err, "load appRelease for app  %q", appName)
-			}
-			var appManifest *AppManifest
-			err = yaml.Unmarshal(b, &appManifest)
-			if err != nil {
-				return nil, errors.Wrapf(err, "unmarshal appRelease for app  %q", appName)
-			}
-
-			appManifest.AppConfig.FromPath = appReleasePath
-
-			manifest.AppManifests[appName] = appManifest
-		}
-	}
 
 	if p.ReleaseManifests == nil {
 		p.ReleaseManifests = map[string]*ReleaseManifest{}
@@ -615,7 +691,7 @@ func (p *Platform) GetMasterManifest() (*ReleaseManifest, error) {
 	}
 
 	metadata := p.GetMasterMetadata()
-	manifest, err := p.GetReleaseManifest(metadata, true)
+	manifest, err := p.GetReleaseManifest(metadata)
 	if err != nil {
 		manifest = &ReleaseManifest{
 			ReleaseMetadata: metadata,
@@ -643,9 +719,9 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 		return err
 	}
 
-	manifest.AddApp(appManifest, false)
+	err = manifest.AddApp(appManifest, false)
 
-	return nil
+	return err
 }
 
 // RefreshApp checks out the master branch of the app, then reloads it.
@@ -695,7 +771,10 @@ func (p *Platform) RefreshApp(ctx BosunContext, name string) error {
 
 	if appManifest.DiffersFrom(currentAppManifest.AppMetadata) {
 		ctx.Log.Info("Updating manifest.")
-		manifest.AddApp(appManifest, false)
+		err = manifest.AddApp(appManifest, false)
+		if err != nil {
+			return err
+		}
 	} else {
 		ctx.Log.Debug("No changes detected.")
 	}
@@ -712,12 +791,17 @@ func (p *Platform) RefreshApp(ctx BosunContext, name string) error {
 
 func (p *Platform) GetAppManifestFromRelease(releaseName string, appName string) (*AppManifest, error) {
 
-	releaseManifest, err := p.GetReleaseManifestByName(releaseName, true)
+	releaseManifest, err := p.GetReleaseManifestByName(releaseName)
 	if err != nil {
 		return nil, err
 	}
 
-	appManifest, ok := releaseManifest.AppManifests[appName]
+	appManifests, err := releaseManifest.GetAppManifests()
+	if err != nil {
+		return nil, err
+	}
+
+	appManifest, ok := appManifests[appName]
 	if !ok {
 		return nil, errors.Errorf("release %q did not have a manifest for app %q", releaseName, appName)
 
@@ -745,18 +829,18 @@ func (p *Platform) GetLatestReleaseMetadata() (*ReleaseMetadata, error) {
 	return rm[0], nil
 }
 
-func (p *Platform) GetLatestReleaseManifest(loadApps bool) (*ReleaseManifest, error) {
+func (p *Platform) GetLatestReleaseManifest() (*ReleaseManifest, error) {
 	latestReleaseMetadata, err := p.GetLatestReleaseMetadata()
 	if err != nil {
 		return nil, err
 	}
 
-	manifest, err := p.GetReleaseManifest(latestReleaseMetadata, loadApps)
+	manifest, err := p.GetReleaseManifest(latestReleaseMetadata)
 	return manifest, err
 }
 
 func (p *Platform) GetMostRecentlyReleasedAppMetadata(name string) (*AppMetadata, error) {
-	releaseManifest, err := p.GetLatestReleaseManifest(false)
+	releaseManifest, err := p.GetLatestReleaseManifest()
 	if err != nil {
 		return nil, err
 	}
@@ -767,6 +851,20 @@ func (p *Platform) GetMostRecentlyReleasedAppMetadata(name string) (*AppMetadata
 	}
 
 	return appMetadata, nil
+}
+
+func (p *Platform) AddReleaseManifest(manifest *ReleaseManifest) {
+	p.ReleaseManifests[manifest.Name] = manifest.MarkDirty()
+	var updatedMetadata []*ReleaseMetadata
+	// replace metadata
+	for _, metadata := range p.ReleaseMetadata {
+		if metadata.Name == manifest.Name {
+			updatedMetadata = append(updatedMetadata, manifest.ReleaseMetadata)
+		} else {
+			updatedMetadata = append(updatedMetadata, metadata)
+		}
+	}
+	p.ReleaseMetadata = updatedMetadata
 }
 
 type StatusDiff struct {

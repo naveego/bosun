@@ -93,19 +93,22 @@ func (a *AppDeploy) Chart(ctx BosunContext) string {
 
 }
 
-func NewAppDeploy(context BosunContext, settings DeploySettings, manifest *AppManifest) (*AppDeploy, error) {
+func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManifest) (*AppDeploy, error) {
 
+	appDeploySettings := settings.GetAppDeploySettings(manifest.Name)
+
+	// put the tag as the lowest priority of the augmenting value sets, so
+	// that it can be overwritten by user-provided value sets.
+
+	appDeploySettings.ValueSets = append([]ValueSet{{
+		Static: Values{
+			"tag": manifest.GetImageTag(),
+		},
+	}}, appDeploySettings.ValueSets...)
 	appDeploy := &AppDeploy{
 		AppManifest:       manifest,
-		AppDeploySettings: settings.GetAppDeploySettings(manifest.Name),
+		AppDeploySettings: appDeploySettings,
 	}
-
-	appDeploy.AppDeploySettings.ValueSets = append(appDeploy.AppDeploySettings.ValueSets,
-		ValueSet{
-			Static: Values{
-				"tag": manifest.GetImageTag(),
-			},
-		})
 
 	return appDeploy, nil
 }
