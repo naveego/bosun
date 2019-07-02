@@ -11,8 +11,6 @@ import (
 	//"log"
 )
 
-
-
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	Use:     "pull-request",
 	Aliases: []string{"pr"},
@@ -31,7 +29,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		b := MustGetBosun()
-		gitsvc, zensvc, err := b.GetIssueService(repoPath)
+		issueSvc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
 		}
@@ -60,7 +58,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
 		pkg.Log.WithField("issueRf", issueRf).Info("show issueRf")
 
-		parents, err := gitsvc.GetParents(issueRf)
+		parents, err := issueSvc.GetParents(issueRf)
 		if err != nil {
 			return errors.Wrap(err, "get parents for current issue")
 		}
@@ -74,16 +72,15 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
 			pkg.Log.WithField("parent ref", parent)
 			columnUAT := issues.ColumnWaitingForUAT
-			err = zensvc.SetProgress(parent, columnUAT)
+			err = issueSvc.SetProgress(parent, columnUAT)
 			if err != nil {
 				return errors.Wrap(err, "move parent story to UAT")
 			}
 
 		}
 
-
 		column := issues.ColumnWaitingForMerge
-		err = zensvc.SetProgress(issueRf, column)
+		err = issueSvc.SetProgress(issueRf, column)
 		if err != nil {
 			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
@@ -97,7 +94,3 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
 	cmd.Flags().String(ArgPullRequestBase, "master", "Target branch for merge.")
 })
-
-
-
-

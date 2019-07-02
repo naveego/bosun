@@ -570,17 +570,14 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
 		} else {
 
-
-
 			log.Info("Move ready to go stories to UAT")
 			repoPath, err := git.GetRepoPath(a.AppConfig.FromPath)
 			if err != nil {
 				err = errors.Wrap(err, "get repo path")
 			}
 
-			gitsvc, issueSvc , err := ctx.Bosun.GetIssueService(repoPath)
 			log.Info("Move ready to go stories to UAT if deploy succeed")
-			issueSvc, err := ctx.Bosun.GetIssueService()
+			issueSvc, err := ctx.Bosun.GetIssueService(repoPath)
 			if err != nil {
 				err = errors.Wrap(err, "get issue service")
 			}
@@ -596,7 +593,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			// find the last successful deployment time
 			since, err := getLastSuccessfulDeploymentTime(client.Repositories, ctx, org, repoName)
 
-			closedIssues, err := gitsvc.GetIssuesFromCommitsSince(org, repoName, since)
+			closedIssues, err := issueSvc.GetIssuesFromCommitsSince(org, repoName, since)
 			if err != nil {
 				err = errors.Wrap(err, "get closed issues")
 			}
@@ -605,8 +602,8 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 
 			for _, closedIssue := range closedIssues {
 				issueNum := closedIssue.Number
-				issueRef := issues.NewIssueRef(org, repoName,issueNum)
-				parents, err := gitsvc.GetParents(issueRef)
+				issueRef := issues.NewIssueRef(org, repoName, issueNum)
+				parents, err := issueSvc.GetParents(issueRef)
 				if err != nil {
 					err = errors.Wrap(err, "get parents for closed issue")
 				}
@@ -621,7 +618,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 				parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
 				log.Info("dealing with parent story #", parent.Number)
 
-				allChildren, err := gitsvc.GetChildren(parentIssueRef)
+				allChildren, err := issueSvc.GetChildren(parentIssueRef)
 				if err != nil {
 					err = errors.Wrap(err, "get all children of parent issue")
 				}
