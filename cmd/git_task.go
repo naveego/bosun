@@ -43,7 +43,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 		b := MustGetBosun()
-		_, svc, err := b.GetIssueService(repoPath)
+		svc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
 		}
@@ -91,5 +91,3 @@ const (
 	ArgGitTaskParentOrg  = "parent-org"
 	ArgGitTaskParentRepo = "parent-repo"
 )
-
-
