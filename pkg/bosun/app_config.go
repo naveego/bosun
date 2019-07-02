@@ -97,7 +97,9 @@ type AppRoutableService struct {
 	Name     string `yaml:"name" json:"name,omitempty"`
 	PortName string `yaml:"portName" json:"portName,omitempty"`
 	// Deprecated, use localhostPort instead
-	ExternalPort  int `yaml:"externalPort" json:"externalPort,omitempty"`
+	ExternalPort int `yaml:"externalPort" json:"externalPort,omitempty"`
+	// The port the service should advertise within the cluster.
+	InternalPort  int `yaml:"internalPort" json:"internalPort"`
 	LocalhostPort int `yaml:"localhostPort" json:"localhostPort,omitempty"`
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/aryann/difflib"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
@@ -187,9 +188,9 @@ var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		out := rm.ExportDiagram()
+		out, err := rm.ExportDiagram()
 		fmt.Println(out)
-		return nil
+		return err
 	},
 })
 
@@ -289,7 +290,7 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 		b, _ := getReleaseCmdDeps()
 		releaseManifest := mustGetCurrentRelease(b)
 
-		appManifest := releaseManifest.AppManifests[args[0]]
+		appManifest, err := releaseManifest.GetAppManifest(args[0])
 		if appManifest == nil {
 			return errors.Errorf("app %q not in this release", args[0])
 		}
@@ -410,6 +411,13 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 	p := mpb.New(mpb.WithWaitGroup(&wg))
 
 	errmu := new(sync.Mutex)
+
+	//ctx.GetMinikubeDockerEnv()
+
+	err := pkg.NewCommand("helm", "repo", "update").RunE()
+	if err != nil {
+		return errors.Wrap(err, "update repo indexes")
+	}
 
 	errs := map[string][]error{}
 	start := time.Now()
@@ -892,7 +900,7 @@ diff go-between 2.4.2/blue green
 
 				var ok bool
 				if releaseName != "" {
-					releaseManifest, err := p.GetReleaseManifestByName(releaseName, true)
+					releaseManifest, err := p.GetReleaseManifestByName(releaseName)
 
 					valueSets, err := getValueSetSlice(b, env)
 					if err != nil {
