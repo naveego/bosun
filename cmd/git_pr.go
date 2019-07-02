@@ -11,8 +11,6 @@ import (
 	//"log"
 )
 
-
-
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	Use:     "pull-request",
 	Aliases: []string{"pr"},
@@ -31,7 +29,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		b := MustGetBosun()
-		svc, err := b.GetIssueService()
+		issueSvc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
 		}
@@ -60,7 +58,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
 		pkg.Log.WithField("issueRf", issueRf).Info("show issueRf")
 
-		parents, err := svc.GetParents(issueRf)
+		parents, err := issueSvc.GetParents(issueRf)
 		if err != nil {
 			return errors.Wrap(err, "get parents for current issue")
 		}
@@ -72,46 +70,23 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			parentRepo := parents[0].Repo
 			parentNumber := parents[0].Number
 			parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
+			pkg.Log.WithField("parent ref", parent)
+			columnUAT := issues.ColumnWaitingForUAT
+			err = issueSvc.SetProgress(parent, columnUAT)
+			if err != nil {
+				return errors.Wrap(err, "move parent story to UAT")
+			}
+
 		}
 
-
 		column := issues.ColumnWaitingForMerge
-		err = svc.SetProgress(issueRf, column)
+		err = issueSvc.SetProgress(issueRf, column)
 		if err != nil {
 			return errors.Wrap(err, "move issue to Ready for Merge")
 		}
 
-		if len(parent) > 0 {
-			children, err := svc.GetChildren(parent)
-			if err != nil {
-				return errors.Wrap(err, "get children for parent issue")
-			}
-
-			if children == nil {
-				err = svc.SetProgress(parent, column)
-				if err != nil {
-					return errors.Wrap(err, "move parent story to Waiting for Merge when no child")
-				}
-			} else {
-				i := 0
-				ok := true
-				for i < len(children) {
-					if !children[i].IsClosed {
-						ok = false
-					}
-				}
-				if ok {
-					err = svc.SetProgress(parent, column)
-					if err != nil {
-						return errors.Wrap(err, "move parent story to Waiting for merge after checking children")
-					}
-				}
-			}
-		}
-
-
-
 		return err
+
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(ArgPullRequestReviewers, []string{}, "Reviewers to request.")
@@ -119,7 +94,3 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
 	cmd.Flags().String(ArgPullRequestBase, "master", "Target branch for merge.")
 })
-
-
-
-
