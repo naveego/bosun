@@ -59,62 +59,46 @@ func (r *LocalRepo) Push() error {
 	return err
 }
 
-func (r *LocalRepo) Branch(ctx BosunContext, parentBranch string, name string) error {
-	if r == nil {
-		return errors.New("not cloned")
+func (r *LocalRepo) SwitchToNewBranch(ctx BosunContext, parent, child string) error {
+	ctx.Log.Infof("Creating branch %s...", child)
+	g := r.git()
+	_, err := g.Exec("checkout", parent)
+	if err != nil {
+		return errors.Wrapf(err, "check out parent branch %q", parent)
 	}
 
-	g, err := git.NewGitWrapper(r.Path)
+	_, err = g.Exec("pull")
+	if err != nil {
+		return errors.Wrapf(err, "pulling parent branch %q", parent)
+	}
+
+	_, err = g.Exec("branch", child)
+	if err != nil {
+		return err
+	}
+	_, err = g.Exec("checkout", child)
 	if err != nil {
 		return err
 	}
 
-	_, err = g.Exec("fetch")
+	return nil
+}
+
+func (r *LocalRepo) SwitchToBranchAndPull(ctx BosunContext, name string) error {
+	ctx.Log.Info("Checking out release branch...")
+	g := r.git()
+	_, err := g.Exec("checkout", name)
+	if err != nil {
+		return err
+	}
+	_, err = g.Exec("pull")
 	if err != nil {
 		return err
 	}
 
-	branches, err := g.Exec("branch", "-a")
+	_, err = g.Exec("push", "-u", "origin", name)
 	if err != nil {
 		return err
-	}
-
-	if strings.Contains(branches, name) {
-		ctx.Log.Info("Checking out release branch...")
-		_, err = g.Exec("checkout", name)
-		if err != nil {
-			return err
-		}
-		_, err = g.Exec("pull")
-		if err != nil {
-			return err
-		}
-	} else {
-		ctx.Log.Infof("Creating branch %s...", name)
-
-		_, err = g.Exec("checkout", parentBranch)
-		if err != nil {
-			return errors.Wrapf(err, "check out parent branch %q", parentBranch)
-		}
-
-		_, err = g.Exec("pull")
-		if err != nil {
-			return errors.Wrapf(err, "pulling parent branch %q", parentBranch)
-		}
-
-		_, err = g.Exec("branch", name)
-		if err != nil {
-			return err
-		}
-		_, err = g.Exec("checkout", name)
-		if err != nil {
-			return err
-		}
-
-		_, err = g.Exec("push", "-u", "origin", name)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -135,4 +119,27 @@ func (r *LocalRepo) git() git.GitWrapper {
 
 func (r *LocalRepo) GetCurrentBranch() string {
 	return r.git().Branch()
+}
+
+func (r *LocalRepo) DoesBranchExist(ctx BosunContext, name string) (bool, error) {
+	if r == nil {
+		return false, errors.New("not cloned")
+	}
+
+	g, err := git.NewGitWrapper(r.Path)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = g.Exec("fetch")
+	if err != nil {
+		return false, err
+	}
+
+	branches, err := g.Exec("branch", "-a")
+	if err != nil {
+		return false, err
+	}
+
+	return strings.Contains(branches, name), nil
 }

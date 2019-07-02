@@ -3,6 +3,7 @@ package bosun
 import (
 	"context"
 	"fmt"
+	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/util"
@@ -11,6 +12,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync"
 	"time"
@@ -242,13 +244,38 @@ func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
 }
 
 var useMinikubeForDockerOnce = new(sync.Once)
+var dockerEnv []string
 
-func (c BosunContext) UseMinikubeForDockerIfAvailable() {
+func (c BosunContext) GetMinikubeDockerEnv() []string {
 	useMinikubeForDockerOnce.Do(func() {
-		if err := pkg.NewCommand("minikube", "ip").RunE(); err == nil {
-
+		defer func() {
+			e := recover()
+			if e != nil {
+				color.Red("Attempting to use docker for minikube panicked: %v", e)
+			}
+		}()
+		log := c.GetLog()
+		log.Info("Attempting to use docker agent in minikube...")
+		if err := pkg.NewCommand("minikube", "ip").RunE(); err != nil {
+			log.Warnf("Could not use minikube as a docker proxy: %s", err)
+			return
 		}
+
+		envblob, err := pkg.NewCommand("minikube", "docker-env").RunOut()
+		if err != nil {
+			log.WithError(err).Error("Could not get docker-env.")
+			return
+		}
+		envs := regexp.MustCompile(`([A-Z_]+)="([^"])"`).FindAllStringSubmatch(envblob, -1)
+		for _, env := range envs {
+			log.Debugf("Setting env %s=%s", env[0], env[1])
+			_ = os.Setenv(env[0], env[1])
+			dockerEnv = append(dockerEnv, fmt.Sprintf("%s=%s", env[0], env[1]))
+		}
+		log.Info("Minikube docker agent configured.")
 	})
+
+	return dockerEnv
 }
 
 //
@@ -295,4 +322,12 @@ func (c BosunContext) GetCluster() string {
 		return c.Env.Cluster
 	}
 	return ""
+}
+
+// GetLog gets a logger safely.
+func (c BosunContext) GetLog() *logrus.Entry {
+	if c.Log != nil {
+		return c.Log
+	}
+	return logrus.NewEntry(logrus.StandardLogger())
 }

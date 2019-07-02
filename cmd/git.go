@@ -179,7 +179,7 @@ func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 	body := c.Body
 
 	if issueNum > 0 {
-		body = fmt.Sprintf("%s\nCloses #%s", c.Body, rawIssueNumber)
+		body = fmt.Sprintf("%s\nCloses #%s", body, rawIssueNumber)
 	}
 
 	target := c.Base

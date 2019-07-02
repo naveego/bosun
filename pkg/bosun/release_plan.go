@@ -9,6 +9,7 @@ import (
 )
 
 type ReleasePlan struct {
+	FromPath        string              `yaml:"-"`
 	Apps            map[string]*AppPlan `yaml:"apps"`
 	ReleaseMetadata *ReleaseMetadata    `yaml:"releaseManifest"`
 }
