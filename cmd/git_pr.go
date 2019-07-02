@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	//"github.com/naveego/bosun/pkg/zenhub"
+	// "github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	//"log"
+	// "log"
 )
 
 var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
@@ -38,9 +37,6 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		org0, repo0 := git.GetCurrentOrgAndRepo()
 
-		pkg.Log.WithField("org", org0).Info("org from GetCurrentOrgAndRepo")
-		pkg.Log.WithField("repo", repo0).Info("repo from...")
-
 		prCmd := GitPullRequestCommand{
 			LocalRepoPath: repoPath,
 			Reviewers:     viper.GetStringSlice(ArgPullRequestReviewers),
@@ -56,28 +52,27 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
-		pkg.Log.WithField("issueRf", issueRf).Info("show issueRf")
 
-		parents, err := issueSvc.GetParents(issueRf)
-		if err != nil {
-			return errors.Wrap(err, "get parents for current issue")
-		}
+		// TODO: move parent story if possible
+		// parents, err := issueSvc.GetParents(issueRf)
+		// if err != nil {
+		// 	return errors.Wrap(err, "get parents for current issue")
+		// }
 		//pkg.Log.WithField("parents", parents).Info("parents returned")
 
-		var parent issues.IssueRef
-		if len(parents) > 0 {
-			parentOrg := parents[0].Org
-			parentRepo := parents[0].Repo
-			parentNumber := parents[0].Number
-			parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
-			pkg.Log.WithField("parent ref", parent)
-			columnUAT := issues.ColumnWaitingForUAT
-			err = issueSvc.SetProgress(parent, columnUAT)
-			if err != nil {
-				return errors.Wrap(err, "move parent story to UAT")
-			}
-
-		}
+		// var parent issues.IssueRef
+		// if len(parents) > 0 {
+		// 	parentOrg := parents[0].Org
+		// 	parentRepo := parents[0].Repo
+		// 	parentNumber := parents[0].Number
+		// 	parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
+		// 	pkg.Log.WithField("parent ref", parent)
+		// 	columnUAT := issues.ColumnWaitingForUAT
+		// 	err = issueSvc.SetProgress(parent, columnUAT)
+		// 	if err != nil {
+		// 		return errors.Wrap(err, "move parent story to UAT")
+		// 	}
+		// }
 
 		column := issues.ColumnWaitingForMerge
 		err = issueSvc.SetProgress(issueRf, column)
