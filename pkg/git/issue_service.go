@@ -29,7 +29,6 @@ type IssueService struct {
 	log    *logrus.Entry
 }
 
-
 func NewIssueService(config Config, gitWrapper GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
 
 	s := IssueService{
@@ -69,7 +68,7 @@ func (s IssueService) GetIssuesFromCommitsSince(org, repo, since string) ([]issu
 		return nil, err
 	}*/
 	reg := regexp.MustCompile(`#[0-9]+`)
-	closedIssueStrings := reg.FindAllString(changesBlob,-1)
+	closedIssueStrings := reg.FindAllString(changesBlob, -1)
 	regNum := regexp.MustCompile(`[0-9]+`)
 	var closedIssueNums []int
 	for _, closedIssueString := range closedIssueStrings {
@@ -85,8 +84,8 @@ func (s IssueService) GetIssuesFromCommitsSince(org, repo, since string) ([]issu
 	var closedIssues []issues.Issue
 	for _, closedIssueNum := range closedIssueNums {
 		curIssue := issues.Issue{
-			Org: org,
-			Repo: repo,
+			Org:    org,
+			Repo:   repo,
 			Number: closedIssueNum,
 		}
 		closedIssues = append(closedIssues, curIssue)
@@ -94,9 +93,7 @@ func (s IssueService) GetIssuesFromCommitsSince(org, repo, since string) ([]issu
 	return closedIssues, nil
 }
 
-
-
-func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,error) {
+func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, error) {
 
 	log := s.log.WithField("title", issue.Title)
 
@@ -112,7 +109,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 		Title:    github.String(issue.Title),
 		Assignee: user.Login,
 	}
-	dumpJSON("assignee", issueRequest.Assignee)
+	// dumpJSON("assignee", issueRequest.Assignee)
 
 	//var parentIssue *issues.Issue
 	if parent != nil {
@@ -153,7 +150,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 			}
 		}
 
-
 	}
 
 	/*if &issue.Assignee != nil {
@@ -164,7 +160,8 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 
 	issueRequest.Body = &issue.Body
 
-	dumpJSON("creating issue", issueRequest)
+	//dumpJSON("creating issue", issueRequest)
+
 	issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
 	if err != nil {
 		return -1, errors.Wrap(err, "creating issue")
@@ -210,7 +207,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int,e
 		parentNewBody += parentNewChild
 		newParentRequest := &github.IssueRequest{
 			Title: parentIssue.Title,
-			Body: &parentNewBody,
+			Body:  &parentNewBody,
 		}
 
 		editedParent, response, err := s.github.Issues.Edit(context.Background(), parentOrg, parentRepo, parentIssueNumber, newParentRequest)
@@ -251,7 +248,6 @@ func (s IssueService) GetRepoIdbyName(org, repoName string) (int, error) {
 func (s IssueService) RemoveDependency(from, to issues.IssueRef) error {
 	panic("implement me")
 }
-
 
 func (s IssueService) SplitIssueRef(issue issues.IssueRef) (string, string, int, error) {
 
@@ -301,7 +297,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 	body := *githubIssue.Body
 	regForParent := regexp.MustCompile(`required by [a-z]+\/[a-z]+\/#[0-9]+`)
 	regForParentNum := regexp.MustCompile(`[0-9]+`)
-	parents := regForParent.FindAllString(body,-1)
+	parents := regForParent.FindAllString(body, -1)
 	if len(parents) < 1 {
 		return parentIssues, nil
 	}
@@ -315,8 +311,8 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		}
 		parentIssue = issues.Issue{
 			Number: parentNumInt,
-			Org: parentOrg,
-			Repo: parentRepo,
+			Org:    parentOrg,
+			Repo:   parentRepo,
 		}
 		parentIssues = append(parentIssues, parentIssue)
 	}
@@ -334,7 +330,7 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 	}
 
 	// find children from an issue's body
-	githubIssuePointer, _,  err := s.github.Issues.Get(s.ctx(), org, repo, number)
+	githubIssuePointer, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
 	githubIssue := *githubIssuePointer
 	issueBody := *githubIssue.Body
 	reg := regexp.MustCompile(`requires [a-z]+\/[a-z]+\/#[0-9]+`)
@@ -363,9 +359,9 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 			return nil, errors.Wrap(err, "child number")
 		}
 
-		child := issues.Issue {
-			Org: childOrg,
-			Repo: childRepo,
+		child := issues.Issue{
+			Org:    childOrg,
+			Repo:   childRepo,
 			Number: childNum,
 		}
 		childIssues = append(childIssues, child)
@@ -414,8 +410,7 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 		childIssues = append(childIssues, childIssue)
 	} */
 
-
-		//dumpJSON("childIssues", childIssues)
+	dumpJSON("childIssues", childIssues)
 
 	return childIssues, nil
 }
@@ -434,7 +429,7 @@ func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
 
 	i := 0
 	var closedIssueNumbers []int
-	for i<len(closedIssues){
+	for i < len(closedIssues) {
 		closedIssueNumbers = append(closedIssueNumbers, closedIssues[i].GetNumber())
 		i++
 	}
@@ -456,11 +451,12 @@ func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
 	return closedIssueNumbers, nil
 }
 
-
 //type Issue issues.Issue
 type IssueRef issues.IssueRef
 
 func dumpJSON(label string, data interface{}) {
-	j, _ := json.MarshalIndent(data, "", "  ")
-	fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
+	if pkg.Log != nil && pkg.Log.Logger.IsLevelEnabled(logrus.DebugLevel) {
+		j, _ := json.MarshalIndent(data, "", "  ")
+		fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
+	}
 }
