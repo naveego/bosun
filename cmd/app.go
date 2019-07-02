@@ -22,11 +22,13 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"io/ioutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"regexp"
 	"strings"
@@ -511,6 +513,8 @@ var appToggleCmd = &cobra.Command{
 
 		ctx := b.NewContext()
 
+		appServiceChanged := false
+
 		for _, app := range apps {
 
 			ctx = ctx.WithAppDeploy(app)
@@ -532,11 +536,12 @@ var appToggleCmd = &cobra.Command{
 			}
 
 			if app.DesiredState.Routing == bosun.RoutingLocalhost {
-
 				err = app.RouteToLocalhost(ctx)
 				if err != nil {
 					return err
 				}
+
+				appServiceChanged = true
 			} else {
 				// force upgrade the app to restore it to its normal state.
 				ctx.Log.Info("Deleting app.")
@@ -554,9 +559,39 @@ var appToggleCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
+				appServiceChanged = true
 			}
 
 			b.SetDesiredState(app.Name, app.DesiredState)
+		}
+
+		if appServiceChanged {
+
+			client, err := kube.GetKubeClient()
+			if err != nil {
+				return errors.Wrap(err, "get kube client for tweaking service")
+			}
+
+			ctx.Log.Warn("Recycling kube-dns to ensure new services are routed correctly.")
+
+			podClient := client.CoreV1().Pods("kube-system")
+			pods, err := podClient.List(metav1.ListOptions{
+				LabelSelector: "k8s-app=kube-dns",
+			})
+			if err != nil {
+				return errors.Wrap(err, "find kube-dns")
+			}
+			if len(pods.Items) == 0 {
+				return errors.New("no kube-dns pods found")
+			}
+			for _, pod := range pods.Items {
+				ctx.Log.Warnf("Deleting pod %q...", pod.Name)
+				err = podClient.Delete(pod.Name, metav1.NewDeleteOptions(0))
+				if err != nil {
+					return errors.Wrapf(err, "delete pod %q", pod.Name)
+				}
+				ctx.Log.Warnf("Pod %q deleted. Kube-hosted services may be unavailable for a short time.", pod.Name)
+			}
 		}
 
 		err = b.Save()

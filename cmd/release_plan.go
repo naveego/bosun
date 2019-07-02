@@ -27,10 +27,10 @@ var releasePlanCmd = addCommand(releaseCmd, &cobra.Command{
 		_, p := getReleaseCmdDeps()
 
 		fmt.Println()
-		if p.Plan == nil {
+		if p.PlanningReleaseName == "" {
 			color.Red("There is no current plan.\n")
 		} else {
-			color.Blue("Currently planning %s.\n", p.Plan.ReleaseMetadata)
+			color.Blue("Currently planning %s.\n", p.PlanningReleaseName)
 		}
 
 	},
@@ -42,13 +42,14 @@ var releasePlanShowCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Short:        "Shows the current release plan.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, p := getReleaseCmdDeps()
+		b, p := getReleaseCmdDeps()
 
-		if p.Plan == nil {
-			return errors.New("no release plan active")
+		plan, err := p.GetPlan(b.NewContext())
+		if err != nil {
+			return err
 		}
 
-		err := printOutput(p.Plan)
+		err = printOutput(plan)
 		return err
 	},
 })
@@ -58,13 +59,14 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Short:        "Opens release plan in an editor.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, p := getReleaseCmdDeps()
+		b, p := getReleaseCmdDeps()
 
-		if p.Plan == nil {
-			return errors.New("no release plan active")
+		plan, err := p.GetPlan(b.NewContext())
+		if err != nil {
+			return err
 		}
 
-		err := Edit(p.FromPath)
+		err = Edit(plan.FromPath)
 
 		return err
 	},
@@ -221,9 +223,9 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 
 		b, p := getReleaseCmdDeps()
 
-		plan := p.Plan
-		if plan == nil {
-			return errors.New("no plan active")
+		plan, err := p.GetPlan(b.NewContext())
+		if err != nil {
+			return err
 		}
 
 		ctx := b.NewContext()
@@ -264,7 +266,6 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 			appPlans[selectedAppPlan.Name] = selectedAppPlan
 		}
 
-		var err error
 		changes := map[string][]difflib.DiffRecord{}
 		for _, appPlan := range appPlans {
 			original := MustYaml(appPlan)
