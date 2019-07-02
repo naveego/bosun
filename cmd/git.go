@@ -424,14 +424,13 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	pkg.Log.Info("Merge completed.")
 
-
 	segs := regexp.MustCompile(`(issue)/\#(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
 	if len(segs) == 0 {
 		return errors.New("bad branch")
 	}
 
 	b := MustGetBosun()
-	svc, err := b.GetIssueService()
+	svc, err := b.GetIssueService(repoPath)
 	if err != nil {
 		return errors.New("get issue service")
 	}
@@ -478,11 +477,8 @@ func (c GitAcceptPRCommand) Execute() error {
 		}
 	} */
 
-
 	return nil
 }
-
-
 
 func getOrgAndRepo() (string, string) {
 	return git.GetCurrentOrgAndRepo()

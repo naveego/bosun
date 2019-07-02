@@ -38,9 +38,12 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		if body == "" {
 			body = taskName
 		}
-
+		repoPath, err := git.GetCurrentRepoPath()
+		if err != nil {
+			return err
+		}
 		b := MustGetBosun()
-		svc, err := b.GetIssueService()
+		svc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
 		}
@@ -66,7 +69,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			IsClosed: false,
 		}
 
-		err = svc.Create(issue, parent)
+		_, err = svc.Create(issue, parent)
 		if err != nil {
 			return err
 		}
@@ -88,5 +91,3 @@ const (
 	ArgGitTaskParentOrg  = "parent-org"
 	ArgGitTaskParentRepo = "parent-repo"
 )
-
-

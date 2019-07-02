@@ -143,7 +143,6 @@ func (a *API) MovePipeline(workspaceID string, repoID int, issue int, pipelineID
 		return fmt.Errorf("the move issue endpoint returned %v", response.StatusCode)
 	}
 
-	dumpJSON("status code ", response.StatusCode)
 	return nil
 }
 
@@ -153,10 +152,11 @@ func (a *API) AddDependency(dependency *Dependency) error {
 	if err != nil {
 		return err
 	}
+	//dumpJSON("dependency", dependency)
 
 	client := http.DefaultClient
-	getPipelinesURI := fmt.Sprintf("%v/p1/dependencies", zenhubRoot)
-	request, err := a.createDefaultRequest(http.MethodPost, getPipelinesURI)
+	addDependencyURI := fmt.Sprintf("%v/p1/dependencies", zenhubRoot)
+	request, err := a.createDefaultRequest(http.MethodPost, addDependencyURI)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,9 @@ func (a *API) AddDependency(dependency *Dependency) error {
 	if err != nil {
 		return err
 	}
+	var responseBody []byte
 	if response.Body != nil {
+		responseBody, _ = ioutil.ReadAll(response.Body)
 		err = response.Body.Close()
 		if err != nil {
 			return errors.Wrap(err, "close response body")
@@ -176,7 +178,7 @@ func (a *API) AddDependency(dependency *Dependency) error {
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("the dependency issue endpoint returned %v", response.StatusCode)
+		return fmt.Errorf("the dependency issue endpoint returned %v: %s", response.StatusCode, string(responseBody))
 	}
 	return nil
 }
@@ -260,6 +262,8 @@ func (a *API) GetIssueData(repoID, issueNumber int) (*IssueData, error) {
 	return issue, nil
 }
 
+
+
 // GetPipelineID returns the ZenHub ID for the specified pipeline name. If the specified pipeline
 // does not exist for the current board, this method will return an empty string and an error.
 func (a *API) GetPipelineID(workspaceID string, repoID int, pipelineName string) (string, error) {
@@ -268,6 +272,7 @@ func (a *API) GetPipelineID(workspaceID string, repoID int, pipelineName string)
 	if err != nil {
 		return "", errors.Wrap(err, "get pipelines")
 	}
+	//dumpJSON("pipelines", pipelines)
 	for _, pipeline := range pipelines.List {
 		if strings.ToLower(pipeline.Name) == strings.ToLower(pipelineName) {
 			pipelineID = pipeline.ID
