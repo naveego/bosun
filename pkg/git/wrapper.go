@@ -62,8 +62,9 @@ func (g GitWrapper) Pull() error {
 
 }
 
-func (g GitWrapper) Fetch() error {
-	err := pkg.NewCommand("git", "-C", g.dir, "fetch").RunE()
+func (g GitWrapper) Fetch(flags ...string) error {
+	args := append([]string{"-C", g.dir, "fetch"}, flags...)
+	err := pkg.NewCommand("git", args...).RunE()
 	return err
 }
 

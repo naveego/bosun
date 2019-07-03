@@ -782,7 +782,7 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 			}
 
 			log.Info("Tagging release branch...")
-			tagArgs := []string{"tag", fmt.Sprintf("%s-%s", appDeploy.Version, release.Version)}
+			tagArgs := []string{"tag", fmt.Sprintf("%s-%s", appDeploy.Version, release.Version), "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
 			if force {
 				tagArgs = append(tagArgs, "--force")
 			}

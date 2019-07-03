@@ -303,6 +303,13 @@ func (c GitAcceptPRCommand) Execute() error {
 		return errors.Errorf("already closed at %s", *pr.ClosedAt)
 	}
 
+	if pr.GetMergeable() == false {
+		return errors.Errorf(`branch %s not mergeable: %s; please merge %s into %s, push to github, then try again`,
+			pr.GetBase().GetRef(),
+			pr.GetMergeableState(),
+			pr.GetHead().GetRef())
+	}
+
 	stashed := false
 	if g.IsDirty() {
 		stashed = true
@@ -321,8 +328,8 @@ func (c GitAcceptPRCommand) Execute() error {
 		}
 	}()
 
-	if err = checkHandle(g.Fetch()); err != nil {
-		return errors.Wrap(err, "checking handle")
+	if err = checkHandle(g.Fetch("--all")); err != nil {
+		return errors.Wrap(err, "fetching")
 	}
 
 	mergeBranch := pr.GetHead().GetRef()
@@ -331,6 +338,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	if err = checkHandle(err); err != nil {
 		return err
 	}
+
 	if strings.Contains(out, mergeBranch) {
 		pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
 		if err = checkHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
@@ -346,11 +354,6 @@ func (c GitAcceptPRCommand) Execute() error {
 	if err = checkHandleMsg(g.Exec("pull")); err != nil {
 		return err
 	}
-
-	defer func() {
-		pkg.Log.Infof("Cleaning up merge branch %q", mergeBranch)
-		g.Exec("branch", "-d", mergeBranch)
-	}()
 
 	if !c.DoNotMergeBaseIntoBranch {
 		pkg.Log.Infof("Merging %s into %s...", baseBranch, mergeBranch)
@@ -424,9 +427,10 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	pkg.Log.Info("Merge completed.")
 
-	segs := regexp.MustCompile(`(issue)/\#(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
+	segs := regexp.MustCompile(`(issue)/#(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
 	if len(segs) == 0 {
-		return errors.New("bad branch")
+		pkg.Log.Warn("Branch did not contain an issue number, not attempting to close issues.")
+		return nil
 	}
 
 	b := MustGetBosun()
