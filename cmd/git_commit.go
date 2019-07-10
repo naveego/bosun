@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/naveego/bosun/pkg/git"
@@ -12,9 +13,9 @@ import (
 )
 
 var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
-	Use:   "commit",
+	Use:     "commit",
 	Aliases: []string{"cz"},
-	Short: "Commits with a formatted",
+	Short:   "Commits with a formatted message",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		var err error
@@ -39,7 +40,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 		if out == "" {
-			//return errors.New("No files added to staging! Did you forget to run git add?") // comment this for testing error handling
+			return errors.New("No files added to staging! Did you forget to run git add?")
 		}
 
 		retryFlag := viper.GetBool(GitRetry)
@@ -59,26 +60,6 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			if err != nil {
 				return err
 			}
-			//out, err = g.Exec("log", "origin/master..HEAD")
-			//if err != nil {
-			//	return err
-			//}
-			//if out != "" {
-			//	out, err = g.Exec("diff", "--name-only", "HEAD^", "HEAD")
-			//	if err != nil {
-			//		return err
-			//	}
-			//
-			//	_, err = g.Exec("reset", "HEAD^")
-			//	if err != nil {
-			//		return err
-			//	}
-			//
-			//	_, err = g.Exec("add", out)
-			//	if err != nil {
-			//		return err
-			//	}
-			//}
 		} else {
 
 			typeAns := ""
@@ -93,6 +74,10 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			typeQues := &survey.Select{
 				Message: "Select the type of change that you're committing:",
 				Options: []string{
+					"feat:     A new feature",
+					"fix:      A bug fix",
+					"docs:     Documentation only changes",
+					"style:    Changes that do not affect the meaning of the code",
 					"refactor: A code change that neither fixes a bug nor adds a feature",
 					"perf:     A code change that improves performance",
 					"test:     Adding missing tests or correcting existing tests",
@@ -100,10 +85,6 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 					"ci:       Changes to our CI configuration files and scripts",
 					"chore:    Other changes that don't modify src or test files",
 					"revert:   Reverts a previous commit",
-					"feat:     A new feature",
-					"fix:      A bug fix",
-					"docs:     Documentation only changes",
-					"style:    Changes that do not affect the meaning of the code",
 				},
 			}
 
@@ -161,10 +142,8 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		_, err = g.Exec("commit", "-m", msg)
-
 		if tmpFileExists {
-			err = os.Remove(TempFileGitCommit)
-			if err != nil {
+			if os.Remove(TempFileGitCommit) != nil {
 				return err
 			}
 		}
@@ -196,12 +175,16 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 
 func exists(path string) (bool, error) {
 	_, err := os.Stat(path)
-	if err == nil { return true, nil }
-	if os.IsNotExist(err) { return false, nil }
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
 	return true, err
 }
 
 const (
-	GitRetry = "retry"
+	GitRetry          = "retry"
 	TempFileGitCommit = "/tmp/bosun_git_commit"
 )
