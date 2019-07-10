@@ -69,7 +69,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			affectedIssueAns := ""
 			breakingChangesDescriptionAns := ""
 			breakingChangesAns := false
-			affectsIssueAns := false
+			branch := strings.Split(g.Branch(), "/")
 
 			typeQues := &survey.Select{
 				Message: "Select the type of change that you're committing:",
@@ -108,14 +108,6 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 				Message: "Describe the breaking changes:",
 			}
 
-			affectsIssueQues := &survey.Confirm{
-				Message: "Does this change affect any open issues?",
-			}
-
-			affectedIssueQues := &survey.Input{
-				Message: "Add issue references (e.g. \"fix #123\", \"re #123\".):",
-			}
-
 			survey.AskOne(typeQues, &typeAns)
 			survey.AskOne(scopeQues, &scopeAns)
 			survey.AskOne(shortQues, &shortAns)
@@ -127,10 +119,8 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 				breakingChangesDescriptionAns = "BREAKING CHANGE: " + breakingChangesDescriptionAns
 			}
 
-			survey.AskOne(affectsIssueQues, &affectsIssueAns)
-
-			if affectsIssueAns {
-				survey.AskOne(affectedIssueQues, &affectedIssueAns)
+			if len(branch) == 3 && branch[0] == "issue" {
+				affectedIssueAns = branch[1]
 			}
 
 			title := strings.Split(typeAns, ":")[0] + "(" + scopeAns + "): " + shortAns
