@@ -3,6 +3,7 @@ module github.com/naveego/bosun
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.4.6 // indirect
 	github.com/10gen/openssl v0.0.0-20190228222722-2862bcc79a77 // indirect
+	github.com/AlecAivazis/survey/v2 v2.0.1
 	github.com/Azure/azure-sdk-for-go v29.0.0+incompatible // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Azure/go-autorest v11.2.8+incompatible
@@ -153,6 +154,7 @@ require (
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/spf13/afero v1.2.2 // indirect
 	github.com/spf13/cobra v0.0.3
+	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.3.1
 	github.com/stevenle/topsort v0.0.0-20130922064739-8130c1d7596b
 	github.com/streadway/amqp v0.0.0-20190225234609-30f8ed68076e // indirect
@@ -170,7 +172,7 @@ require (
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1 // indirect
-	golang.org/x/crypto v0.0.0-20190426145343-a29dc8fdc734
+	golang.org/x/crypto v0.0.0-20190530122614-20be4c3c3ed5
 	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890
 	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/alecthomas/kingpin.v3-unstable v3.0.0-20180810215634-df19058c872c // indirect
