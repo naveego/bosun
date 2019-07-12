@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
+	"os"
 	"runtime"
 )
 
@@ -18,6 +19,17 @@ func MinikubeUp(ctx BosunContext) error {
 
 	if cfg.Driver == "" {
 		cfg.Driver = "virtualbox"
+	}
+
+	pkg.Log.Info("Resetting virtualbox DHCP leases...")
+	_, _ = pkg.NewCommand("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
+
+	leasePath := os.ExpandEnv("$HOME/.config/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
+	err = os.RemoveAll(leasePath)
+	if err != nil {
+		pkg.Log.WithError(err).Warn("Could not delete virtualbox leases, IP address may be incorrect.")
+	} else {
+		pkg.Log.Info("Deleted virtualbox DHCP leases.")
 	}
 
 	ctx.Log.Info("minikube not running, starting minikube...")

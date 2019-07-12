@@ -629,7 +629,7 @@ func (b *Bosun) GetCurrentReleaseMetadata() (*ReleaseMetadata, error) {
 		return nil, err
 	}
 
-	rm, err := p.GetReleaseMetadataByName(b.ws.CurrentRelease)
+	rm, err := p.GetReleaseMetadataByNameOrVersion(b.ws.CurrentRelease)
 	return rm, err
 }
 
@@ -694,7 +694,7 @@ func (b *Bosun) UseRelease(name string) error {
 	if err != nil {
 		return err
 	}
-	_, err = p.GetReleaseMetadataByName(name)
+	_, err = p.GetReleaseMetadataByNameOrVersion(name)
 	if err != nil {
 		return err
 	}
