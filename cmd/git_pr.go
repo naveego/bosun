@@ -33,6 +33,11 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.New("get issue service")
 		}
 
+		app, err := getCurrentApp(b)
+		if err != nil {
+			return errors.Wrap(err, "could not find app in current directory")
+		}
+
 		//taskName := args[0]
 
 		org0, repo0 := git.GetCurrentOrgAndRepo()
@@ -43,6 +48,10 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			Base:          viper.GetString(ArgPullRequestBase),
 			FromBranch:    g.Branch(),
 			Body:          viper.GetString(ArgPullRequestBody),
+		}
+
+		if prCmd.Base == "" {
+			prCmd.Base = app.Branching.Develop
 		}
 
 		var issueNmb int
@@ -87,5 +96,5 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().StringSlice(ArgPullRequestReviewers, []string{}, "Reviewers to request.")
 	cmd.Flags().String(ArgPullRequestTitle, "", "Title of PR")
 	cmd.Flags().String(ArgPullRequestBody, "", "Body of PR")
-	cmd.Flags().String(ArgPullRequestBase, "master", "Target branch for merge.")
+	cmd.Flags().String(ArgPullRequestBase, "", "Target branch for merge.")
 })

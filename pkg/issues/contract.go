@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 type Issue struct {
@@ -21,11 +22,26 @@ type Issue struct {
 	Title           string
 	ProgressState   string
 	ProgressStateID int
+	BranchPattern   string
 
 	IsClosed bool
 
 	GithubRepoID        *int
 	MappedProgressState string
+}
+
+var slugRE = regexp.MustCompile(`\W+`)
+
+func (i Issue) Slug() string {
+	slug := slugRE.ReplaceAllString(strings.ToLower(i.Title), "-")
+	for len(slug) > 30 {
+		cutoff := strings.LastIndex(slug, "-")
+		if cutoff < 0 || cutoff > 30 {
+			return slug
+		}
+		slug = slug[:cutoff]
+	}
+	return slug
 }
 
 type Estimate struct {
@@ -80,13 +96,13 @@ type IssueService interface {
 }
 
 const (
-	ColumnInDevelopment = "In Development"
-	ColumnWaitingForMerge = "Ready for Merge"
+	ColumnInDevelopment    = "In Development"
+	ColumnWaitingForMerge  = "Ready for Merge"
 	ColumnWaitingForDeploy = ""
-	ColumnInProgress = "In Progress"
-	ColumnWaitingForUAT = "UAT"
-	ColumnDone = "Done"
-	ColumnClosed = "Closed"
+	ColumnInProgress       = "In Progress"
+	ColumnWaitingForUAT    = "UAT"
+	ColumnDone             = "Done"
+	ColumnClosed           = "Closed"
 )
 
 type ColumnMapping map[string]string

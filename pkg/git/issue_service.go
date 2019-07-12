@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/naveego/bosun/pkg/util"
 	"net/http"
 
 	//"github.com/naveego/bosun/pkg/git"
@@ -169,21 +170,26 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 
 	issueResponse.Repository.GetID()
 
-	issueNumber := issueResponse.GetNumber()
-	log = log.WithField("issue", issueNumber)
+	issue.Number = issueResponse.GetNumber()
+	log = log.WithField("issue", issue.Number)
 
 	log.Info("Created issue.")
 
-	slug := regexp.MustCompile(`\W+`).ReplaceAllString(strings.ToLower(issue.Title), "-")
-	branchName := fmt.Sprintf("issue/#%d/%s", issueNumber, slug)
+	branchPattern := issue.BranchPattern
+	if branchPattern == "" {
+		branchPattern = "issue/{{.Number}}/{{.Slug}}"
+	}
+	branchName, err := util.RenderTemplate(branchPattern, issue)
+	if err != nil {
+		return -1, err
+	}
 	s.log.WithField("branch", branchName).Info("Creating branch.")
 	err = pkg.NewCommand("git", "checkout", "-b", branchName).RunE()
 	if err != nil {
 		return -1, err
 	}
 
-	// Maybe figure out a better way than just commenting it out
-	//s.log.Infof("Creating branch %q.", branchName)
+	s.log.Infof("Creating branch %q.", branchName)
 	_, err = s.git.Exec("checkout", "-B", branchName)
 	if err != nil {
 		return -1, errors.Wrap(err, "create branch")
@@ -201,7 +207,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 		if err != nil {
 			return -1, errors.Wrap(err, "get issue")
 		}
-		issueString := issue.Org + "/" + issue.Repo + "/#" + strconv.Itoa(issueNumber)
+		issueString := issues.NewIssueRef(issue.Org, issue.Repo, issue.Number)
 		parentNewChild := fmt.Sprintf("\nrequires %s", issueString)
 		parentNewBody := *parentIssue.Body
 		parentNewBody += parentNewChild
@@ -220,7 +226,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 		s.log.WithField("new body", editedParent.Body)
 	}
 
-	return issueNumber, nil
+	return issue.Number, nil
 
 }
 

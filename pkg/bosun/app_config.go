@@ -16,6 +16,7 @@ type AppConfig struct {
 	FromPath                string                   `yaml:"-" json:"-"`
 	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty" json:"projectManagementPlugin,omitempty"`
 	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty" json:"branchForRelease,omitempty"`
+	Branching               BranchSpec               `yaml:"branching" json:"branching"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool           `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
 	ReportDeployment bool           `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
@@ -40,6 +41,13 @@ type AppConfig struct {
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.
 	manifest       *AppManifest `yaml:"-" json:"-"` // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
+}
+
+type BranchSpec struct {
+	Master  string `yaml:"master"`
+	Develop string `yaml:"develop"`
+	Release string `yaml:"release"`
+	Feature string `yaml:"feature"`
 }
 
 func (a *AppConfig) MarshalYAML() (interface{}, error) {
@@ -67,6 +75,21 @@ func (a *AppConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if a.Chart == "" && a.ChartPath != "" {
 		a.Chart = filepath.Base(a.ChartPath)
+	}
+
+	if a.Branching.Master == "" {
+		a.Branching.Master = "master"
+	}
+	if a.Branching.Develop == "" {
+		// default behavior is trunk based development
+		a.Branching.Develop = "master"
+	}
+	if a.Branching.Release == "" && p.BranchForRelease {
+		// migrate BranchForRelease to p.Branching.Release pattern.
+		a.Branching.Release = "release/{{.Version}}"
+	}
+	if a.Branching.Feature == "" {
+		a.Branching.Feature = "issue/{{.Number}}/{{.Slug}}"
 	}
 
 	return err
