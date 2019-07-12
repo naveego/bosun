@@ -427,7 +427,7 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	pkg.Log.Info("Merge completed.")
 
-	segs := regexp.MustCompile(`(issue)/#(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
+	segs := regexp.MustCompile(`(issue)/#?(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
 	if len(segs) == 0 {
 		pkg.Log.Warn("Branch did not contain an issue number, not attempting to close issues.")
 		return nil
