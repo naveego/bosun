@@ -641,7 +641,7 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 		color.Yellow("About to deploy the following apps:")
 		for _, name := range util.SortedKeys(deploy.AppDeploys) {
 			app := deploy.AppDeploys[name]
-			fmt.Printf("- %s: %s (tag %s)\n", name, app.Version, app.GetImageTag())
+			fmt.Printf("- %s: %s (tag %s)\n", name, app.Version, deploySettings.GetImageTag(app.AppMetadata))
 		}
 
 		if !confirm("Is this what you expected") {

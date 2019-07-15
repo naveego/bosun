@@ -104,7 +104,7 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 
 	appDeploySettings.ValueSets = append([]ValueSet{{
 		Static: Values{
-			"tag": manifest.GetImageTag(),
+			"tag": settings.GetImageTag(manifest.AppMetadata),
 		},
 	}}, appDeploySettings.ValueSets...)
 	appDeploy := &AppDeploy{

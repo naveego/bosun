@@ -43,6 +43,7 @@ type ReleaseManifest struct {
 	*ReleaseMetadata  `yaml:"metadata"`
 	DefaultDeployApps map[string]bool         `yaml:"defaultDeployApps"`
 	AppMetadata       map[string]*AppMetadata `yaml:"apps"`
+	ValueSets         ValueSetMap             `yaml:"valueSets,omitempty"`
 	Platform          *Platform               `yaml:"-"`
 	plan              *ReleasePlan            `yaml:"-"`
 	toDelete          []string                `yaml:"-"`
