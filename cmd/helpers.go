@@ -48,7 +48,7 @@ func MustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 }
 
 func mustGetCurrentRelease(b *bosun.Bosun) *bosun.ReleaseManifest {
-	r, err := b.GetCurrentReleaseManifest(true)
+	r, err := b.GetStableReleaseManifest()
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -48,10 +48,10 @@ var _ = addCommand(platformCmd, &cobra.Command{
 })
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "use [name]",
-	Args:  cobra.ExactArgs(1),
-	Short: "Sets the platform.",
-	SilenceUsage:true,
+	Use:          "use [name]",
+	Args:         cobra.ExactArgs(1),
+	Short:        "Sets the platform.",
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
 		err := b.UsePlatform(args[0])
@@ -65,7 +65,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "pull [names...]",
-	Short: "Pulls the latest code, and updates the `latest` release.",
+	Short: "Pulls the latest code, and updates the `unstable` release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
 		p, err := b.GetCurrentPlatform()
@@ -85,7 +85,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 				continue
 			}
 
-			err = p.RefreshApp(ctx, app.Name)
+			err = p.RefreshApp(ctx, app.Name, bosun.UnstableName)
 			if err != nil {
 				ctx.Log.WithError(err).Warn("Could not refresh.")
 			}

@@ -50,6 +50,7 @@ type ReleaseManifest struct {
 	dirty             bool                    `yaml:"-"`
 	dir               string                  `yaml:"-"`
 	appManifests      map[string]*AppManifest `yaml:"-" json:"-"`
+	deleted           bool                    `yaml:"-"`
 }
 
 func NewReleaseManifest(metadata *ReleaseMetadata) *ReleaseManifest {
@@ -60,6 +61,11 @@ func NewReleaseManifest(metadata *ReleaseMetadata) *ReleaseManifest {
 
 func (r *ReleaseManifest) MarkDirty() *ReleaseManifest {
 	r.dirty = true
+	return r
+}
+func (r *ReleaseManifest) MarkDeleted() *ReleaseManifest {
+	r.dirty = true
+	r.deleted = true
 	return r
 }
 

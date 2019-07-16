@@ -27,10 +27,10 @@ var releasePlanCmd = addCommand(releaseCmd, &cobra.Command{
 		_, p := getReleaseCmdDeps()
 
 		fmt.Println()
-		if p.PlanningReleaseName == "" {
+		if p.NextReleaseName == "" {
 			color.Red("There is no current plan.\n")
 		} else {
-			color.Blue("Currently planning %s.\n", p.PlanningReleaseName)
+			color.Blue("Currently planning %s.\n", p.NextReleaseName)
 		}
 
 	},
