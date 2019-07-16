@@ -151,8 +151,13 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Short: "Discard the current release plan.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, p := getReleaseCmdDeps()
+		plan, err := p.GetNextRelease()
+		if err != nil {
+			return err
+		}
 		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
-			err := p.DiscardPlan(b.NewContext())
+			plan.MarkDeleted()
+			err = p.Save(b.NewContext())
 			return err
 		}
 		return nil

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
+	"regexp"
 	"strconv"
 )
 
@@ -18,11 +19,13 @@ type GitPullRequestCommand struct {
 	Client        *github.Client
 }
 
+var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
+
 func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
-	client := mustGetGithubClient()
+	client := c.Client
 
 	repoPath := c.LocalRepoPath
-	org, repo := git.GetOrgAndRepoFromPath(repoPath)
+	org, repo := GetOrgAndRepoFromPath(repoPath)
 
 	branch := c.FromBranch
 	m := issueNumberRE.FindStringSubmatch(branch)

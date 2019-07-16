@@ -864,7 +864,19 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 		return err
 	}
 
-	repoToManifestMap := make(map[*Repo]*AppManifest)
+	platformDir, err := git.GetRepoPath(p.FromPath)
+	if err != nil {
+		return err
+	}
+
+	mergeTargets := map[string]mergeTarget{
+		"devops": {
+			dir:     platformDir,
+			name:    "devops",
+			version: release.Version.String(),
+			tag:     release.Version.String(),
+		},
+	}
 
 	releaseBranch := fmt.Sprintf("release/%s", release.Version)
 
@@ -904,23 +916,28 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			continue
 		}
 
-		repoToManifestMap[app.Repo] = manifest
+		mergeTargets[app.Repo.LocalRepo.Path] = mergeTarget{
+			dir:     app.Repo.LocalRepo.Path,
+			version: manifest.Version.String(),
+			name:    manifest.Name,
+			tag:     fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String()),
+		}
 	}
 
-	if len(repoToManifestMap) == 0 {
+	if len(mergeTargets) == 0 {
 		return errors.New("no apps found")
 	}
 
 	fmt.Println("About to merge back to master:")
-	for _, appDeploy := range repoToManifestMap {
-		fmt.Printf("- %s: %s (tag %s)\n", appDeploy.Name, appDeploy.Version, appDeploy.Branch)
+	for _, target := range mergeTargets {
+		fmt.Printf("- %s: %s (tag %s)\n", target.name, target.version, target.tag)
 	}
 
-	for repo, appDeploy := range repoToManifestMap {
+	for _, target := range mergeTargets {
 
-		log := ctx.Log.WithField("repo", repo.Name)
+		log := ctx.Log.WithField("repo", target.name)
 
-		localRepo := repo.LocalRepo
+		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
 
 		if localRepo.IsDirty() {
 			log.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
@@ -936,8 +953,6 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			return err
 		}
 
-		releaseBranch := appDeploy.Branch
-
 		log.Info("Checking out release branch...")
 
 		_, err = g.Exec("checkout", releaseBranch)
@@ -952,7 +967,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 		}
 
 		log.Info("Tagging release branch...")
-		tagArgs := []string{"tag", fmt.Sprintf("%s-%s", appDeploy.Version, release.Version), "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
+		tagArgs := []string{"tag", target.tag, "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
 		tagArgs = append(tagArgs, "--force")
 
 		_, err = g.Exec(tagArgs...)
@@ -983,22 +998,35 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 			log.Info("Deploy branch has diverged from master, will merge back...")
 
+			gitToken, err := b.GetGithubToken()
+			if err != nil {
+				return err
+			}
+			gitClient := git.NewGithubClient(gitToken)
+
 			log.Info("Creating pull request.")
-			_, prNumber, err := GitPullRequestCommand{
+			_, prNumber, err := git.GitPullRequestCommand{
 				LocalRepoPath: repoDir,
 				Base:          "master",
 				FromBranch:    releaseBranch,
+				Client:        gitClient,
 			}.Execute()
 			if err != nil {
 				ctx.Log.WithError(err).Error("Could not create pull request.")
 				continue
 			}
 
+			issueService, err := b.GetIssueService(target.dir)
+			if err != nil {
+				return err
+			}
 			log.Info("Accepting pull request.")
-			err = GitAcceptPRCommand{
+			err = git.GitAcceptPRCommand{
 				PRNumber:                 prNumber,
 				RepoDirectory:            repoDir,
 				DoNotMergeBaseIntoBranch: true,
+				Client:                   gitClient,
+				IssueService:             issueService,
 			}.Execute()
 
 			if err != nil {
@@ -1011,6 +1039,14 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 	}
 
+	return nil
+}
+
+type mergeTarget struct {
+	dir     string
+	version string
+	name    string
+	tag     string
 }
 
 type StatusDiff struct {

@@ -7,7 +7,6 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
-	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
@@ -361,7 +360,7 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 
 	errmu := new(sync.Mutex)
 
-	//ctx.GetMinikubeDockerEnv()
+	// ctx.GetMinikubeDockerEnv()
 
 	err := pkg.NewCommand("helm", "repo", "update").RunE()
 	if err != nil {
@@ -694,7 +693,7 @@ diff go-between 2.4.2/blue green
 
 				var ok bool
 				if releaseName != "" {
-					releaseManifest, err := p.GetReleaseManifestByName(releaseName)
+					releaseManifest, err := p.GetReleaseManifestBySlot(releaseName)
 
 					valueSets, err := getValueSetSlice(b, env)
 					if err != nil {
