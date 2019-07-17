@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/cheynewallace/tabby"
+	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
@@ -36,19 +37,20 @@ import (
 )
 
 const (
-	ArgSvcToggleLocalhost = "localhost"
-	ArgSvcToggleMinikube  = "minikube"
-	ArgFilteringAll       = "all"
-	ArgFilteringLabels    = "labels"
-	ArgAppListDiff        = "diff"
-	ArgAppListSkipActual  = "skip-actual"
-	ArgAppValueSet        = "value-sets"
-	ArgAppSet             = "set"
-	ArgAppDeployDeps      = "deploy-deps"
-	ArgAppDeletePurge     = "purge"
-	ArgAppCloneDir        = "dir"
-	ArgFilteringInclude   = "include"
-	ArgFilteringExclude   = "exclude"
+	ArgSvcToggleLocalhost   = "localhost"
+	ArgSvcToggleMinikube    = "minikube"
+	ArgFilteringAll         = "all"
+	ArgFilteringLabels      = "labels"
+	ArgAppListDiff          = "diff"
+	ArgAppListSkipActual    = "skip-actual"
+	ArgAppValueSet          = "value-sets"
+	ArgAppSet               = "set"
+	ArgAppDeployDeps        = "deploy-deps"
+	ArgAppDeletePurge       = "purge"
+	ArgAppCloneDir          = "dir"
+	ArgFilteringInclude     = "include"
+	ArgFilteringExclude     = "exclude"
+	ArgChangeLogMoreDetails = "details"
 )
 
 func init() {
@@ -1147,4 +1149,62 @@ var appCloneCmd = addCommand(
 	},
 	func(cmd *cobra.Command) {
 		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into.")
+	})
+
+var appChangeLog = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:     "change-log {app} {from} [to]",
+		Short:   "Prints a change log in console",
+		Aliases: []string{"l"},
+		Args:    cobra.RangeArgs(2, 3),
+		Long:    "Prints a changelog of changes. 'to' is by default 'master'",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			viper.BindPFlags(cmd.Flags())
+			b := MustGetBosun()
+			app := mustGetApp(b, args)
+			detailsFlag := viper.GetBool(ArgChangeLogMoreDetails)
+			appPath := app.FromPath
+			var from string
+			var to string
+
+			from = args[1]
+			if len(args) == 2 {
+				to = "master"
+			} else {
+				to = args[2]
+			}
+			gitLogPath := new(strings.Builder)
+			g, err := git.NewGitWrapper(appPath)
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(gitLogPath, to)
+			fmt.Fprintf(gitLogPath, "..")
+			fmt.Fprintf(gitLogPath, from)
+
+			cleanAppPath := strings.Replace(appPath, "bosun.yaml", "", 1)
+			svc, err := b.GetIssueService(cleanAppPath)
+			if err != nil {
+				return err
+			}
+
+			changeLogOptions := git.GitChangeLogOptions{
+				Description: detailsFlag,
+				UnknownType: detailsFlag,
+			}
+
+			logs, err := g.ChangeLog(gitLogPath.String(), cleanAppPath, svc, changeLogOptions)
+			if err != nil {
+				return err //errors.New("Check that the app and branches are correct")
+			}
+
+			color.Green(logs.OutputMessage)
+
+			return err
+		},
+	},
+	func(cmd *cobra.Command) {
+		cmd.Flags().BoolP(ArgChangeLogMoreDetails, "d", false, "Will output more details")
 	})
