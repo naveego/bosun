@@ -669,6 +669,31 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 				}
 			}
 		}
+
+		fromRelease := viper.GetString(ArgAppFromRelease)
+
+		if fromRelease != "" {
+			ctx.Log.Warnf("Deploying app from %q rather than your local clone", fromRelease)
+			var p *bosun.Platform
+			p, err = b.GetCurrentPlatform()
+			if err != nil {
+				return err
+			}
+
+			deploySettings.Manifest, err = p.GetReleaseManifestByName(fromRelease)
+			if err != nil {
+				return err
+			}
+			// reset the default deploy apps so that only the selected apps are deployed
+			deploySettings.Manifest.DefaultDeployApps = map[string]bool{}
+			for _, app := range apps {
+				deploySettings.Manifest.DefaultDeployApps[app.Name] = true
+			}
+		} else if viper.GetBool(ArgAppLatest) {
+			err = pullApps(ctx, apps)
+			deploySettings.ValueSets = append(deploySettings.ValueSets, bosun.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
+		}
+
 		r, err := bosun.NewDeploy(ctx, deploySettings)
 		if err != nil {
 			return err
@@ -688,6 +713,8 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
+	cmd.Flags().StringP(ArgAppFromRelease, "r", "", "Deploy using the specified release from the platform, rather than your local clone.")
+	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().StringSliceP(ArgAppValueSet, "v", []string{}, "Additional value sets to include in this deploy.")
 	cmd.Flags().StringSliceP(ArgAppSet, "s", []string{}, "Value overrides to set in this deploy, as key=value pairs.")
 })
@@ -937,29 +964,37 @@ var appPullCmd = addCommand(
 			if err != nil {
 				return err
 			}
-			repos := map[string]*bosun.Repo{}
-			for _, app := range apps {
-				if app.Repo == nil {
-					ctx.Log.Errorf("no repo identified for app %q", app.Name)
-				}
-				repos[app.RepoName] = app.Repo
-			}
-
-			var lastFailure error
-			for _, repo := range repos {
-				log := ctx.Log.WithField("repo", repo.Name)
-				log.Info("Pulling...")
-				err = repo.Pull(ctx)
-				if err != nil {
-					lastFailure = err
-					log.WithError(err).Error("Error pulling.")
-				} else {
-					log.Info("Pulled.")
-				}
-			}
-			return lastFailure
+			return pullApps(ctx, apps)
 		},
 	})
+
+func pullApps(ctx bosun.BosunContext, apps []*bosun.App) error {
+	repos := map[string]*bosun.Repo{}
+	for _, app := range apps {
+		if app.Repo == nil {
+			ctx.Log.Errorf("no repo identified for app %q", app.Name)
+		}
+		if app.Repo.CheckCloned() != nil {
+			ctx.Log.Warn("%q is not cloned", app.Name)
+		}
+		repos[app.RepoName] = app.Repo
+	}
+
+	var lastFailure error
+	for _, repo := range repos {
+		log := ctx.Log.WithField("repo", repo.Name)
+		log.Info("Pulling...")
+		err := repo.Pull(ctx)
+		if err != nil {
+			lastFailure = err
+			log.WithError(err).Error("Error pulling.")
+		} else {
+			log.Info("Pulled.")
+		}
+	}
+
+	return lastFailure
+}
 
 var appScriptCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "script [app] {name}",

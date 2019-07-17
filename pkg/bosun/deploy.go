@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"bufio"
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/pkg/errors"
@@ -69,6 +70,25 @@ type DeploySettings struct {
 	ForceDeployApps    map[string]bool
 }
 
+func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
+	if d.Manifest != nil {
+		if d.Manifest.Name == UnstableName {
+			return "latest"
+		}
+
+		// If app is not pinned, use the version from this release.
+		if appMetadata.PinnedReleaseVersion == nil {
+			return fmt.Sprintf("%s-%s", appMetadata.Version, d.Manifest.Version.String())
+		}
+	}
+
+	if appMetadata.PinnedReleaseVersion == nil {
+		return appMetadata.Version.String()
+	}
+
+	return fmt.Sprintf("%s-%s", appMetadata.Version, appMetadata.PinnedReleaseVersion)
+}
+
 type AppDeploySettings struct {
 	Environment     *EnvironmentConfig
 	ValueSets       []ValueSet
@@ -78,9 +98,23 @@ type AppDeploySettings struct {
 func (d DeploySettings) GetAppDeploySettings(name string) AppDeploySettings {
 	appSettings := d.AppDeploySettings[name]
 
+	var valueSets []ValueSet
+
+	// If the release manifest has value sets defined, they should be at a lower priority than the app value sets.
+	if d.Manifest != nil {
+		if d.Manifest.ValueSets != nil {
+			valueSet := d.Manifest.ValueSets.ExtractValueSetByName(d.Environment.Name)
+			valueSets = append(valueSets, valueSet)
+		}
+	}
+
+	// Then add value sets from the deploy
+	valueSets = append(valueSets, d.ValueSets...)
+
 	// combine deploy and app value sets, with app value sets at a higher priority:
-	vs := append([]ValueSet{}, d.ValueSets...)
-	appSettings.ValueSets = append(vs, appSettings.ValueSets...)
+	valueSets = append(valueSets, appSettings.ValueSets...)
+
+	appSettings.ValueSets = valueSets
 
 	appSettings.Environment = d.Environment
 	appSettings.UseLocalContent = d.UseLocalContent

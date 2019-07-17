@@ -20,12 +20,13 @@ func (a *AppMetadata) PinToRelease(release *ReleaseMetadata) {
 	a.PinnedReleaseVersion = &release.Version
 }
 
-func (a *AppMetadata) GetImageTag() string {
-	if a.PinnedReleaseVersion == nil {
-		return a.Version.String()
-	}
-	return fmt.Sprintf("%s-%s", a.Version, a.PinnedReleaseVersion)
-}
+//
+// func (a *AppMetadata) GetImageTag() string {
+// 	if a.PinnedReleaseVersion == nil {
+// 		return a.Version.String()
+// 	}
+// 	return fmt.Sprintf("%s-%s", a.Version, a.PinnedReleaseVersion)
+// }
 
 func (a AppMetadata) Format(f fmt.State, c rune) {
 	switch c {

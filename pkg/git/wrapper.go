@@ -36,7 +36,7 @@ func (g GitWrapper) Exec(args ...string) (string, error) {
 
 	out, err := pkg.NewCommand("git", args...).RunOut()
 	if err != nil {
-		return "", errors.Errorf("git %s: %s\n%s", strings.Join(args, " "), err, out)
+		return "", errors.Errorf("git %s\nOutput: %s\nError: %s", strings.Join(args, " "), out, err)
 	}
 	return out, err
 }

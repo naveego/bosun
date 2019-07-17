@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"io/ioutil"
@@ -108,56 +109,63 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 				Message: "Describe the breaking changes:",
 			}
 
-			survey.AskOne(typeQues, &typeAns)
-			survey.AskOne(scopeQues, &scopeAns)
-			survey.AskOne(shortQues, &shortAns)
-			survey.AskOne(longQues, &longAns)
-			survey.AskOne(breakingChangesQues, &breakingChangesAns)
+			check(survey.AskOne(typeQues, &typeAns))
+			check(survey.AskOne(scopeQues, &scopeAns))
+			check(survey.AskOne(shortQues, &shortAns))
+			check(survey.AskOne(longQues, &longAns))
+			check(survey.AskOne(breakingChangesQues, &breakingChangesAns))
 
 			if breakingChangesAns {
-				survey.AskOne(breakingChangesDescriptionQues, &breakingChangesDescriptionAns)
+				check(survey.AskOne(breakingChangesDescriptionQues, &breakingChangesDescriptionAns))
 				breakingChangesDescriptionAns = "BREAKING CHANGE: " + breakingChangesDescriptionAns
 			}
 
 			if len(branch) == 3 && branch[0] == "issue" {
-				affectedIssueAns = branch[1]
+				affectedIssueAns = "resolves " + branch[1]
 			}
 
-			title := strings.Split(typeAns, ":")[0] + "(" + scopeAns + "): " + shortAns
-			descriptionArray := []string{longAns, breakingChangesDescriptionAns, affectedIssueAns}
-			description := strings.Join(descriptionArray, "\n\n")
-
-			msg = fmt.Sprintf("%s\n\n%s", title, description)
-
-		}
-
-		_, err = g.Exec("commit", "-m", msg)
-		if tmpFileExists {
-			if os.Remove(TempFileGitCommit) != nil {
-				return err
+			typeAns = strings.Split(typeAns, ":")[0]
+			builder := new(strings.Builder)
+			if scopeAns == "" {
+				fmt.Fprintf(builder, typeAns)
+			} else {
+				fmt.Fprintf(builder, "%s(%s)", typeAns, scopeAns)
 			}
+
+			fmt.Fprintf(builder, ": %s\n\n", shortAns)
+
+			if longAns != "" {
+				fmt.Fprintf(builder, "%s\n", longAns)
+			}
+
+			if breakingChangesDescriptionAns != "" {
+				fmt.Fprintf(builder, "%s\n", breakingChangesAns)
+			}
+
+			if affectedIssueAns != "" {
+				fmt.Fprintf(builder, "%s", affectedIssueAns)
+			}
+
+			msg = builder.String()
 		}
+
+		out, err = g.Exec("commit", "-m", msg)
 
 		if err != nil {
-			tmpFile, err := ioutil.TempFile(os.TempDir(), "")
-			if err != nil {
-				return err
+			tmpErr := saveCommitTmpFile(msg)
+			if tmpErr != nil {
+				return errors.Errorf("could not write tmp file\noriginal error: %s\ntmp file error: %s", err, tmpErr)
 			}
-			if _, err := tmpFile.Write([]byte(msg)); err != nil {
-				return err
-			}
-			err = os.Rename(tmpFile.Name(), TempFileGitCommit)
-			if err != nil {
-				return err
-			}
-			err = tmpFile.Close()
-			if err != nil {
-				return err
-			}
+
+			color.Red("Commit failed:\n")
+			color.Yellow("%s\n", err.Error())
+			color.Blue("You can retry this commit using the --retry flag.")
+			os.Exit(1)
 		}
 
-		return err
+		color.Green("Commit succeeded.\n")
 
+		return nil
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().BoolP(GitRetry, "r", false, "commits with the previously failed commit message")
@@ -172,6 +180,21 @@ func exists(path string) (bool, error) {
 		return false, nil
 	}
 	return true, err
+}
+
+func saveCommitTmpFile(msg string) error {
+	tmpFile, err := os.OpenFile(TempFileGitCommit, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err = tmpFile.Write([]byte(msg)); err != nil {
+		return err
+	}
+	err = tmpFile.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 const (

@@ -18,14 +18,14 @@ import (
 )
 
 const (
-	MasterName       = "master"
+	UnstableName     = "unstable"
 	PlanFileName     = "plan.yaml"
 	ManifestFileName = "manifest.yaml"
 )
 
 var (
-	MasterVersion = semver.New("0.0.0-master")
-	MaxVersion    = semver.Version{Major: math.MaxInt64}
+	UnstableVersion = semver.New("0.0.0-unstable")
+	MaxVersion      = semver.Version{Major: math.MaxInt64}
 )
 
 // Platform is a collection of releasable apps which work together in a single cluster.
@@ -122,11 +122,11 @@ func (p *Platform) GetReleaseMetadataSortedByVersion(descending bool, includeLat
 	return out
 }
 
-func (p *Platform) MakeReleaseBranchName(releaseName string) string {
-	if releaseName == MasterName {
+func (p *Platform) MakeReleaseBranchName(version semver.Version) string {
+	if version == UnstableVersion {
 		return p.MasterBranch
 	}
-	return strings.Replace(p.ReleaseBranchFormat, "*", releaseName, 1)
+	return strings.Replace(p.ReleaseBranchFormat, "*", version.String(), 1)
 }
 
 type ReleasePlanSettings struct {
@@ -170,26 +170,24 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	metadata := &ReleaseMetadata{
 		Version: settings.Version,
 		Name:    settings.Name,
-		Branch:  p.MakeReleaseBranchName(settings.Version.String()),
+		Branch:  p.MakeReleaseBranchName(settings.Version),
 	}
 
 	if settings.BranchParent != "" {
-		branchParentMetadata, err := p.GetReleaseMetadataByName(settings.BranchParent)
+		branchParentMetadata, err := p.GetReleaseMetadataByNameOrVersion(settings.BranchParent)
 		if err != nil {
 			return nil, errors.Wrapf(err, "getting patch parent")
 		}
 		metadata.PreferredParentBranch = branchParentMetadata.Branch
 	}
 
-	existing, _ := p.GetReleaseMetadataByName(metadata.Name)
+	existing, _ := p.GetReleaseMetadataByNameOrVersion(metadata.Name)
 	if existing == nil {
 		existing, _ = p.GetReleaseMetadataByVersion(metadata.Version)
 	}
 	if existing != nil {
 		return nil, errors.Errorf("release already exists with name %q and version %v", metadata.Name, metadata.Version)
 	}
-
-	metadata.Branch = p.ReleaseBranchFormat
 
 	manifest := &ReleaseManifest{
 		ReleaseMetadata: metadata,
@@ -214,7 +212,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 		appPlan := &AppPlan{
 			Name:                appName,
 			Repo:                appManifest.Repo,
-			PreviousReleaseName: MasterName,
+			PreviousReleaseName: UnstableName,
 			FromBranch:          p.MasterBranch,
 			ToBranch:            manifest.Branch,
 		}
@@ -256,6 +254,9 @@ func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, 
 	previousAppMetadata, err := p.GetMostRecentlyReleasedAppMetadata(appPlan.Name)
 
 	if previousAppMetadata != nil {
+
+		log.Debug("Comparing to previous release...")
+
 		var previousReleaseBranch string
 
 		appPlan.PreviousReleaseName = previousAppMetadata.PinnedReleaseVersion.String()
@@ -264,7 +265,7 @@ func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, 
 		if branchParent != "" && previousAppMetadata.Branch == branchParent {
 			appPlan.FromBranch = previousAppMetadata.Branch
 		} else {
-			appPlan.FromBranch = MasterName
+			appPlan.FromBranch = UnstableName
 		}
 
 		previousReleaseBranch = previousAppMetadata.Branch
@@ -273,6 +274,8 @@ func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, 
 		appPlan.CurrentVersionInMaster = app.Version.String()
 
 		if app.BranchForRelease && app.IsRepoCloned() {
+			log.Debug("Finding changes from previous release...")
+
 			var changes []string
 			var ok bool
 			if changes, ok = p.fetched[app.RepoName]; !ok {
@@ -453,7 +456,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 			var appManifest *AppManifest
 			previousReleaseName := appPlan.PreviousReleaseName
 			if previousReleaseName == "" {
-				previousReleaseName = MasterName
+				previousReleaseName = UnstableName
 			}
 
 			appManifest, err = p.GetAppManifestFromRelease(previousReleaseName, appName)
@@ -461,7 +464,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				return nil, err
 			}
 
-			previousReleaseMetadata, _ := p.GetReleaseMetadataByName(previousReleaseName)
+			previousReleaseMetadata, _ := p.GetReleaseMetadataByNameOrVersion(previousReleaseName)
 			if previousReleaseMetadata != nil {
 				appManifest.PinToRelease(previousReleaseMetadata)
 			}
@@ -531,7 +534,7 @@ func (p *Platform) Save(ctx BosunContext) error {
 
 	manifests := p.ReleaseManifests
 	if p.MasterManifest != nil {
-		manifests[MasterName] = p.MasterManifest
+		manifests[UnstableName] = p.MasterManifest
 	}
 
 	// save the release manifests
@@ -597,9 +600,9 @@ func writeYaml(path string, value interface{}) error {
 	return err
 }
 
-func (p *Platform) GetReleaseMetadataByName(name string) (*ReleaseMetadata, error) {
-	if name == MasterName {
-		return p.GetMasterMetadata(), nil
+func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
+	if name == UnstableName {
+		return p.GetUnstableMetadata(), nil
 	}
 
 	for _, rm := range p.ReleaseMetadata {
@@ -608,7 +611,12 @@ func (p *Platform) GetReleaseMetadataByName(name string) (*ReleaseMetadata, erro
 		}
 	}
 
-	return nil, errors.Errorf("this platform has no release named %q ", name)
+	version, err := semver.NewVersion(name)
+	if err != nil {
+		return nil, errors.Errorf("this platform has no release named %q ", name)
+	}
+
+	return p.GetReleaseMetadataByVersion(version)
 }
 
 func (p *Platform) GetReleaseMetadataByVersion(v semver.Version) (*ReleaseMetadata, error) {
@@ -638,7 +646,7 @@ func (p *Platform) GetManifestDirectoryPath(name string) string {
 }
 
 func (p *Platform) GetReleaseManifestByName(name string) (*ReleaseManifest, error) {
-	releaseMetadata, err := p.GetReleaseMetadataByName(name)
+	releaseMetadata, err := p.GetReleaseMetadataByNameOrVersion(name)
 	if err != nil {
 		return nil, err
 	}
@@ -676,10 +684,10 @@ func (p *Platform) GetReleaseManifest(metadata *ReleaseMetadata) (*ReleaseManife
 	return manifest, err
 }
 
-func (p *Platform) GetMasterMetadata() *ReleaseMetadata {
+func (p *Platform) GetUnstableMetadata() *ReleaseMetadata {
 	if p.MasterMetadata == nil {
 		p.MasterMetadata = &ReleaseMetadata{
-			Name: "latest",
+			Name: UnstableName,
 		}
 	}
 
@@ -690,7 +698,7 @@ func (p *Platform) GetMasterManifest() (*ReleaseManifest, error) {
 		return p.MasterManifest, nil
 	}
 
-	metadata := p.GetMasterMetadata()
+	metadata := p.GetUnstableMetadata()
 	manifest, err := p.GetReleaseManifest(metadata)
 	if err != nil {
 		manifest = &ReleaseManifest{
@@ -820,7 +828,7 @@ func (p *Platform) GetLatestAppManifestByName(appName string) (*AppManifest, err
 	return appManifest, err
 }
 
-func (p *Platform) GetLatestReleaseMetadata() (*ReleaseMetadata, error) {
+func (p *Platform) GetStableReleaseMetadata() (*ReleaseMetadata, error) {
 	rm := p.GetReleaseMetadataSortedByVersion(true, true)
 	if len(rm) == 0 {
 		return nil, errors.New("no releases found")
@@ -829,8 +837,8 @@ func (p *Platform) GetLatestReleaseMetadata() (*ReleaseMetadata, error) {
 	return rm[0], nil
 }
 
-func (p *Platform) GetLatestReleaseManifest() (*ReleaseManifest, error) {
-	latestReleaseMetadata, err := p.GetLatestReleaseMetadata()
+func (p *Platform) GetStableReleaseManifest() (*ReleaseManifest, error) {
+	latestReleaseMetadata, err := p.GetStableReleaseMetadata()
 	if err != nil {
 		return nil, err
 	}
@@ -839,8 +847,13 @@ func (p *Platform) GetLatestReleaseManifest() (*ReleaseManifest, error) {
 	return manifest, err
 }
 
+func (p *Platform) GetUnstableReleaseManifest() (*ReleaseManifest, error) {
+	manifest, err := p.GetReleaseManifest(&ReleaseMetadata{Name: UnstableName})
+	return manifest, err
+}
+
 func (p *Platform) GetMostRecentlyReleasedAppMetadata(name string) (*AppMetadata, error) {
-	releaseManifest, err := p.GetLatestReleaseManifest()
+	releaseManifest, err := p.GetStableReleaseManifest()
 	if err != nil {
 		return nil, err
 	}

@@ -4,10 +4,10 @@ import (
 	"errors"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	//"github.com/pkg/errors"
+	// "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	//"os"
+	// "os"
 )
 
 var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
@@ -43,6 +43,12 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 		b := MustGetBosun()
+
+		app, err := getCurrentApp(b)
+		if err != nil {
+			return err
+		}
+
 		svc, err := b.GetIssueService(repoPath)
 		if err != nil {
 			return errors.New("get issue service")
@@ -62,11 +68,12 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		issue := issues.Issue{
-			Title:    title,
-			Body:     body,
-			Org:      org,
-			Repo:     repo,
-			IsClosed: false,
+			Title:         title,
+			Body:          body,
+			Org:           org,
+			Repo:          repo,
+			IsClosed:      false,
+			BranchPattern: app.Branching.Feature,
 		}
 
 		_, err = svc.Create(issue, parent)
