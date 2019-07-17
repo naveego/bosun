@@ -37,19 +37,22 @@ import (
 )
 
 const (
-	ArgSvcToggleLocalhost   = "localhost"
-	ArgSvcToggleMinikube    = "minikube"
-	ArgFilteringAll         = "all"
-	ArgFilteringLabels      = "labels"
-	ArgAppListDiff          = "diff"
-	ArgAppListSkipActual    = "skip-actual"
-	ArgAppValueSet          = "value-sets"
-	ArgAppSet               = "set"
-	ArgAppDeployDeps        = "deploy-deps"
-	ArgAppDeletePurge       = "purge"
-	ArgAppCloneDir          = "dir"
-	ArgFilteringInclude     = "include"
-	ArgFilteringExclude     = "exclude"
+	ArgSvcToggleLocalhost = "localhost"
+	ArgSvcToggleMinikube  = "minikube"
+	ArgFilteringAll       = "all"
+	ArgFilteringLabels    = "labels"
+	ArgAppListDiff        = "diff"
+	ArgAppListSkipActual  = "skip-actual"
+	ArgAppValueSet        = "value-sets"
+	ArgAppSet             = "set"
+
+	ArgAppDeployDeps    = "deploy-deps"
+	ArgAppFromRelease   = "release"
+	ArgAppLatest        = "latest"
+	ArgAppDeletePurge   = "purge"
+	ArgAppCloneDir      = "dir"
+	ArgFilteringInclude = "include"
+	ArgFilteringExclude = "exclude"
 	ArgChangeLogMoreDetails = "details"
 )
 

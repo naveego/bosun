@@ -46,7 +46,6 @@ func (g GitWrapper) ChangeLog(logPath string, command string, svc issues.IssueSe
 	gitChangesHolder := make([]GitChange, len(commits)-1)
 
 	for index, commit := range commits[1:] {
-		fmt.Println(commit)
 		lines := regexp.MustCompile(`\n`).Split(commit, -1)
 		if len(lines) < 5 {
 			continue
