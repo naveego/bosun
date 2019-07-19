@@ -190,6 +190,24 @@ var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 	},
 })
 
+var configClearCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:   "clear-imports",
+	Short: "Removes all imports.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b, err := getBosun()
+		if err != nil {
+			return err
+		}
+
+		b.ClearImports()
+
+		err = b.Save()
+
+		return err
+	},
+})
+
 var wsTidyPathsCmd = addCommand(workspaceCmd, &cobra.Command{
 	Use:   "tidy",
 	Short: "Cleans up workspace.",
