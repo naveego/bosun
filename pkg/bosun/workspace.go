@@ -3,6 +3,8 @@ package bosun
 import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -28,11 +30,11 @@ type Workspace struct {
 	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
 }
 
-func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type proxyType Workspace
 	var proxy proxyType
-	if r != nil {
-		proxy = proxyType(*r)
+	if w != nil {
+		proxy = proxyType(*w)
 	}
 	err := unmarshal(&proxy)
 	if err != nil {
@@ -45,23 +47,23 @@ func (r *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		proxy.HostIPInMinikube = ""
 	}
 
-	*r = Workspace(proxy)
+	*w = Workspace(proxy)
 
-	if r.LocalRepos == nil {
-		r.LocalRepos = map[string]*LocalRepo{}
+	if w.LocalRepos == nil {
+		w.LocalRepos = map[string]*LocalRepo{}
 	}
 
-	if r.Minikube.DiskSize == "" {
-		r.Minikube.DiskSize = "40g"
+	if w.Minikube.DiskSize == "" {
+		w.Minikube.DiskSize = "40g"
 	}
-	if r.Minikube.Driver == "" {
-		r.Minikube.Driver = "virtualbox"
+	if w.Minikube.Driver == "" {
+		w.Minikube.Driver = "virtualbox"
 	}
-	if r.Minikube.HostIP == "" {
-		r.Minikube.HostIP = "192.168.99.1"
+	if w.Minikube.HostIP == "" {
+		w.Minikube.HostIP = "192.168.99.1"
 	}
-	if r.ScratchDir == "" {
-		r.ScratchDir = "/tmp/bosun"
+	if w.ScratchDir == "" {
+		w.ScratchDir = "/tmp/bosun"
 	}
 
 	return nil
@@ -154,10 +156,10 @@ func LoadWorkspace(path string) (*Workspace, error) {
 	return c, err
 }
 
-func (r *Workspace) importFromPaths(relativeTo string, paths []string) error {
+func (w *Workspace) importFromPaths(relativeTo string, paths []string) error {
 	for _, importPath := range paths {
 		for _, importPath = range expandPath(relativeTo, importPath) {
-			err := r.importFileFromPath(importPath)
+			err := w.importFileFromPath(importPath)
 			if err != nil {
 				return errors.Errorf("error importing fragment relative to %q: %s", relativeTo, err)
 			}
@@ -167,13 +169,13 @@ func (r *Workspace) importFromPaths(relativeTo string, paths []string) error {
 	return nil
 }
 
-func (r *Workspace) importFileFromPath(path string) error {
+func (w *Workspace) importFileFromPath(path string) error {
 	log := pkg.Log.WithField("import_path", path)
 	if logConfigs {
 		log.Debug("Importing mergedFragments...")
 	}
 
-	if r.ImportedBosunFiles[path] != nil {
+	if w.ImportedBosunFiles[path] != nil {
 		if logConfigs {
 			log.Debugf("Already imported.")
 		}
@@ -192,7 +194,7 @@ func (r *Workspace) importFileFromPath(path string) error {
 
 	c.SetFromPath(path)
 
-	err = r.MergedBosunFile.Merge(c)
+	err = w.MergedBosunFile.Merge(c)
 
 	if err != nil {
 		return errors.Errorf("merge error loading %q: %s", path, err)
@@ -201,11 +203,24 @@ func (r *Workspace) importFileFromPath(path string) error {
 	if logConfigs {
 		log.Debug("Import complete.")
 	}
-	r.ImportedBosunFiles[path] = c
+	w.ImportedBosunFiles[path] = c
 
-	err = r.importFromPaths(c.FromPath, c.Imports)
+	err = w.importFromPaths(c.FromPath, c.Imports)
 
 	return err
+}
+
+func (w *Workspace) Save() error {
+	data, err := yaml.Marshal(w)
+	if err != nil {
+		return errors.Wrap(err, "marshalling for save")
+	}
+
+	err = ioutil.WriteFile(w.Path, data, 0600)
+	if err != nil {
+		return errors.Wrap(err, "writing for save")
+	}
+	return nil
 }
 
 // expandPath resolves a path relative to another file's path, including expanding env variables and globs.

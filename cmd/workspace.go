@@ -17,6 +17,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/oliveagle/jsonpath"
 	"github.com/pkg/errors"
@@ -195,16 +197,64 @@ var configClearCmd = addCommand(workspaceCmd, &cobra.Command{
 	Short: "Removes all imports.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b, err := getBosun()
+		ws, err := bosun.LoadWorkspaceNoImports(viper.GetString(ArgBosunConfigFile))
 		if err != nil {
 			return err
 		}
 
-		b.ClearImports()
+		ws.Imports = nil
 
-		err = b.Save()
+		err = ws.Save()
 
 		return err
+	},
+})
+
+var configRemoveImportCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:   "remove-import [path]",
+	Args:  cobra.MaximumNArgs(1),
+	Short: "Removes provided import, or the bosun.yaml in the current directory.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		ws, err := bosun.LoadWorkspaceNoImports(viper.GetString(ArgBosunConfigFile))
+		if err != nil {
+			return err
+		}
+
+		var filename string
+
+		switch len(args) {
+		case 0:
+			wd, _ := os.Getwd()
+			filename, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+		case 1:
+			filename, err = filepath.Abs(args[0])
+		}
+
+		if err != nil {
+			return err
+		}
+
+		var imports []string
+		var removed bool
+		for _, importPath := range ws.Imports {
+			if importPath == filename {
+				removed = true
+				continue
+			}
+			imports = append(imports, importPath)
+		}
+
+		ws.Imports = imports
+
+		if removed {
+			color.Green("File %q will be removed from imports.", filename)
+			err = ws.Save()
+			return err
+		} else {
+			color.Yellow("File %q not found in imports.", filename)
+			return nil
+		}
 	},
 })
 
