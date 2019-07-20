@@ -50,6 +50,7 @@ type ReleaseManifest struct {
 	dirty             bool                    `yaml:"-"`
 	dir               string                  `yaml:"-"`
 	appManifests      map[string]*AppManifest `yaml:"-" json:"-"`
+	Slot              string                  `yaml:"-"`
 }
 
 func NewReleaseManifest(metadata *ReleaseMetadata) *ReleaseManifest {

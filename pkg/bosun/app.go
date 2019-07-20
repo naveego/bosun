@@ -28,6 +28,8 @@ type App struct {
 	gitTag      string
 	isCloned    bool
 	labels      filter.Labels
+	Provider    AppProvider
+	AppManifest *AppManifest
 }
 
 func (a *App) GetLabels() filter.Labels {
