@@ -2,12 +2,15 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/log"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"math"
@@ -18,6 +21,8 @@ import (
 )
 
 const (
+	NextName         = "next"
+	StableName       = "stable"
 	UnstableName     = "unstable"
 	PlanFileName     = "plan.yaml"
 	ManifestFileName = "manifest.yaml"
@@ -36,15 +41,12 @@ type Platform struct {
 	ReleaseBranchFormat string                      `yaml:"releaseBranchFormat"`
 	MasterBranch        string                      `yaml:"masterBranch"`
 	ReleaseDirectory    string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
-	MasterMetadata      *ReleaseMetadata            `yaml:"master" json:"master"`
-	MasterManifest      *ReleaseManifest            `yaml:"-" json:"-"`
 	ReleaseMetadata     []*ReleaseMetadata          `yaml:"releases" json:"releases"`
 	Repos               []*Repo                     `yaml:"repos" json:"repos"`
 	Apps                []*AppMetadata              `yaml:"apps"`
-	ReleaseManifests    map[string]*ReleaseManifest `yaml:"-" json:"-"`
 	ZenHubConfig        *zenhub.Config              `yaml:"zenHubConfig"`
-	PlanningReleaseName string                      `yaml:"planningReleaseName,omitempty"`
-
+	NextReleaseName     string                      `yaml:"nextReleaseName,omitempty"`
+	releaseManifests    map[string]*ReleaseManifest `yaml:"-"`
 	// cache of repos which have been fetched during this run
 	fetched map[string][]string `yaml:"-"`
 }
@@ -78,11 +80,8 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if p.ReleaseBranchFormat == "" {
 		p.ReleaseBranchFormat = "release/*"
 	}
-	if p.ReleaseManifests == nil {
-		p.ReleaseManifests = map[string]*ReleaseManifest{}
-	}
-	if p.MasterMetadata != nil {
-		p.MasterMetadata.Branch = p.MasterBranch
+	if p.releaseManifests == nil {
+		p.releaseManifests = map[string]*ReleaseManifest{}
 	}
 	if p.ZenHubConfig == nil {
 		p.ZenHubConfig = &zenhub.Config{
@@ -106,17 +105,40 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-func (p *Platform) GetReleaseMetadataSortedByVersion(descending bool, includeLatest bool) []*ReleaseMetadata {
+func (p *Platform) GetNextRelease() (*ReleaseManifest, error) {
+	if p.NextReleaseName == "" {
+		return nil, errors.New("no next release defined")
+	}
+	return p.GetReleaseManifestBySlot(NextName)
+}
+
+func (p *Platform) GetStableRelease() (*ReleaseManifest, error) {
+	return p.GetReleaseManifestBySlot(StableName)
+}
+
+func (p *Platform) GetUnstableRelease() (*ReleaseManifest, error) {
+	return p.GetReleaseManifestBySlot(UnstableName)
+}
+
+func (p *Platform) MustGetNextRelease() *ReleaseManifest {
+	return p.MustGetReleaseManifestBySlot(NextName)
+}
+
+func (p *Platform) MustGetStableRelease() *ReleaseManifest {
+	return p.MustGetReleaseManifestBySlot(StableName)
+}
+
+func (p *Platform) MustGetUnstableRelease() *ReleaseManifest {
+	return p.MustGetReleaseManifestBySlot(UnstableName)
+}
+
+func (p *Platform) GetReleaseMetadataSortedByVersion(descending bool) []*ReleaseMetadata {
 	out := make([]*ReleaseMetadata, len(p.ReleaseMetadata))
 	copy(out, p.ReleaseMetadata)
 	if descending {
 		sort.Sort(sort.Reverse(releaseMetadataSorting(out)))
 	} else {
 		sort.Sort(releaseMetadataSorting(out))
-	}
-
-	if includeLatest {
-		out = append(out, p.MasterMetadata)
 	}
 
 	return out
@@ -137,10 +159,46 @@ type ReleasePlanSettings struct {
 }
 
 func (p *Platform) checkPlanningOngoing() error {
-	if p.PlanningReleaseName != "" {
-		return errors.Errorf("currently editing plan for release %q, commit or discard the plan before starting a new one", p.PlanningReleaseName)
+	if p.NextReleaseName != "" {
+		return errors.Errorf("currently editing plan for release %q, commit or discard the plan before starting a new one", p.NextReleaseName)
 	}
 	return nil
+}
+
+func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error {
+
+	platformRepoPath, err := git.GetRepoPath(p.FromPath)
+	if err != nil {
+		return err
+	}
+	localRepo := &LocalRepo{Path: platformRepoPath}
+	if localRepo.IsDirty() {
+		return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
+	}
+
+	log.Debug("Checking if release branch exists...")
+
+	branchExists, err := localRepo.DoesBranchExist(ctx, branch)
+	if err != nil {
+		return err
+	}
+	if branchExists {
+		log.Info("Release branch already exists, switching to it.")
+		err = localRepo.SwitchToBranchAndPull(ctx, branch)
+		if err != nil {
+			return errors.Wrap(err, "switching to release branch")
+		}
+	} else {
+		log.Info("Creating release branch...")
+		// TODO: make from branch configurable
+		err = localRepo.SwitchToNewBranch(ctx, "master", branch)
+		if err != nil {
+			return errors.Wrap(err, "creating release branch")
+		}
+	}
+
+	return nil
+
 }
 
 func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSettings) (*ReleasePlan, error) {
@@ -149,28 +207,30 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	}
 	ctx.Log.Debug("Creating new release plan.")
 
+	metadata := &ReleaseMetadata{
+		Version: settings.Version,
+		Name:    settings.Name,
+		Branch:  p.MakeReleaseBranchName(settings.Version),
+	}
+
+	if err := p.SwitchToReleaseBranch(ctx, metadata.Branch); err != nil {
+		return nil, err
+	}
+
 	var err error
 	if settings.Bump == "" && settings.Version.Empty() {
 		return nil, errors.New("either version or bump must be provided")
 	}
 	if settings.Bump != "" {
-		previousReleaseMetadata := p.GetPreviousReleaseMetadata(MaxVersion)
-		if previousReleaseMetadata == nil {
-			previousReleaseMetadata = p.MasterMetadata
-		}
+		previousReleaseMetadata := p.MustGetStableRelease()
 		settings.Version, err = previousReleaseMetadata.Version.Bump(settings.Bump)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 	}
+
 	if settings.Name == "" {
 		settings.Name = settings.Version.String()
-	}
-
-	metadata := &ReleaseMetadata{
-		Version: settings.Version,
-		Name:    settings.Name,
-		Branch:  p.MakeReleaseBranchName(settings.Version),
 	}
 
 	if settings.BranchParent != "" {
@@ -194,19 +254,10 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	}
 	manifest.init()
 
-	masterManifest, err := p.GetMasterManifest()
-	if err != nil {
-		return nil, errors.Wrap(err, "get master manifest")
-	}
-
 	plan := NewReleasePlan(metadata)
 
-	masterAppManifests, err := masterManifest.GetAppManifests()
-	if err != nil {
-		return nil, err
-	}
-
-	for appName, appManifest := range masterAppManifests {
+	for _, appManifest := range p.Apps {
+		appName := appManifest.Name
 		log := ctx.Log.WithField("app", appName)
 
 		appPlan := &AppPlan{
@@ -236,9 +287,9 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	ctx.Log.Infof("Created new release plan %s.", manifest)
 
 	manifest.plan = plan
-	p.PlanningReleaseName = settings.Name
+	p.NextReleaseName = settings.Name
 
-	p.AddReleaseManifest(manifest)
+	p.SetReleaseManifest(NextName, manifest)
 
 	return plan, nil
 }
@@ -251,7 +302,7 @@ func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, 
 	appName := appPlan.Name
 	log := ctx.Log.WithField("app", appName)
 
-	previousAppMetadata, err := p.GetMostRecentlyReleasedAppMetadata(appPlan.Name)
+	previousAppMetadata, err := p.GetStableAppMetadata(appPlan.Name)
 
 	if previousAppMetadata != nil {
 
@@ -305,12 +356,12 @@ func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, 
 	return nil
 }
 
-func (p *Platform) RePlanRelease(ctx BosunContext, metadata *ReleaseMetadata) (*ReleasePlan, error) {
+func (p *Platform) RePlanRelease(ctx BosunContext) (*ReleasePlan, error) {
 	if err := p.checkPlanningOngoing(); err != nil {
 		return nil, err
 	}
 
-	manifest, err := p.GetReleaseManifest(metadata)
+	manifest, err := p.GetStableRelease()
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +386,7 @@ func (p *Platform) RePlanRelease(ctx BosunContext, metadata *ReleaseMetadata) (*
 		}
 	}
 
-	p.PlanningReleaseName = manifest.Name
+	p.NextReleaseName = manifest.Name
 
 	ctx.Log.Infof("Readied new release plan for %s.", manifest)
 
@@ -348,11 +399,11 @@ type AppValidationResult struct {
 }
 
 func (p *Platform) GetPlan(ctx BosunContext) (*ReleasePlan, error) {
-	if p.PlanningReleaseName == "" {
+	if p.NextReleaseName == "" {
 		return nil, errors.New("no release being planned")
 	}
 
-	release, err := p.GetReleaseManifestByName(p.PlanningReleaseName)
+	release, err := p.GetNextRelease()
 	if err != nil {
 		return nil, err
 	}
@@ -410,9 +461,21 @@ func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResul
 
 func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
-	plan, err := p.GetPlan(ctx)
+	nextRelease, err := p.GetNextRelease()
 	if err != nil {
 		return nil, err
+	}
+	plan, err := nextRelease.GetPlan()
+	if err != nil {
+		return nil, err
+	}
+
+	previousRelease, err := p.GetStableRelease()
+	if err != nil {
+		previousRelease, err = p.GetUnstableRelease()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	releaseMetadata := plan.ReleaseMetadata
@@ -452,14 +515,14 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				return nil, errors.Wrapf(err, "upgrading app %s", appName)
 			}
 		} else {
-			ctx.Log.Infof("No upgrade available for app %q; adding version from release %q, with no deploy requested.", appName, appPlan.PreviousReleaseName)
+			ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName, appPlan.PreviousReleaseName)
 			var appManifest *AppManifest
 			previousReleaseName := appPlan.PreviousReleaseName
 			if previousReleaseName == "" {
 				previousReleaseName = UnstableName
 			}
 
-			appManifest, err = p.GetAppManifestFromRelease(previousReleaseName, appName)
+			appManifest, err = previousRelease.GetAppManifest(appName)
 			if err != nil {
 				return nil, err
 			}
@@ -477,48 +540,16 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 	}
 
-	p.AddReleaseManifest(releaseManifest)
+	p.SetReleaseManifest(StableName, releaseManifest)
 
 	ctx.Log.Infof("Added release %q to releases for platform.", releaseManifest.Name)
 
 	releaseManifest.MarkDirty()
+	nextRelease.MarkDeleted()
 
-	p.PlanningReleaseName = ""
+	p.NextReleaseName = ""
 
 	return releaseManifest, nil
-}
-
-// DeleteRelease deletes the release immediately, it calls save itself.
-func (p *Platform) DeleteRelease(ctx BosunContext, name string) error {
-
-	dir := p.GetManifestDirectoryPath(name)
-	err := os.RemoveAll(dir)
-	if err != nil {
-		return err
-	}
-
-	delete(p.ReleaseManifests, name)
-
-	var releaseMetadata []*ReleaseMetadata
-	for _, rm := range p.ReleaseMetadata {
-		if rm.Name != name {
-			releaseMetadata = append(releaseMetadata, rm)
-		}
-	}
-	p.ReleaseMetadata = releaseMetadata
-
-	return p.Save(ctx)
-}
-
-// DiscardPlan discards the current plan; it calls save itself.
-func (p *Platform) DiscardPlan(ctx BosunContext) error {
-	if p.PlanningReleaseName != "" {
-
-		ctx.Log.Warnf("Discarding plan for release %q.", p.PlanningReleaseName)
-		p.PlanningReleaseName = ""
-		return p.Save(ctx)
-	}
-	return nil
 }
 
 // Save saves the platform. This will update the file containing the platform,
@@ -532,21 +563,27 @@ func (p *Platform) Save(ctx BosunContext) error {
 	ctx.Log.Info("Saving platform...")
 	sort.Sort(sort.Reverse(releaseMetadataSorting(p.ReleaseMetadata)))
 
-	manifests := p.ReleaseManifests
-	if p.MasterManifest != nil {
-		manifests[UnstableName] = p.MasterManifest
-	}
+	manifests := p.releaseManifests
 
 	// save the release manifests
-	for _, manifest := range manifests {
+	for slot, manifest := range manifests {
 		if !manifest.dirty {
-			ctx.Log.Debugf("Skipping save of manifest %q because it wasn't dirty.", manifest.Name)
+			ctx.Log.Debugf("Skipping save of manifest slot %q because it wasn't dirty.", slot)
 			continue
 		}
-		dir := p.GetManifestDirectoryPath(manifest.Name)
-		err := os.MkdirAll(dir, 0700)
+		dir := p.GetManifestDirectoryPath(slot)
+		err := os.RemoveAll(dir)
 		if err != nil {
-			return errors.Wrapf(err, "create directory for release %q", manifest.Name)
+			return err
+		}
+
+		if manifest.deleted {
+			continue
+		}
+
+		err = os.MkdirAll(dir, 0700)
+		if err != nil {
+			return errors.Wrapf(err, "create directory for release %q", slot)
 		}
 
 		err = writeYaml(filepath.Join(dir, ManifestFileName), manifest)
@@ -602,7 +639,11 @@ func writeYaml(path string, value interface{}) error {
 
 func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
 	if name == UnstableName {
-		return p.GetUnstableMetadata(), nil
+		manifest, err := p.GetUnstableRelease()
+		if err != nil {
+			return nil, err
+		}
+		return manifest.ReleaseMetadata, nil
 	}
 
 	for _, rm := range p.ReleaseMetadata {
@@ -631,7 +672,7 @@ func (p *Platform) GetReleaseMetadataByVersion(v semver.Version) (*ReleaseMetada
 
 func (p *Platform) GetPreviousReleaseMetadata(version semver.Version) *ReleaseMetadata {
 
-	for _, r := range p.GetReleaseMetadataSortedByVersion(true, false) {
+	for _, r := range p.GetReleaseMetadataSortedByVersion(true) {
 		if r.Version.LessThan(version) {
 			return r
 		}
@@ -645,77 +686,42 @@ func (p *Platform) GetManifestDirectoryPath(name string) string {
 	return dir
 }
 
-func (p *Platform) GetReleaseManifestByName(name string) (*ReleaseManifest, error) {
-	releaseMetadata, err := p.GetReleaseMetadataByNameOrVersion(name)
+func (p *Platform) MustGetReleaseManifestBySlot(name string) *ReleaseManifest {
+	releaseMetadata, err := p.GetReleaseManifestBySlot(name)
 	if err != nil {
-		return nil, err
+		color.Red("Could not get release %q:\n%+v", err)
+		os.Exit(1)
 	}
-	releaseManifest, err := p.GetReleaseManifest(releaseMetadata)
-	if err != nil {
-		return nil, err
-	}
-
-	return releaseManifest, nil
+	return releaseMetadata
 }
 
-func (p *Platform) GetReleaseManifest(metadata *ReleaseMetadata) (*ReleaseManifest, error) {
-	dir := p.GetManifestDirectoryPath(metadata.Name)
+func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, error) {
+	dir := p.GetManifestDirectoryPath(slot)
 	manifestPath := filepath.Join(dir, "manifest.yaml")
 
 	b, err := ioutil.ReadFile(manifestPath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "read manifest for %q", metadata.Name)
+		return nil, errors.Wrapf(err, "read manifest for slot %q", slot)
 	}
 
 	var manifest *ReleaseManifest
 	err = yaml.Unmarshal(b, &manifest)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unmarshal manifest for %q", metadata.Name)
+		return nil, errors.Wrapf(err, "unmarshal manifest for slot %q", slot)
 	}
 
 	manifest.dir = dir
 
 	manifest.Platform = p
 
-	if p.ReleaseManifests == nil {
-		p.ReleaseManifests = map[string]*ReleaseManifest{}
+	if p.releaseManifests == nil {
+		p.releaseManifests = map[string]*ReleaseManifest{}
 	}
-	p.ReleaseManifests[metadata.Name] = manifest
+	p.releaseManifests[slot] = manifest
 	return manifest, err
 }
 
-func (p *Platform) GetUnstableMetadata() *ReleaseMetadata {
-	if p.MasterMetadata == nil {
-		p.MasterMetadata = &ReleaseMetadata{
-			Name: UnstableName,
-		}
-	}
-
-	return p.MasterMetadata
-}
-func (p *Platform) GetMasterManifest() (*ReleaseManifest, error) {
-	if p.MasterManifest != nil {
-		return p.MasterManifest, nil
-	}
-
-	metadata := p.GetUnstableMetadata()
-	manifest, err := p.GetReleaseManifest(metadata)
-	if err != nil {
-		manifest = &ReleaseManifest{
-			ReleaseMetadata: metadata,
-		}
-		manifest.init()
-		p.MasterManifest = manifest
-	}
-
-	return manifest, nil
-}
-
 func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
-	manifest, err := p.GetMasterManifest()
-	if err != nil {
-		return err
-	}
 
 	app, err := ctx.Bosun.GetApp(name)
 	if err != nil {
@@ -727,6 +733,21 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 		return err
 	}
 
+	var found bool
+	for _, knownApp := range p.Apps {
+		if knownApp.Name == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		p.Apps = append(p.Apps, appManifest.AppMetadata)
+	}
+
+	manifest, err := p.GetUnstableRelease()
+	if err != nil {
+		return err
+	}
 	err = manifest.AddApp(appManifest, false)
 
 	return err
@@ -734,8 +755,8 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 
 // RefreshApp checks out the master branch of the app, then reloads it.
 // If a release is being planned, the plan will be updated with the refreshed app.
-func (p *Platform) RefreshApp(ctx BosunContext, name string) error {
-	manifest, err := p.GetMasterManifest()
+func (p *Platform) RefreshApp(ctx BosunContext, name string, slot string) error {
+	manifest, err := p.GetReleaseManifestBySlot(slot)
 	if err != nil {
 		return err
 	}
@@ -787,87 +808,43 @@ func (p *Platform) RefreshApp(ctx BosunContext, name string) error {
 		ctx.Log.Debug("No changes detected.")
 	}
 
-	currentRelease, err := b.GetCurrentReleaseManifest(true)
+	err = manifest.RefreshApp(ctx, name)
 	if err != nil {
-		ctx.Log.WithError(err).Warn("No current release to update.")
-	} else {
-		err = currentRelease.RefreshApp(ctx, name)
+		return err
 	}
+
+	manifest.MarkDirty()
 
 	return nil
 }
 
-func (p *Platform) GetAppManifestFromRelease(releaseName string, appName string) (*AppManifest, error) {
+func (p *Platform) GetAppManifestByNameFromSlot(appName string, slot string) (*AppManifest, error) {
 
-	releaseManifest, err := p.GetReleaseManifestByName(releaseName)
+	release, err := p.GetReleaseManifestBySlot(slot)
 	if err != nil {
 		return nil, err
 	}
 
-	appManifests, err := releaseManifest.GetAppManifests()
-	if err != nil {
-		return nil, err
-	}
-
-	appManifest, ok := appManifests[appName]
-	if !ok {
-		return nil, errors.Errorf("release %q did not have a manifest for app %q", releaseName, appName)
-
-	}
-	return appManifest, nil
-}
-
-func (p *Platform) GetLatestAppManifestByName(appName string) (*AppManifest, error) {
-
-	latestRelease, err := p.GetMasterManifest()
-	if err != nil {
-		return nil, err
-	}
-
-	appManifest, err := latestRelease.GetAppManifest(appName)
+	appManifest, err := release.GetAppManifest(appName)
 	return appManifest, err
 }
 
-func (p *Platform) GetStableReleaseMetadata() (*ReleaseMetadata, error) {
-	rm := p.GetReleaseMetadataSortedByVersion(true, true)
-	if len(rm) == 0 {
-		return nil, errors.New("no releases found")
-	}
-
-	return rm[0], nil
-}
-
-func (p *Platform) GetStableReleaseManifest() (*ReleaseManifest, error) {
-	latestReleaseMetadata, err := p.GetStableReleaseMetadata()
+func (p *Platform) GetStableAppMetadata(name string) (*AppMetadata, error) {
+	manifest, err := p.GetStableRelease()
 	if err != nil {
 		return nil, err
 	}
 
-	manifest, err := p.GetReleaseManifest(latestReleaseMetadata)
-	return manifest, err
-}
-
-func (p *Platform) GetUnstableReleaseManifest() (*ReleaseManifest, error) {
-	manifest, err := p.GetReleaseManifest(&ReleaseMetadata{Name: UnstableName})
-	return manifest, err
-}
-
-func (p *Platform) GetMostRecentlyReleasedAppMetadata(name string) (*AppMetadata, error) {
-	releaseManifest, err := p.GetStableReleaseManifest()
-	if err != nil {
-		return nil, err
+	if appMetadata, ok := manifest.GetAllAppMetadata()[name]; ok {
+		return appMetadata, nil
 	}
 
-	appMetadata, ok := releaseManifest.AppMetadata[name]
-	if !ok {
-		return nil, errors.Errorf("no app %q in release %q", name, releaseManifest.Name)
-	}
-
-	return appMetadata, nil
+	return nil, errors.Errorf("no app %q in stable release", name)
 }
 
-func (p *Platform) AddReleaseManifest(manifest *ReleaseManifest) {
-	p.ReleaseManifests[manifest.Name] = manifest.MarkDirty()
+func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
+
+	p.releaseManifests[slot] = manifest.MarkDirty()
 	var updatedMetadata []*ReleaseMetadata
 	// replace metadata
 	for _, metadata := range p.ReleaseMetadata {
@@ -878,6 +855,198 @@ func (p *Platform) AddReleaseManifest(manifest *ReleaseManifest) {
 		}
 	}
 	p.ReleaseMetadata = updatedMetadata
+}
+
+func (p *Platform) CommitStableRelease(ctx BosunContext) error {
+
+	release, err := p.GetStableRelease()
+	if err != nil {
+		return err
+	}
+
+	platformDir, err := git.GetRepoPath(p.FromPath)
+	if err != nil {
+		return err
+	}
+
+	mergeTargets := map[string]mergeTarget{
+		"devops": {
+			dir:     platformDir,
+			name:    "devops",
+			version: release.Version.String(),
+			tag:     release.Version.String(),
+		},
+	}
+
+	releaseBranch := fmt.Sprintf("release/%s", release.Version)
+
+	appsNames := map[string]bool{}
+	for appName := range release.GetAllAppMetadata() {
+		appsNames[appName] = true
+	}
+
+	b := ctx.Bosun
+
+	for _, appDeploy := range release.AppMetadata {
+
+		app, err := b.GetApp(appDeploy.Name)
+		if err != nil {
+			ctx.Log.WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+			continue
+		}
+
+		if !app.BranchForRelease {
+			ctx.Log.Warnf("App repo (%s) for app %s is not branched for release.", app.RepoName, app.Name)
+			continue
+		}
+
+		if appDeploy.Branch != releaseBranch {
+			ctx.Log.Warnf("App repo (%s) does not have a release branch for release %s (%s), nothing to merge.", app.RepoName, release.Name, release.Version)
+			continue
+		}
+
+		manifest, err := app.GetManifest(ctx)
+		if err != nil {
+			ctx.Log.WithError(err).Errorf("App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+			continue
+		}
+
+		if !app.IsRepoCloned() {
+			ctx.Log.Errorf("App repo (%s) for app %s is not cloned, cannot merge.", app.RepoName, app.Name)
+			continue
+		}
+
+		mergeTargets[app.Repo.LocalRepo.Path] = mergeTarget{
+			dir:     app.Repo.LocalRepo.Path,
+			version: manifest.Version.String(),
+			name:    manifest.Name,
+			tag:     fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String()),
+		}
+	}
+
+	if len(mergeTargets) == 0 {
+		return errors.New("no apps found")
+	}
+
+	fmt.Println("About to merge back to master:")
+	for _, target := range mergeTargets {
+		fmt.Printf("- %s: %s (tag %s)\n", target.name, target.version, target.tag)
+	}
+
+	for _, target := range mergeTargets {
+
+		log := ctx.Log.WithField("repo", target.name)
+
+		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
+
+		if localRepo.IsDirty() {
+			log.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
+			continue
+		}
+
+		repoDir := localRepo.Path
+
+		g, _ := git.NewGitWrapper(repoDir)
+
+		err := g.FetchAll()
+		if err != nil {
+			return err
+		}
+
+		log.Info("Checking out release branch...")
+
+		_, err = g.Exec("checkout", releaseBranch)
+		if err != nil {
+			return errors.Errorf("checkout %s: %s", repoDir, releaseBranch)
+		}
+
+		log.Info("Pulling release branch...")
+		err = g.Pull()
+		if err != nil {
+			return err
+		}
+
+		log.Info("Tagging release branch...")
+		tagArgs := []string{"tag", target.tag, "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
+		tagArgs = append(tagArgs, "--force")
+
+		_, err = g.Exec(tagArgs...)
+		if err != nil {
+			log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
+		} else {
+			log.Info("Pushing tags...")
+
+			pushArgs := []string{"push", "--tags"}
+			pushArgs = append(pushArgs, "--force")
+
+			_, err = g.Exec(pushArgs...)
+			if err != nil {
+				return errors.Errorf("push tags: %s", err)
+			}
+		}
+
+		log.Info("Checking for changes...")
+
+		diff, err := g.Exec("log", "origin/master..origin/"+releaseBranch, "--oneline")
+		if err != nil {
+			return errors.Errorf("find diffs: %s", err)
+		}
+
+		if len(diff) == 0 {
+			log.Info("No diffs found between release branch and master...")
+		} else {
+
+			log.Info("Deploy branch has diverged from master, will merge back...")
+
+			gitToken, err := b.GetGithubToken()
+			if err != nil {
+				return err
+			}
+			gitClient := git.NewGithubClient(gitToken)
+
+			log.Info("Creating pull request.")
+			_, prNumber, err := git.GitPullRequestCommand{
+				LocalRepoPath: repoDir,
+				Base:          "master",
+				FromBranch:    releaseBranch,
+				Client:        gitClient,
+			}.Execute()
+			if err != nil {
+				ctx.Log.WithError(err).Error("Could not create pull request.")
+				continue
+			}
+
+			issueService, err := b.GetIssueService(target.dir)
+			if err != nil {
+				return err
+			}
+			log.Info("Accepting pull request.")
+			err = git.GitAcceptPRCommand{
+				PRNumber:                 prNumber,
+				RepoDirectory:            repoDir,
+				DoNotMergeBaseIntoBranch: true,
+				Client:                   gitClient,
+				IssueService:             issueService,
+			}.Execute()
+
+			if err != nil {
+				ctx.Log.WithError(err).Error("Could not accept pull request.")
+				continue
+			}
+
+			log.Info("Merged back to master.")
+		}
+
+	}
+
+	return nil
+}
+
+type mergeTarget struct {
+	dir     string
+	version string
+	name    string
+	tag     string
 }
 
 type StatusDiff struct {

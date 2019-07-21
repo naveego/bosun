@@ -681,10 +681,15 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 				return err
 			}
 
-			deploySettings.Manifest, err = p.GetReleaseManifestByName(fromRelease)
+			stableRelease, err := p.GetStableRelease()
 			if err != nil {
-				return err
+				return errors.Wrap(err, "no stable release; do you have the latest devops master?")
 			}
+			if stableRelease.Name != fromRelease {
+				return errors.Errorf("currently can only deploy from stable release, which is %q", stableRelease.ReleaseMetadata.String())
+			}
+
+			deploySettings.Manifest = stableRelease
 			// reset the default deploy apps so that only the selected apps are deployed
 			deploySettings.Manifest.DefaultDeployApps = map[string]bool{}
 			for _, app := range apps {

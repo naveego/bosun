@@ -174,9 +174,9 @@ func (b *Bosun) GetApps() map[string]*App {
 
 	p, err := b.GetCurrentPlatform()
 	if err == nil {
-		master, err := p.GetMasterManifest()
+		unstable, err := p.GetUnstableRelease()
 		if err == nil {
-			appManifests, err := master.GetAppManifests()
+			appManifests, err := unstable.GetAppManifests()
 			if err == nil {
 
 				for appName, appManifest := range appManifests {
@@ -289,7 +289,7 @@ func (b *Bosun) GetApp(name string) (*App, error) {
 			return nil, errors.Errorf("no app named %q, and no platform available for finding latest release", name)
 		}
 
-		manifest, err := p.GetLatestAppManifestByName(name)
+		manifest, err := p.GetAppManifestByNameFromSlot(name, UnstableName)
 		if err != nil {
 			return nil, err
 		}
@@ -607,33 +607,13 @@ func (b *Bosun) NewContext() BosunContext {
 
 }
 
-func (b *Bosun) GetCurrentReleaseManifest(loadAppManifests bool) (*ReleaseManifest, error) {
-	var err error
-	if b.ws.CurrentRelease == "" {
-		return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
-	}
-
+func (b *Bosun) GetStableReleaseManifest() (*ReleaseManifest, error) {
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return nil, err
 	}
 
-	rm, err := p.GetReleaseManifestByName(b.ws.CurrentRelease)
-	return rm, err
-}
-
-func (b *Bosun) GetCurrentReleaseMetadata() (*ReleaseMetadata, error) {
-	var err error
-	if b.ws.CurrentRelease == "" {
-		return nil, errors.New("current release not set, call `bosun release use {name}` to set current release")
-	}
-
-	p, err := b.GetCurrentPlatform()
-	if err != nil {
-		return nil, err
-	}
-
-	rm, err := p.GetReleaseMetadataByNameOrVersion(b.ws.CurrentRelease)
+	rm, err := p.GetStableRelease()
 	return rm, err
 }
 
@@ -698,13 +678,15 @@ func (b *Bosun) UseRelease(name string) error {
 	if err != nil {
 		return err
 	}
-	_, err = p.GetReleaseMetadataByNameOrVersion(name)
+	release, err := p.GetReleaseMetadataByNameOrVersion(name)
 	if err != nil {
 		return err
 	}
 
 	b.ws.CurrentRelease = name
-	return nil
+
+	err = p.SwitchToReleaseBranch(b.NewContext(), release.Branch)
+	return err
 }
 
 func (b *Bosun) GetGitRoots() []string {

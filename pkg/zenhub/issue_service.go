@@ -27,14 +27,13 @@ type IssueService struct {
 	githubClient *github.Client
 }
 
-
 // TODO: take an injected IssueService parameter, delegate all non zenhub things to it.
 func NewIssueService(wrapped issues.IssueService, config Config, log *logrus.Entry) (IssueService, error) {
 
 	s := IssueService{
-		Config: config,
-		log: log,
-		wrapped:wrapped,
+		Config:  config,
+		log:     log,
+		wrapped: wrapped,
 	}
 
 	ts := oauth2.StaticTokenSource(
@@ -63,12 +62,14 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 	issueNumber, err := s.wrapped.Create(issue, parent)
 	dumpJSON("issueNumber", issueNumber)
 
-	_, _, parentIssueNumber, err := parent.Parts()
-
 	// the below issueNumber used to be issue.Number
 	newIssueRef := issues.NewIssueRef(issue.Org, issue.Repo, issueNumber)
 	if parent != nil {
-		err := s.AddDependency(newIssueRef, *parent, parentIssueNumber)
+		_, _, parentIssueNumber, err := parent.Parts()
+		if err != nil {
+			return -1, errors.Wrapf(err, "invalid parent")
+		}
+		err = s.AddDependency(newIssueRef, *parent, parentIssueNumber)
 		if err != nil {
 			return -1, errors.Wrap(err, "add dependency;"+newIssueRef.String()+", parent "+(parent).String())
 		}
@@ -91,7 +92,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 	return -1, nil
 
 }
-
 
 func (s IssueService) GetRepoIdbyName(org, repoName string) (int, error) {
 
@@ -160,18 +160,18 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 
 	//dumpJSON("repoId", repoId)
 
-    issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
+	issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
 	if err != nil {
 		return errors.Wrap(err, "get issue data")
 	}
 
-    //dumpJSON("issueData", issueData)
+	//dumpJSON("issueData", issueData)
 
-    workspaceId := issueData.Pipeline.WorkspaceID
+	workspaceId := issueData.Pipeline.WorkspaceID
 
-    // Change the workspace id if it was still in "Team One"
-    if workspaceId == "5c00a1ba4b5806bc2bf951e1" {
-    	workspaceId = "5cee878e76309a690b06a240" // This is the workspace id of "Tasks" in naveegoinc
+	// Change the workspace id if it was still in "Team One"
+	if workspaceId == "5c00a1ba4b5806bc2bf951e1" {
+		workspaceId = "5cee878e76309a690b06a240" // This is the workspace id of "Tasks" in naveegoinc
 	}
 	pipelineID, err := s.zenhub.GetPipelineID(workspaceId, repoId, column)
 	if err != nil {
@@ -187,8 +187,6 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 
 	return nil
 }
-
-
 
 func (s IssueService) SplitIssueRef(issue issues.IssueRef) (string, string, int, error) {
 
@@ -249,11 +247,11 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		return nil, err
 	}
 
-	if len(deps) < 1 && len(depsInStories) < 1{ // no parent found
+	if len(deps) < 1 && len(depsInStories) < 1 { // no parent found
 		return nil, nil
 	}
 
-	for _, dep := range deps{
+	for _, dep := range deps {
 		if dep.Blocking.RepoID != repoId || dep.Blocking.IssueNumber != number {
 			continue
 		}
@@ -266,13 +264,13 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		// TODO: get repo name from github?
 
 		currIssue := issues.Issue{
-			Org:org,
-			Repo:repo,
-			Number: dep.Blocked.IssueNumber,
-			GithubRepoID: &dep.Blocked.RepoID,
-			ProgressState: parentData.Pipeline.Name,
+			Org:                 org,
+			Repo:                repo,
+			Number:              dep.Blocked.IssueNumber,
+			GithubRepoID:        &dep.Blocked.RepoID,
+			ProgressState:       parentData.Pipeline.Name,
 			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(parentData.Pipeline.Name),
-			IsClosed: parentData.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+			IsClosed:            parentData.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
 		}
 
 		if currIssue.Number != 0 {
@@ -283,7 +281,7 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 
 	//dumpJSON("parentIssues 0", parentIssues)
 
-	for _, depis := range depsInStories{
+	for _, depis := range depsInStories {
 		if depis.Blocking.RepoID != repoId || depis.Blocking.IssueNumber != number {
 			continue
 		}
@@ -296,13 +294,13 @@ func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) 
 		// TODO: get repo name from github?
 
 		currIssue := issues.Issue{
-			Org:storiesOrg,
-			Repo:storiesRepo,
-			Number: depis.Blocked.IssueNumber,
-			GithubRepoID: &storiesId,
-			ProgressState: data.Pipeline.Name,
+			Org:                 storiesOrg,
+			Repo:                storiesRepo,
+			Number:              depis.Blocked.IssueNumber,
+			GithubRepoID:        &storiesId,
+			ProgressState:       data.Pipeline.Name,
 			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
-			IsClosed: data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
+			IsClosed:            data.Pipeline.Name == s.Config.StoryColumnMapping[issues.ColumnClosed],
 		}
 
 		if currIssue.Number != 0 {
@@ -338,37 +336,37 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 		return nil, nil
 	}
 
-		for _, dep := range deps{
-			if dep.Blocked.RepoID != repoId || dep.Blocked.IssueNumber != number {
-				continue
-			}
+	for _, dep := range deps {
+		if dep.Blocked.RepoID != repoId || dep.Blocked.IssueNumber != number {
+			continue
+		}
 
-			//dumpJSON("dep", dep)
+		//dumpJSON("dep", dep)
 
-			data, err := s.zenhub.GetIssueData(dep.Blocking.RepoID, dep.Blocking.IssueNumber)
-			if err != nil {
-				return nil, errors.Wrap(err, "add child to result")
-			}
-			//dumpJSON("issue data", data)
+		data, err := s.zenhub.GetIssueData(dep.Blocking.RepoID, dep.Blocking.IssueNumber)
+		if err != nil {
+			return nil, errors.Wrap(err, "add child to result")
+		}
+		//dumpJSON("issue data", data)
 
-			// TODO: get repo name from github?
+		// TODO: get repo name from github?
 
-			currIssue := issues.Issue{
-				Org:org,
-				Repo:repo,
-				Number: dep.Blocking.IssueNumber,
-				GithubRepoID: &dep.Blocking.RepoID,
-				ProgressState: data.Pipeline.Name,
-				MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
-				IsClosed: data.Pipeline.Name == "",
-					//s.Config.StoryColumnMapping[issues.ColumnClosed],
-			}
+		currIssue := issues.Issue{
+			Org:                 org,
+			Repo:                repo,
+			Number:              dep.Blocking.IssueNumber,
+			GithubRepoID:        &dep.Blocking.RepoID,
+			ProgressState:       data.Pipeline.Name,
+			MappedProgressState: s.Config.StoryColumnMapping.ReverseLookup(data.Pipeline.Name),
+			IsClosed:            data.Pipeline.Name == "",
+			//s.Config.StoryColumnMapping[issues.ColumnClosed],
+		}
 
-			//dumpJSON("child issue pipeline name", data.Pipeline.Name)
+		//dumpJSON("child issue pipeline name", data.Pipeline.Name)
 
-			childIssues = append(childIssues, currIssue)
+		childIssues = append(childIssues, currIssue)
 	}
-		//dumpJSON("childIssues", childIssues)
+	//dumpJSON("childIssues", childIssues)
 
 	return childIssues, nil
 }
