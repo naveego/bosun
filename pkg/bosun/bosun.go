@@ -19,7 +19,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -27,7 +26,6 @@ type Bosun struct {
 	params               Parameters
 	ws                   *Workspace
 	file                 *File
-	apps                 map[string]*App
 	vaultClient          *vault.Client
 	env                  *EnvironmentConfig
 	clusterAvailable     *bool
@@ -35,26 +33,32 @@ type Bosun struct {
 	environmentConfirmed *bool
 	repos                map[string]*Repo
 	platform             *Platform
+	appProvider          ChainAppProvider
+	appProviders         []AppProvider
 }
 
 type Parameters struct {
-	Verbose        bool
-	DryRun         bool
-	Force          bool
-	NoReport       bool
-	ForceTests     bool
-	ValueOverrides map[string]string
-	FileOverrides  []string
-	NoCurrentEnv   bool
-	ConfirmedEnv   string
+	Verbose          bool
+	DryRun           bool
+	Force            bool
+	NoReport         bool
+	ForceTests       bool
+	ValueOverrides   map[string]string
+	FileOverrides    []string
+	NoCurrentEnv     bool
+	ConfirmedEnv     string
+	ProviderPriority []string
 }
 
 func New(params Parameters, ws *Workspace) (*Bosun, error) {
+	if params.ProviderPriority == nil {
+		params.ProviderPriority = DefaultAppProviderPriority
+	}
+
 	b := &Bosun{
 		params: params,
 		ws:     ws,
 		file:   ws.MergedBosunFile,
-		apps:   make(map[string]*App),
 		log:    pkg.Log,
 		repos:  map[string]*Repo{},
 	}
@@ -64,18 +68,21 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 		b.log.Info("DRY RUN")
 	}
 
-	for _, dep := range b.file.AppRefs {
-		b.apps[dep.Name] = NewAppFromDependency(dep)
-	}
+	b.initializeAppProviders()
 
-	for _, a := range b.file.Apps {
-		if a != nil {
-			_, err := b.addApp(a)
-			if err != nil {
-				return nil, errors.Wrapf(err, "add app %q", a.Name)
-			}
-		}
-	}
+	//
+	// for _, dep := range b.file.AppRefs {
+	// 	b.apps[dep.Name] = NewAppFromDependency(dep)
+	// }
+	//
+	// for _, a := range b.file.Apps {
+	// 	if a != nil {
+	// 		_, err := b.addApp(a)
+	// 		if err != nil {
+	// 			return nil, errors.Wrapf(err, "add app %q", a.Name)
+	// 		}
+	// 	}
+	// }
 
 	if !params.NoCurrentEnv {
 		err := b.configureCurrentEnv()
@@ -87,68 +94,24 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	return b, nil
 }
 
-func (b *Bosun) addApp(config *AppConfig) (*App, error) {
-	if config.Name == "" {
-		return nil, errors.New("cannot accept an app with no name")
+func (b *Bosun) initializeAppProviders() {
+
+	b.appProviders = []AppProvider{
+		NewAppConfigAppProvider(b.ws),
 	}
-	app := NewApp(config)
-	if app.RepoName == "" {
-		repos := b.GetRepos()
-		for _, r := range repos {
-			if r.LocalRepo != nil {
-				if strings.HasPrefix(app.FromPath, r.LocalRepo.Path) {
-					// This app is part of this repo, whether the app knows it or not.
-					app.RepoName = r.Name
-					app.Repo = r
-					r.Apps[app.Name] = config
-				}
+
+	p, err := b.GetCurrentPlatform()
+	if err == nil {
+		for _, slot := range []string{UnstableName, NextName, StableName} {
+			if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
+				b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 			}
 		}
 	}
 
-	if app.RepoName != "" {
-		// find or add repo for app
-		repo, err := b.GetRepo(app.RepoName)
-		if err != nil {
-			repo = &Repo{
-				Apps: map[string]*AppConfig{
-					app.Name: config,
-				},
-				RepoConfig: RepoConfig{
-					ConfigShared: ConfigShared{
-						Name: app.Name,
-					},
-				},
-			}
-			b.repos[app.RepoName] = repo
-			config.Parent.Repos = append(config.Parent.Repos, &repo.RepoConfig)
+	b.appProviders = append(b.appProviders, NewFilePathAppProvider())
 
-		}
-		app.Repo = repo
-		var ok bool
-
-		if repo.LocalRepo, ok = b.ws.LocalRepos[app.RepoName]; !ok {
-			localRepoPath, err := git.GetRepoPath(app.FromPath)
-			if err == nil {
-				repo.LocalRepo = &LocalRepo{
-					Name: app.RepoName,
-					Path: localRepoPath,
-				}
-			}
-			b.ws.LocalRepos[app.RepoName] = repo.LocalRepo
-		}
-
-	}
-
-	b.apps[config.Name] = app
-
-	// for _, d2 := range app.DependsOn {
-	// 	if _, ok := b.apps[d2.Name]; !ok {
-	// 		b.apps[d2.Name] = NewAppFromDependency(&d2)
-	// 	}
-	// }
-
-	return app, nil
+	b.appProvider = NewChainAppProvider(b.appProviders...)
 }
 
 func (b *Bosun) GetAppsSortedByName() []*App {
@@ -165,30 +128,27 @@ func (b *Bosun) GetAppsSortedByName() []*App {
 	return ms
 }
 
+// GetAllProvidedApps gets all apps from all providers, ignoring provider priority.
+func (b *Bosun) GetAllProvidedApps() (AppList, error) {
+
+	apps, err := b.appProvider.GetAllAppsFromProviders(b.params.ProviderPriority)
+
+	return apps, err
+
+}
+
+func (b *Bosun) GetAllProviderNames() []string {
+	return b.params.ProviderPriority
+}
+
 func (b *Bosun) GetApps() map[string]*App {
-	out := map[string]*App{}
 
-	for _, app := range b.apps {
-		out[app.Name] = app
+	apps, err := b.appProvider.GetAllApps(b.params.ProviderPriority)
+	if err != nil {
+		b.log.WithError(err).Error("Could not get apps.")
+		apps = map[string]*App{}
 	}
-
-	p, err := b.GetCurrentPlatform()
-	if err == nil {
-		unstable, err := p.GetUnstableRelease()
-		if err == nil {
-			appManifests, err := unstable.GetAppManifests()
-			if err == nil {
-
-				for appName, appManifest := range appManifests {
-					if _, ok := out[appName]; !ok {
-						out[appName] = NewApp(appManifest.AppConfig)
-					}
-				}
-			}
-		}
-	}
-
-	return out
+	return apps
 }
 
 func (b *Bosun) GetAppDesiredStates() map[string]AppState {
@@ -272,88 +232,26 @@ func (b *Bosun) GetScript(name string) (*Script, error) {
 	return nil, errors.Errorf("no script found with name %q", name)
 }
 
-func (b *Bosun) GetAppWithRepo(name string) (*App, error) {
-	m, ok := b.apps[name]
-	if !ok {
-		return nil, errors.Errorf("no app with name %q has been cloned", name)
-	}
-	return m, nil
-}
-
 func (b *Bosun) GetApp(name string) (*App, error) {
-	m, ok := b.apps[name]
-	if !ok {
-
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return nil, errors.Errorf("no app named %q, and no platform available for finding latest release", name)
-		}
-
-		manifest, err := p.GetAppManifestByNameFromSlot(name, UnstableName)
-		if err != nil {
-			return nil, err
-		}
-
-		return NewApp(manifest.AppConfig), nil
-	}
-	return m, nil
+	app, err := b.appProvider.GetApp(name, b.params.ProviderPriority)
+	return app, err
 }
 
 func (b *Bosun) ReloadApp(name string) (*App, error) {
-	app, ok := b.apps[name]
-	if !ok {
-		return nil, errors.Errorf("no app named %q", name)
-	}
 
-	file := &File{
-		AppRefs: map[string]*Dependency{},
-	}
+	provider := NewFilePathAppProvider()
 
-	err := pkg.LoadYaml(app.FromPath, &file)
+	app, err := b.GetApp(name)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "could not get app named %q", name)
 	}
 
-	file.SetFromPath(app.FromPath)
-
-	for _, updatedApp := range file.Apps {
-		if updatedApp.Name == name {
-			app, err = b.addApp(updatedApp)
-			return app, err
-		}
-	}
-
-	return nil, errors.Errorf("could not find app in source file at %q", app.FromPath)
+	app, err = provider.GetAppByPathAndName(app.FromPath, name)
+	return app, err
 }
 
 func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
-	for _, m := range b.apps {
-		if m.FromPath == path {
-			return m, nil
-		}
-	}
-
-	err := b.ws.importFileFromPath(path)
-
-	if err != nil {
-		return nil, err
-	}
-
-	b.log.WithField("path", path).Debug("New microservice found at path.")
-
-	imported := b.ws.ImportedBosunFiles[path]
-
-	var name string
-	for _, m := range imported.Apps {
-		_, err = b.addApp(m)
-		if err != nil {
-			return nil, err
-		}
-		name = m.Name
-	}
-
-	m, _ := b.GetApp(name)
-	return m, nil
+	return b.ReloadApp(path)
 }
 
 func (b *Bosun) useEnvironment(env *EnvironmentConfig) error {

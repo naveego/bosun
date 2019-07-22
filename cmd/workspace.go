@@ -156,7 +156,7 @@ var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 		switch len(args) {
 		case 0:
 			wd, _ := os.Getwd()
-			filename, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+			filename, err = util.FindFileInDirOrAncestors(wd, "bosun.yaml")
 		case 1:
 			filename, err = filepath.Abs(args[0])
 		}
@@ -226,7 +226,7 @@ var configRemoveImportCmd = addCommand(workspaceCmd, &cobra.Command{
 		switch len(args) {
 		case 0:
 			wd, _ := os.Getwd()
-			filename, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+			filename, err = util.FindFileInDirOrAncestors(wd, "bosun.yaml")
 		case 1:
 			filename, err = filepath.Abs(args[0])
 		}

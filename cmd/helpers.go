@@ -103,6 +103,7 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 	params.NoReport = viper.GetBool(ArgGlobalNoReport)
 	params.Force = viper.GetBool(ArgGlobalForce)
 	params.ConfirmedEnv = viper.GetString(ArgGlobalConfirmedEnv)
+	params.ProviderPriority = viper.GetStringSlice(ArgAppProviderPriority)
 
 	if params.ValueOverrides == nil {
 		params.ValueOverrides = map[string]string{}
@@ -310,7 +311,7 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.App, error) {
 	var app *bosun.App
 
 	wd, _ := os.Getwd()
-	bosunFile, err = findFileInDirOrAncestors(wd, "bosun.yaml")
+	bosunFile, err = util.FindFileInDirOrAncestors(wd, "bosun.yaml")
 	if err != nil {
 		return nil, err
 	}
@@ -525,23 +526,6 @@ func (p *globalParameters) init() error {
 	}
 
 	return nil
-}
-
-func findFileInDirOrAncestors(dir string, filename string) (string, error) {
-	startedAt := dir
-
-	for {
-		if dir == "" || dir == filepath.Dir(dir) {
-			return "", errors.Errorf("file %q not found in %q or any parent", filename, startedAt)
-		}
-		curr := filepath.Join(dir, filename)
-
-		_, err := os.Stat(curr)
-		if err == nil {
-			return curr, nil
-		}
-		dir = filepath.Dir(dir)
-	}
 }
 
 var (

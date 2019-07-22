@@ -10,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/stevenle/topsort"
+	"go4.org/sort"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
@@ -30,6 +31,13 @@ type App struct {
 	labels      filter.Labels
 	Provider    AppProvider
 	AppManifest *AppManifest
+}
+
+func (a *App) ProviderName() string {
+	if a.Provider == nil {
+		return "unknown"
+	}
+	return a.Provider.String()
 }
 
 func (a *App) GetLabels() filter.Labels {
@@ -54,7 +62,6 @@ func (a *App) GetLabels() filter.Labels {
 	return a.labels
 }
 
-type AppsSortedByName []*App
 type DependenciesSortedByTopology []string
 
 func NewApp(appConfig *AppConfig) *App {
@@ -77,6 +84,8 @@ func NewAppFromDependency(dep *Dependency) *App {
 	}
 }
 
+type AppsSortedByName []*App
+
 func (a AppsSortedByName) Len() int {
 	return len(a)
 }
@@ -87,6 +96,30 @@ func (a AppsSortedByName) Less(i, j int) bool {
 
 func (a AppsSortedByName) Swap(i, j int) {
 	a[i], a[j] = a[j], a[i]
+}
+
+type AppList []*App
+
+func (a AppList) SortByProvider() {
+	sort.With(len(a),
+		func(i, j int) {
+			a[i], a[j] = a[j], a[i]
+		}, func(i, j int) bool {
+			return a[i].Provider.String() < a[j].Provider.String()
+		})
+}
+
+func (a AppList) GroupByAppThenProvider() map[string]map[string]*App {
+	var out = map[string]map[string]*App{}
+	for _, app := range a {
+		byProvider, ok := out[app.Name]
+		if !ok {
+			byProvider = map[string]*App{}
+			out[app.Name] = byProvider
+		}
+		byProvider[app.ProviderName()] = app
+	}
+	return out
 }
 
 func (a *App) CheckRepoCloned() error {

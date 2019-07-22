@@ -1,0 +1,13 @@
+
+platforms:
+  - name: test-platform
+    defaultChartRepo: helm.n5o.black
+    releaseBranchFormat: release/*
+    masterBranch: master
+    releaseDirectory: releases
+    zenHubConfig:
+      storyBoardName: Sprint Planning
+      taskBoardName: Team One
+      taskCompletedName: ""
+      storyColumnMapping: {}
+      taskColumnMapping: {}

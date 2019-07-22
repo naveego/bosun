@@ -571,6 +571,7 @@ func (p *Platform) Save(ctx BosunContext) error {
 			ctx.Log.Debugf("Skipping save of manifest slot %q because it wasn't dirty.", slot)
 			continue
 		}
+		manifest.Slot = slot
 		dir := p.GetManifestDirectoryPath(slot)
 		err := os.RemoveAll(dir)
 		if err != nil {
@@ -718,6 +719,7 @@ func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, erro
 		p.releaseManifests = map[string]*ReleaseManifest{}
 	}
 	p.releaseManifests[slot] = manifest
+	manifest.Slot = slot
 	return manifest, err
 }
 

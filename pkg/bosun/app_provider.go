@@ -2,9 +2,19 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/manifoldco/promptui"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/util"
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/ssh/terminal"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 )
+
+var DefaultAppProviderPriority = []string{"workspace", NextName, UnstableName, StableName}
 
 type AppProvider interface {
 	fmt.Stringer
@@ -19,7 +29,7 @@ type AppConfigAppProvider struct {
 	ws         *Workspace
 }
 
-func NewAppConfigAppProvider(ws *Workspace) (AppConfigAppProvider, error) {
+func NewAppConfigAppProvider(ws *Workspace) AppConfigAppProvider {
 
 	p := AppConfigAppProvider{
 		ws:         ws,
@@ -32,11 +42,11 @@ func NewAppConfigAppProvider(ws *Workspace) (AppConfigAppProvider, error) {
 		p.appConfigs[appConfig.Name] = appConfig
 	}
 
-	return p, nil
+	return p
 }
 
 func (a AppConfigAppProvider) String() string {
-	return "AppConfig"
+	return "workspace"
 }
 
 func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
@@ -122,7 +132,7 @@ func NewReleaseManifestAppProvider(release *ReleaseManifest) ReleaseManifestAppP
 }
 
 func (a ReleaseManifestAppProvider) String() string {
-	return fmt.Sprintf("Release %s (%s)", a.release.Name, a.release.Version)
+	return a.release.Slot
 }
 
 func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
@@ -163,13 +173,19 @@ func (a ReleaseManifestAppProvider) GetAllApps() (map[string]*App, error) {
 }
 
 type ChainAppProvider struct {
-	providers []AppProvider
+	providers       []AppProvider
+	providersByName map[string]AppProvider
 }
 
 func NewChainAppProvider(providers ...AppProvider) ChainAppProvider {
-	return ChainAppProvider{
-		providers: providers,
+	p := ChainAppProvider{
+		providers:       providers,
+		providersByName: map[string]AppProvider{},
 	}
+	for _, provider := range providers {
+		p.providersByName[provider.String()] = provider
+	}
+	return p
 }
 
 func (a ChainAppProvider) String() string {
@@ -180,48 +196,165 @@ func (a ChainAppProvider) String() string {
 	return fmt.Sprintf("Chain(%s)", strings.Join(providerNames, " -> "))
 }
 
-func (a ChainAppProvider) GetApp(name string) (*App, error) {
-	for _, provider := range a.providers {
-		app, err := provider.GetApp(name)
-		if err == nil {
-			return app, nil
-		} else {
-			if !IsErrAppNotFound(err) {
-				return nil, err
+func (a ChainAppProvider) GetAppFromProvider(name string, providerName string) (*App, error) {
+	if provider, ok := a.providersByName[providerName]; ok {
+		return provider.GetApp(name)
+	}
+	return nil, errors.Errorf("no provider named %q", providerName)
+}
+
+func (a ChainAppProvider) GetApp(name string, providerPriority []string) (*App, error) {
+	for _, providerName := range providerPriority {
+		if provider, ok := a.providersByName[providerName]; ok {
+			app, err := provider.GetApp(name)
+			if err == nil {
+				return app, nil
+			} else {
+				if !IsErrAppNotFound(err) {
+					return nil, err
+				}
 			}
 		}
 	}
 	return nil, ErrAppNotFound(name)
 }
 
-func (a ChainAppProvider) GetAllApps() (map[string]*App, error) {
+func (a ChainAppProvider) GetAllApps(providerPriority []string) (map[string]*App, error) {
 	out := map[string]*App{}
-	for _, provider := range a.providers {
-		apps, err := provider.GetAllApps()
-		if err != nil {
-			return nil, err
-		}
-		for name, app := range apps {
-			// use the earliest version returned
-			if _, ok := out[name]; ok {
-				out[name] = app
+	for _, providerName := range providerPriority {
+		if provider, ok := a.providersByName[providerName]; ok {
+			apps, err := provider.GetAllApps()
+			if err != nil {
+				return nil, err
+			}
+			for name, app := range apps {
+				// use the earliest version returned
+				if _, ok := out[name]; !ok {
+					out[name] = app
+				}
 			}
 		}
 	}
 	return out, nil
 }
 
-func (a ChainAppProvider) GetAllAppVersions() (map[string][]*App, error) {
-	out := map[string][]*App{}
-	for _, provider := range a.providers {
-		apps, err := provider.GetAllApps()
-		if err != nil {
-			return nil, err
-		}
+func (a ChainAppProvider) GetAllAppsFromProviders(providerNames []string) (AppList, error) {
+	out := AppList{}
+	for _, providerName := range providerNames {
+		provider, ok := a.providersByName[providerName]
+		if ok {
+			apps, err := provider.GetAllApps()
+			if err != nil {
+				return nil, err
+			}
 
-		for name, app := range apps {
-			out[name] = append(out[name], app)
+			for _, app := range apps {
+				out = append(out, app)
+			}
 		}
 	}
 	return out, nil
+}
+
+type FilePathAppProvider struct {
+	apps map[string]*App
+}
+
+func NewFilePathAppProvider() FilePathAppProvider {
+	return FilePathAppProvider{
+		apps: map[string]*App{},
+	}
+}
+
+func (a FilePathAppProvider) String() string {
+	return "pwd"
+}
+
+func (a FilePathAppProvider) GetApp(path string) (*App, error) {
+
+	return a.GetAppByPathAndName(path, "")
+}
+
+func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error) {
+
+	if !strings.HasSuffix(name, "bosun.yaml") {
+		return nil, ErrAppNotFound(name)
+	}
+
+	bosunFile, _ := filepath.Abs(name)
+	if _, err := os.Stat(bosunFile); err != nil {
+		dir := filepath.Dir(bosunFile)
+		bosunFile, err = util.FindFileInDirOrAncestors(dir, "bosun.yaml")
+		if err != nil {
+			return nil, ErrAppNotFound(name)
+		}
+	}
+
+	c := &File{
+		FromPath: bosunFile,
+		AppRefs:  map[string]*Dependency{},
+	}
+
+	err := pkg.LoadYaml(bosunFile, &c)
+	if err != nil {
+		return nil, errors.Wrapf(err, "load bosun file from %q", bosunFile)
+	}
+
+	var appConfig *AppConfig
+	switch len(c.Apps) {
+	case 0:
+		return nil, errors.Errorf("bosun file %q contained no apps", bosunFile)
+	case 1:
+		appConfig = c.Apps[0]
+	default:
+		index := -1
+		var appNames []string
+		for i, ac := range c.Apps {
+			appNames = append(appNames, ac.Name)
+			if ac.Name == name {
+				index = i
+			}
+		}
+
+		if index < 0 {
+
+			sort.Strings(appNames)
+
+			if !terminal.IsTerminal(int(os.Stdout.Fd())) {
+				return nil, errors.Errorf("multiple apps found in %q, but no user available to choose; try importing the bosun file and referencing the app by name (apps were: %s)", bosunFile, strings.Join(appNames, ", "))
+			}
+
+			p := &promptui.Select{
+				Label: fmt.Sprintf("Multiple apps found in %q, please choose one.", bosunFile),
+				Items: appNames,
+			}
+
+			index, _, err = p.Run()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		appConfig = c.Apps[index]
+	}
+
+	repoPath, _ := git.GetRepoPath(bosunFile)
+
+	app := &App{
+		AppConfig: appConfig,
+		Repo: &Repo{
+			LocalRepo: &LocalRepo{
+				Name: appConfig.RepoName,
+				Path: repoPath,
+			},
+		},
+	}
+
+	a.apps[app.Name] = app
+
+	return app, nil
+}
+
+func (a FilePathAppProvider) GetAllApps() (map[string]*App, error) {
+	return a.apps, nil
 }

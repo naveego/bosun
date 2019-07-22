@@ -80,12 +80,18 @@ func init() {
 	rootCmd.AddCommand(appCmd)
 }
 
+const (
+	ArgAppProviderPriority = "providers"
+)
+
 // appCmd represents the app command
-var appCmd = &cobra.Command{
+var appCmd = addCommand(rootCmd, &cobra.Command{
 	Use:     "app",
 	Aliases: []string{"apps", "a"},
 	Short:   "App commands",
-}
+}, func(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringSliceP(ArgAppProviderPriority, "p", bosun.DefaultAppProviderPriority, "The priority of the app providers used to get the apps.")
+})
 
 var _ = addCommand(appCmd, configImportCmd)
 

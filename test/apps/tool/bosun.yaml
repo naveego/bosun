@@ -1,13 +1,6 @@
-environments: []
-appRefs: {}
 apps:
-- name: bosun-test
-  branchForRelease: true
-  namespace: kube-system
-  repo: naveegoinc/devops
-  version: 1.35.5
-  chart: helm.n5o.black/nginx
-  chartPath: ./charts/nginx
+- name: tool
+  branchForRelease: false
+  repo: naveego/bosun
+  version: 0.0.1
   labels:
-    infrastructure: "true"
-  images: []

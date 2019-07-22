@@ -1,0 +1,6 @@
+environments:
+  - name: testenv
+    cluster: minikube
+    domain: n5o.red
+    isLocal: true
+    variables:

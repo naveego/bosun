@@ -1,0 +1,16 @@
+appVersion: 1.35.5
+description: A basic NGINX HTTP server
+home: https://github.com/helm/helm
+keywords:
+- http
+- nginx
+- www
+- web
+kubeVersion: '>=1.2.0'
+maintainers:
+- email: mbutcher@deis.com
+  name: technosophos
+name: nginx
+sources:
+- https://hub.docker.com/_/nginx/
+version: 1.35.5
