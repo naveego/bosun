@@ -109,7 +109,7 @@ func (b *Bosun) initializeAppProviders() {
 		}
 	}
 
-	b.appProviders = append(b.appProviders, NewFilePathAppProvider())
+	b.appProviders = append(b.appProviders, NewFilePathAppProvider(b.log))
 
 	b.appProvider = NewChainAppProvider(b.appProviders...)
 }
@@ -239,19 +239,20 @@ func (b *Bosun) GetApp(name string) (*App, error) {
 
 func (b *Bosun) ReloadApp(name string) (*App, error) {
 
-	provider := NewFilePathAppProvider()
-
 	app, err := b.GetApp(name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not get app named %q", name)
 	}
 
-	app, err = provider.GetAppByPathAndName(app.FromPath, name)
+	app, err = b.GetOrAddAppForPath(app.FromPath)
 	return app, err
 }
 
 func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
-	return b.ReloadApp(path)
+
+	provider := NewFilePathAppProvider(b.log)
+	app, err := provider.GetApp(path)
+	return app, err
 }
 
 func (b *Bosun) useEnvironment(env *EnvironmentConfig) error {

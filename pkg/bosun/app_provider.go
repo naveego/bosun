@@ -7,6 +7,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"path/filepath"
@@ -14,7 +15,10 @@ import (
 	"strings"
 )
 
-var DefaultAppProviderPriority = []string{"workspace", NextName, UnstableName, StableName}
+const WorkspaceProviderName = "workspace"
+const FileProviderName = "file"
+
+var DefaultAppProviderPriority = []string{WorkspaceProviderName, NextName, UnstableName, StableName, FileProviderName}
 
 type AppProvider interface {
 	fmt.Stringer
@@ -46,7 +50,7 @@ func NewAppConfigAppProvider(ws *Workspace) AppConfigAppProvider {
 }
 
 func (a AppConfigAppProvider) String() string {
-	return "workspace"
+	return WorkspaceProviderName
 }
 
 func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
@@ -258,16 +262,18 @@ func (a ChainAppProvider) GetAllAppsFromProviders(providerNames []string) (AppLi
 
 type FilePathAppProvider struct {
 	apps map[string]*App
+	log  *logrus.Entry
 }
 
-func NewFilePathAppProvider() FilePathAppProvider {
+func NewFilePathAppProvider(log *logrus.Entry) FilePathAppProvider {
 	return FilePathAppProvider{
 		apps: map[string]*App{},
+		log:  log.WithField("provider", FileProviderName),
 	}
 }
 
 func (a FilePathAppProvider) String() string {
-	return "pwd"
+	return FileProviderName
 }
 
 func (a FilePathAppProvider) GetApp(path string) (*App, error) {
@@ -277,16 +283,18 @@ func (a FilePathAppProvider) GetApp(path string) (*App, error) {
 
 func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error) {
 
-	if !strings.HasSuffix(name, "bosun.yaml") {
+	if !strings.HasSuffix(path, "bosun.yaml") {
+		a.log.Debugf("Provider can only get apps if path to bosun file is provided (path was %q).", path)
 		return nil, ErrAppNotFound(name)
 	}
 
-	bosunFile, _ := filepath.Abs(name)
+	bosunFile, _ := filepath.Abs(path)
 	if _, err := os.Stat(bosunFile); err != nil {
+		a.log.Debugf("Bosun file not found at %q, looking in directory....", path)
 		dir := filepath.Dir(bosunFile)
 		bosunFile, err = util.FindFileInDirOrAncestors(dir, "bosun.yaml")
 		if err != nil {
-			return nil, ErrAppNotFound(name)
+			return nil, ErrAppNotFound(name + "@" + path)
 		}
 	}
 

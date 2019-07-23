@@ -1,6 +1,8 @@
 package bosun
 
-import "fmt"
+import (
+	"github.com/pkg/errors"
+)
 
 type errAppNotFound string
 
@@ -12,5 +14,5 @@ func IsErrAppNotFound(err error) bool {
 }
 
 func ErrAppNotFound(name string) error {
-	return errAppNotFound(fmt.Sprintf("app %q not found", name))
+	return errAppNotFound(errors.Errorf("app %q not found", name).Error())
 }

@@ -82,6 +82,30 @@ var gitTokenCmd = addCommand(gitCmd, &cobra.Command{
 	},
 })
 
+var gitRepoCommand = addCommand(gitCmd, &cobra.Command{
+	Use:   "repo {app}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Prints the repo info for the app.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		app := mustGetApp(b, args)
+
+		repoPath, err := git.GetRepoPath(app.FromPath)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(repoPath)
+
+		org, repo := git.GetOrgAndRepoFromPath(repoPath)
+
+		fmt.Printf("org : %s\n", org)
+		fmt.Printf("repo: %s\n", repo)
+
+		return nil
+	},
+})
+
 var gitDeployStartCmd = &cobra.Command{
 	Use:   "start {cluster}",
 	Args:  cobra.ExactArgs(1),
