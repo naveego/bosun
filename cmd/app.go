@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/cheynewallace/tabby"
+	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
@@ -45,13 +46,14 @@ const (
 	ArgAppValueSet        = "value-sets"
 	ArgAppSet             = "set"
 
-	ArgAppDeployDeps    = "deploy-deps"
-	ArgAppFromRelease   = "release"
-	ArgAppLatest        = "latest"
-	ArgAppDeletePurge   = "purge"
-	ArgAppCloneDir      = "dir"
-	ArgFilteringInclude = "include"
-	ArgFilteringExclude = "exclude"
+	ArgAppDeployDeps        = "deploy-deps"
+	ArgAppFromRelease       = "release"
+	ArgAppLatest            = "latest"
+	ArgAppDeletePurge       = "purge"
+	ArgAppCloneDir          = "dir"
+	ArgFilteringInclude     = "include"
+	ArgFilteringExclude     = "exclude"
+	ArgChangeLogMoreDetails = "details"
 )
 
 func init() {
@@ -119,16 +121,16 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 })
 
 var appBumpCmd = addCommand(appCmd, &cobra.Command{
-	Use:   "bump {name} {major|minor|patch|major.minor.patch}",
-	Args:  cobra.ExactArgs(2),
-	Short: "Updates the version of an app.",
+	Use:   "bump {name} [major|minor|patch|major.minor.patch]",
+	Args:  cobra.RangeArgs(1, 2),
+	Short: "Updates the version of an app. If bump argument is not provided, it will be computed from the diff from the default branch.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosun()
-		app := mustGetApp(b, args)
+		app := mustGetApp(b, args[:1])
 
-		if app.IsFromManifest {
-			return errors.New("bump is only available for apps which you have added to bosun")
+		if app.Repo.CheckCloned() != nil {
+			return errors.New("bump is only available for apps which you have cloned")
 		}
 
 		g, err := git.NewGitWrapper(app.FromPath)
@@ -136,14 +138,28 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		wantsTag := viper.GetBool(ArgAppBumpTag)
-		if wantsTag {
-			if g.IsDirty() {
-				return errors.New("cannot bump version and tag when workspace is dirty")
-			}
+		if g.IsDirty() {
+			return errors.New("repo is dirty")
 		}
 
-		err = appBump(b, app, args[1])
+		wantsTag := viper.GetBool(ArgAppBumpTag)
+
+		var bump string
+		if len(args) == 2 {
+			bump = args[1]
+		} else {
+			pkg.Log.Info("Computing version bump from commits...")
+			changes, err := g.ChangeLog(app.Branching.Develop, "HEAD", nil, git.GitChangeLogOptions{})
+			if err != nil {
+				return errors.Wrap(err, "computing bump")
+			}
+
+			pkg.Log.Info(changes.OutputMessage)
+
+			bump = strings.ToLower(changes.VersionBump)
+		}
+
+		err = appBump(b, app, bump)
 		if err != nil {
 			return err
 		}
@@ -155,7 +171,9 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 			}
 		}
 
-		return nil
+		_, err = g.Exec("push", "--tags")
+
+		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgAppBumpTag, false, "Create and push a git tag for the version.")
@@ -1185,4 +1203,62 @@ var appCloneCmd = addCommand(
 	},
 	func(cmd *cobra.Command) {
 		cmd.Flags().String(ArgAppCloneDir, "", "The directory to clone into.")
+	})
+
+var appChangeLog = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:     "change-log {app} {from} [to]",
+		Short:   "Prints a change log in console",
+		Aliases: []string{"l"},
+		Args:    cobra.RangeArgs(2, 3),
+		Long:    "Prints a changelog of changes. 'to' is by default 'master'",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			viper.BindPFlags(cmd.Flags())
+			b := MustGetBosun()
+			app := mustGetApp(b, args)
+			detailsFlag := viper.GetBool(ArgChangeLogMoreDetails)
+			appPath := app.FromPath
+			var from string
+			var to string
+
+			from = args[1]
+			if len(args) == 2 {
+				to = "master"
+			} else {
+				to = args[2]
+			}
+			gitLogPath := new(strings.Builder)
+			g, err := git.NewGitWrapper(appPath)
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(gitLogPath, to)
+			fmt.Fprintf(gitLogPath, "..")
+			fmt.Fprintf(gitLogPath, from)
+
+			cleanAppPath := strings.Replace(appPath, "bosun.yaml", "", 1)
+			svc, err := b.GetIssueService(cleanAppPath)
+			if err != nil {
+				return err
+			}
+
+			changeLogOptions := git.GitChangeLogOptions{
+				Description: detailsFlag,
+				UnknownType: detailsFlag,
+			}
+
+			logs, err := g.ChangeLog(from, to, svc, changeLogOptions)
+			if err != nil {
+				return errors.New("Check that the app and branches are correct")
+			}
+
+			color.Green(logs.OutputMessage)
+
+			return err
+		},
+	},
+	func(cmd *cobra.Command) {
+		cmd.Flags().BoolP(ArgChangeLogMoreDetails, "d", false, "Will output more details")
 	})

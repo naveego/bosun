@@ -139,7 +139,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			}
 
 			if breakingChangesDescriptionAns != "" {
-				fmt.Fprintf(builder, "%s\n", breakingChangesAns)
+				fmt.Fprintf(builder, "%s\n", breakingChangesDescriptionAns)
 			}
 
 			if affectedIssueAns != "" {
