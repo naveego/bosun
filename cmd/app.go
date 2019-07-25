@@ -148,10 +148,14 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 		if len(args) == 2 {
 			bump = args[1]
 		} else {
+			pkg.Log.Info("Computing version bump from commits...")
 			changes, err := g.ChangeLog(app.Branching.Develop, "HEAD", nil, git.GitChangeLogOptions{})
 			if err != nil {
 				return errors.Wrap(err, "computing bump")
 			}
+
+			pkg.Log.Info(changes.OutputMessage)
+
 			bump = strings.ToLower(changes.VersionBump)
 		}
 
