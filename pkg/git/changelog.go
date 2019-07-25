@@ -2,7 +2,6 @@ package git
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/issues"
 	"regexp"
 	"strconv"
@@ -35,11 +34,11 @@ type GitChangeLogOptions struct {
 }
 
 const (
-	StateLookingForCommitNumber = 0
-	StateLookingForAuthor       = 1
-	StateLookingForDate         = 2
-	StateLookingForTitle        = 3
-	StateLookingForBody         = 4
+	StateLookingForCommitNumber = iota
+	StateLookingForAuthor
+	StateLookingForDate
+	StateLookingForTitle
+	StateLookingForBody
 )
 
 var allTypes = []string{"feat", "perf", "test", "chore", "fix", "docs", "style", "refactor"}
@@ -73,9 +72,8 @@ var skipKeys = []*regexp.Regexp{
 var bumpMap = map[string]string{"fix": Patch, "docs": Patch, "style": Patch, "refactor": Patch,
 	"feat": Minor, "perf": Minor, "test": Minor, "chore": Minor}
 
-func (g GitWrapper) ChangeLog(logPath string, command string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
-	args := append([]string{"-C", g.dir, "log"}, logPath, command)
-	out, err := pkg.NewCommand("git", args...).RunOut()
+func (g GitWrapper) ChangeLog(from, to string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
+	out, err := g.Exec("log", fmt.Sprintf("%s..%s", to, from))
 	owner, repo := GetOrgAndRepoFromPath(g.dir)
 
 	var allChanges = GitChanges{}
@@ -86,7 +84,8 @@ func (g GitWrapper) ChangeLog(logPath string, command string, svc issues.IssueSe
 	var bodyBuilder = strings.Builder{}
 	var commitType string
 	var state = StateLookingForCommitNumber
-	for _, line := range regexp.MustCompile(`\n`).Split(out, -1) {
+	lines := strings.Split(out, "\n")
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		for _, skipper := range skipKeys {
 			if skipper.MatchString(line) {
@@ -170,7 +169,10 @@ func (g GitWrapper) ChangeLog(logPath string, command string, svc issues.IssueSe
 
 				issue := RegexGetIssue.FindString(line)
 				issueLink := GetIssueLink(g.dir, issue)
-				storyLink, _ := GetStoryLink(svc, owner, repo, issue)
+				var storyLink string
+				if svc != nil {
+					storyLink, _ = GetStoryLink(svc, owner, repo, issue)
+				}
 				change := GitChange{
 					CommitID:       commitId,
 					Committer:      committer,

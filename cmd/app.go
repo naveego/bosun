@@ -46,13 +46,13 @@ const (
 	ArgAppValueSet        = "value-sets"
 	ArgAppSet             = "set"
 
-	ArgAppDeployDeps    = "deploy-deps"
-	ArgAppFromRelease   = "release"
-	ArgAppLatest        = "latest"
-	ArgAppDeletePurge   = "purge"
-	ArgAppCloneDir      = "dir"
-	ArgFilteringInclude = "include"
-	ArgFilteringExclude = "exclude"
+	ArgAppDeployDeps        = "deploy-deps"
+	ArgAppFromRelease       = "release"
+	ArgAppLatest            = "latest"
+	ArgAppDeletePurge       = "purge"
+	ArgAppCloneDir          = "dir"
+	ArgFilteringInclude     = "include"
+	ArgFilteringExclude     = "exclude"
 	ArgChangeLogMoreDetails = "details"
 )
 
@@ -121,16 +121,16 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 })
 
 var appBumpCmd = addCommand(appCmd, &cobra.Command{
-	Use:   "bump {name} {major|minor|patch|major.minor.patch}",
-	Args:  cobra.ExactArgs(2),
-	Short: "Updates the version of an app.",
+	Use:   "bump {name} [major|minor|patch|major.minor.patch]",
+	Args:  cobra.RangeArgs(1, 2),
+	Short: "Updates the version of an app. If bump argument is not provided, it will be computed from the diff from the default branch.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosun()
-		app := mustGetApp(b, args)
+		app := mustGetApp(b, args[:1])
 
-		if app.IsFromManifest {
-			return errors.New("bump is only available for apps which you have added to bosun")
+		if app.Repo.CheckCloned() != nil {
+			return errors.New("bump is only available for apps which you have cloned")
 		}
 
 		g, err := git.NewGitWrapper(app.FromPath)
@@ -138,14 +138,24 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		wantsTag := viper.GetBool(ArgAppBumpTag)
-		if wantsTag {
-			if g.IsDirty() {
-				return errors.New("cannot bump version and tag when workspace is dirty")
-			}
+		if g.IsDirty() {
+			return errors.New("repo is dirty")
 		}
 
-		err = appBump(b, app, args[1])
+		wantsTag := viper.GetBool(ArgAppBumpTag)
+
+		var bump string
+		if len(args) == 2 {
+			bump = args[1]
+		} else {
+			changes, err := g.ChangeLog(app.Branching.Develop, "HEAD", nil, git.GitChangeLogOptions{})
+			if err != nil {
+				return errors.Wrap(err, "computing bump")
+			}
+			bump = strings.ToLower(changes.VersionBump)
+		}
+
+		err = appBump(b, app, bump)
 		if err != nil {
 			return err
 		}
@@ -157,7 +167,9 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 			}
 		}
 
-		return nil
+		_, err = g.Exec("push", "--tags")
+
+		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgAppBumpTag, false, "Create and push a git tag for the version.")
@@ -1233,7 +1245,7 @@ var appChangeLog = addCommand(
 				UnknownType: detailsFlag,
 			}
 
-			logs, err := g.ChangeLog(gitLogPath.String(), cleanAppPath, svc, changeLogOptions)
+			logs, err := g.ChangeLog(from, to, svc, changeLogOptions)
 			if err != nil {
 				return errors.New("Check that the app and branches are correct")
 			}
