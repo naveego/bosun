@@ -482,6 +482,10 @@ func (b *Bosun) AddImport(file string) bool {
 	return true
 }
 
+func (b *Bosun) ClearImports() {
+	b.ws.Imports = []string{}
+}
+
 func (b *Bosun) IsClusterAvailable() bool {
 	env := b.GetCurrentEnvironment()
 	if b.clusterAvailable == nil {

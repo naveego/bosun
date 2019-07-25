@@ -18,6 +18,11 @@ func (r *LocalRepo) mustBeCloned() {
 	}
 }
 
+func (r *LocalRepo) Git() (git.GitWrapper, error) {
+	g, err := git.NewGitWrapper(r.Path)
+	return g, err
+}
+
 func (r *LocalRepo) IsDirty() bool {
 	r.mustBeCloned()
 	g, _ := git.NewGitWrapper(r.Path)
@@ -59,6 +64,7 @@ func (r *LocalRepo) Push() error {
 	return err
 }
 
+// SwitchToNewBranch pulls the current branch, then creates a new branch based on it and checks it out.
 func (r *LocalRepo) SwitchToNewBranch(ctx BosunContext, parent, child string) error {
 	ctx.Log.Infof("Creating branch %s...", child)
 	g := r.git()
