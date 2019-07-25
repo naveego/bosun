@@ -67,7 +67,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 	if parent != nil {
 		_, _, parentIssueNumber, err := parent.Parts()
 		if err != nil {
-			return -1, errors.Wrapf(err, "invalid parent")
+			return -1, errors.Wrap(err, "invalid parent")
 		}
 		err = s.AddDependency(newIssueRef, *parent, parentIssueNumber)
 		if err != nil {

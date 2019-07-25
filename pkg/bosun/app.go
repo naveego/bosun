@@ -591,11 +591,18 @@ func (a *App) BumpVersion(ctx BosunContext, bump string) error {
 		}
 	}
 
-	if a.GoVersionFile != "" {
-
+	err = a.Parent.Save()
+	if err != nil {
+		return errors.Wrap(err, "save parent file")
 	}
 
-	return a.Parent.Save()
+	commitMsg := fmt.Sprintf("chore(version): %s bump to %s", bump, a.Version)
+	err = a.Repo.LocalRepo.Commit(commitMsg, ".")
+	if err != nil {
+		return errors.Wrap(err, "commit bumped files")
+	}
+
+	return nil
 }
 
 func (a *App) getChartAsMap() (map[string]interface{}, error) {
