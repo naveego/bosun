@@ -13,18 +13,19 @@ type GitChange struct {
 	Valid          bool
 	Title          string
 	Body           string
+	Date           string
 	Issue          string
+	CommitID       string
 	CommitType     string
 	Committer      string
 	BreakingChange bool
 	StoryLink      string
 	IssueLink      string
-	IsSquashMerge  bool
 }
 
 type GitChangeLog struct {
-	VersionBump string
-	Changes     GitChanges
+	VersionBump   string
+	Changes       GitChanges
 	OutputMessage string
 }
 
@@ -33,93 +34,206 @@ type GitChangeLogOptions struct {
 	UnknownType bool
 }
 
+const (
+	StateLookingForCommitNumber = 0
+	StateLookingForAuthor       = 1
+	StateLookingForDate         = 2
+	StateLookingForTitle        = 3
+	StateLookingForBody         = 4
+)
+
+var allTypes = []string{"feat", "perf", "test", "chore", "fix", "docs", "style", "refactor"}
+var allCommitTypeString = strings.Join(allTypes, "|")
+
+// TODO: imporve Regex with $ and ^ to be robust
+var RegexMatchCommitID = regexp.MustCompile(`commit .{40}`)
+var RegexMatchFormattedTitle = regexp.MustCompile(`(` + allCommitTypeString + `)(\([^)]+\))?:(.*)`)
+var RegexMatchAlternativeTitle = regexp.MustCompile(`^\* .*`)
+var RegexMatchDate = regexp.MustCompile(`Date: .*`)
+var RegexMatchAuthor = regexp.MustCompile(`Author: .*`)
+var RegexMatchIssue = regexp.MustCompile(`\s+(resolves )?(@|#)?[0-9]+$|^[0-9]+$`)
+
+var RegexGetAuthor = regexp.MustCompile(`Author: `)
+var RegexGetCommitType = regexp.MustCompile(`(` + allCommitTypeString + `)`)
+var RegexGetCommitId = regexp.MustCompile(` .{40}`)
+var RegexGetDate = regexp.MustCompile(`Date: `)
+var RegexGetIssue = regexp.MustCompile(`[0-9]+$`)
+
 const Major = "major"
 const Minor = "minor"
 const Patch = "patch"
 const Unknown = "unknown"
 
 type GitChanges []GitChange
-var allTypes = []string{"feat","perf","test","chore","fix","docs","style","refactor"}
+
+var skipKeys = []*regexp.Regexp{
+	regexp.MustCompile(`^\s*$`),
+}
+
 var bumpMap = map[string]string{"fix": Patch, "docs": Patch, "style": Patch, "refactor": Patch,
-								"feat": Minor, "perf": Minor, "test": Minor, "chore": Minor}
+	"feat": Minor, "perf": Minor, "test": Minor, "chore": Minor}
 
 func (g GitWrapper) ChangeLog(logPath string, command string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
 	args := append([]string{"-C", g.dir, "log"}, logPath, command)
 	out, err := pkg.NewCommand("git", args...).RunOut()
-	commits := regexp.MustCompile(`commit .{40}`).Split(out, -1)
 	owner, repo := GetOrgAndRepoFromPath(g.dir)
-	gitChangesHolder := make([]GitChange, len(commits)-1)
-	squashMergeChangesHolder := make([]GitChange, 0)
 
-	for index, commit := range commits[1:] {
-		lines := regexp.MustCompile(`\n`).Split(commit, -1)
-		if len(lines) < 5 {
-			continue
-		}
-
-		title := GetCommitTitle(lines)
-		body := GetBody(lines)
-
-		if !CommitIsValid(title) {
-			change := GitChange{
-				Body:           body,
+	var allChanges = GitChanges{}
+	var committer string
+	var commitId string
+	var title string
+	var date string
+	var bodyBuilder = strings.Builder{}
+	var commitType string
+	var state = StateLookingForCommitNumber
+	for _, line := range regexp.MustCompile(`\n`).Split(out, -1) {
+		line = strings.TrimSpace(line)
+		for _, skipper := range skipKeys {
+			if skipper.MatchString(line) {
+				goto End
 			}
-			gitChangesHolder[index] = change
+		}
+
+		switch state {
+		case StateLookingForCommitNumber:
+			commitIdMatch := RegexMatchCommitID.FindStringSubmatch(line)
+			if len(commitIdMatch) > 0 {
+				commitId = RegexGetCommitId.FindString(commitIdMatch[0])
+				state = StateLookingForAuthor
+				continue
+			}
+
+		case StateLookingForAuthor:
+			committerMatch := RegexMatchAuthor.FindStringSubmatch(line)
+			if len(committerMatch) > 0 {
+				committer = RegexGetAuthor.Split(committerMatch[0], -1)[1]
+				state = StateLookingForDate
+				continue
+			}
+
+		case StateLookingForDate:
+			dateMatch := RegexMatchDate.FindStringSubmatch(line)
+			if len(dateMatch) > 0 {
+				date = RegexGetDate.Split(dateMatch[0], -1)[1]
+				state = StateLookingForTitle
+				continue
+			}
+		case StateLookingForTitle:
+			titleMatch := RegexMatchFormattedTitle.FindString(line)
+			commitIdMatch := RegexMatchCommitID.FindStringSubmatch(line)
+			if len(commitIdMatch) > 0 {
+				commitId = RegexGetCommitId.FindString(commitIdMatch[0])
+				bodyBuilder.Reset()
+				state = StateLookingForAuthor
+
+			} else if len(titleMatch) > 0 {
+				title = line
+				commitType = RegexGetCommitType.FindString(title)
+				state = StateLookingForBody
+
+			} else {
+				// Line is not a standard commit
+				change := GitChange{
+					CommitID:  commitId,
+					Committer: committer,
+					Body:      CleanFrontAsterisk(line),
+					Date:      date,
+					Valid:     false,
+				}
+				allChanges = append(allChanges, change)
+				state = StateLookingForTitle
+
+			}
+			continue
+		case StateLookingForBody:
+			commitIdMatch := RegexMatchCommitID.FindStringSubmatch(line)
+			titleMatch := RegexMatchFormattedTitle.FindString(line)
+			alternativeTitleMatch := RegexMatchAlternativeTitle.FindString(line)
+			issueMatch := RegexMatchIssue.MatchString(line)
+			if len(commitIdMatch) > 0 {
+				change := GitChange{
+					CommitID:       commitId,
+					Committer:      committer,
+					CommitType:     commitType,
+					Title:          CleanFrontAsterisk(title),
+					Body:           bodyBuilder.String(),
+					Date:           date,
+					Valid:          true,
+					BreakingChange: CommitHasBreakingChange(bodyBuilder.String()),
+				}
+				allChanges = append(allChanges, change)
+				commitId = RegexGetCommitId.FindString(commitIdMatch[0])
+				bodyBuilder.Reset()
+				state = StateLookingForAuthor
+
+			} else if issueMatch {
+
+				issue := RegexGetIssue.FindString(line)
+				issueLink := GetIssueLink(g.dir, issue)
+				storyLink, _ := GetStoryLink(svc, owner, repo, issue)
+				change := GitChange{
+					CommitID:       commitId,
+					Committer:      committer,
+					CommitType:     commitType,
+					Title:          CleanFrontAsterisk(title),
+					Body:           bodyBuilder.String(),
+					Date:           date,
+					Valid:          true,
+					IssueLink:      issueLink,
+					Issue:          issue,
+					StoryLink:      storyLink,
+					BreakingChange: CommitHasBreakingChange(bodyBuilder.String()),
+				}
+				allChanges = append(allChanges, change)
+				bodyBuilder.Reset()
+				state = StateLookingForTitle
+
+			} else if len(titleMatch) > 0 {
+				change := GitChange{
+					CommitID:       commitId,
+					Committer:      committer,
+					CommitType:     commitType,
+					Title:          CleanFrontAsterisk(title),
+					Body:           bodyBuilder.String(),
+					Date:           date,
+					Valid:          true,
+					BreakingChange: CommitHasBreakingChange(bodyBuilder.String()),
+				}
+				allChanges = append(allChanges, change)
+				title = RegexMatchFormattedTitle.FindString(line)
+				bodyBuilder.Reset()
+				state = StateLookingForBody
+
+			} else if len(alternativeTitleMatch) > 0 {
+				change := GitChange{
+					CommitID:  commitId,
+					Committer: committer,
+					Body:      CleanFrontAsterisk(line),
+					Date:      date,
+					Valid:     false,
+				}
+				allChanges = append(allChanges, change)
+				state = StateLookingForTitle
+			} else {
+				fmt.Fprintf(&bodyBuilder, "%s\n", line)
+			}
 			continue
 		}
 
-		committer := GetCommitter(lines)
-		commitType := GetCommitType(title)
-		breakingChangeFound := CommitHasBreakingChange(body)
-		issueNum := GetIssueNum(body)
-		issueLink := GetIssueLink(g.dir, issueNum)
-		storyLink, _ := GetStoryLink(svc, owner, repo, issueNum)
-
-		change := GitChange{
-			Valid:          true,
-			Title:          title,
-			Body:           body,
-			Issue:          issueNum,
-			IssueLink: 		issueLink,
-			StoryLink:      storyLink,
-			Committer:      committer,
-			CommitType:     commitType,
-			BreakingChange: breakingChangeFound,
-		}
-
-		if isSquashMerge(body) {
-
-			squashMergeChangesHolder =  append(squashMergeChangesHolder, GetSquashMergeChanges(&change)...)
-		}
-
-		gitChangesHolder[index] = change
-
+	End:
 	}
-	gitChangesHolder = append(gitChangesHolder, squashMergeChangesHolder...)
-	changes := GitChanges(gitChangesHolder)
-	versionBump := changes.GetVersionBump()
+
 	changeLog := GitChangeLog{
-		VersionBump: versionBump,
-		Changes:     changes,
-		OutputMessage: GetChangeLogOutputMessage(versionBump, changes, options),
+		VersionBump:   allChanges.GetVersionBump(),
+		Changes:       allChanges,
+		OutputMessage: GetChangeLogOutputMessage(allChanges.GetVersionBump(), allChanges, options),
 	}
-
 	return changeLog, err
 }
 
-func CommitIsValid(title string) bool {
-	return regexp.MustCompile(strings.Join(allTypes, "|")).MatchString(title)
-}
-
 func CommitHasBreakingChange(body string) bool {
-	var breakingChangeFound = true
-	breakingChangeFormat := regexp.MustCompile(`BREAKING CHANGE: .*\n`)
-	breakingChange := breakingChangeFormat.FindAllString(body, -1)
-
-	if len(breakingChange) == 0 {
-		breakingChangeFound = false
-	}
-	return breakingChangeFound
+	breakingChangeFormat := regexp.MustCompile(`BREAKING CHANGE: .*`)
+	return breakingChangeFormat.MatchString(body)
 }
 
 func (g GitChanges) GetVersionBump() string {
@@ -164,7 +278,7 @@ func GetStoryLink(svc issues.IssueService, owner string, repo string, issue stri
 		// this means the issue number must be wrong
 		return "", err
 	}
-	fmt.Fprintf(&builder, "https://github.com/%s/%s/issues/%s",iss[1].Org,iss[1].Repo,strconv.Itoa(iss[1].Number))
+	fmt.Fprintf(&builder, "https://github.com/%s/%s/issues/%s", iss[1].Org, iss[1].Repo, strconv.Itoa(iss[1].Number))
 
 	return builder.String(), err
 }
@@ -174,41 +288,6 @@ func GetIssueLink(dir string, issue string) string {
 	var builder = strings.Builder{}
 	fmt.Fprintf(&builder, "https://%s/issues/%s", linkFormat.FindString(dir), issue)
 	return builder.String()
-}
-
-func GetCommitTitle(lines []string) string {
-	return lines[4]
-}
-
-func GetBody(lines []string) string {
-	return strings.Join(lines[5:], "\n")
-}
-
-func GetCommitter(lines []string) string {
-	return regexp.MustCompile(`Author: `).Split(lines[1], 2)[1]
-}
-
-func isSquashMerge(body string) bool {
-	titleFormat :=  regexp.MustCompile(`.*\(.*\): .*\n`)
-	titleMatches := titleFormat.FindAllString(body, -1)
-	if len(titleMatches) > 0 {
-		return true
-	}
-	return false
-}
-
-func GetCommitType(title string) string {
-	return regexp.MustCompile(strings.Join(allTypes, "|")).FindString(title)
-}
-
-func GetIssueNum(body string) string {
-	issueNoFormat := regexp.MustCompile(`[0-9]+`)
-	issueNoMatches := issueNoFormat.FindAllString(body, -1)
-	if len(issueNoMatches) == 0{
-		return ""
-	}
-	issue := issueNoMatches[len(issueNoMatches)-1]
-	return issue
 }
 
 func GetChangeLogOutputMessage(bump string, changes GitChanges, options GitChangeLogOptions) string {
@@ -247,78 +326,64 @@ func GetChangeLogOutputMessage(bump string, changes GitChanges, options GitChang
 		}
 	}
 
-
 	return output.String()
 }
 
 func BuildOutput(changes GitChange, options GitChangeLogOptions) string {
 	var builder = strings.Builder{}
-	fmt.Fprintf(&builder, "%s, by %s\n", changes.Title, changes.Committer)
+	var bodyArr []string
+	fmt.Fprintf(&builder, "\t%s, by %s\n", changes.Title, changes.Committer)
 	if options.Description {
-		fmt.Fprintf(&builder, "\t %s", changes.Body)
-		if len(changes.StoryLink) > 0 {
-			fmt.Fprintf(&builder, "\n\t Issue: %s   Story: %s\n", changes.IssueLink, changes.StoryLink)
+		if len(changes.Body) > 0 {
+			var formattedBody string
+			if len(changes.Body) > 50 {
+				formattedBody = LongBodyFormatter(changes.Body)
+			} else {
+				formattedBody = changes.Body
+			}
+			bodyArr = strings.Split(formattedBody, "\n")
+			body := strings.Join(bodyArr[:len(bodyArr)-1], "\n\t\t")
+
+			fmt.Fprintf(&builder, "\t\t%s\n", body)
 		}
-		if changes.IsSquashMerge {
-			fmt.Fprintf(&builder, "\t Squash merge\n")
+
+		if len(changes.StoryLink) > 0 {
+			fmt.Fprintf(&builder, "\n\t\tIssue: %s   Story: %s\n", changes.IssueLink, changes.StoryLink)
 		}
 	}
 	return strings.Replace(builder.String(), "\n\n", "\n", -1)
 }
 
-func BuildUnknownOutput(builder* strings.Builder, changes GitChange) {
-	fmt.Fprintf(builder, "%s\n", changes.Body)
+func BuildUnknownOutput(builder *strings.Builder, changes GitChange) {
+	fmt.Fprintf(builder, "\t%s\n", changes.Body)
 }
 
-func GetSquashMergeChanges(change* GitChange) []GitChange {
-	squashMergeChanges := make([]GitChange, 0)
-	bodyArr := strings.Split(change.Body,"\n")
-	issueLine := bodyArr[len(bodyArr) - 1]
-	var title = ""
-	var builder = strings.Builder{}
-	for _, line := range bodyArr[1:] {
-		if regexp.MustCompile(`.*\(.*\): .*`).MatchString(line) {
-			if title != "" {
-				fmt.Fprintf(&builder, "%s\n", issueLine)
-				squashChange := GitChange{
-					Valid:          true,
-					Title:          title,
-					Body:           builder.String(),
-					Issue:          change.Issue,
-					IssueLink: 		change.IssueLink,
-					StoryLink:      change.StoryLink,
-					Committer:      change.Committer,
-					CommitType:     GetCommitType(title),
-					BreakingChange: CommitHasBreakingChange(builder.String()),
-					IsSquashMerge: true,
-				}
-
-				squashMergeChanges = append(squashMergeChanges, squashChange)
-				builder = strings.Builder{}
-			}
-			title = line
-			continue
+func LongBodyFormatter(body string) string {
+	var bodyBuilder = strings.Builder{}
+	var tooLong = false
+	var letterCount = 1
+	var removedNewLinesBody = strings.Join(strings.Split(body, "\n"), " ")
+	for _, c := range removedNewLinesBody {
+		fmt.Fprintf(&bodyBuilder, "%c", c)
+		if (c > 'a' && c < 'z') || (c > 'A' && c < 'Z') {
+			letterCount++
 		}
-		fmt.Fprintf(&builder, "%s\n", line)
-	}
-
-	if title != "" {
-		squashChange := GitChange{
-			Valid:          true,
-			Title:          title,
-			Body:           builder.String(),
-			Issue:          change.Issue,
-			IssueLink: 		change.IssueLink,
-			StoryLink:      change.StoryLink,
-			Committer:      change.Committer,
-			CommitType:     GetCommitType(title),
-			BreakingChange: CommitHasBreakingChange(builder.String()),
-			IsSquashMerge: true,
+		if letterCount%50 == 0 {
+			tooLong = true
 		}
-		squashMergeChanges = append(squashMergeChanges, squashChange)
+		if tooLong && c == ' ' {
+			fmt.Fprintf(&bodyBuilder, "\n")
+			tooLong = false
+		}
 	}
-	builder = strings.Builder{}
-	fmt.Fprintf(&builder, "%s\n%s", bodyArr[0], issueLine)
-	change.Body = builder.String()
-	return squashMergeChanges
+	return bodyBuilder.String()
+
+}
+
+func CleanFrontAsterisk(title string) string {
+	titleMatch := RegexMatchAlternativeTitle.FindString(title)
+	if len(titleMatch) > 0 {
+		return strings.Replace(title, "* ", "", 1)
+	}
+	return title
 }

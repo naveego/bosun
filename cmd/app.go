@@ -1235,7 +1235,7 @@ var appChangeLog = addCommand(
 
 			logs, err := g.ChangeLog(gitLogPath.String(), cleanAppPath, svc, changeLogOptions)
 			if err != nil {
-				return err //errors.New("Check that the app and branches are correct")
+				return errors.New("Check that the app and branches are correct")
 			}
 
 			color.Green(logs.OutputMessage)
