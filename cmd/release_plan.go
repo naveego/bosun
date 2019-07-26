@@ -157,6 +157,7 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 		}
 		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
 			plan.MarkDeleted()
+			p.NextReleaseName = ""
 			err = p.Save(b.NewContext())
 			return err
 		}
@@ -320,7 +321,7 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 					return err
 				}
 			}
-			appPlan.Bump = bump
+			appPlan.BumpOverride = bump
 
 			updated := MustYaml(appPlan)
 

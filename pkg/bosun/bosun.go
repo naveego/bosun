@@ -128,10 +128,13 @@ func (b *Bosun) GetAppsSortedByName() []*App {
 	return ms
 }
 
-// GetAllProvidedApps gets all apps from all providers, ignoring provider priority.
-func (b *Bosun) GetAllProvidedApps() (AppList, error) {
+// GetAllVersionsOfAllApps gets all apps from all providers, ignoring provider priority.
+func (b *Bosun) GetAllVersionsOfAllApps(providerPriority ...string) (AppList, error) {
+	if len(providerPriority) == 0 {
+		providerPriority = b.params.ProviderPriority
+	}
 
-	apps, err := b.appProvider.GetAllAppsFromProviders(b.params.ProviderPriority)
+	apps, err := b.appProvider.GetAllAppsFromProviders(providerPriority)
 
 	return apps, err
 
@@ -234,6 +237,11 @@ func (b *Bosun) GetScript(name string) (*Script, error) {
 
 func (b *Bosun) GetApp(name string) (*App, error) {
 	app, err := b.appProvider.GetApp(name, b.params.ProviderPriority)
+	return app, err
+}
+
+func (b *Bosun) GetAppFromProvider(appName, providerName string) (*App, error) {
+	app, err := b.appProvider.GetAppFromProvider(appName, providerName)
 	return app, err
 }
 

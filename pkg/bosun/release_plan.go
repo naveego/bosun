@@ -2,10 +2,8 @@ package bosun
 
 import (
 	"fmt"
-	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
-	"strings"
 )
 
 type ReleasePlan struct {
@@ -15,7 +13,7 @@ type ReleasePlan struct {
 }
 
 func (ReleasePlan) Headers() []string {
-	return []string{"Name", "Previous Release", "Previous Version", "Version", "From Branch", "To Branch", "Bump", "Deploy"}
+	return []string{"Name", "Provider", "Deploy"}
 }
 
 func (r ReleasePlan) Rows() [][]string {
@@ -23,19 +21,9 @@ func (r ReleasePlan) Rows() [][]string {
 	for _, name := range util.SortedKeys(r.Apps) {
 		appPlan := r.Apps[name]
 
-		version := appPlan.CurrentVersionInMaster
-		if version != appPlan.PreviousReleaseVersion {
-			version = color.YellowString("%s", version)
-		}
-
 		out = append(out, []string{
 			appPlan.Name,
-			appPlan.PreviousReleaseName,
-			appPlan.PreviousReleaseVersion,
-			version,
-			appPlan.FromBranch,
-			appPlan.ToBranch,
-			appPlan.Bump,
+			appPlan.String(),
 			fmt.Sprint(appPlan.Deploy),
 		})
 	}
@@ -57,49 +45,31 @@ func NewReleasePlan(releaseMetadata *ReleaseMetadata) *ReleasePlan {
 }
 
 type AppPlan struct {
-	Name                        string   `yaml:"name"`
-	Repo                        string   `yaml:"repo"`
-	Bump                        string   `yaml:"bump"`
-	Upgrade                     bool     `yaml:"upgrade"`
-	Deploy                      bool     `yaml:"deploy"`
-	ToBranch                    string   `yaml:"toBranch"`
-	FromBranch                  string   `yaml:"fromBranch"`
-	Reason                      string   `yaml:"reason"`
-	PreviousReleaseName         string   `yaml:"previousRelease"`
-	PreviousReleaseVersion      string   `yaml:"previousReleaseVersion"`
-	CurrentVersionInMaster      string   `yaml:"currentVersionInMaster"`
-	CommitsNotInPreviousRelease []string `yaml:"commitsNotInPreviousRelease,omitempty"`
+	Name           string                     `yaml:"name"`
+	Deploy         bool                       `yaml:"deploy"`
+	ChosenProvider string                     `yaml:"chosenProvider"`
+	BumpOverride   string                     `yaml:"bumpOverride,omitempty"`
+	Providers      map[string]AppProviderPlan `yaml:"providers"`
 }
 
-func (a *AppPlan) IsBumpUnset() bool {
-	return a.Bump == "" || strings.HasPrefix(strings.ToLower(a.Bump), "no")
+type AppProviderPlan struct {
+	Version   string   `yaml:"version"`
+	Bump      string   `yaml:"bump,omitempty"`
+	Changelog []string `yaml:"changelog,omitempty"`
+}
+
+func (a *AppPlan) IsProviderChosen() bool {
+	return a.ChosenProvider != ""
 }
 
 func (a AppPlan) String() string {
-
-	w := new(strings.Builder)
-	_, _ = fmt.Fprintf(w, "%s: ", a.Name)
-	if a.PreviousReleaseName == "" {
-		_, _ = fmt.Fprintf(w, "never released;")
-	} else {
-		_, _ = fmt.Fprintf(w, "previously released from %s;", a.PreviousReleaseName)
-	}
-
-	if a.FromBranch != "" {
-		if a.ToBranch != "" {
-			_, _ = fmt.Fprintf(w, "branching: %s -> %s;", a.FromBranch, a.ToBranch)
-		} else {
-			_, _ = fmt.Fprintf(w, "using branch: %s;", a.FromBranch)
+	if a.ChosenProvider != "" {
+		providerPlan, ok := a.Providers[a.ChosenProvider]
+		if !ok {
+			return fmt.Sprintf("Invalid provider %q", a.ChosenProvider)
 		}
+		return fmt.Sprintf("%s: %s", a.ChosenProvider, providerPlan.Version)
+	}
 
-	}
-	if a.Bump != "" {
-		_, _ = fmt.Fprintf(w, "bump: %s;", a.Bump)
-	}
-	if a.Deploy {
-		_, _ = fmt.Fprint(w, " (will be deployed by default) ")
-	} else {
-		_, _ = fmt.Fprint(w, " (will NOT be deployed by default) ")
-	}
-	return w.String()
+	return "no chosen provider"
 }

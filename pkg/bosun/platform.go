@@ -48,7 +48,7 @@ type Platform struct {
 	NextReleaseName     string                      `yaml:"nextReleaseName,omitempty"`
 	releaseManifests    map[string]*ReleaseManifest `yaml:"-"`
 	// cache of repos which have been fetched during this run
-	fetched map[string][]string `yaml:"-"`
+	fetched map[string]bool `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -256,32 +256,9 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 
 	plan := NewReleasePlan(metadata)
 
-	for _, appManifest := range p.Apps {
-		appName := appManifest.Name
-		log := ctx.Log.WithField("app", appName)
-
-		appPlan := &AppPlan{
-			Name:                appName,
-			Repo:                appManifest.Repo,
-			PreviousReleaseName: UnstableName,
-			FromBranch:          p.MasterBranch,
-			ToBranch:            manifest.Branch,
-		}
-		app, err := ctx.Bosun.GetApp(appName)
-		if err != nil {
-			log.WithError(err).Warn("Could not get app.")
-			continue
-		}
-		if !app.HasChart() {
-			continue
-		}
-
-		err = p.UpdateAppPlanWithChanges(ctx, appPlan, app, settings.BranchParent)
-		if err != nil {
-			return nil, errors.Wrapf(err, "updated app %q with changes", app.Name)
-		}
-
-		plan.Apps[appName] = appPlan
+	err = p.UpdatePlan(ctx, plan)
+	if err != nil {
+		return nil, err
 	}
 
 	ctx.Log.Infof("Created new release plan %s.", manifest)
@@ -294,63 +271,82 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	return plan, nil
 }
 
-func (p *Platform) UpdateAppPlanWithChanges(ctx BosunContext, appPlan *AppPlan, app *App, branchParent string) error {
-	if p.fetched == nil {
-		p.fetched = map[string][]string{}
+func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
+	apps, err := ctx.Bosun.GetAllVersionsOfAllApps(WorkspaceProviderName, StableName)
+	if err != nil {
+		return err
 	}
 
-	appName := appPlan.Name
-	log := ctx.Log.WithField("app", appName)
+	if p.fetched == nil {
+		p.fetched = map[string]bool{}
+	}
 
-	previousAppMetadata, err := p.GetStableAppMetadata(appPlan.Name)
+	grouped := apps.GroupByAppThenProvider()
 
-	if previousAppMetadata != nil {
+	for appName, byProvider := range grouped {
 
-		log.Debug("Comparing to previous release...")
+		log := ctx.Log.WithField("app", appName)
 
-		var previousReleaseBranch string
-
-		appPlan.PreviousReleaseName = previousAppMetadata.PinnedReleaseVersion.String()
-		// if we have a branch parent, and this app was released in it
-		// then we should branch off that branch
-		if branchParent != "" && previousAppMetadata.Branch == branchParent {
-			appPlan.FromBranch = previousAppMetadata.Branch
-		} else {
-			appPlan.FromBranch = UnstableName
+		appPlan, ok := plan.Apps[appName]
+		if !ok {
+			appPlan = &AppPlan{
+				Name:      appName,
+				Providers: map[string]AppProviderPlan{},
+			}
 		}
 
-		previousReleaseBranch = previousAppMetadata.Branch
-
-		appPlan.PreviousReleaseVersion = previousAppMetadata.Version.String()
-		appPlan.CurrentVersionInMaster = app.Version.String()
-
-		if app.BranchForRelease && app.IsRepoCloned() {
-			log.Debug("Finding changes from previous release...")
-
-			var changes []string
-			var ok bool
-			if changes, ok = p.fetched[app.RepoName]; !ok {
-				localRepo := app.Repo.LocalRepo
-				log.Info("Fetching changes...")
-				g := localRepo.git()
-
-				err = g.Fetch()
-				if err != nil {
-					return errors.Wrapf(err, "fetching commits for %q", appName)
-				} else {
-					changes, err = g.ExecLines("log", "--left-right", "--cherry-pick", "--no-merges", "--oneline", "--no-color", fmt.Sprintf("%s...origin/%s", p.MasterBranch, previousReleaseBranch))
-					if err != nil {
-						return errors.Wrapf(err, "checking for changes for %q", appName)
-					}
-				}
-
-				log.Infof("Fetched changes (found %d)", len(changes))
-
-				p.fetched[app.RepoName] = changes
+		for providerName, appVersion := range byProvider {
+			appProviderPlan := AppProviderPlan{
+				Version: appVersion.Version.String(),
 			}
 
-			appPlan.CommitsNotInPreviousRelease = changes
+			if providerName == WorkspaceProviderName {
+				cloned := appVersion.Repo.CheckCloned() == nil
+				owned := appVersion.BranchForRelease
+				if cloned && owned {
+					localRepo := appVersion.Repo.LocalRepo
+					g, _ := localRepo.Git()
+					if !p.fetched[appVersion.RepoName] {
+						log.Info("Fetching changes...")
+						err = g.FetchAll()
+						if err != nil {
+							log.WithError(err).Error("Could not fetch changes.")
+						}
+					}
+					previousRelease, err := localRepo.GetMostRecentTagRef("*-*")
+					if err != nil {
+						return errors.Wrapf(err, "could not get most recent tag for %q", appName)
+					}
+
+					changeLog, err := g.ChangeLog(appVersion.Branching.Master, previousRelease, nil, git.GitChangeLogOptions{})
+					if err != nil {
+						return errors.Wrapf(err, "could not get changelog for %q", appName)
+					}
+
+					if len(changeLog.Changes) > 0 {
+						appProviderPlan.Bump = changeLog.VersionBump
+						for _, change := range changeLog.Changes.FilterByBump(git.Major, git.Minor, git.Patch) {
+							appProviderPlan.Changelog = append(appProviderPlan.Changelog, change.Title)
+						}
+					}
+				}
+			}
+
+			appPlan.Providers[providerName] = appProviderPlan
 		}
+
+		// If the app has no changes and the version hasn't been changed manually, we'll default to the stable version
+		versions := map[string]bool{}
+		changeCount := 0
+		for _, appVersion := range appPlan.Providers {
+			versions[appVersion.Version] = true
+			changeCount += len(appVersion.Changelog)
+		}
+		if len(versions) == 1 && changeCount == 0 {
+			appPlan.ChosenProvider = StableName
+		}
+
+		plan.Apps[appName] = appPlan
 	}
 
 	return nil
@@ -371,19 +367,9 @@ func (p *Platform) RePlanRelease(ctx BosunContext) (*ReleasePlan, error) {
 		return nil, errors.Wrapf(err, "could not load release plan; if release is old, move release plan from manifest.yaml to a new plan.yaml file")
 	}
 
-	for appName, appPlan := range plan.Apps {
-		app, err := ctx.Bosun.GetApp(appName)
-		if err != nil {
-			return nil, errors.Wrapf(err, "getting app %q found in plan", appName)
-		}
-		if !app.HasChart() {
-			continue
-		}
-
-		err = p.UpdateAppPlanWithChanges(ctx, appPlan, app, manifest.PreferredParentBranch)
-		if err != nil {
-			return nil, errors.Wrapf(err, "updated app %q with changes", app.Name)
-		}
+	err = p.UpdatePlan(ctx, plan)
+	if err != nil {
+		return nil, err
 	}
 
 	p.NextReleaseName = manifest.Name
@@ -427,28 +413,10 @@ func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResul
 
 		me := multierr.New()
 
-		if appPlan.Upgrade == true {
-			if appPlan.FromBranch == "" {
-				me.Collect(errors.Errorf("upgrade was true but fromBranch was empty"))
-			}
-			if appPlan.ToBranch == "" {
-				me.Collect(errors.Errorf("upgrade was true but toBranch was empty"))
-			}
-			if appPlan.Bump == "" {
-				me.Collect(errors.New("upgrade was true but bump was empty (should be 'none', 'patch', 'minor', or 'major')"))
-			}
-			appPlan.Deploy = true
-		} else {
-			if appPlan.Reason == "" {
-
-				if len(appPlan.CommitsNotInPreviousRelease) > 0 {
-					me.Collect(errors.Errorf("%d change commits detected: if not upgrading, you must provide a reason", len(appPlan.CommitsNotInPreviousRelease)))
-				}
-
-				if appPlan.CurrentVersionInMaster != appPlan.PreviousReleaseVersion {
-					me.Collect(errors.Errorf("version changed from %q to %q: if not upgrading, you must provide a reason", appPlan.PreviousReleaseVersion, appPlan.CurrentVersionInMaster))
-				}
-			}
+		if appPlan.ChosenProvider == "" {
+			me.Collect(errors.New("no provider chosen"))
+		} else if _, ok := appPlan.Providers[appPlan.ChosenProvider]; !ok {
+			me.Collect(errors.Errorf("invalid provider %q", appPlan.ChosenProvider))
 		}
 
 		r.Err = me.ToError()
@@ -468,14 +436,6 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	plan, err := nextRelease.GetPlan()
 	if err != nil {
 		return nil, err
-	}
-
-	previousRelease, err := p.GetStableRelease()
-	if err != nil {
-		previousRelease, err = p.GetUnstableRelease()
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	releaseMetadata := plan.ReleaseMetadata
@@ -499,6 +459,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	}
 
 	for _, appName := range util.SortedKeys(plan.Apps) {
+		var app *App
 		appPlan := plan.Apps[appName]
 
 		validationResult := validationResults[appName]
@@ -506,30 +467,45 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 			return nil, errors.Errorf("app %q failed validation: %s", appName, validationResult.Err)
 		}
 
-		if appPlan.Upgrade {
+		if appPlan.ChosenProvider == WorkspaceProviderName {
 			// we pass the expected version here to avoid multiple bumps
 			// if something goes wrong during branching
-			expectedVersion := semver.New(appPlan.CurrentVersionInMaster)
-			err = releaseManifest.UpgradeApp(ctx, appName, appPlan.FromBranch, appPlan.ToBranch, appPlan.Bump, expectedVersion)
+			providerPlan := appPlan.Providers[WorkspaceProviderName]
+			app, err = ctx.Bosun.GetAppFromProvider(appName, WorkspaceProviderName)
 			if err != nil {
-				return nil, errors.Wrapf(err, "upgrading app %s", appName)
+				return nil, errors.Errorf("app does not exist")
 			}
-		} else {
-			ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName, appPlan.PreviousReleaseName)
-			var appManifest *AppManifest
-			previousReleaseName := appPlan.PreviousReleaseName
-			if previousReleaseName == "" {
-				previousReleaseName = UnstableName
+			if app.BranchForRelease {
+				bump := "none"
+				if providerPlan.Bump != "" {
+					bump = providerPlan.Bump
+				}
+				if appPlan.BumpOverride != "" {
+					bump = appPlan.BumpOverride
+				}
+
+				releaseBranch, err := app.Branching.GetReleaseBranchName(releaseMetadata)
+				if err != nil {
+					return nil, errors.Wrap(err, "create release branch name")
+				}
+
+				err = releaseManifest.UpgradeApp(ctx, appName, app.Branching.Develop, releaseBranch, bump, semver.New(providerPlan.Version))
+				if err != nil {
+					return nil, errors.Wrapf(err, "upgrading app %s", appName)
+				}
 			}
 
-			appManifest, err = previousRelease.GetAppManifest(appName)
+		} else {
+			ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName)
+
+			app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
+			if err != nil {
+				return nil, errors.Wrap(err, "app does not exist")
+			}
+
+			appManifest, err := app.GetManifest(ctx)
 			if err != nil {
 				return nil, err
-			}
-
-			previousReleaseMetadata, _ := p.GetReleaseMetadataByNameOrVersion(previousReleaseName)
-			if previousReleaseMetadata != nil {
-				appManifest.PinToRelease(previousReleaseMetadata)
 			}
 
 			err = releaseManifest.AddApp(appManifest, appPlan.Deploy)

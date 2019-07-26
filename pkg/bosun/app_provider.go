@@ -253,8 +253,25 @@ func (a ChainAppProvider) GetAllAppsFromProviders(providerNames []string) (AppLi
 			}
 
 			for _, app := range apps {
+				app.Provider = provider
 				out = append(out, app)
 			}
+		}
+	}
+	return out, nil
+}
+
+func (a ChainAppProvider) GetAllVersionsOfApp(name string, providerNames []string) (AppList, error) {
+	out := AppList{}
+	for _, providerName := range providerNames {
+		provider, ok := a.providersByName[providerName]
+		if ok {
+			app, err := provider.GetApp(name)
+			if err != nil {
+				continue
+			}
+			app.Provider = provider
+			out = append(out, app)
 		}
 	}
 	return out, nil

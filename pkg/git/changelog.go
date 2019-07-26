@@ -22,6 +22,15 @@ type GitChange struct {
 	IssueLink      string
 }
 
+func (g GitChange) Format(f fmt.State, c rune) {
+	switch c {
+	case 's':
+		_, _ = f.Write([]byte(g.Title))
+	default:
+		_, _ = f.Write([]byte("change"))
+	}
+}
+
 type GitChangeLog struct {
 	VersionBump   string
 	Changes       GitChanges
@@ -65,6 +74,24 @@ const Unknown = "unknown"
 
 type GitChanges []GitChange
 
+func (g GitChanges) FilterByBump(bumps ...string) GitChanges {
+	var out GitChanges
+	whitelist := map[string]bool{}
+	for _, b := range bumps {
+		whitelist[b] = true
+	}
+	for _, c := range g {
+		bump, ok := bumpMap[c.CommitType]
+		if !ok {
+			bump = "unknown"
+		}
+		if whitelist[bump] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 var skipKeys = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*$`),
 }
@@ -72,8 +99,8 @@ var skipKeys = []*regexp.Regexp{
 var bumpMap = map[string]string{"fix": Patch, "docs": Patch, "style": Patch, "refactor": Patch,
 	"feat": Minor, "perf": Minor, "test": Minor, "chore": Minor}
 
-func (g GitWrapper) ChangeLog(from, to string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
-	out, err := g.Exec("log", fmt.Sprintf("%s..%s", to, from))
+func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
+	out, err := g.Exec("log", fmt.Sprintf("%s..%s", inBranch, notInBranch))
 	owner, repo := GetOrgAndRepoFromPath(g.dir)
 
 	var allChanges = GitChanges{}

@@ -73,7 +73,7 @@ var appListSrcCmd = addCommand(appCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
 
-		apps, err := b.GetAllProvidedApps()
+		apps, err := b.GetAllVersionsOfAllApps()
 		if err != nil {
 			return err
 		}
