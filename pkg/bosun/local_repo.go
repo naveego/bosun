@@ -60,7 +60,11 @@ func (r *LocalRepo) Push() error {
 		return err
 	}
 
-	_, err = g.Exec("push")
+	if r.HasUpstream() {
+		_, err = g.Exec("push")
+	} else {
+		_, err = g.Exec("push", "-u")
+	}
 	return err
 }
 
@@ -78,7 +82,7 @@ func (r *LocalRepo) SwitchToNewBranch(ctx BosunContext, parent, child string) er
 		return errors.Wrapf(err, "pulling parent branch %q", parent)
 	}
 
-	_, err = g.Exec("branch", child)
+	_, err = g.Exec("branch", child, "--set-upstream-to", "origin/"+child)
 	if err != nil {
 		return err
 	}
@@ -90,6 +94,11 @@ func (r *LocalRepo) SwitchToNewBranch(ctx BosunContext, parent, child string) er
 	return nil
 }
 
+func (r *LocalRepo) HasUpstream() bool {
+	_, err := r.git().Exec("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	return err == nil
+}
+
 func (r *LocalRepo) SwitchToBranchAndPull(ctx BosunContext, name string) error {
 	ctx.Log.Info("Checking out release branch...")
 	g := r.git()
@@ -97,14 +106,13 @@ func (r *LocalRepo) SwitchToBranchAndPull(ctx BosunContext, name string) error {
 	if err != nil {
 		return err
 	}
-	_, err = g.Exec("pull")
-	if err != nil {
-		return err
-	}
 
-	_, err = g.Exec("push", "-u", "origin", name)
-	if err != nil {
-		return err
+	// check if upstream exists
+	if r.HasUpstream() {
+		_, err = g.Exec("pull")
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -148,4 +156,15 @@ func (r *LocalRepo) DoesBranchExist(ctx BosunContext, name string) (bool, error)
 	}
 
 	return strings.Contains(branches, name), nil
+}
+
+func (r *LocalRepo) GetMostRecentTagRef(pattern string) (string, error) {
+	lines, err := r.git().ExecLines("tag", "--sort=-authordate", pattern)
+	if err != nil {
+		return "", err
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	return lines[0], nil
 }

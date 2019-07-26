@@ -2,11 +2,15 @@ package cmd
 
 import (
 	"github.com/cheynewallace/tabby"
+	"github.com/fatih/color"
 	"github.com/kyokomi/emoji"
+	"github.com/naveego/bosun/pkg/util"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
@@ -56,6 +60,60 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 		}
 
 		t.Print()
+
+		return nil
+	},
+})
+
+var appListSrcCmd = addCommand(appCmd, &cobra.Command{
+	Use:          "list-versions",
+	Aliases:      []string{"lsv", "ls-versions", "ls-p"},
+	Short:        "Lists all apps from all providers.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+
+		apps, err := b.GetAllVersionsOfAllApps()
+		if err != nil {
+			return err
+		}
+
+		t := tablewriter.NewWriter(os.Stdout)
+		t.SetRowLine(true)
+		t.SetHeader([]string{"APPS", "PROVIDER", "VERSION"})
+
+		grouped := apps.GroupByAppThenProvider()
+		providerNames := b.GetAllProviderNames()
+		for _, appName := range util.SortedKeys(grouped) {
+			byProvider := grouped[appName]
+
+			var providers []string
+			var versions []string
+			versionsChanged := false
+			previousVersion := ""
+			for _, provider := range providerNames {
+				app, ok := byProvider[provider]
+				if !ok {
+					continue
+				}
+				providers = append(providers, provider)
+				currentVersion := app.Version.String()
+				versions = append(versions, currentVersion)
+				if previousVersion != "" && previousVersion != currentVersion {
+					versionsChanged = true
+				}
+				previousVersion = currentVersion
+			}
+			providerSummary := strings.Join(providers, "\n")
+			versionSummary := strings.Join(versions, "\n")
+			if versionsChanged {
+				appName = color.YellowString("*%s", appName)
+			}
+			t.Append([]string{appName, providerSummary, versionSummary})
+
+		}
+
+		t.Render()
 
 		return nil
 	},

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	// "github.com/pkg/errors"
@@ -42,7 +43,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		b := MustGetBosun()
+		b := MustGetBosun(bosun.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
 
 		app, err := getCurrentApp(b)
 		if err != nil {

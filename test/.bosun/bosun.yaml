@@ -1,0 +1,7 @@
+currentEnvironment: testenv
+currentPlatform: testplatform
+currentRelease: testrelease
+imports:
+  - ../platform/platform.yaml
+  - ../apps/apps.yaml
+  - ../env/*.yaml

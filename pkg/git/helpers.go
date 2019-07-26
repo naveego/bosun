@@ -8,6 +8,7 @@ import (
 	"golang.org/x/oauth2"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func GetCurrentOrgAndRepo() (string, string) {
@@ -44,6 +45,14 @@ func GetRepoPath(path string) (string, error) {
 }
 
 func GetOrgAndRepoFromPath(path string) (string, string) {
+
+	g, _ := NewGitWrapper(path)
+	out, _ := g.Exec("config", "--get", "remote.origin.url")
+	repoURL := strings.Split(out, ":")
+	if len(repoURL) > 0 {
+		path = strings.TrimSuffix(repoURL[1], ".git")
+	}
+
 	repo := filepath.Base(path)
 	org := filepath.Base(filepath.Dir(path))
 	return org, repo

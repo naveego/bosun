@@ -1,0 +1,6 @@
+apps:
+- name: tool
+  branchForRelease: false
+  repo: naveego/bosun
+  version: 0.0.1
+  labels:

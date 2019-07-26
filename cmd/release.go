@@ -7,7 +7,6 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
-	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
@@ -55,44 +54,6 @@ var releaseCmd = addCommand(rootCmd, &cobra.Command{
 	Use:     "release",
 	Aliases: []string{"rel", "r"},
 	Short:   "Contains sub-commands for releases.",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-
-		releaseOverride := viper.GetString(ArgReleaseName)
-		if releaseOverride != "" {
-			b := MustGetBosun()
-			currentReleaseMetadata, err := b.GetCurrentReleaseMetadata()
-			if err == nil {
-				originalCurrentRelease = &currentReleaseMetadata.Name
-			}
-			err = b.UseRelease(releaseOverride)
-			if err != nil {
-				return errors.Wrap(err, "setting release override")
-			}
-			err = b.Save()
-			if err != nil {
-				return errors.Wrap(err, "saving release override")
-			}
-			b.NewContext().Log.Infof("Using release %q for this command (original release was %q).", releaseOverride, currentReleaseMetadata.Name)
-		}
-		return nil
-	},
-	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-		if originalCurrentRelease != nil {
-			b := MustGetBosun()
-			err := b.UseRelease(*originalCurrentRelease)
-			if err != nil {
-				return errors.Wrap(err, "resetting current release")
-			}
-			err = b.Save()
-			if err != nil {
-				return errors.Wrap(err, "saving release reset")
-			}
-			b.NewContext().Log.Infof("Reset release to %q.", *originalCurrentRelease)
-		}
-		return nil
-	},
-}, func(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringP(ArgReleaseName, "r", "", "The release to use for this command (overrides current release set with `release use {name}`).")
 })
 
 var originalCurrentRelease *string
@@ -117,9 +78,12 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		current, err := b.GetCurrentReleaseMetadata()
+		current, err := b.GetStableReleaseManifest()
+		if err != nil {
+			return err
+		}
 
-		for _, release := range platform.GetReleaseMetadataSortedByVersion(true, true) {
+		for _, release := range platform.GetReleaseMetadataSortedByVersion(true) {
 			name := release.Name
 			currentMark := ""
 			if current != nil && release.Name == current.Name {
@@ -146,12 +110,8 @@ var releaseReplanCmd = addCommand(releaseCmd, &cobra.Command{
 	Short: "Returns the release to the planning stage.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, p := getReleaseCmdDeps()
-		rm, err := b.GetCurrentReleaseMetadata()
-		if err != nil {
-			return err
-		}
 		ctx := b.NewContext()
-		_, err = p.RePlanRelease(ctx, rm)
+		_, err := p.RePlanRelease(ctx)
 		if err != nil {
 			return err
 		}
@@ -168,7 +128,7 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 	Short:   "Lists the apps in the current release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
-		rm, err := b.GetCurrentReleaseManifest(false)
+		rm, err := b.GetStableReleaseManifest()
 		if err != nil {
 			return err
 		}
@@ -183,7 +143,7 @@ var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 	Short: "Prints a dot diagram of the release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
-		rm, err := b.GetCurrentReleaseManifest(true)
+		rm, err := b.GetStableReleaseManifest()
 		if err != nil {
 			return err
 		}
@@ -325,18 +285,6 @@ var releaseUseCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 })
 
-var releaseDeleteCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "delete [name]",
-	Args:  cobra.ExactArgs(1),
-	Short: "Deletes a release.",
-
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b, p := getReleaseCmdDeps()
-		ctx := b.NewContext()
-		return p.DeleteRelease(ctx, args[0])
-	},
-})
-
 //
 // var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
 // 	Use:   "exclude [names...]",
@@ -412,7 +360,7 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 
 	errmu := new(sync.Mutex)
 
-	//ctx.GetMinikubeDockerEnv()
+	// ctx.GetMinikubeDockerEnv()
 
 	err := pkg.NewCommand("helm", "repo", "update").RunE()
 	if err != nil {
@@ -668,9 +616,9 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 	withFilteringFlags,
 	withValueSetFlags)
 
-var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:           "merge [apps...]",
-	Short:         "Merges the release branch back to master for each app in the release (or the listed apps)",
+var releaseCommitCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:           "commit",
+	Short:         "Merges the release branch back to master for each app in the release, and the platform repository.",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -679,169 +627,14 @@ var releaseMergeCmd = addCommand(releaseCmd, &cobra.Command{
 		b := MustGetBosun()
 		ctx := b.NewContext()
 
-		force := viper.GetBool(ArgGlobalForce)
-
-		release, err := b.GetCurrentReleaseManifest(false)
+		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
 		}
 
-		repoToManifestMap := make(map[*bosun.Repo]*bosun.AppManifest)
-
-		releaseBranch := fmt.Sprintf("release/%s", release.Version)
-
-		appsNames := map[string]bool{}
-		for _, appName := range args {
-			appsNames[appName] = true
-		}
-
-		for _, appDeploy := range release.AppMetadata {
-
-			if len(args) > 0 && !appsNames[appDeploy.Name] {
-				// not listed as an arg
-				continue
-			}
-
-			app, err := b.GetApp(appDeploy.Name)
-
-			if err != nil {
-				ctx.Log.WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
-				continue
-			}
-
-			manifest, err := app.GetManifest(ctx)
-			if err != nil {
-				ctx.Log.WithError(err).Errorf("App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
-				continue
-			}
-
-			if !app.BranchForRelease {
-				ctx.Log.Warnf("App repo (%s) for app %s is not branched for release.", app.RepoName, app.Name)
-				continue
-			}
-
-			if appDeploy.Branch != releaseBranch {
-				ctx.Log.Warnf("App repo (%s) does not have a release branch for release %s (%s), nothing to merge.", app.RepoName, release.Name, release.Version)
-				continue
-			}
-
-			if !app.IsRepoCloned() {
-				ctx.Log.Errorf("App repo (%s) for app %s is not cloned, cannot merge.", app.RepoName, app.Name)
-				continue
-			}
-
-			repoToManifestMap[app.Repo] = manifest
-		}
-
-		if len(repoToManifestMap) == 0 {
-			return errors.New("no apps found")
-		}
-
-		fmt.Println("About to merge back to master:")
-		for _, appDeploy := range repoToManifestMap {
-			fmt.Printf("- %s: %s (tag %s)\n", appDeploy.Name, appDeploy.Version, appDeploy.Branch)
-		}
-
-		if !confirm("Is this what you expected") {
-			return errors.New("Merge cancelled.")
-		}
-
-		for repo, appDeploy := range repoToManifestMap {
-
-			log := ctx.Log.WithField("repo", repo.Name)
-
-			localRepo := repo.LocalRepo
-
-			if localRepo.IsDirty() {
-				log.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
-				continue
-			}
-
-			repoDir := localRepo.Path
-
-			g, _ := git.NewGitWrapper(repoDir)
-
-			err := g.FetchAll()
-			if err != nil {
-				return err
-			}
-
-			releaseBranch := appDeploy.Branch
-
-			log.Info("Checking out release branch...")
-
-			_, err = g.Exec("checkout", releaseBranch)
-			if err != nil {
-				return errors.Errorf("checkout %s: %s", repoDir, releaseBranch)
-			}
-
-			log.Info("Pulling release branch...")
-			err = g.Pull()
-			if err != nil {
-				return err
-			}
-
-			log.Info("Tagging release branch...")
-			tagArgs := []string{"tag", fmt.Sprintf("%s-%s", appDeploy.Version, release.Version), "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
-			if force {
-				tagArgs = append(tagArgs, "--force")
-			}
-
-			_, err = g.Exec(tagArgs...)
-			if err != nil {
-				log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
-			} else {
-				log.Info("Pushing tags...")
-
-				pushArgs := []string{"push", "--tags"}
-				if force {
-					pushArgs = append(pushArgs, "--force")
-				}
-				_, err = g.Exec(pushArgs...)
-				if err != nil {
-					return errors.Errorf("push tags: %s", err)
-				}
-			}
-
-			log.Info("Checking for changes...")
-
-			diff, err := g.Exec("log", "origin/master..origin/"+releaseBranch, "--oneline")
-			if err != nil {
-				return errors.Errorf("find diffs: %s", err)
-			}
-
-			if len(diff) == 0 {
-				log.Info("No diffs found between release branch and master...")
-			} else {
-
-				log.Info("Deploy branch has diverged from master, will merge back...")
-
-				log.Info("Creating pull request.")
-				_, prNumber, err := GitPullRequestCommand{
-					LocalRepoPath: repoDir,
-					Base:          "master",
-					FromBranch:    releaseBranch,
-				}.Execute()
-				if err != nil {
-					ctx.Log.WithError(err).Error("Could not create pull request.")
-					continue
-				}
-
-				log.Info("Accepting pull request.")
-				err = GitAcceptPRCommand{
-					PRNumber:                 prNumber,
-					RepoDirectory:            repoDir,
-					DoNotMergeBaseIntoBranch: true,
-				}.Execute()
-
-				if err != nil {
-					ctx.Log.WithError(err).Error("Could not accept pull request.")
-					continue
-				}
-
-				log.Info("Merged back to master.")
-			}
-
+		err = p.CommitStableRelease(ctx)
+		if err != nil {
+			return err
 		}
 
 		return nil
@@ -900,7 +693,7 @@ diff go-between 2.4.2/blue green
 
 				var ok bool
 				if releaseName != "" {
-					releaseManifest, err := p.GetReleaseManifestByName(releaseName)
+					releaseManifest, err := p.GetReleaseManifestBySlot(releaseName)
 
 					valueSets, err := getValueSetSlice(b, env)
 					if err != nil {

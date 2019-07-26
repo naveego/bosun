@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -48,6 +49,10 @@ type BranchSpec struct {
 	Develop string `yaml:"develop"`
 	Release string `yaml:"release"`
 	Feature string `yaml:"feature"`
+}
+
+func (b BranchSpec) GetReleaseBranchName(release *ReleaseMetadata) (string, error) {
+	return util.RenderTemplate(b.Release, release)
 }
 
 func (a *AppConfig) MarshalYAML() (interface{}, error) {
