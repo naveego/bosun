@@ -386,6 +386,7 @@ func (b *Bosun) AddImport(file string) bool {
 		}
 	}
 	b.ws.Imports = append(b.ws.Imports, file)
+
 	return true
 }
 

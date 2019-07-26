@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -128,9 +129,13 @@ func (f *File) Save() error {
 var stripFromPath = regexp.MustCompile(`\s*fromPath:.*`)
 
 func (f *File) mergeApp(incoming *AppConfig) error {
+	var appConfigs []*AppConfig
+
 	for _, app := range f.Apps {
 		if app.Name == incoming.Name {
-			return errors.Errorf("app %q imported from %q, but it was already imported from %q", incoming.Name, incoming.FromPath, app.FromPath)
+			pkg.Log.Warnf("app %q imported from %q will replace version imported from %q", incoming.Name, incoming.FromPath, app.FromPath)
+		} else {
+			appConfigs = append(appConfigs, app)
 		}
 	}
 
