@@ -37,7 +37,7 @@ type CollectionInfo struct {
 	MaxBytes     *int                 `json:"maxBytes,omitempty" yaml:"maxBytes,omitempty"`
 	MaxDocuments *int                 `json:"maxDocuments,omitempty" yaml:"maxDocuments,omitempty"`
 	Indexes      map[string]IndexInfo `json:"indexes,omitempty" yaml:"indexes,omitempty"`
-	DataFile     *string              `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
+	DataFile     string               `json:"dataFile,omitempty" yaml:"dataFile,omitempty"`
 }
 
 type IndexInfo struct {
@@ -83,17 +83,24 @@ type MongoImportCommand struct {
 	Log       *logrus.Entry `json:"-"`
 }
 
-func (c MongoImportCommand) Execute() error {
-	if c.Log == nil {
-		c.Log = logrus.WithField("cmd", "MongoImportCommand")
+func (m MongoImportCommand) Execute() error {
+	if m.Log == nil {
+		m.Log = logrus.WithField("cmd", "MongoImportCommand")
 	}
 
-	pc, err := c.Conn.Prepare(c.Log)
+	if m.DB.Name == "" {
+		m.DB.Name = m.Conn.DBName
+	}
+	if m.Conn.DBName == "" {
+		m.Conn.DBName = m.DB.Name
+	}
+
+	pc, err := m.Conn.Prepare(m.Log)
 	if err != nil {
 		return err
 	}
 
-	wrapper, err := c.getMongoWrapper(c.DataDir, pc)
+	wrapper, err := m.getMongoWrapper(m.DataDir, pc)
 	if err != nil {
 		return fmt.Errorf("error connecting to mongo: %v", err)
 	}
@@ -101,10 +108,10 @@ func (c MongoImportCommand) Execute() error {
 		defer pc.CleanUp()
 	}
 
-	for colName, col := range c.DB.Collections {
+	for colName, col := range m.DB.Collections {
 		// if we are forcing a rebuild of the database
 		// then we need to set the Drop flag.
-		if c.RebuildDB {
+		if m.RebuildDB {
 			col.Drop = true
 		}
 
@@ -299,7 +306,7 @@ type PreparedConnection struct {
 	CleanUp func()
 }
 
-func (i MongoImportCommand) getMongoWrapper(dataDir string, c PreparedConnection) (*mongoWrapper, error) {
+func (m MongoImportCommand) getMongoWrapper(dataDir string, c PreparedConnection) (*mongoWrapper, error) {
 	wrapper, err := newMongoWrapper(
 		c.Host,
 		c.Port,
@@ -308,7 +315,7 @@ func (i MongoImportCommand) getMongoWrapper(dataDir string, c PreparedConnection
 		c.Credentials.Password,
 		c.Credentials.AuthSource,
 		dataDir,
-		i.Log.WithField("typ", "mongoWrapper"))
+		m.Log.WithField("typ", "mongoWrapper"))
 
 	if err != nil {
 		return nil, fmt.Errorf("could not get mongo wrapper: %v", err)

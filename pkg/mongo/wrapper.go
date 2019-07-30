@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/mongodb/mongo-tools/common/db"
 	"github.com/mongodb/mongo-tools/common/options"
+	"github.com/mongodb/mongo-tools/common/progress"
+	"github.com/mongodb/mongo-tools/mongoexport"
 	"github.com/mongodb/mongo-tools/mongoimport"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -23,7 +25,7 @@ type mongoWrapper struct {
 	DataDir    string
 
 	session *mgo.Session
-	log *logrus.Entry
+	log     *logrus.Entry
 }
 
 func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir string, log *logrus.Entry) (*mongoWrapper, error) {
@@ -35,7 +37,7 @@ func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir
 		Password:   password,
 		AuthSource: authSource,
 		DataDir:    dataDir,
-		log:log,
+		log:        log,
 	}
 	if w.log == nil {
 		w.log = logrus.WithField("typ", "mongoWrapper")
@@ -58,7 +60,7 @@ func newMongoWrapper(host, port, dbName, username, password, authSource, dataDir
 
 	session, err := mgo.DialWithInfo(dialInfo)
 	if err != nil {
-		return nil, fmt.Errorf("could not connect to mongodb: %v", err)
+		return nil, errors.Wrap(err, "dial mongo")
 	}
 
 	w.session = session
@@ -91,8 +93,8 @@ func (w *mongoWrapper) Import(colName string, col CollectionInfo) error {
 		}
 	}
 
-	if col.DataFile != nil && *col.DataFile != "" {
-		err := w.importData(colName, *col.DataFile)
+	if col.DataFile != "" {
+		err := w.importData(colName, col.DataFile)
 		if err != nil {
 			return fmt.Errorf("error inserting data into collection '%s': %v", colName, err)
 		}
@@ -102,7 +104,11 @@ func (w *mongoWrapper) Import(colName string, col CollectionInfo) error {
 }
 
 func (w *mongoWrapper) importData(colName string, dataFile string) error {
-	dataFilePath := filepath.Join(w.DataDir, os.ExpandEnv(dataFile))
+
+	dataFilePath := os.ExpandEnv(dataFile)
+	if !filepath.IsAbs(dataFilePath) {
+		filepath.Join(w.DataDir, os.ExpandEnv(dataFile))
+	}
 
 	w.log.Infof("importing data for collection '%s' from file '%s'", colName, dataFilePath)
 
@@ -113,7 +119,7 @@ func (w *mongoWrapper) importData(colName string, dataFile string) error {
 		Type:       "JSON",
 	}
 	ingestOptions := &mongoimport.IngestOptions{
-		Mode: "upsert",
+		Mode:         "upsert",
 		UpsertFields: "_id",
 	}
 
@@ -140,6 +146,57 @@ func (w *mongoWrapper) importData(colName string, dataFile string) error {
 	cnt, err := im.ImportDocuments()
 	if err == nil {
 		w.log.Infof("Successfully imported %d documents into %s.%s", cnt, w.DBName, colName)
+	}
+	return err
+}
+
+func (w *mongoWrapper) exportData(colName string, dataFile string) error {
+	dataFilePath := os.ExpandEnv(dataFile)
+	if !filepath.IsAbs(dataFilePath) {
+		filepath.Join(w.DataDir, os.ExpandEnv(dataFile))
+	}
+
+	w.log.Infof("exporting data for collection '%s' to file '%s'", colName, dataFilePath)
+
+	toolOptions := w.getToolOptions(colName)
+	exportOptions := &mongoexport.InputOptions{
+		AssertExists: true,
+	}
+
+	provider, err := db.NewSessionProvider(*toolOptions)
+	if err != nil {
+		return err
+	}
+
+	output, err := os.OpenFile(dataFilePath, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0660)
+	if err != nil {
+		return err
+	}
+
+	defer output.Close()
+
+	// Setup the MongoImport
+	me := &mongoexport.MongoExport{
+		ToolOptions: *toolOptions,
+		InputOpts:   exportOptions,
+		OutputOpts: &mongoexport.OutputFormatOptions{
+			JSONArray: false,
+			Type:      "json",
+		},
+		SessionProvider: provider,
+		ProgressManager: progress.NewBarWriter(os.Stderr, 1*time.Second, 20, false),
+	}
+
+	err = me.ValidateSettings()
+	if err != nil {
+		return errors.Wrap(err, "validate mongo import settings")
+	}
+
+	// log.SetVerbosity(options.Verbosity{Quiet:false, VLevel:log.DebugLow})
+
+	cnt, err := me.Export(output)
+	if err == nil {
+		w.log.Infof("Successfully exported %d documents into %q", cnt, dataFilePath)
 	}
 	return err
 }
