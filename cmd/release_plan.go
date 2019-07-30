@@ -7,6 +7,7 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
@@ -66,7 +67,7 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 			return err
 		}
 
-		err = Edit(plan.FromPath)
+		err = cli.Edit(plan.FromPath)
 
 		return err
 	},
