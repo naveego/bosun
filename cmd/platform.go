@@ -85,7 +85,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 				continue
 			}
 
-			err = p.RefreshApp(ctx, app.Name, bosun.UnstableName)
+			err = p.RefreshApp(ctx, app.Name, bosun.SlotUnstable)
 			if err != nil {
 				ctx.Log.WithError(err).Warn("Could not refresh.")
 			}

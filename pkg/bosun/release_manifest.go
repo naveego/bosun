@@ -181,92 +181,75 @@ func (r *ReleaseManifest) GetAllAppMetadata() map[string]*AppMetadata {
 	return r.AppMetadata
 }
 
-// UpgradeApp upgrades the named app by creating a release branch and bumping the version
+// BumpForRelease upgrades the named app by creating a release branch and bumping the version
 // in that branch based on the bump parameter (if the app's current version is expectedVersion).
 // If the bump parameter is "none" then the app won't be bumped.
-func (r *ReleaseManifest) UpgradeApp(ctx BosunContext, name, fromBranch, toBranch, bump string, expectedVersion semver.Version) error {
+func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch, toBranch string, bump semver.Bump, expectedVersion semver.Version) (*App, error) {
 	r.init()
 	r.MarkDirty()
 
-	b := ctx.Bosun
-	app, err := b.GetApp(name)
-	if err != nil {
-		return err
-	}
+	name := app.Name
 
 	appConfig := app.AppConfig
 
 	if appConfig.BranchForRelease {
 		log := ctx.Log.WithField("app", appConfig.Name)
-
-		log.Infof("Upgrade requested for for app %q; creating release branch and upgrading manifest...", name)
-
 		if !app.IsRepoCloned() {
-			return errors.New("repo is not cloned but must be branched for release; what is going on?")
+			return nil, errors.New("repo is not cloned but must be branched for release; what is going on?")
 		}
 
 		localRepo := app.Repo.LocalRepo
 		if localRepo.IsDirty() {
-			return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
+			return nil, errors.Errorf("repo at %q is dirty, commit or stash your changes before adding it to the release", localRepo.Path)
 		}
 
-		log.Debug("Checking if release branch exists...")
+		log.Infof("Ensuring release branch and version correct for app %q...", name)
 
 		branchExists, err := localRepo.DoesBranchExist(ctx, toBranch)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if branchExists {
 			log.Info("Release branch already exists, switching to it.")
-			err = localRepo.SwitchToBranchAndPull(ctx, toBranch)
+			err = localRepo.SwitchToBranchAndPull(ctx.Services(), toBranch)
 			if err != nil {
-				return errors.Wrap(err, "switching to release branch")
+				return nil, errors.Wrap(err, "switching to release branch")
 			}
 		} else {
 			log.Info("Creating release branch...")
 			err = localRepo.SwitchToNewBranch(ctx, fromBranch, toBranch)
 			if err != nil {
-				return errors.Wrap(err, "creating release branch")
+				return nil, errors.Wrap(err, "creating release branch")
 			}
 		}
 
-		if bump != "none" && app.Version == expectedVersion {
-			if app.Version != expectedVersion {
-				log.Warnf("Skipping version bump %q because version on branch is already %s (source branch is version %s).", bump, expectedVersion, app.Version)
+		if bump != "none" {
+			if expectedVersion.LessThan(app.Version) {
+				log.Warnf("Skipping version bump %q because version on branch is already %s (source branch is version %s).", bump, app.Version, expectedVersion)
 			} else {
-				log.Infof("Applying version bump %q to source branch version %s.", bump, expectedVersion)
+				log.Infof("Applying version bump %q to source branch version %s.", bump, app.Version)
 
-				err = app.BumpVersion(ctx, bump)
+				err = app.BumpVersion(ctx, string(bump))
 				if err != nil {
-					return errors.Wrap(err, "bumping version")
+					return nil, errors.Wrap(err, "bumping version")
 				}
 
-				err = localRepo.Commit(fmt.Sprintf("chore(version): Bump version to %s for release %s.", app.Version, r.Name), ".")
+				err = localRepo.Push()
 				if err != nil {
-					return errors.Wrap(err, "committing bumped version")
+					return nil, errors.Wrap(err, "pushing branch")
 				}
 			}
-
 		}
 
-		ctx.Log.Info("Branching and version bumping completed.")
+		log.Info("App has been branched and bumped correctly.")
 
 		app, err = ctx.Bosun.ReloadApp(app.Name)
 		if err != nil {
-			return errors.Wrap(err, "reload app after switching to new branch")
+			return nil, errors.Wrap(err, "reload app after switching to new branch")
 		}
 	}
 
-	appManifest, err := app.GetManifest(ctx)
-	if err != nil {
-		return err
-	}
-
-	appManifest.PinToRelease(r.ReleaseMetadata)
-
-	r.AddApp(appManifest, true)
-
-	return nil
+	return app, nil
 }
 
 func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string) error {
@@ -417,4 +400,22 @@ func (r *ReleaseManifest) GetAppManifest(name string) (*AppManifest, error) {
 
 	return nil, errors.Errorf("no app manifest with name %q in release %q", name, r.Name)
 
+}
+
+func (r *ReleaseManifest) Clone() *ReleaseManifest {
+	y, _ := yaml.Marshal(r)
+	var out *ReleaseManifest
+	_ = yaml.Unmarshal(y, &out)
+	out.appManifests = map[string]*AppManifest{}
+
+	appManifests, _ := r.GetAppManifests()
+
+	for name, appManifest := range appManifests {
+		y, _ = yaml.Marshal(appManifest)
+		var appManifestClone *AppManifest
+		_ = yaml.Unmarshal(y, &appManifestClone)
+		out.appManifests[name] = appManifestClone
+	}
+
+	return out
 }

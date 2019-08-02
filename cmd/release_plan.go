@@ -73,6 +73,29 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 	},
 })
 
+var releasePlanRefreshCmd = addCommand(releasePlanCmd, &cobra.Command{
+	Use:          "refresh",
+	Short:        "Re-analyzes apps and updates plan",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b, p := getReleaseCmdDeps()
+		ctx := b.NewContext()
+		_, err := p.GetPlan(ctx)
+		if err != nil {
+			return err
+		}
+
+		_, err = p.RefreshPlan(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = p.Save(ctx)
+
+		return err
+	},
+})
+
 //
 // var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.Command{
 // 	Use:          "add {name}",
@@ -322,7 +345,7 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 					return err
 				}
 			}
-			appPlan.BumpOverride = bump
+			appPlan.BumpOverride = semver.Bump(bump)
 
 			updated := MustYaml(appPlan)
 

@@ -65,6 +65,24 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 	},
 })
 
+var appListReposCmd = addCommand(appCmd, &cobra.Command{
+	Use:          "list-repos",
+	Aliases:      []string{"lsr", "ls-repo"},
+	Short:        "Lists the repos and their current state.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun()
+
+		r, err := b.GetRepoInfo()
+		if err != nil {
+			return err
+		}
+
+		return printOutput(r, "app", "name", "branch", "isDirty", "path")
+	},
+})
+
 var appListSrcCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "list-versions",
 	Aliases:      []string{"lsv", "ls-versions", "ls-p"},

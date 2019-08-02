@@ -3,24 +3,11 @@ package git
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/semver"
 	"regexp"
 	"strconv"
 	"strings"
 )
-
-type GitChange struct {
-	Valid          bool
-	Title          string
-	Body           string
-	Date           string
-	Issue          string
-	CommitID       string
-	CommitType     string
-	Committer      string
-	BreakingChange bool
-	StoryLink      string
-	IssueLink      string
-}
 
 func (g GitChange) Format(f fmt.State, c rune) {
 	switch c {
@@ -32,7 +19,7 @@ func (g GitChange) Format(f fmt.State, c rune) {
 }
 
 type GitChangeLog struct {
-	VersionBump   string
+	VersionBump   semver.Bump
 	Changes       GitChanges
 	OutputMessage string
 }
@@ -67,42 +54,25 @@ var RegexGetCommitId = regexp.MustCompile(` .{40}`)
 var RegexGetDate = regexp.MustCompile(`Date: `)
 var RegexGetIssue = regexp.MustCompile(`[0-9]+$`)
 
-const Major = "major"
-const Minor = "minor"
-const Patch = "patch"
-const Unknown = "unknown"
-
-type GitChanges []GitChange
-
-func (g GitChanges) FilterByBump(bumps ...string) GitChanges {
-	var out GitChanges
-	whitelist := map[string]bool{}
-	for _, b := range bumps {
-		whitelist[b] = true
-	}
-	for _, c := range g {
-		bump, ok := bumpMap[c.CommitType]
-		if !ok {
-			bump = "unknown"
-		}
-		if whitelist[bump] {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 var skipKeys = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*$`),
 }
 
-var bumpMap = map[string]string{"fix": Patch, "docs": Patch, "style": Patch, "refactor": Patch,
-	"feat": Minor, "perf": Minor, "test": Minor, "chore": Minor}
+var bumpMap = map[string]semver.Bump{
+	"feat":     semver.BumpMinor,
+	"fix":      semver.BumpPatch,
+	"refactor": semver.BumpPatch,
+	"perf":     semver.BumpPatch,
+	"docs":     semver.BumpNone,
+	"style":    semver.BumpNone,
+	"test":     semver.BumpNone,
+	"chore":    semver.BumpNone,
+}
 
 func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
 	out, err := g.Exec("log", fmt.Sprintf("%s..%s", inBranch, notInBranch))
-	owner, repo := GetOrgAndRepoFromPath(g.dir)
 
+	org, repo := GetOrgAndRepoFromPath(g.dir)
 	var allChanges = GitChanges{}
 	var committer string
 	var commitId string
@@ -194,12 +164,10 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 
 			} else if issueMatch {
 
-				issue := RegexGetIssue.FindString(line)
-				issueLink := GetIssueLink(g.dir, issue)
-				var storyLink string
-				if svc != nil {
-					storyLink, _ = GetStoryLink(svc, owner, repo, issue)
-				}
+				issueNumber, _ := strconv.Atoi(RegexGetIssue.FindString(line))
+				issue := issues.NewIssueRef(org, repo, issueNumber)
+				issueLink := GetIssueLink(g.dir, issue.String())
+
 				change := GitChange{
 					CommitID:       commitId,
 					Committer:      committer,
@@ -210,7 +178,6 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 					Valid:          true,
 					IssueLink:      issueLink,
 					Issue:          issue,
-					StoryLink:      storyLink,
 					BreakingChange: CommitHasBreakingChange(bodyBuilder.String()),
 				}
 				allChanges = append(allChanges, change)
@@ -265,51 +232,32 @@ func CommitHasBreakingChange(body string) bool {
 	return breakingChangeFormat.MatchString(body)
 }
 
-func (g GitChanges) GetVersionBump() string {
+func (g GitChanges) GetVersionBump() semver.Bump {
 	changes := g.GetSeparatedChanges()
 
-	if len(changes[Major]) > 0 {
-		return "MAJOR"
-	} else if len(changes[Minor]) > 0 {
-		return "MINOR"
-	} else if len(changes[Patch]) > 0 {
-		return "PATCHES"
+	if len(changes[semver.BumpMajor]) > 0 {
+		return semver.BumpMajor
+	} else if len(changes[semver.BumpMinor]) > 0 {
+		return semver.BumpMinor
+	} else if len(changes[semver.BumpPatch]) > 0 {
+		return semver.BumpPatch
 	}
-	return "NONE"
+	return semver.BumpNone
 }
 
-func (g GitChanges) GetSeparatedChanges() map[string]GitChanges {
-	storeChange := make(map[string]GitChanges)
+func (g GitChanges) GetSeparatedChanges() map[semver.Bump]GitChanges {
+	storeChange := make(map[semver.Bump]GitChanges)
 	for _, change := range g {
-		var bump string
+		var bump semver.Bump
 		var known bool
 		if change.BreakingChange {
-			bump = Major
+			bump = semver.BumpMajor
 		} else if bump, known = bumpMap[change.CommitType]; !known {
-			bump = Unknown
+			bump = semver.Unknown
 		}
 		storeChange[bump] = append(storeChange[bump], change)
 	}
 	return storeChange
-}
-
-func GetStoryLink(svc issues.IssueService, owner string, repo string, issue string) (string, error) {
-	var builder = strings.Builder{}
-	issueNum, err := strconv.Atoi(issue)
-	if err != nil {
-		return "", err
-	}
-	iss, err := svc.GetParents(issues.NewIssueRef(owner, repo, issueNum))
-	if err != nil {
-		return "", err
-	}
-	if len(iss) != 2 {
-		// this means the issue number must be wrong
-		return "", err
-	}
-	fmt.Fprintf(&builder, "https://github.com/%s/%s/issues/%s", iss[1].Org, iss[1].Repo, strconv.Itoa(iss[1].Number))
-
-	return builder.String(), err
 }
 
 func GetIssueLink(dir string, issue string) string {
@@ -319,38 +267,38 @@ func GetIssueLink(dir string, issue string) string {
 	return builder.String()
 }
 
-func GetChangeLogOutputMessage(bump string, changes GitChanges, options GitChangeLogOptions) string {
+func GetChangeLogOutputMessage(bump semver.Bump, changes GitChanges, options GitChangeLogOptions) string {
 	allChanges := changes.GetSeparatedChanges()
 	output := new(strings.Builder)
-	fmt.Fprintf(output, "Recommended Version bump: %s\n\n", bump)
-	fmt.Fprintf(output, "Major: %d\n", len(allChanges[Major]))
-	fmt.Fprintf(output, "Minor: %d\n", len(allChanges[Minor]))
-	fmt.Fprintf(output, "Patch: %d\n", len(allChanges[Patch]))
-	fmt.Fprintf(output, "Unknown: %d\n", len(allChanges[Unknown]))
-	if len(allChanges[Major]) != 0 {
+	_, _ = fmt.Fprintf(output, "Recommended Version bump: %s\n\n", bump)
+	_, _ = fmt.Fprintf(output, "Major: %d\n", len(allChanges[semver.BumpMajor]))
+	_, _ = fmt.Fprintf(output, "Minor: %d\n", len(allChanges[semver.BumpMinor]))
+	_, _ = fmt.Fprintf(output, "Patch: %d\n", len(allChanges[semver.BumpPatch]))
+	_, _ = fmt.Fprintf(output, "Unknown: %d\n", len(allChanges[semver.Unknown]))
+	if len(allChanges[semver.BumpMajor]) != 0 {
 		fmt.Fprintf(output, "\nMajor Changes: \n")
-		for _, changes := range allChanges[Major] {
+		for _, changes := range allChanges[semver.BumpMajor] {
 			fmt.Fprintf(output, BuildOutput(changes, options))
 		}
 	}
 
-	if len(allChanges[Minor]) != 0 {
+	if len(allChanges[semver.BumpMinor]) != 0 {
 		fmt.Fprintf(output, "\nMinor Changes: \n")
-		for _, changes := range allChanges[Minor] {
+		for _, changes := range allChanges[semver.BumpMinor] {
 			fmt.Fprintf(output, BuildOutput(changes, options))
 		}
 	}
 
-	if len(allChanges[Patch]) != 0 {
+	if len(allChanges[semver.BumpPatch]) != 0 {
 		fmt.Fprintf(output, "\nPatch Changes: \n")
-		for _, changes := range allChanges[Patch] {
+		for _, changes := range allChanges[semver.BumpPatch] {
 			fmt.Fprintf(output, BuildOutput(changes, options))
 		}
 	}
 
-	if len(allChanges[Unknown]) != 0 && options.Description {
+	if len(allChanges[semver.Unknown]) != 0 && options.Description {
 		fmt.Fprintf(output, "\nUnknown Changes: \n")
-		for _, changes := range allChanges[Unknown] {
+		for _, changes := range allChanges[semver.Unknown] {
 			BuildUnknownOutput(output, changes)
 		}
 	}
@@ -374,10 +322,6 @@ func BuildOutput(changes GitChange, options GitChangeLogOptions) string {
 			body := strings.Join(bodyArr[:len(bodyArr)-1], "\n\t\t")
 
 			fmt.Fprintf(&builder, "\t\t%s\n", body)
-		}
-
-		if len(changes.StoryLink) > 0 {
-			fmt.Fprintf(&builder, "\n\t\tIssue: %s   Story: %s\n", changes.IssueLink, changes.StoryLink)
 		}
 	}
 	return strings.Replace(builder.String(), "\n\n", "\n", -1)

@@ -7,10 +7,10 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/stevenle/topsort"
-	"go4.org/sort"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
@@ -22,15 +22,21 @@ import (
 
 type App struct {
 	*AppConfig
-	Repo        *Repo // a pointer to the repo if bosun is aware of it
-	HelmRelease *HelmRelease
-	branch      string
-	commit      string
-	gitTag      string
-	isCloned    bool
-	labels      filter.Labels
-	Provider    AppProvider
-	AppManifest *AppManifest
+	Repo         *Repo // a pointer to the repo if bosun is aware of it
+	HelmRelease  *HelmRelease
+	branch       string
+	commit       string
+	gitTag       string
+	isCloned     bool
+	labels       filter.Labels
+	Provider     AppProvider
+	AppManifest  *AppManifest
+	WorktreeInfo *WorktreeInfo
+}
+
+type WorktreeInfo struct {
+	CurrentBranch string
+	WorktreePath  string
 }
 
 func (a *App) ProviderName() string {
@@ -96,30 +102,6 @@ func (a AppsSortedByName) Less(i, j int) bool {
 
 func (a AppsSortedByName) Swap(i, j int) {
 	a[i], a[j] = a[j], a[i]
-}
-
-type AppList []*App
-
-func (a AppList) SortByProvider() {
-	sort.With(len(a),
-		func(i, j int) {
-			a[i], a[j] = a[j], a[i]
-		}, func(i, j int) bool {
-			return a[i].Provider.String() < a[j].Provider.String()
-		})
-}
-
-func (a AppList) GroupByAppThenProvider() map[string]map[string]*App {
-	var out = map[string]map[string]*App{}
-	for _, app := range a {
-		byProvider, ok := out[app.Name]
-		if !ok {
-			byProvider = map[string]*App{}
-			out[app.Name] = byProvider
-		}
-		byProvider[app.ProviderName()] = app
-	}
-	return out
 }
 
 func (a *App) CheckRepoCloned() error {
@@ -545,29 +527,30 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 // and updating the chart. The `bump` parameter may be one of
 // major|minor|patch|major.minor.patch. If major.minor.patch is provided,
 // the version is set to that value.
-func (a *App) BumpVersion(ctx BosunContext, bump string) error {
-	version, err := NewVersion(bump)
+func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
+	version, err := NewVersion(bumpOrVersion)
 	if err == nil {
 		a.Version = version
 	} else {
+		bump := semver.Bump(bumpOrVersion)
 		switch bump {
-		case "major":
+		case semver.BumpMajor:
 			a.Version = a.Version.BumpMajor()
-		case "minor":
+		case semver.BumpMinor:
 			a.Version = a.Version.BumpMinor()
-		case "patch":
+		case semver.BumpPatch:
 			a.Version = a.Version.BumpPatch()
-		case "none":
+		case semver.BumpNone:
 			return nil
 		default:
-			return errors.Errorf("invalid version component %q (want major, minor, or patch)", bump)
+			return errors.Errorf("invalid version component %q (want major, minor, or patch)", bumpOrVersion)
 		}
 	}
 
 	packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
 	if _, err = os.Stat(packageJSONPath); err == nil {
 		ctx.Log.Info("package.json detected, its version will be updated.")
-		err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bump).
+		err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
 			WithDir(filepath.Dir(a.FromPath)).
 			RunE()
 		if err != nil {
@@ -596,7 +579,7 @@ func (a *App) BumpVersion(ctx BosunContext, bump string) error {
 		return errors.Wrap(err, "save parent file")
 	}
 
-	commitMsg := fmt.Sprintf("chore(version): %s bump to %s", bump, a.Version)
+	commitMsg := fmt.Sprintf("chore(version): %s bump to %s", bumpOrVersion, a.Version)
 	err = a.Repo.LocalRepo.Commit(commitMsg, ".")
 	if err != nil {
 		return errors.Wrap(err, "commit bumped files")
@@ -786,4 +769,51 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 	})
 
 	return appManifest, err
+}
+
+func (a *App) ResetWorktreeVersion() error {
+	if a.WorktreeInfo == nil {
+		return nil
+	}
+
+	_, _ = a.Repo.LocalRepo.git().Exec("worktree", "remove", a.WorktreeInfo.WorktreePath)
+	a.WorktreeInfo = nil
+	return nil
+}
+
+func (a *App) CreateWorktreeVersion(logger Logger, branch string) (*App, error) {
+	err := a.Repo.CheckCloned()
+	if err != nil {
+		return nil, err
+	}
+
+	if a.Repo.LocalRepo.GetCurrentBranch() == branch {
+		return a, nil
+	}
+
+	g, err := a.Repo.LocalRepo.Git()
+	if err != nil {
+		return nil, err
+	}
+
+	repoDirName := filepath.Base(a.Repo.LocalRepo.Path)
+	worktreePath := fmt.Sprintf("/tmp/%s-worktree", repoDirName)
+	_, _ = g.Exec("worktree", "remove", worktreePath)
+	_, err = g.Exec("worktree", "add", worktreePath, branch)
+	if err != nil {
+		return nil, errors.Wrapf(err, "create work tree for checking out branch %q", branch)
+	}
+
+	// bosunFile should now be pulled from the worktree
+	bosunFile := strings.Replace(a.FromPath, a.Repo.LocalRepo.Path, "", 1)
+	bosunFile = filepath.Join(worktreePath, bosunFile)
+	provider := NewFilePathAppProvider(logger.Log())
+
+	app, err := provider.GetAppByPathAndName(bosunFile, a.Name)
+	app.WorktreeInfo = &WorktreeInfo{
+		WorktreePath:  worktreePath,
+		CurrentBranch: branch,
+	}
+
+	return app, err
 }

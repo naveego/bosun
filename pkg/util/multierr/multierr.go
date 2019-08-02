@@ -3,25 +3,35 @@ package multierr
 import (
 	"github.com/pkg/errors"
 	"strings"
+	"sync"
 )
 
-func New(err ...error) *MultiError {
-	return &MultiError{
+func New(err ...error) Collector {
+	return &multiError{
+		mu:     sync.Mutex{},
 		Errors: err,
 	}
 }
 
-type MultiError struct {
+type Collector interface {
+	Collect(err ...error)
+	ToError() error
+}
+
+type multiError struct {
+	mu     sync.Mutex
 	Errors []error
 }
 
-func (m *MultiError) Collect(err ...error) {
+func (m *multiError) Collect(err ...error) {
+	m.mu.Lock()
 	if err != nil {
 		m.Errors = append(m.Errors, err...)
 	}
+	m.mu.Unlock()
 }
 
-func (m MultiError) ToError() error {
+func (m *multiError) ToError() error {
 	if len(m.Errors) == 0 {
 		return nil
 	}

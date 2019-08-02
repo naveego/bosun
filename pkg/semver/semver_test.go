@@ -161,29 +161,29 @@ func TestSort(t *testing.T) {
 	}
 }
 
-func TestBumpMajor(t *testing.T) {
+func Testsemver.BumpMajor(t *testing.T) {
 	version, _ := NewVersion("1.0.0")
-	version.BumpMajor()
+	version.semver.BumpMajor()
 	if version.Major != 2 {
 		t.Fatalf("bumping major on 1.0.0 resulted in %v", version)
 	}
 
 	version, _ = NewVersion("1.5.2")
-	version.BumpMajor()
+	version.semver.BumpMajor()
 	if version.Minor != 0 && version.Patch != 0 {
 		t.Fatalf("bumping major on 1.5.2 resulted in %v", version)
 	}
 
 	version, _ = NewVersion("1.0.0+build.1-alpha.1")
-	version.BumpMajor()
+	version.semver.BumpMajor()
 	if version.PreRelease != "" && version.PreRelease != "" {
 		t.Fatalf("bumping major on 1.0.0+build.1-alpha.1 resulted in %v", version)
 	}
 }
 
-func TestBumpMinor(t *testing.T) {
+func Testsemver.BumpMinor(t *testing.T) {
 	version, _ := NewVersion("1.0.0")
-	version.BumpMinor()
+	version.semver.BumpMinor()
 
 	if version.Major != 1 {
 		t.Fatalf("bumping minor on 1.0.0 resulted in %v", version)
@@ -194,15 +194,15 @@ func TestBumpMinor(t *testing.T) {
 	}
 
 	version, _ = NewVersion("1.0.0+build.1-alpha.1")
-	version.BumpMinor()
+	version.semver.BumpMinor()
 	if version.PreRelease != "" && version.PreRelease != "" {
 		t.Fatalf("bumping major on 1.0.0+build.1-alpha.1 resulted in %v", version)
 	}
 }
 
-func TestBumpPatch(t *testing.T) {
+func Testsemver.BumpPatch(t *testing.T) {
 	version, _ := NewVersion("1.0.0")
-	version.BumpPatch()
+	version.semver.BumpPatch()
 
 	if version.Major != 1 {
 		t.Fatalf("bumping minor on 1.0.0 resulted in %v", version)
@@ -217,7 +217,7 @@ func TestBumpPatch(t *testing.T) {
 	}
 
 	version, _ = NewVersion("1.0.0+build.1-alpha.1")
-	version.BumpPatch()
+	version.semver.BumpPatch()
 	if version.PreRelease != "" && version.PreRelease != "" {
 		t.Fatalf("bumping major on 1.0.0+build.1-alpha.1 resulted in %v", version)
 	}

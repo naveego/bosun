@@ -19,10 +19,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 )
 
 type Bosun struct {
+	mu                   *sync.Mutex
 	params               Parameters
 	ws                   *Workspace
 	file                 *File
@@ -56,6 +58,7 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 	}
 
 	b := &Bosun{
+		mu:     new(sync.Mutex),
 		params: params,
 		ws:     ws,
 		file:   ws.MergedBosunFile,
@@ -102,7 +105,7 @@ func (b *Bosun) initializeAppProviders() {
 
 	p, err := b.GetCurrentPlatform()
 	if err == nil {
-		for _, slot := range []string{UnstableName, NextName, StableName} {
+		for _, slot := range []string{SlotUnstable, SlotNext, SlotStable} {
 			if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
 				b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 			}
@@ -134,7 +137,7 @@ func (b *Bosun) GetAllVersionsOfAllApps(providerPriority ...string) (AppList, er
 		providerPriority = b.params.ProviderPriority
 	}
 
-	apps, err := b.appProvider.GetAllAppsFromProviders(providerPriority)
+	apps, err := b.appProvider.GetAllAppsList(providerPriority)
 
 	return apps, err
 
@@ -246,6 +249,9 @@ func (b *Bosun) GetAppFromProvider(appName, providerName string) (*App, error) {
 }
 
 func (b *Bosun) ReloadApp(name string) (*App, error) {
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	app, err := b.GetApp(name)
 	if err != nil {

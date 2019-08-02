@@ -419,107 +419,6 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 	return nil
 }
 
-//
-// var releaseSyncCmd = addCommand(releaseCmd, &cobra.Command{
-// 	Use:           "sync",
-// 	Short:         "Pulls the latest commits for every app in the release, then updates the values in the release entry.",
-// 	SilenceErrors: true,
-// 	SilenceUsage:  true,
-// 	RunE: func(cmd *cobra.Command, args []string) error {
-// 		viper.BindPFlags(cmd.Flags())
-// 		b := MustGetBosun()
-// 		release := mustGetCurrentRelease(b)
-// 		ctx := b.NewContext()
-//
-// 		appReleases := getFilterParams(b, args).MustGetAppDeploys()
-//
-// 		err := processAppReleases(b, ctx, appReleases, func(appRelease *bosun.AppDeploy) error {
-// 			ctx = ctx.WithAppDeploy(appRelease)
-// 			if appRelease.App == nil {
-// 				ctx.Log.Warn("App not found.")
-// 			}
-//
-// 			repo := appRelease.App
-// 			if !repo.BranchForRelease {
-// 				return nil
-// 			}
-//
-// 			if err := repo.Repo.Fetch(ctx); err != nil {
-// 				return errors.Wrap(err, "fetch")
-// 			}
-//
-// 			g, _ := git.NewGitWrapper(repo.FromPath)
-//
-// 			commits, err := g.Log("--oneline", fmt.Sprintf("%s..origin/%s", appRelease.Commit, appRelease.Branch))
-// 			if err != nil {
-// 				return errors.Wrap(err, "check for missed commits")
-// 			}
-// 			if len(commits) == 0 {
-// 				return nil
-// 			}
-//
-// 			ctx.Log.Warn("Deploy branch has had commits since app was added to release. Will attempt to merge before updating release.")
-//
-// 			currentBranch := appRelease.App.GetBranchName()
-// 			if currentBranch != appRelease.Branch {
-// 				dirtiness, err := g.Exec("status", "--porcelain")
-// 				if err != nil {
-// 					return errors.Wrap(err, "check if branch is dirty")
-// 				}
-// 				if len(dirtiness) > 0 {
-// 					return errors.New("app is on branch %q, not release branch %q, and has dirty files, so we can't switch to the release branch")
-// 				}
-// 				ctx.Log.Warnf("Checking out branch %s")
-// 				_, err = g.Exec("checkout", appRelease.Branch.String())
-// 				if err != nil {
-// 					return errors.Wrap(err, "check out release branch")
-// 				}
-//
-// 				_, err = g.Exec("merge", fmt.Sprintf("origin/%s", appRelease.Branch))
-// 				if err != nil {
-// 					return errors.Wrap(err, "merge release branch")
-// 				}
-// 			}
-//
-// 			err = release.MakeAppAvailable(ctx, appRelease.App)
-// 			if err != nil {
-// 				return errors.Wrap(err, "update failed")
-// 			}
-//
-// 			return nil
-// 		})
-//
-// 		if err != nil {
-// 			return err
-// 		}
-//
-// 		err = release.Parent.Save()
-//
-// 		return err
-// 	},
-// })
-
-func processAppReleases(b *bosun.Bosun, ctx bosun.BosunContext, appReleases []*bosun.AppDeploy, fn func(a *bosun.AppDeploy) error) error {
-
-	var included []*bosun.AppDeploy
-	for _, ar := range appReleases {
-		if !ar.Excluded {
-			included = append(included, ar)
-		}
-	}
-	p := util.NewProgressBar(len(included))
-
-	for _, appRelease := range included {
-		p.Add(1, appRelease.Name)
-		err := fn(appRelease)
-		if err != nil {
-			return errors.Errorf("%s failed: %s", appRelease.Name, err)
-		}
-	}
-
-	return nil
-}
-
 var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "test",
 	Short:         "Runs the tests for the apps in the release.",
@@ -619,6 +518,31 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 var releaseCommitCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "commit",
 	Short:         "Merges the release branch back to master for each app in the release, and the platform repository.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		b := MustGetBosun()
+		ctx := b.NewContext()
+
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		err = p.CommitStableRelease(ctx)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	},
+}, withFilteringFlags)
+
+var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:           "change-log",
+	Short:         "Outputs the changelog for the release.",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {

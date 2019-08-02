@@ -44,6 +44,10 @@ func (i Issue) Slug() string {
 	return slug
 }
 
+func (i Issue) Ref() IssueRef {
+	return NewIssueRef(i.Org, i.Repo, i.Number)
+}
+
 type Estimate struct {
 	Value int
 }

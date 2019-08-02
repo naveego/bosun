@@ -8,9 +8,9 @@ import (
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
+	"github.com/naveego/bosun/pkg/util/worker"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/log"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"math"
@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	NextName         = "next"
-	StableName       = "stable"
-	UnstableName     = "unstable"
+	SlotNext         = "next"
+	SlotStable       = "stable"
+	SlotUnstable     = "unstable"
+	SlotPrevious     = "previous"
 	PlanFileName     = "plan.yaml"
 	ManifestFileName = "manifest.yaml"
 )
@@ -47,8 +48,6 @@ type Platform struct {
 	ZenHubConfig        *zenhub.Config              `yaml:"zenHubConfig"`
 	NextReleaseName     string                      `yaml:"nextReleaseName,omitempty"`
 	releaseManifests    map[string]*ReleaseManifest `yaml:"-"`
-	// cache of repos which have been fetched during this run
-	fetched map[string]bool `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -109,27 +108,31 @@ func (p *Platform) GetNextRelease() (*ReleaseManifest, error) {
 	if p.NextReleaseName == "" {
 		return nil, errors.New("no next release defined")
 	}
-	return p.GetReleaseManifestBySlot(NextName)
+	return p.GetReleaseManifestBySlot(SlotNext)
 }
 
 func (p *Platform) GetStableRelease() (*ReleaseManifest, error) {
-	return p.GetReleaseManifestBySlot(StableName)
+	return p.GetReleaseManifestBySlot(SlotStable)
+}
+
+func (p *Platform) GetPreviousRelease() (*ReleaseManifest, error) {
+	return p.GetReleaseManifestBySlot(SlotPrevious)
 }
 
 func (p *Platform) GetUnstableRelease() (*ReleaseManifest, error) {
-	return p.GetReleaseManifestBySlot(UnstableName)
+	return p.GetReleaseManifestBySlot(SlotUnstable)
 }
 
 func (p *Platform) MustGetNextRelease() *ReleaseManifest {
-	return p.MustGetReleaseManifestBySlot(NextName)
+	return p.MustGetReleaseManifestBySlot(SlotNext)
 }
 
 func (p *Platform) MustGetStableRelease() *ReleaseManifest {
-	return p.MustGetReleaseManifestBySlot(StableName)
+	return p.MustGetReleaseManifestBySlot(SlotStable)
 }
 
 func (p *Platform) MustGetUnstableRelease() *ReleaseManifest {
-	return p.MustGetReleaseManifestBySlot(UnstableName)
+	return p.MustGetReleaseManifestBySlot(SlotUnstable)
 }
 
 func (p *Platform) GetReleaseMetadataSortedByVersion(descending bool) []*ReleaseMetadata {
@@ -176,6 +179,8 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 		return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
 	}
 
+	log := ctx.Log
+
 	log.Debug("Checking if release branch exists...")
 
 	branchExists, err := localRepo.DoesBranchExist(ctx, branch)
@@ -184,7 +189,7 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 	}
 	if branchExists {
 		log.Info("Release branch already exists, switching to it.")
-		err = localRepo.SwitchToBranchAndPull(ctx, branch)
+		err = localRepo.SwitchToBranchAndPull(ctx.Services(), branch)
 		if err != nil {
 			return errors.Wrap(err, "switching to release branch")
 		}
@@ -266,22 +271,30 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	manifest.plan = plan
 	p.NextReleaseName = settings.Name
 
-	p.SetReleaseManifest(NextName, manifest)
+	p.SetReleaseManifest(SlotNext, manifest)
 
 	return plan, nil
 }
 
 func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
-	apps, err := ctx.Bosun.GetAllVersionsOfAllApps(WorkspaceProviderName, StableName)
+	apps, err := ctx.Bosun.GetAllVersionsOfAllApps(WorkspaceProviderName, SlotStable)
 	if err != nil {
 		return err
 	}
 
-	if p.fetched == nil {
-		p.fetched = map[string]bool{}
+	deployableApps := AppList{}
+	for _, app := range apps {
+		if app.HasChart() {
+			deployableApps = append(deployableApps, app)
+		}
 	}
 
-	grouped := apps.GroupByAppThenProvider()
+	err = deployableApps.FetchAll(ctx.Services())
+	if err != nil {
+		return err
+	}
+
+	grouped := deployableApps.GroupByAppThenProvider()
 
 	for appName, byProvider := range grouped {
 
@@ -303,16 +316,21 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 			if providerName == WorkspaceProviderName {
 				cloned := appVersion.Repo.CheckCloned() == nil
 				owned := appVersion.BranchForRelease
+				log.Info("Computing change log...")
 				if cloned && owned {
+
+					developVersion, err := appVersion.CreateWorktreeVersion(ctx.Services(), appVersion.Branching.Develop)
+					if err != nil {
+						return err
+					}
+					appProviderPlan.Version = developVersion.Version.String()
+					err = developVersion.ResetWorktreeVersion()
+					if err != nil {
+						return err
+					}
+
 					localRepo := appVersion.Repo.LocalRepo
 					g, _ := localRepo.Git()
-					if !p.fetched[appVersion.RepoName] {
-						log.Info("Fetching changes...")
-						err = g.FetchAll()
-						if err != nil {
-							log.WithError(err).Error("Could not fetch changes.")
-						}
-					}
 					previousRelease, err := localRepo.GetMostRecentTagRef("*-*")
 					if err != nil {
 						return errors.Wrapf(err, "could not get most recent tag for %q", appName)
@@ -325,7 +343,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 
 					if len(changeLog.Changes) > 0 {
 						appProviderPlan.Bump = changeLog.VersionBump
-						for _, change := range changeLog.Changes.FilterByBump(git.Major, git.Minor, git.Patch) {
+						for _, change := range changeLog.Changes.FilterByBump(semver.BumpMajor, semver.BumpMinor, semver.BumpPatch) {
 							appProviderPlan.Changelog = append(appProviderPlan.Changelog, change.Title)
 						}
 					}
@@ -342,8 +360,10 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 			versions[appVersion.Version] = true
 			changeCount += len(appVersion.Changelog)
 		}
-		if len(versions) == 1 && changeCount == 0 {
-			appPlan.ChosenProvider = StableName
+		if len(versions) == 1 && changeCount == 0 && appPlan.ChosenProvider == "" {
+			for provider := range appPlan.Providers {
+				appPlan.ChosenProvider = provider
+			}
 		}
 
 		plan.Apps[appName] = appPlan
@@ -362,6 +382,13 @@ func (p *Platform) RePlanRelease(ctx BosunContext) (*ReleasePlan, error) {
 		return nil, err
 	}
 
+	previous, err := p.GetPreviousRelease()
+	if err != nil {
+		return nil, err
+	}
+
+	p.SetReleaseManifest(SlotStable, previous)
+
 	plan, err := manifest.GetPlan()
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not load release plan; if release is old, move release plan from manifest.yaml to a new plan.yaml file")
@@ -374,7 +401,38 @@ func (p *Platform) RePlanRelease(ctx BosunContext) (*ReleasePlan, error) {
 
 	p.NextReleaseName = manifest.Name
 
-	ctx.Log.Infof("Readied new release plan for %s.", manifest)
+	p.SetReleaseManifest(SlotNext, manifest)
+
+	ctx.Log.Infof("Prepared new release plan for %s.", manifest)
+
+	return plan, nil
+}
+
+func (p *Platform) RefreshPlan(ctx BosunContext) (*ReleasePlan, error) {
+	if err := p.checkPlanningOngoing(); err == nil {
+		return nil, errors.New("no next release found")
+	}
+
+	manifest, err := p.GetNextRelease()
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := manifest.GetPlan()
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not load release plan; if release is old, move release plan from manifest.yaml to a new plan.yaml file")
+	}
+
+	err = p.UpdatePlan(ctx, plan)
+	if err != nil {
+		return nil, err
+	}
+
+	p.NextReleaseName = manifest.Name
+
+	p.SetReleaseManifest(SlotNext, manifest)
+
+	ctx.Log.Infof("Refreshed release plan for %s.", manifest)
 
 	return plan, nil
 }
@@ -438,6 +496,15 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		return nil, err
 	}
 
+	stable, err := p.GetStableRelease()
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy the current stable release and make it the previous release.
+	previous := stable.Clone()
+	p.SetReleaseManifest(SlotPrevious, previous)
+
 	releaseMetadata := plan.ReleaseMetadata
 	releaseManifest := NewReleaseManifest(releaseMetadata)
 
@@ -458,65 +525,100 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		return nil, err
 	}
 
-	for _, appName := range util.SortedKeys(plan.Apps) {
-		var app *App
-		appPlan := plan.Apps[appName]
+	appCh := make(chan *App, len(plan.Apps))
+	errCh := make(chan error)
 
-		validationResult := validationResults[appName]
-		if validationResult.Err != nil {
-			return nil, errors.Errorf("app %q failed validation: %s", appName, validationResult.Err)
+	dispatcher := worker.NewDispatcher(ctx.Log, 100)
+
+	for _, unclosedAppName := range util.SortedKeys(plan.Apps) {
+		appName := unclosedAppName
+		originalApp, err := ctx.Bosun.GetApp(appName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "app %q is not real", appName)
 		}
+		repo := originalApp.RepoName
 
-		if appPlan.ChosenProvider == WorkspaceProviderName {
-			// we pass the expected version here to avoid multiple bumps
-			// if something goes wrong during branching
-			providerPlan := appPlan.Providers[WorkspaceProviderName]
-			app, err = ctx.Bosun.GetAppFromProvider(appName, WorkspaceProviderName)
+		dispatcher.Dispatch(repo, func() {
+			app, err := func() (*App, error) {
+
+				var app *App
+				appPlan := plan.Apps[appName]
+
+				validationResult := validationResults[appName]
+				if validationResult.Err != nil {
+					return nil, errors.Errorf("app %q failed validation: %s", appName, validationResult.Err)
+				}
+
+				if appPlan.ChosenProvider == WorkspaceProviderName {
+					// we pass the expected version here to avoid multiple bumps
+					// if something goes wrong during branching
+					providerPlan := appPlan.Providers[WorkspaceProviderName]
+					app, err = ctx.Bosun.GetAppFromProvider(appName, WorkspaceProviderName)
+					if err != nil {
+						return nil, errors.Errorf("app does not exist")
+					}
+					if app.BranchForRelease {
+						bump := semver.BumpNone
+						if providerPlan.Bump != "" {
+							bump = providerPlan.Bump
+						}
+						if appPlan.BumpOverride != "" {
+							bump = appPlan.BumpOverride
+						}
+
+						releaseBranch, err := app.Branching.GetReleaseBranchName(releaseMetadata)
+						if err != nil {
+							return nil, errors.Wrap(err, "create release branch name")
+						}
+
+						app, err = releaseManifest.BumpForRelease(ctx, app, app.Branching.Develop, releaseBranch, bump, semver.New(providerPlan.Version))
+						if err != nil {
+							return nil, errors.Wrapf(err, "upgrading app %s", appName)
+						}
+					}
+
+					return app, nil
+				} else {
+					ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName)
+
+					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
+					if err != nil {
+						return nil, errors.Wrap(err, "app does not exist")
+					}
+
+					return app, nil
+				}
+			}()
+
 			if err != nil {
-				return nil, errors.Errorf("app does not exist")
+				errCh <- err
+			} else {
+				appCh <- app
 			}
-			if app.BranchForRelease {
-				bump := "none"
-				if providerPlan.Bump != "" {
-					bump = providerPlan.Bump
-				}
-				if appPlan.BumpOverride != "" {
-					bump = appPlan.BumpOverride
-				}
+		})
+	}
 
-				releaseBranch, err := app.Branching.GetReleaseBranchName(releaseMetadata)
-				if err != nil {
-					return nil, errors.Wrap(err, "create release branch name")
-				}
+	for range plan.Apps {
+		select {
+		case app := <-appCh:
 
-				err = releaseManifest.UpgradeApp(ctx, appName, app.Branching.Develop, releaseBranch, bump, semver.New(providerPlan.Version))
-				if err != nil {
-					return nil, errors.Wrapf(err, "upgrading app %s", appName)
-				}
-			}
-
-		} else {
-			ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName)
-
-			app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
-			if err != nil {
-				return nil, errors.Wrap(err, "app does not exist")
-			}
-
-			appManifest, err := app.GetManifest(ctx)
+			var appManifest *AppManifest
+			appManifest, err = app.GetManifest(ctx)
 			if err != nil {
 				return nil, err
 			}
-
+			appPlan := plan.Apps[app.Name]
+			ctx.Log.WithField("app", app.Name).WithField("version", app.Version).Info("Adding app to release.")
 			err = releaseManifest.AddApp(appManifest, appPlan.Deploy)
 			if err != nil {
 				return nil, err
 			}
+		case commitErr := <-errCh:
+			return nil, commitErr
 		}
-
 	}
 
-	p.SetReleaseManifest(StableName, releaseManifest)
+	p.SetReleaseManifest(SlotStable, releaseManifest)
 
 	ctx.Log.Infof("Added release %q to releases for platform.", releaseManifest.Name)
 
@@ -547,6 +649,7 @@ func (p *Platform) Save(ctx BosunContext) error {
 			ctx.Log.Debugf("Skipping save of manifest slot %q because it wasn't dirty.", slot)
 			continue
 		}
+		ctx.Log.Infof("Saving manifest slot %q because it was dirty.", slot)
 		manifest.Slot = slot
 		dir := p.GetManifestDirectoryPath(slot)
 		err := os.RemoveAll(dir)
@@ -615,7 +718,7 @@ func writeYaml(path string, value interface{}) error {
 }
 
 func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
-	if name == UnstableName {
+	if name == SlotUnstable {
 		manifest, err := p.GetUnstableRelease()
 		if err != nil {
 			return nil, err
@@ -673,6 +776,10 @@ func (p *Platform) MustGetReleaseManifestBySlot(name string) *ReleaseManifest {
 }
 
 func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, error) {
+	if manifest, ok := p.releaseManifests[slot]; ok {
+		return manifest, nil
+	}
+
 	dir := p.GetManifestDirectoryPath(slot)
 	manifestPath := filepath.Join(dir, "manifest.yaml")
 
@@ -822,6 +929,7 @@ func (p *Platform) GetStableAppMetadata(name string) (*AppMetadata, error) {
 
 func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
 
+	manifest.Slot = slot
 	p.releaseManifests[slot] = manifest.MarkDirty()
 	var updatedMetadata []*ReleaseMetadata
 	// replace metadata
@@ -847,16 +955,21 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 		return err
 	}
 
-	mergeTargets := map[string]mergeTarget{
+	releaseBranch := fmt.Sprintf("release/%s", release.Version)
+
+	mergeTargets := map[string]*mergeTarget{
 		"devops": {
-			dir:     platformDir,
-			name:    "devops",
-			version: release.Version.String(),
-			tag:     release.Version.String(),
+			dir:        platformDir,
+			name:       "devops",
+			version:    release.Version.String(),
+			fromBranch: releaseBranch,
+			toBranch:   "master",
+			tags: map[string]string{
+				"":        release.Version.String(),
+				"release": release.Name,
+			},
 		},
 	}
-
-	releaseBranch := fmt.Sprintf("release/%s", release.Version)
 
 	appsNames := map[string]bool{}
 	for appName := range release.GetAllAppMetadata() {
@@ -867,7 +980,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 	for _, appDeploy := range release.AppMetadata {
 
-		app, err := b.GetApp(appDeploy.Name)
+		app, err := b.GetAppFromProvider(appDeploy.Name, WorkspaceProviderName)
 		if err != nil {
 			ctx.Log.WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
 			continue
@@ -894,12 +1007,19 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			continue
 		}
 
-		mergeTargets[app.Repo.LocalRepo.Path] = mergeTarget{
-			dir:     app.Repo.LocalRepo.Path,
-			version: manifest.Version.String(),
-			name:    manifest.Name,
-			tag:     fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String()),
+		mt, ok := mergeTargets[app.Repo.Name]
+		if !ok {
+			mt = &mergeTarget{
+				dir:        app.Repo.LocalRepo.Path,
+				version:    manifest.Version.String(),
+				name:       manifest.Name,
+				fromBranch: appDeploy.Branch,
+				toBranch:   app.Branching.Master,
+				tags:       map[string]string{},
+			}
+			mergeTargets[app.Repo.Name] = mt
 		}
+		mt.tags[app.Name] = fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String())
 	}
 
 	if len(mergeTargets) == 0 {
@@ -908,7 +1028,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 	fmt.Println("About to merge back to master:")
 	for _, target := range mergeTargets {
-		fmt.Printf("- %s: %s (tag %s)\n", target.name, target.version, target.tag)
+		fmt.Printf("- %s: %s (tags %+v)\n", target.name, target.version, target.tags)
 	}
 
 	for _, target := range mergeTargets {
@@ -926,9 +1046,18 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 		g, _ := git.NewGitWrapper(repoDir)
 
-		err := g.FetchAll()
+		err = g.FetchAll()
 		if err != nil {
 			return err
+		}
+
+		changes, err := g.Exec("log", fmt.Sprintf("origin/%s..%s", target.toBranch, target.fromBranch), "--oneline")
+		if err != nil {
+			return err
+		}
+		if len(changes) == 0 {
+			log.Infof("Branch %q has already been merged into %q.", target.fromBranch, target.toBranch)
+			continue
 		}
 
 		log.Info("Checking out release branch...")
@@ -944,14 +1073,31 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			return err
 		}
 
-		log.Info("Tagging release branch...")
-		tagArgs := []string{"tag", target.tag, "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
-		tagArgs = append(tagArgs, "--force")
-
-		_, err = g.Exec(tagArgs...)
-		if err != nil {
-			log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
+		var tags []string
+		if len(target.tags) == 1 {
+			for _, tag := range target.tags {
+				tags = []string{tag}
+			}
 		} else {
+			for app, tag := range target.tags {
+				tags = append(tags, fmt.Sprintf("%s+%s", tag, app))
+			}
+		}
+
+		tagged := false
+		log.Info("Tagging release branch...")
+		for _, tag := range tags {
+			tagArgs := []string{"tag", tag, "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
+			tagArgs = append(tagArgs, "--force")
+			_, err = g.Exec(tagArgs...)
+			if err != nil {
+				log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
+			} else {
+				tagged = true
+			}
+		}
+
+		if tagged {
 			log.Info("Pushing tags...")
 
 			pushArgs := []string{"push", "--tags"}
@@ -1021,10 +1167,12 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 }
 
 type mergeTarget struct {
-	dir     string
-	version string
-	name    string
-	tag     string
+	dir        string
+	version    string
+	name       string
+	fromBranch string
+	toBranch   string
+	tags       map[string]string
 }
 
 type StatusDiff struct {

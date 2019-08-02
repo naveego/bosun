@@ -534,6 +534,11 @@ var (
 	colorOK     = color.New(color.FgGreen, color.Bold)
 )
 
+// renderOutput is an alias for printOutput because I can't remember which it is
+func renderOutput(out interface{}, columns ...string) error {
+	return printOutput(out, columns...)
+}
+
 func printOutput(out interface{}, columns ...string) error {
 
 	format := viper.GetString(ArgGlobalOutput)

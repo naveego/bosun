@@ -15,7 +15,7 @@
 // This code was copied into bosun because of a few missing features
 // in the semver library: lack of yaml marshalling and annoying pointer inconsistencies.
 
-// Semantic Versions http://semver.org
+// Semantic Versions http://org
 package semver
 
 import (
@@ -24,6 +24,16 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+)
+
+type Bump string
+
+const (
+	BumpMajor = Bump("major")
+	BumpMinor = Bump("minor")
+	BumpPatch = Bump("patch")
+	BumpNone  = Bump("none")
+	Unknown   = Bump("unknown")
 )
 
 type Version struct {

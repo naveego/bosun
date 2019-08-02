@@ -24,12 +24,13 @@ import (
 )
 
 type Plan struct {
-	FromTenant      string            `yaml:"fromTenant"`
-	ToTenant        string            `yaml:"toTenant"`
-	MongoConnection bmongo.Connection `yaml:"mongoConnection"`
-	FromAgents      []Agent           `yaml:"fromAgents"`
-	ToAgents        []Agent           `yaml:"toAgents"`
-	AgentMapping    map[string]string `yaml:"agentMapping"`
+	FromTenant               string             `yaml:"fromTenant"`
+	ToTenant                 string             `yaml:"toTenant"`
+	MongoConnection          bmongo.Connection  `yaml:"mongoConnection"`
+	GoBetweenMongoConnection *bmongo.Connection `yaml:"goBetweenMongoConnection,omitempty"`
+	FromAgents               []Agent            `yaml:"fromAgents"`
+	ToAgents                 []Agent            `yaml:"toAgents"`
+	AgentMapping             map[string]string  `yaml:"agentMapping"`
 }
 
 type Agent struct {
@@ -68,14 +69,16 @@ func (p *Planner) getPlanPath() string {
 
 func (p *Planner) Load() error {
 	path := p.getPlanPath()
-	err := util.LoadYaml(path, &p.Plan)
+	var plan *Plan
+	err := util.LoadYaml(path, &plan)
 	if err != nil {
 		if os.IsNotExist(err) {
-			p.Plan = &Plan{}
+			plan = &Plan{}
 		} else {
 			return err
 		}
 	}
+	p.Plan = plan
 	return nil
 }
 
@@ -154,12 +157,29 @@ func (p *Planner) ValidatePlan() error {
 		errs = errs.With("toTenant must be set")
 	}
 
-	p.log.Info("Validating MongoDB connection...")
-	connection, err := bmongo.GetPreparedConnection(p.log, plan.MongoConnection)
+	p.log.Info("Validating Metabase MongoDB connection...")
+	metabaseConnection, err := bmongo.GetPreparedConnection(p.log, plan.MongoConnection)
 	if err != nil {
-		errs = errs.With("mongoConnection is invalid: %s", err)
+		errs = errs.With("metabase mongoConnection is invalid: %s", err)
 	} else {
-		goBetweenDB := connection.Client.Database("go-between")
+		p.log.Info("Metabase MongoDB connection OK.")
+	}
+
+	var goBetweenConnection bmongo.PreparedConnection
+	if plan.GoBetweenMongoConnection != nil {
+		goBetweenConnection, err = bmongo.GetPreparedConnection(p.log, *plan.GoBetweenMongoConnection)
+		if err != nil {
+			err = errors.Wrap(err, "create go-between mongodb connection")
+		}
+	} else {
+		goBetweenConnection = metabaseConnection
+	}
+
+	p.log.Info("Validating Go-between MongoDB connection...")
+	if err != nil {
+		errs = errs.With("go-between mongoConnection is invalid: %s", err)
+	} else {
+		goBetweenDB := goBetweenConnection.Client.Database("go-between")
 		p.log.Infof("Getting agents from %q...", plan.FromTenant)
 		if plan.FromTenant != "" {
 			plan.FromAgents, err = getAgents(plan.FromTenant, goBetweenDB)
@@ -208,7 +228,7 @@ func (p *Planner) ValidatePlan() error {
 	}
 
 	if len(errs) == 0 {
-		p.log.Info("Plan is valid.")
+		color.Green("\nPlan is valid.\n")
 		return nil
 	}
 
@@ -244,32 +264,36 @@ func (p *Planner) PerformExport() error {
 	if err != nil {
 		return errors.Wrap(err, "migrate")
 	}
-	return err
+
+	color.Green("\nExport completed.\n")
+
+	return nil
 }
 
 func (p *Planner) migrate() error {
 
 	collections := getDBCollections(p.Dir)
-	jobsPath := collections["metabase.jobs"].DataFile
-	connectionsPath := collections["metabase.connections"].DataFile
-	shapesPath := collections["metabase.shapes"].DataFile
-	schemasPath := collections["metabase.schemas"].DataFile
+	jobsPath := collections[JobsCollection].DataFile
+	connectionsPath := collections[ConnectionsCollection].DataFile
+	shapesPath := collections[ShapesCollection].DataFile
+	schemasPath := collections[SchemasCollection].DataFile
+	writebacksPath := collections[WritebacksCollection].DataFile
 
 	/* UPDATE AGENT IDS   */
 	agentMap := p.Plan.AgentMapping
 
 	// in jobs:
-	err := p.replaceInFile(jobsPath, regexp.MustCompile(`"agentId":\s?"[^"]+"`), func(s string) string {
+	err := p.replaceInFile("update agent IDs", jobsPath, regexp.MustCompile(`"agentId":\s?"[^"]+"`), func(s string) string {
 		matches := valueExtractorRE.FindStringSubmatch(s)
 		mappedAgent := agentMap[matches[1]]
 		return fmt.Sprintf(`"agentId": "%s"`, mappedAgent)
 	})
 	if err != nil {
-		return errors.Wrapf(err, "updating agents in %q", jobsPath)
+		return err
 	}
 
 	// in connections:
-	err = p.replaceInFile(connectionsPath, regexp.MustCompile(`"preferredAgent":\s?"[^"]+"`), func(s string) string {
+	err = p.replaceInFile("update agent IDs", connectionsPath, regexp.MustCompile(`"preferredAgent":\s?"[^"]+"`), func(s string) string {
 		matches := valueExtractorRE.FindStringSubmatch(s)
 		mappedAgent := agentMap[matches[1]]
 		return fmt.Sprintf(`"preferredAgent": "%s"`, mappedAgent)
@@ -278,10 +302,32 @@ func (p *Planner) migrate() error {
 		return errors.Wrapf(err, "updating agents in %q", connectionsPath)
 	}
 
+	/* DELETE SECRETS */
+	err = p.replaceInFile("delete secrets", connectionsPath, regexp.MustCompile(`"vault:tenant-secrets[^"]+"`), func(s string) string {
+		return `""`
+	})
+	if err != nil {
+		return err
+	}
+
+	/* Pause all jobs */
+	err = p.replaceInFile("pause jobs", jobsPath, regexp.MustCompile(`"isPaused":\s?false,`), func(s string) string {
+		return `"isPaused": true,`
+	})
+	if err != nil {
+		return err
+	}
+	err = p.replaceInFile("pause jobs", writebacksPath, regexp.MustCompile(`"status": "[^"]+"`), func(s string) string {
+		return `"status": "Paused"`
+	})
+	if err != nil {
+		return err
+	}
+
 	/* GIVE ALL JOBS NEW IDS */
 	jobIDMap := map[string]string{}
 
-	err = p.replaceInFile(jobsPath, regexp.MustCompile(`"_id":\s?"[^"]+"`), func(s string) string {
+	err = p.replaceInFile("regenerate job IDs", jobsPath, regexp.MustCompile(`"_id":\s?"[^"]+"`), func(s string) string {
 		matches := valueExtractorRE.FindStringSubmatch(s)
 		oldJobID := matches[1]
 		newJobID := xid.New().String()
@@ -289,14 +335,14 @@ func (p *Planner) migrate() error {
 		return fmt.Sprintf(`"_id": "%s"`, newJobID)
 	})
 	if err != nil {
-		return errors.Wrapf(err, "updating job IDs in %q", jobsPath)
+		return err
 	}
 
 	jobIDRE := regexp.MustCompile(strings.Join(util.SortedKeys(jobIDMap), "|"))
 
 	// Update all references to the old job IDs in all resources:
 	for _, filePath := range []string{jobsPath, connectionsPath, schemasPath, shapesPath} {
-		err = p.replaceInFile(filePath, jobIDRE, func(oldJobID string) string {
+		err = p.replaceInFile("update job ID references", filePath, jobIDRE, func(oldJobID string) string {
 			newJobID := jobIDMap[oldJobID]
 			if newJobID == "" {
 				return fmt.Sprintf("CLONE_INVALID:ORIGINAL=%s", oldJobID)
@@ -304,7 +350,7 @@ func (p *Planner) migrate() error {
 			return newJobID
 		})
 		if err != nil {
-			return errors.Wrapf(err, "updating job IDs in %q", filePath)
+			return err
 		}
 	}
 
@@ -313,11 +359,11 @@ func (p *Planner) migrate() error {
 
 var valueExtractorRE = regexp.MustCompile(`"[^"]+":\s?(?:"([^"]+)"|(null))`)
 
-func (p *Planner) replaceInFile(path string, re *regexp.Regexp, replacer func(string) string) error {
+func (p *Planner) replaceInFile(purpose, path string, re *regexp.Regexp, replacer func(string) string) error {
 
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "%s: read file", purpose)
 	}
 
 	b = re.ReplaceAllFunc(b, func(bytes []byte) []byte {
@@ -327,6 +373,9 @@ func (p *Planner) replaceInFile(path string, re *regexp.Regexp, replacer func(st
 	})
 
 	err = ioutil.WriteFile(path, b, 0600)
+	if err != nil {
+		return errors.Wrapf(err, "%s: write file", purpose)
+	}
 	return err
 }
 
@@ -344,15 +393,29 @@ func (p *Planner) PerformImport() error {
 	}
 
 	err := cmd.Execute()
+	if err != nil {
+		return err
+	}
 
-	return err
+	color.Green("\nImport completed.\n")
+
+	return nil
 }
 
+const JobsCollection = "metabase.jobs"
+const ConnectionsCollection = "metabase.connections"
+const ShapesCollection = "metabase.shapes"
+const SchemasCollection = "metabase.schemas"
+const WritebacksCollection = "sync.writebacks"
+
 func getDBCollections(dir string) map[string]*bmongo.CollectionInfo {
-	collectionNames := []string{"metabase.jobs",
-		"metabase.shapes",
-		"metabase.connections",
-		"metabase.schemas"}
+	collectionNames := []string{
+		JobsCollection,
+		ConnectionsCollection,
+		ShapesCollection,
+		SchemasCollection,
+		WritebacksCollection,
+	}
 	out := map[string]*bmongo.CollectionInfo{}
 	for _, name := range collectionNames {
 		out[name] = &bmongo.CollectionInfo{

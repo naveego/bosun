@@ -72,7 +72,7 @@ type DeploySettings struct {
 
 func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 	if d.Manifest != nil {
-		if d.Manifest.Name == UnstableName {
+		if d.Manifest.Name == SlotUnstable {
 			return "latest"
 		}
 

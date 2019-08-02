@@ -94,7 +94,7 @@ func (r *Repo) Pull(ctx BosunContext) error {
 	return err
 }
 
-func (r *Repo) Fetch(ctx BosunContext) error {
+func (r *Repo) Fetch() error {
 	if err := r.CheckCloned(); err != nil {
 		return err
 	}

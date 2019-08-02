@@ -162,7 +162,7 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 
 			pkg.Log.Info(changes.OutputMessage)
 
-			bump = strings.ToLower(changes.VersionBump)
+			bump = string(changes.VersionBump)
 		}
 
 		err = appBump(b, app, bump)

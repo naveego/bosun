@@ -214,7 +214,7 @@ var _ = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
 				ctx.Log.Info("Pulling...")
-				err := repo.Fetch(ctx)
+				err := repo.Fetch()
 				return err
 			})
 		},

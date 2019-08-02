@@ -13,12 +13,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const WorkspaceProviderName = "workspace"
 const FileProviderName = "file"
 
-var DefaultAppProviderPriority = []string{WorkspaceProviderName, NextName, UnstableName, StableName, FileProviderName}
+var DefaultAppProviderPriority = []string{WorkspaceProviderName, SlotNext, SlotUnstable, SlotStable, FileProviderName}
 
 type AppProvider interface {
 	fmt.Stringer
@@ -29,7 +30,6 @@ type AppProvider interface {
 type AppConfigAppProvider struct {
 	appConfigs map[string]*AppConfig
 	apps       map[string]*App
-	repos      map[string]*Repo
 	ws         *Workspace
 }
 
@@ -39,7 +39,6 @@ func NewAppConfigAppProvider(ws *Workspace) AppConfigAppProvider {
 		ws:         ws,
 		appConfigs: map[string]*AppConfig{},
 		apps:       map[string]*App{},
-		repos:      map[string]*Repo{},
 	}
 
 	for _, appConfig := range ws.MergedBosunFile.Apps {
@@ -79,31 +78,24 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 	}
 
 	if app.RepoName != "" {
-		var repo *Repo
-		// find or add repo for app
-		repo, ok = a.repos[app.RepoName]
-		if !ok {
-			repo = &Repo{
-				RepoConfig: RepoConfig{
-					ConfigShared: ConfigShared{
-						Name: app.Name,
-					},
+		app.Repo = &Repo{
+			RepoConfig: RepoConfig{
+				ConfigShared: ConfigShared{
+					Name: app.Name,
 				},
-			}
-			a.repos[app.RepoName] = repo
+			},
 		}
 
-		app.Repo = repo
-
-		if repo.LocalRepo, ok = a.ws.LocalRepos[app.RepoName]; !ok {
+		if app.Repo.LocalRepo, ok = a.ws.LocalRepos[app.FromPath]; !ok {
 			localRepoPath, err := git.GetRepoPath(app.FromPath)
+
 			if err == nil {
-				repo.LocalRepo = &LocalRepo{
+				app.Repo.LocalRepo = &LocalRepo{
 					Name: app.RepoName,
 					Path: localRepoPath,
 				}
 			}
-			a.ws.LocalRepos[app.RepoName] = repo.LocalRepo
+			a.ws.LocalRepos[app.FromPath] = app.Repo.LocalRepo
 		}
 	}
 
@@ -177,12 +169,14 @@ func (a ReleaseManifestAppProvider) GetAllApps() (map[string]*App, error) {
 }
 
 type ChainAppProvider struct {
+	mu              *sync.Mutex
 	providers       []AppProvider
 	providersByName map[string]AppProvider
 }
 
 func NewChainAppProvider(providers ...AppProvider) ChainAppProvider {
 	p := ChainAppProvider{
+		mu:              new(sync.Mutex),
 		providers:       providers,
 		providersByName: map[string]AppProvider{},
 	}
@@ -201,6 +195,9 @@ func (a ChainAppProvider) String() string {
 }
 
 func (a ChainAppProvider) GetAppFromProvider(name string, providerName string) (*App, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if provider, ok := a.providersByName[providerName]; ok {
 		return provider.GetApp(name)
 	}
@@ -208,6 +205,9 @@ func (a ChainAppProvider) GetAppFromProvider(name string, providerName string) (
 }
 
 func (a ChainAppProvider) GetApp(name string, providerPriority []string) (*App, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	for _, providerName := range providerPriority {
 		if provider, ok := a.providersByName[providerName]; ok {
 			app, err := provider.GetApp(name)
@@ -224,6 +224,9 @@ func (a ChainAppProvider) GetApp(name string, providerPriority []string) (*App, 
 }
 
 func (a ChainAppProvider) GetAllApps(providerPriority []string) (map[string]*App, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	out := map[string]*App{}
 	for _, providerName := range providerPriority {
 		if provider, ok := a.providersByName[providerName]; ok {
@@ -242,7 +245,10 @@ func (a ChainAppProvider) GetAllApps(providerPriority []string) (map[string]*App
 	return out, nil
 }
 
-func (a ChainAppProvider) GetAllAppsFromProviders(providerNames []string) (AppList, error) {
+func (a ChainAppProvider) GetAllAppsList(providerNames []string) (AppList, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	out := AppList{}
 	for _, providerName := range providerNames {
 		provider, ok := a.providersByName[providerName]
@@ -299,7 +305,6 @@ func (a FilePathAppProvider) GetApp(path string) (*App, error) {
 }
 
 func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error) {
-
 	if !strings.HasSuffix(path, "bosun.yaml") {
 		a.log.Debugf("Provider can only get apps if path to bosun file is provided (path was %q).", path)
 		return nil, ErrAppNotFound(name)
@@ -362,6 +367,7 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 
 		appConfig = c.Apps[index]
 	}
+	appConfig.SetParent(c)
 
 	repoPath, _ := git.GetRepoPath(bosunFile)
 

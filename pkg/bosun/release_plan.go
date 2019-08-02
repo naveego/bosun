@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 )
@@ -48,14 +49,44 @@ type AppPlan struct {
 	Name           string                     `yaml:"name"`
 	Deploy         bool                       `yaml:"deploy"`
 	ChosenProvider string                     `yaml:"chosenProvider"`
-	BumpOverride   string                     `yaml:"bumpOverride,omitempty"`
+	BumpOverride   semver.Bump                `yaml:"bumpOverride,omitempty"`
 	Providers      map[string]AppProviderPlan `yaml:"providers"`
 }
 
+func (a *AppPlan) MarshalYAML() (interface{}, error) {
+	if a == nil {
+		return nil, nil
+	}
+	type proxy AppPlan
+	p := proxy(*a)
+
+	return &p, nil
+}
+
+func (a *AppPlan) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxy AppPlan
+	var p proxy
+	if a != nil {
+		p = proxy(*a)
+	}
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		*a = AppPlan(p)
+	}
+
+	if a.Providers == nil {
+		a.Providers = map[string]AppProviderPlan{}
+	}
+
+	return err
+}
+
 type AppProviderPlan struct {
-	Version   string   `yaml:"version"`
-	Bump      string   `yaml:"bump,omitempty"`
-	Changelog []string `yaml:"changelog,omitempty"`
+	Version   string      `yaml:"version"`
+	Bump      semver.Bump `yaml:"bump,omitempty"`
+	Changelog []string    `yaml:"changelog,omitempty"`
 }
 
 func (a *AppPlan) IsProviderChosen() bool {
