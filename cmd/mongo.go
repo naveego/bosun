@@ -75,6 +75,10 @@ var mongoImportCmd = &cobra.Command{
 		}
 
 		dataDir := filepath.Dir(dataFileName)
+		dataDir, err = filepath.Abs(dataDir)
+		if err != nil {
+			return err
+		}
 
 		conn := getConnection(dataFileName)
 

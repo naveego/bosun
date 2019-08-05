@@ -107,7 +107,7 @@ func (w *mongoWrapper) importData(colName string, dataFile string) error {
 
 	dataFilePath := os.ExpandEnv(dataFile)
 	if !filepath.IsAbs(dataFilePath) {
-		filepath.Join(w.DataDir, os.ExpandEnv(dataFile))
+		dataFilePath = filepath.Join(w.DataDir, dataFilePath)
 	}
 
 	w.log.Infof("importing data for collection '%s' from file '%s'", colName, dataFilePath)
@@ -153,7 +153,7 @@ func (w *mongoWrapper) importData(colName string, dataFile string) error {
 func (w *mongoWrapper) exportData(colName string, dataFile string) error {
 	dataFilePath := os.ExpandEnv(dataFile)
 	if !filepath.IsAbs(dataFilePath) {
-		filepath.Join(w.DataDir, os.ExpandEnv(dataFile))
+		dataFilePath = filepath.Join(w.DataDir, dataFilePath)
 	}
 
 	w.log.Infof("exporting data for collection '%s' to file '%s'", colName, dataFilePath)
