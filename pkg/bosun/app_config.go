@@ -3,8 +3,8 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
-	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -17,7 +17,7 @@ type AppConfig struct {
 	FromPath                string                   `yaml:"-" json:"-"`
 	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty" json:"projectManagementPlugin,omitempty"`
 	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty" json:"branchForRelease,omitempty"`
-	Branching               BranchSpec               `yaml:"branching" json:"branching"`
+	Branching               git.BranchSpec           `yaml:"branching" json:"branching"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool           `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
 	ReportDeployment bool           `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
@@ -42,17 +42,6 @@ type AppConfig struct {
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.
 	manifest       *AppManifest `yaml:"-" json:"-"` // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
-}
-
-type BranchSpec struct {
-	Master  string `yaml:"master"`
-	Develop string `yaml:"develop"`
-	Release string `yaml:"release"`
-	Feature string `yaml:"feature"`
-}
-
-func (b BranchSpec) GetReleaseBranchName(release *ReleaseMetadata) (string, error) {
-	return util.RenderTemplate(b.Release, release)
 }
 
 func (a *AppConfig) MarshalYAML() (interface{}, error) {

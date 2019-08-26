@@ -566,7 +566,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 							bump = appPlan.BumpOverride
 						}
 
-						releaseBranch, err := app.Branching.GetReleaseBranchName(releaseMetadata)
+						releaseBranch, err := releaseMetadata.GetReleaseBranchName(app.Branching)
 						if err != nil {
 							return nil, errors.Wrap(err, "create release branch name")
 						}
@@ -860,7 +860,7 @@ func (p *Platform) RefreshApp(ctx BosunContext, name string, slot string) error 
 
 	currentBranch := app.GetBranchName()
 
-	if !currentBranch.IsMaster() {
+	if !app.Branching.IsMaster(currentBranch) {
 		defer func() {
 			e := app.CheckOutBranch(string(currentBranch))
 			if e != nil {

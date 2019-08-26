@@ -1,0 +1,21 @@
+syntax = "proto3";
+package daemon;
+
+message ForwardedPort{
+    string env = 1;
+    string name = 2;
+    int32 local_port = 3;
+    int32 remote_port = 4;
+}
+
+message ForwardedPorts {
+    repeated ForwardedPort ports = 1;
+}
+
+message Empty{}
+
+service KV {
+    rpc StartPortForward(ForwardedPort) returns (ForwardedPort);
+    rpc StopPortForward(ForwardedPort) returns (Empty);
+    rpc ListPortForwards(ForwardedPort) returns (ForwardedPorts);
+}

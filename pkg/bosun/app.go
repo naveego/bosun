@@ -216,7 +216,7 @@ func (a *App) PublishChart(ctx BosunContext, force bool) error {
 	}
 
 	branch := a.GetBranchName()
-	if !branch.IsMaster() && !branch.IsRelease() {
+	if a.Branching.IsFeature(branch) || a.Branching.IsDevelop(branch) {
 		if ctx.GetParams().Force {
 			ctx.Log.WithField("branch", branch).Warn("You should only publish the chart from the master or release branches (overridden by --force).")
 		} else {
@@ -336,18 +336,29 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	tags := []string{"latest", a.Version.String()}
 
 	branch := a.GetBranchName()
-	if branch != "master" && !branch.IsRelease() {
+
+	if a.Branching.IsFeature(branch) {
 		if ctx.GetParams().Force {
-			ctx.Log.WithField("branch", branch).Warn("You should only push images from the master or release branches (overridden by --force).")
+			ctx.Log.WithField("branch", branch).Warn("You should not push images from a feature branch (overridden by --force).")
 		} else {
-			ctx.Log.WithField("branch", branch).Warn("You can only push images from the master or release branches (override by setting the --force flag).")
+			ctx.Log.WithField("branch", branch).Warn("You cannot push images from a feature branch (override by setting the --force flag).")
 			return nil
 		}
 	}
 
-	release, err := branch.Release()
-	if err == nil {
-		tags = append(tags, fmt.Sprintf("%s-%s", a.Version, release))
+	if a.Branching.IsDevelop(branch) {
+		tags = append(tags, "develop")
+	}
+
+	if a.Branching.IsMaster(branch) {
+		tags = append(tags, "master")
+	}
+
+	if a.Branching.IsRelease(branch) {
+		_, releaseVersion, err := a.Branching.GetRelease(branch)
+		if err == nil {
+			tags = append(tags, fmt.Sprintf("%s-%s", a.Version, releaseVersion))
+		}
 	}
 
 	for _, tag := range tags {

@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
@@ -24,6 +25,10 @@ func (r ReleaseMetadata) String() string {
 		return r.Name
 	}
 	return fmt.Sprintf("%s@%s", r.Name, r.Version)
+}
+
+func (r ReleaseMetadata) GetReleaseBranchName(branchSpec git.BranchSpec) (string, error) {
+	return util.RenderTemplate(branchSpec.Release, r)
 }
 
 type releaseMetadataSorting []*ReleaseMetadata
