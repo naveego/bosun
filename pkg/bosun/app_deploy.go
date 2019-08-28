@@ -15,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -503,9 +502,9 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	if reportDeploy {
 
-		cleanup, err := a.ReportDeployment(ctx)
-		if err != nil {
-			return err
+		cleanup, reportErr := a.ReportDeployment(ctx)
+		if reportErr != nil {
+			return reportErr
 		}
 
 		// ensure that the deployment is updated when we return.
@@ -537,6 +536,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		stepCtx.Log.Info("Executing step...")
 		err = step.Action(stepCtx)
 		if err != nil {
+			stepCtx.Log.WithError(err).Error("Deploy failed.")
 			return err
 		}
 		stepCtx.Log.Info("Step complete.")
@@ -570,75 +570,74 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
 		} else {
 
-			log.Info("Move ready to go stories to UAT")
-			repoPath, err := git.GetRepoPath(a.AppConfig.FromPath)
-			if err != nil {
-				err = errors.Wrap(err, "get repo path")
-			}
-
-			log.Info("Move ready to go stories to UAT if deploy succeed")
-			issueSvc, err := ctx.Bosun.GetIssueService(repoPath)
-			if err != nil {
-				err = errors.Wrap(err, "get issue service")
-			}
-
-			segs := strings.Split(a.Repo, "/")
-			if len(segs) < 2 {
-				err = errors.Wrap(err, "incorrect segs")
-			}
-			org, repoName := segs[0], segs[1]
-			log.Info("current org", org)
-
-			ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-			// find the last successful deployment time
-			since, err := getLastSuccessfulDeploymentTime(client.Repositories, ctx, org, repoName)
-
-			closedIssues, err := issueSvc.GetIssuesFromCommitsSince(org, repoName, since)
-			if err != nil {
-				err = errors.Wrap(err, "get closed issues")
-			}
-
-			log.Info("closed issues:", closedIssues)
-
-			for _, closedIssue := range closedIssues {
-				issueNum := closedIssue.Number
-				issueRef := issues.NewIssueRef(org, repoName, issueNum)
-				parents, err := issueSvc.GetParents(issueRef)
-				if err != nil {
-					err = errors.Wrap(err, "get parents for closed issue")
-				}
-
-				log.Info("get parents ", parents)
-
-				if len(parents) <= 0 {
-					continue
-				}
-				parent := parents[0]
-				parent.Repo = "stories"
-				parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
-				log.Info("dealing with parent story #", parent.Number)
-
-				allChildren, err := issueSvc.GetChildren(parentIssueRef)
-				if err != nil {
-					err = errors.Wrap(err, "get all children of parent issue")
-				}
-
-				var ok = true
-				for _, child := range allChildren {
-					if !child.IsClosed {
-						ok = false
-						break
-					}
-				}
-				if ok {
-					err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
-					if err != nil {
-						err = errors.Wrap(err, "error when move parent story to Waiting for UAT")
-					}
-					log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
-				}
-			}
-
+			// log.Info("Move ready to go stories to UAT")
+			// repoPath, err := git.GetRepoPath(a.AppConfig.FromPath)
+			// if err != nil {
+			// 	err = errors.Wrap(err, "get repo path")
+			// }
+			//
+			// log.Info("Move ready to go stories to UAT if deploy succeed")
+			// issueSvc, err := ctx.Bosun.GetIssueService(repoPath)
+			// if err != nil {
+			// 	err = errors.Wrap(err, "get issue service")
+			// }
+			//
+			// segs := strings.Split(a.Repo, "/")
+			// if len(segs) < 2 {
+			// 	err = errors.Wrap(err, "incorrect segs")
+			// }
+			// org, repoName := segs[0], segs[1]
+			// log.Infof("current org: %s", org)
+			//
+			// ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+			// // find the last successful deployment time
+			// since, err := getLastSuccessfulDeploymentTime(client.Repositories, ctx, org, repoName)
+			//
+			//
+			// closedIssues, err := issueSvc.GetIssuesFromCommitsSince(org, repoName, since)
+			// if err != nil {
+			// 	err = errors.Wrap(err, "get closed issues")
+			// }
+			//
+			// log.Info("closed issues:", closedIssues)
+			//
+			// for _, closedIssue := range closedIssues {
+			// 	issueNum := closedIssue.Number
+			// 	issueRef := issues.NewIssueRef(org, repoName, issueNum)
+			// 	parents, err := issueSvc.GetParents(issueRef)
+			// 	if err != nil {
+			// 		err = errors.Wrap(err, "get parents for closed issue")
+			// 	}
+			//
+			// 	log.Info("get parents ", parents)
+			//
+			// 	if len(parents) <= 0 {
+			// 		continue
+			// 	}
+			// 	parent := parents[0]
+			// 	parent.Repo = "stories"
+			// 	parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+			// 	log.Info("dealing with parent story #", parent.Number)
+			//
+			// 	allChildren, err := issueSvc.GetChildren(parentIssueRef)
+			// 	if err != nil {
+			// 		err = errors.Wrap(err, "get all children of parent issue")
+			// 	}
+			//
+			// 	var ok = true
+			// 	for _, child := range allChildren {
+			// 		if !child.IsClosed {
+			// 			ok = false
+			// 			break
+			// 		}
+			// 	}
+			// 	if ok {
+			// 		err = issueSvc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
+			// 		if err != nil {
+			// 			err = errors.Wrap(err, "error when move parent story to Waiting for UAT")
+			// 		}
+			// 		log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
+			//
 			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
 
 		}

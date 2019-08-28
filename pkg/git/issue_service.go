@@ -211,9 +211,28 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 		parentNewChild := fmt.Sprintf("\nrequires %s", issueString)
 		parentNewBody := *parentIssue.Body
 		parentNewBody += parentNewChild
+
 		newParentRequest := &github.IssueRequest{
 			Title: parentIssue.Title,
 			Body:  &parentNewBody,
+		}
+		if issueRequest.Assignee != nil {
+
+			if parentIssue.Assignee == nil {
+				newParentRequest.Assignee = issueRequest.Assignee
+			} else if len(parentIssue.Assignees) > 0 {
+				assigneeName := *issueRequest.Assignee
+				assignees := []string{
+					assigneeName,
+				}
+
+				for _, assignedUser := range parentIssue.Assignees {
+					if assignedUser.GetName() != assigneeName {
+						assignees = append(assignees, assignedUser.GetName())
+					}
+				}
+				newParentRequest.Assignees = &assignees
+			}
 		}
 
 		editedParent, response, err := s.github.Issues.Edit(context.Background(), parentOrg, parentRepo, parentIssueNumber, newParentRequest)

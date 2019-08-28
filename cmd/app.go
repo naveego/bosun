@@ -1002,10 +1002,14 @@ func pullApps(ctx bosun.BosunContext, apps []*bosun.App) error {
 	repos := map[string]*bosun.Repo{}
 	for _, app := range apps {
 		if app.Repo == nil {
-			ctx.Log.Errorf("no repo identified for app %q", app.Name)
+			if app.RepoName == "" {
+				ctx.Log.Errorf("no repo identified for app %q", app.Name)
+			}
+
+			continue
 		}
 		if app.Repo.CheckCloned() != nil {
-			ctx.Log.Warn("%q is not cloned", app.Name)
+			ctx.Log.Warnf("%q is not cloned", app.Name)
 		}
 		repos[app.RepoName] = app.Repo
 	}
@@ -1029,7 +1033,6 @@ func pullApps(ctx bosun.BosunContext, apps []*bosun.App) error {
 var appScriptCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "script [app] {name}",
 	Args:         cobra.RangeArgs(1, 2),
-	Aliases:      []string{"scripts"},
 	Short:        "Run a scripted sequence of commands.",
 	Long:         `If app is not provided, the current directory is used.`,
 	SilenceUsage: true,
@@ -1082,6 +1085,27 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().IntSliceVar(&scriptStepsSlice, ArgScriptSteps, []int{}, "Steps to run (defaults to all steps)")
+})
+
+var appScriptsCmd = addCommand(appCmd, &cobra.Command{
+	Use:          "scripts [app]",
+	Short:        "Lists scripts for app.",
+	Long:         `If app is not provided, the current directory is used.`,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		viper.BindPFlags(cmd.Flags())
+
+		b := MustGetBosun()
+
+		app := mustGetApp(b, args)
+
+		for _, script := range app.Scripts {
+			color.New(color.Bold).Println(script.Name)
+			color.White("%s\n", script.Description)
+		}
+
+		return nil
+	},
 })
 
 var appActionCmd = addCommand(appCmd, &cobra.Command{

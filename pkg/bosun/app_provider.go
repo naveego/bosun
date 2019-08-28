@@ -147,6 +147,17 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 		AppConfig:   appManifest.AppConfig,
 		AppManifest: appManifest,
 	}
+
+	if app.RepoName != "" {
+		app.Repo = &Repo{
+			RepoConfig: RepoConfig{
+				ConfigShared: ConfigShared{
+					Name: app.RepoName,
+				},
+			},
+		}
+	}
+
 	a.apps[name] = app
 
 	return app, nil

@@ -3,10 +3,12 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -15,6 +17,7 @@ type Script struct {
 	File         *File         `yaml:"-" json:"-"`
 	Steps        []ScriptStep  `yaml:"steps,omitempty" json:"steps,omitempty"`
 	Literal      *Command      `yaml:"literal,omitempty" json:"literal,omitempty"`
+	BranchFilter string        `yaml:"branchFilter,omitempty" json:"branchFilter,omitempty"`
 	Params       []ScriptParam `yaml:"params,omitempty" json:"params,omitempty"`
 }
 
@@ -106,6 +109,26 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 
 	ctx = ctx.WithDir(s.FromPath)
 	env := ctx.Env
+
+	if s.BranchFilter != "" {
+		branchRE, err := regexp.Compile(s.BranchFilter)
+		if err != nil {
+			return errors.Wrapf(err, "invalid branchFilter %q", s.BranchFilter)
+		}
+		g, err := git.NewGitWrapper(s.FromPath)
+		if err != nil {
+			return errors.Wrapf(err, "could not get git wrapper for branch filter %q using path %q", s.BranchFilter, s.FromPath)
+		}
+		branch := g.Branch()
+		if !branchRE.MatchString(branch) {
+			if ctx.GetParams().Force {
+				ctx.GetLog().Warnf("Current branch %q does not match branchFilter %q, but overridden by --force.", branch, s.BranchFilter)
+			} else {
+				ctx.GetLog().Errorf("Current branch %q does not match branchFilter %q (override using --force).", branch, s.BranchFilter)
+				return nil
+			}
+		}
+	}
 
 	if err = env.Ensure(ctx); err != nil {
 		return errors.Wrap(err, "ensure environment")

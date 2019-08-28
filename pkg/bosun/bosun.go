@@ -761,12 +761,11 @@ func (b *Bosun) ConfirmEnvironment() error {
 				b.environmentConfirmed = to.BoolPtr(true)
 			} else {
 				return errors.Errorf("The --confirm-env flag was set to %q, but you are targeting the %q environment!\nSwitch environments or unset the flag.", b.params.ConfirmedEnv, b.env.Name)
-
 			}
+		} else {
+			confirmed := pkg.RequestConfirmFromUser("Do you really want to run this command against the %q environment?", envName)
+			b.environmentConfirmed = &confirmed
 		}
-
-		confirmed := pkg.RequestConfirmFromUser("Do you really want to run this command against the %q environment?", envName)
-		b.environmentConfirmed = &confirmed
 	}
 
 	if *b.environmentConfirmed {
