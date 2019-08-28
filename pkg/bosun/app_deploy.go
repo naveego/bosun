@@ -604,7 +604,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			// for _, closedIssue := range closedIssues {
 			// 	issueNum := closedIssue.Number
 			// 	issueRef := issues.NewIssueRef(org, repoName, issueNum)
-			// 	parents, err := issueSvc.GetParents(issueRef)
+			// 	parents, err := issueSvc.GetParentRefs(issueRef)
 			// 	if err != nil {
 			// 		err = errors.Wrap(err, "get parents for closed issue")
 			// 	}
@@ -619,7 +619,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			// 	parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
 			// 	log.Info("dealing with parent story #", parent.Number)
 			//
-			// 	allChildren, err := issueSvc.GetChildren(parentIssueRef)
+			// 	allChildren, err := issueSvc.GetChildRefs(parentIssueRef)
 			// 	if err != nil {
 			// 		err = errors.Wrap(err, "get all children of parent issue")
 			// 	}

@@ -154,7 +154,7 @@ func (c GitAcceptPRCommand) Execute() error {
 		return errors.Wrap(err, "move task to done")
 	}
 
-	/* parents, err := svc.GetParents(prIssRef)
+	/* parents, err := svc.GetParentRefs(prIssRef)
 	if err != nil {
 		return errors.Wrap(err, "get parents for current issue")
 	}
@@ -164,7 +164,7 @@ func (c GitAcceptPRCommand) Execute() error {
 
 		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
 
-		allChildren, err := svc.GetChildren(parentIssueRef)
+		allChildren, err := svc.GetChildRefs(parentIssueRef)
 		if err != nil {
 			return errors.New("get all children of parent issue")
 		}

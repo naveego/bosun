@@ -2,6 +2,7 @@ package issues
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/pkg/errors"
 	"regexp"
 	"strconv"
@@ -9,25 +10,25 @@ import (
 )
 
 type Issue struct {
-	Number          int
-	Org             string
-	Repo            string
-	Body            string
-	Assignee        string
-	Assignees       []string
-	Milestone       *int
-	Estimate        Estimate
-	Epics           []string
-	Releases        []string
-	Title           string
-	ProgressState   string
-	ProgressStateID int
-	BranchPattern   string
+	Number          int      `yaml:"number,omitempty"`
+	Org             string   `yaml:"org,omitempty"`
+	Repo            string   `yaml:"repo,omitempty"`
+	Body            string   `yaml:"body,omitempty"`
+	Assignee        string   `yaml:"assignee,omitempty"`
+	Assignees       []string `yaml:"assignees,omitempty"`
+	Milestone       *int     `yaml:"milestone,omitempty"`
+	Estimate        int      `yaml:"estimate,omitempty"`
+	Epics           []string `yaml:"epics,omitempty"`
+	Releases        []string `yaml:"releases,omitempty"`
+	Title           string   `yaml:"title,omitempty"`
+	ProgressState   string   `yaml:"progressState,omitempty"`
+	ProgressStateID int      `yaml:"progressStateId,omitempty"`
+	BranchPattern   string   `yaml:"branchPattern,omitempty"`
 
-	IsClosed bool
+	IsClosed bool `yaml:"isClosed,omitempty"`
 
-	GithubRepoID        *int
-	MappedProgressState string
+	GithubRepoID        *int64 `yaml:"githubRepoId,omitempty"`
+	MappedProgressState string `yaml:"mappedProgressState,omitempty"`
 }
 
 var slugRE = regexp.MustCompile(`\W+`)
@@ -58,6 +59,12 @@ type IssueRef string
 
 func NewIssueRef(org, repo string, number int) IssueRef {
 	return IssueRef(fmt.Sprintf("%s/%s#%d", org, repo, number))
+}
+
+func ParseIssueRef(raw string) (IssueRef, error) {
+	ref := IssueRef(raw)
+	err := ref.Valid()
+	return ref, err
 }
 
 func (s IssueRef) String() string { return string(s) }
@@ -92,8 +99,9 @@ type IssueService interface {
 	RemoveDependency(from, to IssueRef) error
 	// Put the task and depending issue into In Progress column on the ZenHub board
 	SetProgress(issue IssueRef, column string) error
-	GetParents(issue IssueRef) ([]Issue, error)
-	GetChildren(issue IssueRef) ([]Issue, error)
+	GetParentRefs(issue IssueRef) ([]IssueRef, error)
+	GetChildRefs(issue IssueRef) ([]IssueRef, error)
+	GetIssue(issue IssueRef) (Issue, error)
 	GetIssuesFromCommitsSince(org, repo, since string) ([]Issue, error)
 	GetClosedIssue(org, repoName string) ([]int, error)
 	// Check if a story's children are all closed before moving it to Waiting for Merge
@@ -118,4 +126,39 @@ func (c ColumnMapping) ReverseLookup(name string) string {
 		}
 	}
 	return "NotFound"
+}
+
+func GetIssuesFromRefsErr(svc IssueService, refs []IssueRef, err error) ([]Issue, error) {
+	if err != nil {
+		return nil, err
+	}
+
+	return GetIssuesFromRefs(svc, refs)
+}
+
+func GetIssuesFromRefs(svc IssueService, refs []IssueRef) ([]Issue, error) {
+	outCh := make(chan interface{}, len(refs))
+	for _, ref := range refs {
+		go func(ref IssueRef) {
+			issue, err := svc.GetIssue(ref)
+			if err != nil {
+				outCh <- err
+			} else {
+				outCh <- issue
+			}
+		}(ref)
+	}
+
+	var out []Issue
+	errs := multierr.New()
+	for range refs {
+		x := <-outCh
+		switch t := x.(type) {
+		case Issue:
+			out = append(out, t)
+		case error:
+			errs.Collect(t)
+		}
+	}
+	return out, errs.ToError()
 }

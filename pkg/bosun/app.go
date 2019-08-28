@@ -355,7 +355,7 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	}
 
 	if a.Branching.IsRelease(branch) {
-		_, releaseVersion, err := a.Branching.GetRelease(branch)
+		_, releaseVersion, err := a.Branching.GetReleaseNameAndVersion(branch)
 		if err == nil {
 			tags = append(tags, fmt.Sprintf("%s-%s", a.Version, releaseVersion))
 		}

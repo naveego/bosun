@@ -63,7 +63,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
 
 		// TODO: move parent story if possible
-		// parents, err := issueSvc.GetParents(issueRf)
+		// parents, err := issueSvc.GetParentRefs(issueRf)
 		// if err != nil {
 		// 	return errors.Wrap(err, "get parents for current issue")
 		// }

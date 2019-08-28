@@ -22,9 +22,6 @@ type API struct {
 	zenHubAuthToken string
 }
 
-
-
-
 // New returns a reference to a ZenHub API
 func New(zenHubAuthToken string, githubAPI *github.Client) *API {
 	return &API{
@@ -183,7 +180,7 @@ func (a *API) AddDependency(dependency *Dependency) error {
 	return nil
 }
 
-// GetParents returns dependencies of the specified issue in the repo.
+// GetParentRefs returns dependencies of the specified issue in the repo.
 func (a *API) GetDependencies(repoID, issueNum int) ([]Dependency, error) {
 
 	var parents []int
@@ -194,12 +191,12 @@ func (a *API) GetDependencies(repoID, issueNum int) ([]Dependency, error) {
 	getDependenciesURI := fmt.Sprintf("%v/p1/repositories/%v/dependencies", zenhubRoot, repoID)
 	request, err := a.createDefaultRequest(http.MethodGet, getDependenciesURI)
 	if err != nil {
-		return nil,  errors.Wrap(err, "create zenhub request")
+		return nil, errors.Wrap(err, "create zenhub request")
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return nil,  err
+		return nil, err
 	}
 
 	if response.StatusCode != http.StatusOK {
@@ -261,8 +258,6 @@ func (a *API) GetIssueData(repoID, issueNumber int) (*IssueData, error) {
 
 	return issue, nil
 }
-
-
 
 // GetPipelineID returns the ZenHub ID for the specified pipeline name. If the specified pipeline
 // does not exist for the current board, this method will return an empty string and an error.

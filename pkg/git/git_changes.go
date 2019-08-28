@@ -68,15 +68,23 @@ func (g GitChanges) MapToStories(svc issues.IssueService) ([]*GitChangeStory, er
 			}
 		}
 
-		iss, err := svc.GetParents(change.Issue)
+		parentRefs, err := svc.GetParentRefs(change.Issue)
 		if err != nil {
 			continue
 		}
-		if len(iss) != 2 {
+		if len(parentRefs) == 0 {
 			continue
 		}
 
-		parent := iss[1]
+		parents, err := issues.GetIssuesFromRefs(svc, parentRefs)
+		if err != nil {
+			continue
+		}
+		if len(parents) == 0 {
+			continue
+		}
+
+		parent := parents[1]
 
 		parentRef = parent.Ref()
 

@@ -30,6 +30,13 @@ func GetCurrentRepoPath() (string, error) {
 }
 
 func GetRepoPath(path string) (string, error) {
+	var err error
+	if path == "" {
+		path, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
 	original := path
 	path, _ = filepath.Abs(path)
 	stat, err := os.Stat(path)

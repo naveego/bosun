@@ -306,49 +306,27 @@ func (s IssueService) GetIssueState(issue issues.IssueRef) (string, error) {
 	return state, nil
 }
 
-func (s IssueService) GetParents(issue issues.IssueRef) ([]issues.Issue, error) {
+func (s IssueService) GetParentRefs(issue issues.IssueRef) ([]issues.IssueRef, error) {
 
-	var parentIssues []issues.Issue
 	org, repo, number, err := issue.Parts()
-	//repoId, err := s.GetRepoIdbyName(org, repo)
+	//repoId, err := s.getRepoID(org, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	parentOrg := "naveegoinc"
-	parentRepo := "stories"
-
 	githubIssue, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
-	body := *githubIssue.Body
-	regForParent := regexp.MustCompile(`required by [a-z]+\/[a-z]+\/#[0-9]+`)
-	regForParentNum := regexp.MustCompile(`[0-9]+`)
-	parents := regForParent.FindAllString(body, -1)
-	if len(parents) < 1 {
-		return parentIssues, nil
+	if err != nil {
+		return nil, err
 	}
+	body := githubIssue.GetBody()
 
-	for _, parent := range parents {
-		var parentIssue issues.Issue
-		parentNum := regForParentNum.FindAllString(parent, -1)
-		parentNumInt, err := strconv.Atoi(parentNum[0])
-		if err != nil {
-			return parentIssues, errors.Wrap(err, "get parent issue")
-		}
-		parentIssue = issues.Issue{
-			Number: parentNumInt,
-			Org:    parentOrg,
-			Repo:   parentRepo,
-		}
-		parentIssues = append(parentIssues, parentIssue)
-	}
-
-	return parentIssues, nil
+	out, err := extractIssueRefsFromString(body, "required by")
+	return out, err
 
 }
 
-func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error) {
+func (s IssueService) GetChildRefs(issue issues.IssueRef) ([]issues.IssueRef, error) {
 
-	var childIssues []issues.Issue
 	org, repo, number, err := issue.Parts()
 	if err != nil {
 		return nil, errors.Wrap(err, "parts of issue")
@@ -356,88 +334,61 @@ func (s IssueService) GetChildren(issue issues.IssueRef) ([]issues.Issue, error)
 
 	// find children from an issue's body
 	githubIssuePointer, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
-	githubIssue := *githubIssuePointer
-	issueBody := *githubIssue.Body
-	reg := regexp.MustCompile(`requires [a-z]+\/[a-z]+\/#[0-9]+`)
-	childrenMatch := reg.FindAllString(issueBody, -1)
-	if len(childrenMatch) < 1 {
-		return nil, nil
-	}
-	regOR := regexp.MustCompile(`[a-z]+\/[a-z]+`)
-
-	i := 0
-
-	for i < len(childrenMatch) {
-		childMatch := childrenMatch[i]
-
-		orMatch := regOR.FindAllString(childMatch, -1)
-		orMatchString := orMatch[0]
-		OR := strings.Split(orMatchString, "/")
-		childOrg := OR[0]
-		childRepo := OR[1]
-
-		regNum := regexp.MustCompile(`[0-9]+`)
-		childNumMatch := regNum.FindAllString(childMatch, -1)
-		childNumString := childNumMatch[0]
-		childNum, err := strconv.Atoi(childNumString)
-		if err != nil {
-			return nil, errors.Wrap(err, "child number")
-		}
-
-		child := issues.Issue{
-			Org:    childOrg,
-			Repo:   childRepo,
-			Number: childNum,
-		}
-		childIssues = append(childIssues, child)
-	}
-
-	/*timeline, _, err := s.github.Issues.ListIssueTimeline(s.ctx(), org, repo, number, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "list issue timeline")
+		return nil, err
 	}
-	for _, tl := range timeline {
-		event := *tl.Event
-		if event != "cross-referenced" {
-			continue
-		}
-		url := tl.Source.URL
+	githubIssue := *githubIssuePointer
+	issueBody := githubIssue.GetBody()
+	out, err := extractIssueRefsFromString(issueBody, "requires")
+	return out, err
+}
 
-		regUrl := regexp.MustCompile(`repos/[a-z]+/[a-z]+/issues/[0-9]+`)
-		urlMatch := regUrl.FindAllString(url, -1)
-		urlMatchString := urlMatch[0]
-		urlSplit := strings.Split(urlMatchString, "/")
-		childOrg := urlSplit[1]
-		childRepo := urlSplit[2]
-		childNumber, err := strconv.Atoi(urlSplit[4])
+func (s IssueService) GetIssue(ref issues.IssueRef) (issues.Issue, error) {
+
+	org, repo, number, err := ref.Parts()
+	issue, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
+	if err != nil {
+		return issues.Issue{}, errors.Wrap(err, "parts of issue")
+	}
+
+	out := issues.Issue{
+		Repo:   repo,
+		Org:    org,
+		Number: number,
+		Title:  issue.GetTitle(),
+		Body:   issue.GetBody(),
+	}
+	if issue.Assignee != nil {
+		out.Assignee = issue.Assignee.GetLogin()
+	}
+	for _, user := range issue.Assignees {
+		if user != nil {
+			out.Assignees = append(out.Assignees, user.GetLogin())
+		}
+	}
+
+	return out, nil
+}
+
+func extractIssueRefsFromString(body string, prefix string) ([]issues.IssueRef, error) {
+	var out []issues.IssueRef
+	var err error
+	regForParent := regexp.MustCompile(prefix + `\s?(([A-z\-]+)/(.*)+#([0-9]+))`)
+	parents := regForParent.FindAllStringSubmatch(body, -1)
+	if len(parents) < 1 {
+		return out, nil
+	}
+
+	for _, parent := range parents {
+		var parentRef issues.IssueRef
+		parentRef, err = issues.ParseIssueRef(parent[1])
 		if err != nil {
-			return childIssues, errors.Wrap(err, "get child issue information from url")
+			return nil, err
 		}
-		childIssuePointer,_, err := s.github.Issues.Get(s.ctx(), childOrg, childRepo, childNumber)
-		if err != nil {
-			return nil, errors.Wrap(err, "get child issue pointer")
-		}
-		childIssueContent := *childIssuePointer
-		childIssue := issues.Issue{
-			Number: childNumber,
-			Org: childOrg,
-			Repo: childRepo,
-			Body: *childIssueContent.Body,
-			Assignee: *childIssueContent.Assignee.Login,
-			Milestone: childIssueContent.Milestone.Number,
-			Title: *childIssueContent.Title,
-		}
-		if &childIssueContent.ClosedAt == nil {
-			childIssue.IsClosed = false
-		} else {
-			childIssue.IsClosed = true
-		}
-		childIssues = append(childIssues, childIssue)
-	} */
+		out = append(out, parentRef)
+	}
 
-	dumpJSON("childIssues", childIssues)
-
-	return childIssues, nil
+	return out, nil
 }
 
 func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {

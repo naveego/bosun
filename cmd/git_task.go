@@ -1,11 +1,10 @@
 package cmd
 
 import (
-	"errors"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	// "github.com/pkg/errors"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	// "os"
@@ -99,3 +98,42 @@ const (
 	ArgGitTaskParentOrg  = "parent-org"
 	ArgGitTaskParentRepo = "parent-repo"
 )
+
+var gitTaskShow = addCommand(gitTaskCmd, &cobra.Command{
+	Use:   "issue [app]",
+	Short: "Shows the issue for the current branch, if any.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun(bosun.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
+
+		app := mustGetApp(b, args)
+
+		localRepo := app.Repo.LocalRepo
+
+		branch := app.GetBranchName()
+
+		if !app.Branching.IsFeature(branch) {
+			return errors.Errorf("%q is not a feature branch (template is %q)", branch, app.Branching.Feature)
+		}
+
+		issueNumber, err := app.Branching.GetIssueNumber(branch)
+		if err != nil {
+			return err
+		}
+
+		svc, err := b.GetIssueService(localRepo.Path)
+		if err != nil {
+			return err
+		}
+
+		org, repo := git.GetOrgAndRepoFromPath(localRepo.Path)
+
+		ref := issues.NewIssueRef(org, repo, issueNumber)
+
+		issue, err := svc.GetIssue(ref)
+		if err != nil {
+			return err
+		}
+
+		return renderOutput(issue)
+	},
+})
