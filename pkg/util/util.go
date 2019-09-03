@@ -48,3 +48,13 @@ func DistinctStrings(strs []string) []string {
 	}
 	return out
 }
+
+// DefaultString returns the first string that is not empty
+func DefaultString(strs ...string) string {
+	for _, s := range strs {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}

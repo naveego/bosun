@@ -45,10 +45,9 @@ var RegexMatchCommitID = regexp.MustCompile(`commit .{40}`)
 var RegexMatchFormattedTitle = regexp.MustCompile(`(` + allCommitTypeString + `)(\([^)]+\))?:(.*)`)
 var RegexMatchAlternativeTitle = regexp.MustCompile(`^\* .*`)
 var RegexMatchDate = regexp.MustCompile(`Date: .*`)
-var RegexMatchAuthor = regexp.MustCompile(`Author: .*`)
+var RegexMatchAuthor = regexp.MustCompile(`Author: ([^<]+)\s+<([^>]+)>`)
 var RegexMatchIssue = regexp.MustCompile(`\s+(resolves )?(@|#)?[0-9]+$|^[0-9]+$`)
 
-var RegexGetAuthor = regexp.MustCompile(`Author: `)
 var RegexGetCommitType = regexp.MustCompile(`(` + allCommitTypeString + `)`)
 var RegexGetCommitId = regexp.MustCompile(` .{40}`)
 var RegexGetDate = regexp.MustCompile(`Date: `)
@@ -59,18 +58,21 @@ var skipKeys = []*regexp.Regexp{
 }
 
 var bumpMap = map[string]semver.Bump{
-	"feat":     semver.BumpMinor,
-	"fix":      semver.BumpPatch,
-	"refactor": semver.BumpPatch,
-	"perf":     semver.BumpPatch,
-	"docs":     semver.BumpNone,
-	"style":    semver.BumpNone,
-	"test":     semver.BumpNone,
-	"chore":    semver.BumpNone,
+	"feat":              semver.BumpMinor,
+	"fix":               semver.BumpPatch,
+	"refactor":          semver.BumpPatch,
+	"perf":              semver.BumpPatch,
+	"docs":              semver.BumpNone,
+	"style":             semver.BumpNone,
+	"test":              semver.BumpNone,
+	"chore":             semver.BumpNone,
+	MalformedCommitFlag: semver.BumpPatch,
 }
 
+const MalformedCommitFlag = "malformed"
+
 func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
-	out, err := g.Exec("log", fmt.Sprintf("%s..%s", inBranch, notInBranch))
+	out, err := g.Exec("log", "--no-merges", fmt.Sprintf("%s..%s", inBranch, notInBranch))
 
 	org, repo := GetOrgAndRepoFromPath(g.dir)
 	var allChanges = GitChanges{}
@@ -82,7 +84,8 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 	var commitType string
 	var state = StateLookingForCommitNumber
 	lines := strings.Split(out, "\n")
-	for _, line := range lines {
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		line = strings.TrimSpace(line)
 		for _, skipper := range skipKeys {
 			if skipper.MatchString(line) {
@@ -102,7 +105,7 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 		case StateLookingForAuthor:
 			committerMatch := RegexMatchAuthor.FindStringSubmatch(line)
 			if len(committerMatch) > 0 {
-				committer = RegexGetAuthor.Split(committerMatch[0], -1)[1]
+				committer = committerMatch[1]
 				state = StateLookingForDate
 				continue
 			}
@@ -127,20 +130,16 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 				commitType = RegexGetCommitType.FindString(title)
 				state = StateLookingForBody
 
+			} else if strings.HasPrefix(line, "Merge") {
+				// is a merge commit, we don't care
+				continue
 			} else {
 				// Line is not a standard commit
-				change := GitChange{
-					CommitID:  commitId,
-					Committer: committer,
-					Body:      CleanFrontAsterisk(line),
-					Date:      date,
-					Valid:     false,
-				}
-				allChanges = append(allChanges, change)
-				state = StateLookingForTitle
-
+				commitType = MalformedCommitFlag
+				title = fmt.Sprintf("%s: %s", MalformedCommitFlag, line)
+				state = StateLookingForBody
+				continue
 			}
-			continue
 		case StateLookingForBody:
 			commitIdMatch := RegexMatchCommitID.FindStringSubmatch(line)
 			titleMatch := RegexMatchFormattedTitle.FindString(line)

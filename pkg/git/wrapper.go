@@ -4,6 +4,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"strings"
+	"sync"
 )
 
 type GitWrapper struct {
@@ -63,8 +64,11 @@ func (g GitWrapper) Pull() error {
 }
 
 var fetched = map[string]bool{}
+var fetchedMu = &sync.Mutex{}
 
 func (g GitWrapper) Fetch(flags ...string) error {
+	fetchedMu.Lock()
+	defer fetchedMu.Unlock()
 	// don't fetch again if we've already fetched during this run
 	if !fetched[g.dir] {
 		args := append([]string{"-C", g.dir, "fetch"}, flags...)

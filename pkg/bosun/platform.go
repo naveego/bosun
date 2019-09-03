@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 const (
@@ -37,17 +36,18 @@ var (
 // Platform is a collection of releasable apps which work together in a single cluster.
 // The platform contains a history of all releases created for the platform.
 type Platform struct {
-	ConfigShared        `yaml:",inline"`
-	DefaultChartRepo    string                      `yaml:"defaultChartRepo"`
-	ReleaseBranchFormat string                      `yaml:"releaseBranchFormat"`
-	MasterBranch        string                      `yaml:"masterBranch"`
-	ReleaseDirectory    string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
-	ReleaseMetadata     []*ReleaseMetadata          `yaml:"releases" json:"releases"`
-	Repos               []*Repo                     `yaml:"repos" json:"repos"`
-	Apps                []*AppMetadata              `yaml:"apps"`
-	ZenHubConfig        *zenhub.Config              `yaml:"zenHubConfig"`
-	NextReleaseName     string                      `yaml:"nextReleaseName,omitempty"`
-	releaseManifests    map[string]*ReleaseManifest `yaml:"-"`
+	ConfigShared                 `yaml:",inline"`
+	DefaultChartRepo             string                      `yaml:"defaultChartRepo"`
+	Branching                    git.BranchSpec              `yaml:"branching"`
+	ReleaseBranchFormat_OBSOLETE string                      `yaml:"releaseBranchFormat,omitempty"`
+	MasterBranch_OBSOLETE        string                      `yaml:"masterBranch,omitempty"`
+	ReleaseDirectory             string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
+	ReleaseMetadata              []*ReleaseMetadata          `yaml:"releases" json:"releases"`
+	Repos                        []*Repo                     `yaml:"repos" json:"repos"`
+	Apps                         []*AppMetadata              `yaml:"apps"`
+	ZenHubConfig                 *zenhub.Config              `yaml:"zenHubConfig"`
+	NextReleaseName              string                      `yaml:"nextReleaseName,omitempty"`
+	releaseManifests             map[string]*ReleaseManifest `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -73,12 +73,10 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		*p = Platform(px)
 	}
 
-	if p.MasterBranch == "" {
-		p.MasterBranch = "master"
-	}
-	if p.ReleaseBranchFormat == "" {
-		p.ReleaseBranchFormat = "release/*"
-	}
+	p.Branching.Master = util.DefaultString(p.Branching.Master, p.MasterBranch_OBSOLETE, "master")
+	p.Branching.Develop = util.DefaultString(p.Branching.Develop, "develop")
+	p.Branching.Release = util.DefaultString(p.Branching.Release, p.ReleaseBranchFormat_OBSOLETE, "release/{{.Version}}")
+
 	if p.releaseManifests == nil {
 		p.releaseManifests = map[string]*ReleaseManifest{}
 	}
@@ -149,9 +147,10 @@ func (p *Platform) GetReleaseMetadataSortedByVersion(descending bool) []*Release
 
 func (p *Platform) MakeReleaseBranchName(version semver.Version) string {
 	if version == UnstableVersion {
-		return p.MasterBranch
+		return p.Branching.Develop
 	}
-	return strings.Replace(p.ReleaseBranchFormat, "*", version.String(), 1)
+	name, _ := p.Branching.RenderRelease(git.BranchParts{git.BranchPartVersion: version.String()})
+	return name
 }
 
 type ReleasePlanSettings struct {
@@ -195,7 +194,6 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 		}
 	} else {
 		log.Info("Creating release branch...")
-		// TODO: make from branch configurable
 		err = localRepo.SwitchToNewBranch(ctx, "master", branch)
 		if err != nil {
 			return errors.Wrap(err, "creating release branch")
@@ -340,7 +338,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 					if len(changeLog.Changes) > 0 {
 						appProviderPlan.Bump = changeLog.VersionBump
 						for _, change := range changeLog.Changes.FilterByBump(semver.BumpMajor, semver.BumpMinor, semver.BumpPatch) {
-							appProviderPlan.Changelog = append(appProviderPlan.Changelog, change.Title)
+							appProviderPlan.Changelog = append(appProviderPlan.Changelog, fmt.Sprintf("%s (%s) %s", change.Title, change.Committer, change.Issue))
 						}
 					}
 				}
@@ -603,11 +601,15 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 			if err != nil {
 				return nil, err
 			}
-			appPlan := plan.Apps[app.Name]
-			ctx.Log.WithField("app", app.Name).WithField("version", app.Version).Info("Adding app to release.")
-			err = releaseManifest.AddApp(appManifest, appPlan.Deploy)
-			if err != nil {
-				return nil, err
+			if appPlan, ok := plan.Apps[app.Name]; ok {
+
+				ctx.Log.WithField("app", app.Name).WithField("version", app.Version).Info("Adding app to release.")
+				err = releaseManifest.AddApp(appManifest, appPlan.Deploy)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				ctx.Log.WithField("app", app.Name).Warn("Requested app was not in plan!")
 			}
 		case commitErr := <-errCh:
 			return nil, commitErr
