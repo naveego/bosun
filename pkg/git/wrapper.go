@@ -62,15 +62,19 @@ func (g GitWrapper) Pull() error {
 
 }
 
-func (g GitWrapper) Fetch(flags ...string) error {
-	args := append([]string{"-C", g.dir, "fetch"}, flags...)
-	err := pkg.NewCommand("git", args...).RunE()
-	return err
-}
+var fetched = map[string]bool{}
 
-func (g GitWrapper) FetchAll() error {
-	err := pkg.NewCommand("git", "-C", g.dir, "fetch", "--all").RunE()
-	return err
+func (g GitWrapper) Fetch(flags ...string) error {
+	// don't fetch again if we've already fetched during this run
+	if !fetched[g.dir] {
+		args := append([]string{"-C", g.dir, "fetch"}, flags...)
+		err := pkg.NewCommand("git", args...).RunE()
+		if err != nil {
+			return err
+		}
+		fetched[g.dir] = true
+	}
+	return nil
 }
 
 func (g GitWrapper) IsDirty() bool {

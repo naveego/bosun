@@ -319,15 +319,11 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 				log.Info("Computing change log...")
 				if cloned && owned {
 
-					developVersion, err := appVersion.CreateWorktreeVersion(ctx.Services(), appVersion.Branching.Develop)
+					developVersion, err := appVersion.GetManifestFromBranch(ctx, appVersion.Branching.Develop)
 					if err != nil {
 						return err
 					}
 					appProviderPlan.Version = developVersion.Version.String()
-					err = developVersion.ResetWorktreeVersion()
-					if err != nil {
-						return err
-					}
 
 					localRepo := appVersion.Repo.LocalRepo
 					g, _ := localRepo.Git()
@@ -838,69 +834,15 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 	return err
 }
 
-// RefreshApp checks out the master branch of the app, then reloads it.
-// If a release is being planned, the plan will be updated with the refreshed app.
-func (p *Platform) RefreshApp(ctx BosunContext, name string, slot string) error {
-	manifest, err := p.GetReleaseManifestBySlot(slot)
+// RefreshApp checks updates the specified slot with the specified branch of the named app.
+func (p *Platform) RefreshApp(ctx BosunContext, name string, branch string, slot string) error {
+	releaseManifest, err := p.GetReleaseManifestBySlot(slot)
 	if err != nil {
 		return err
 	}
 
-	b := ctx.Bosun
-	app, err := b.GetApp(name)
-	if err != nil {
-		return err
-	}
-	ctx = ctx.WithApp(app)
+	return releaseManifest.RefreshApp(ctx, name, branch)
 
-	currentAppManifest, err := manifest.GetAppManifest(name)
-	if err != nil {
-		return err
-	}
-
-	currentBranch := app.GetBranchName()
-
-	if !app.Branching.IsMaster(currentBranch) {
-		defer func() {
-			e := app.CheckOutBranch(string(currentBranch))
-			if e != nil {
-				ctx.Log.WithError(e).Warnf("Returning to branch %q failed.", currentBranch)
-			}
-		}()
-		err = app.CheckOutBranch(p.MasterBranch)
-		if err != nil {
-			return errors.Wrapf(err, "could not check out %q branch for app %q", p.MasterBranch, name)
-		}
-	}
-
-	app, err = b.ReloadApp(name)
-	if err != nil {
-		return errors.Wrap(err, "reload app")
-	}
-
-	appManifest, err := app.GetManifest(ctx)
-	if err != nil {
-		return err
-	}
-
-	if appManifest.DiffersFrom(currentAppManifest.AppMetadata) {
-		ctx.Log.Info("Updating manifest.")
-		err = manifest.AddApp(appManifest, false)
-		if err != nil {
-			return err
-		}
-	} else {
-		ctx.Log.Debug("No changes detected.")
-	}
-
-	err = manifest.RefreshApp(ctx, name)
-	if err != nil {
-		return err
-	}
-
-	manifest.MarkDirty()
-
-	return nil
 }
 
 func (p *Platform) GetAppManifestByNameFromSlot(appName string, slot string) (*AppManifest, error) {
@@ -1046,7 +988,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 		g, _ := git.NewGitWrapper(repoDir)
 
-		err = g.FetchAll()
+		err = g.Fetch()
 		if err != nil {
 			return err
 		}

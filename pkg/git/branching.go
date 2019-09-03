@@ -71,6 +71,21 @@ func (b BranchSpec) IsFeature(branch BranchName) bool {
 	return t == BranchTypeFeature
 }
 
+func (b BranchSpec) GetBranchTemplate(typ BranchType) string {
+	switch typ {
+	case BranchTypeDevelop:
+		return b.Develop
+	case BranchTypeRelease:
+		return b.Release
+	case BranchTypeFeature:
+		return b.Feature
+	case BranchTypeMaster:
+		return b.Master
+	default:
+		return "unknown"
+	}
+}
+
 func (b BranchSpec) GetBranchType(branch BranchName) (BranchType, error) {
 	switch branch.String() {
 	case b.Master:

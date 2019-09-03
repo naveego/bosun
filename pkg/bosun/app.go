@@ -10,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/rs/xid"
 	"github.com/stevenle/topsort"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -22,21 +23,15 @@ import (
 
 type App struct {
 	*AppConfig
-	Repo         *Repo // a pointer to the repo if bosun is aware of it
-	HelmRelease  *HelmRelease
-	branch       string
-	commit       string
-	gitTag       string
-	isCloned     bool
-	labels       filter.Labels
-	Provider     AppProvider
-	AppManifest  *AppManifest
-	WorktreeInfo *WorktreeInfo
-}
-
-type WorktreeInfo struct {
-	CurrentBranch string
-	WorktreePath  string
+	Repo        *Repo // a pointer to the repo if bosun is aware of it
+	HelmRelease *HelmRelease
+	branch      string
+	commit      string
+	gitTag      string
+	isCloned    bool
+	labels      filter.Labels
+	Provider    AppProvider
+	AppManifest *AppManifest
 }
 
 func (a *App) ProviderName() string {
@@ -782,24 +777,35 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 	return appManifest, err
 }
 
-func (a *App) ResetWorktreeVersion() error {
-	if a.WorktreeInfo == nil {
-		return nil
+func (a *App) GetMostRecentCommitFromBranch(ctx BosunContext, branch string) (string, error) {
+	err := a.Repo.CheckCloned()
+	if err != nil {
+		return "", err
 	}
 
-	_, _ = a.Repo.LocalRepo.git().Exec("worktree", "remove", a.WorktreeInfo.WorktreePath)
-	a.WorktreeInfo = nil
-	return nil
+	g, err := a.Repo.LocalRepo.Git()
+	if err != nil {
+		return "", err
+	}
+
+	err = g.Fetch()
+	if err != nil {
+		return "", err
+	}
+
+	hash, err := g.Exec("rev-parse", fmt.Sprintf("origin/%s", branch))
+	if err != nil {
+		return "", errors.Wrapf(err, "get tip commit hash for origin/%s", branch)
+	}
+
+	return hash, nil
+
 }
 
-func (a *App) CreateWorktreeVersion(logger Logger, branch string) (*App, error) {
+func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManifest, error) {
 	err := a.Repo.CheckCloned()
 	if err != nil {
 		return nil, err
-	}
-
-	if a.Repo.LocalRepo.GetCurrentBranch() == branch {
-		return a, nil
 	}
 
 	g, err := a.Repo.LocalRepo.Git()
@@ -807,24 +813,51 @@ func (a *App) CreateWorktreeVersion(logger Logger, branch string) (*App, error) 
 		return nil, err
 	}
 
+	currentBranch := g.Branch()
+
+	err = g.Fetch()
+	if err != nil {
+		return nil, err
+	}
 	repoDirName := filepath.Base(a.Repo.LocalRepo.Path)
 	worktreePath := fmt.Sprintf("/tmp/%s-worktree", repoDirName)
-	_, _ = g.Exec("worktree", "remove", worktreePath)
-	_, err = g.Exec("worktree", "add", worktreePath, branch)
+	tmpBranchName := fmt.Sprintf("worktree-%s", xid.New())
+	_, err = g.Exec("branch", "--track", tmpBranchName, fmt.Sprintf("origin/%s", branch))
 	if err != nil {
-		return nil, errors.Wrapf(err, "create work tree for checking out branch %q", branch)
+		return nil, errors.Wrapf(err, "checking out tmp branch tracking origin/%q", branch)
+	}
+	defer func() {
+		ctx.Log.Debugf("Deleting worktree %s", worktreePath)
+		_, _ = g.Exec("checkout", currentBranch)
+		_, _ = g.Exec("worktree", "remove", worktreePath)
+		_, _ = g.Exec("branch", "-D", tmpBranchName)
+	}()
+
+	ctx.Log.Debugf("Creating worktree for %s at %s", tmpBranchName, worktreePath)
+	_, _ = g.Exec("worktree", "remove", worktreePath)
+	_, err = g.Exec("worktree", "add", worktreePath, tmpBranchName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "create work tree for checking out branch %q", tmpBranchName)
 	}
 
 	// bosunFile should now be pulled from the worktree
 	bosunFile := strings.Replace(a.FromPath, a.Repo.LocalRepo.Path, "", 1)
 	bosunFile = filepath.Join(worktreePath, bosunFile)
-	provider := NewFilePathAppProvider(logger.Log())
+	provider := NewFilePathAppProvider(ctx.GetLog())
 
 	app, err := provider.GetAppByPathAndName(bosunFile, a.Name)
-	app.WorktreeInfo = &WorktreeInfo{
-		WorktreePath:  worktreePath,
-		CurrentBranch: branch,
+	if err != nil {
+		return nil, err
 	}
 
-	return app, err
+	ctx.Log.Infof("Creating manifest from branch %q...", branch)
+	manifest, err := app.GetManifest(ctx)
+	if err != nil {
+		return nil, errors.Wrapf(err, "create manifest from branch %q", branch)
+	}
+
+	// set branch to requested branch, not the temp branch
+	manifest.Branch = branch
+
+	return manifest, nil
 }

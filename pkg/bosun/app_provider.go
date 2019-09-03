@@ -316,7 +316,7 @@ func (a FilePathAppProvider) GetApp(path string) (*App, error) {
 }
 
 func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error) {
-	if !strings.HasSuffix(path, "bosun.yaml") {
+	if !strings.HasSuffix(path, ".yaml") {
 		a.log.Debugf("Provider can only get apps if path to bosun file is provided (path was %q).", path)
 		return nil, ErrAppNotFound(name)
 	}

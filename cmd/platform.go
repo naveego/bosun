@@ -20,6 +20,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
@@ -68,8 +69,8 @@ var _ = addCommand(platformCmd, &cobra.Command{
 })
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "pull [names...]",
-	Short: "Pulls the latest code, and updates the `unstable` release.",
+	Use:   "update-unstable [names...]",
+	Short: "Updates the manifests of the provided apps on the unstable branch with the provided apps. Defaults to using the 'develop' branch of the apps.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
 		p, err := b.GetCurrentPlatform()
@@ -78,6 +79,18 @@ var _ = addCommand(platformCmd, &cobra.Command{
 		}
 
 		ctx := b.NewContext()
+
+		if viper.GetBool(argPlatformUpdateKnown) {
+			args = []string{}
+			release, err := p.GetUnstableRelease()
+			if err != nil {
+				return err
+			}
+			for name := range release.GetAllAppMetadata() {
+				args = append(args, name)
+			}
+		}
+
 		apps := mustGetKnownApps(b, args)
 
 		for _, app := range apps {
@@ -89,7 +102,12 @@ var _ = addCommand(platformCmd, &cobra.Command{
 				continue
 			}
 
-			err = p.RefreshApp(ctx, app.Name, bosun.SlotUnstable)
+			branch := viper.GetString(argPlatformUpdateBranch)
+			if branch == "" {
+				branch = app.Branching.GetBranchTemplate(git.BranchTypeDevelop)
+			}
+
+			err = p.RefreshApp(ctx, app.Name, branch, bosun.SlotUnstable)
 			if err != nil {
 				ctx.Log.WithError(err).Warn("Could not refresh.")
 			}
@@ -99,7 +117,15 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 		return err
 	},
-}, withFilteringFlags)
+}, withFilteringFlags, func(cmd *cobra.Command) {
+	cmd.Flags().String(argPlatformUpdateBranch, "", "The branch to update from.")
+	cmd.Flags().Bool(argPlatformUpdateKnown, false, "If set, updates all apps currently in the unstable release.")
+})
+
+const (
+	argPlatformUpdateBranch = "branch-type"
+	argPlatformUpdateKnown  = "known"
+)
 
 var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "include [appNames...]",

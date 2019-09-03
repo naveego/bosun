@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 )
 
 type ReleaseMetadata struct {
@@ -257,7 +258,7 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 	return app, nil
 }
 
-func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string) error {
+func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch string) error {
 
 	b := ctx.Bosun
 	app, err := b.GetApp(name)
@@ -265,55 +266,43 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string) error {
 		return err
 	}
 	ctx = ctx.WithApp(app)
+
 	currentAppManifest, err := r.GetAppManifest(name)
 	if err != nil {
-		return err
+		ctx.GetLog().Warnf("Could not get previous manifest for %q from release %q: %s", r.String(), name, err)
 	}
 
-	if app.IsRepoCloned() {
-
-		appReleaseBranch := currentAppManifest.Branch
-		currentBranch := app.GetBranchName()
-
-		if appReleaseBranch != string(currentBranch) {
-			defer func() {
-				e := app.CheckOutBranch(string(currentBranch))
-				if e != nil {
-					ctx.Log.WithError(e).Warnf("Returning to branch %q failed.", currentBranch)
-				}
-			}()
-			err = app.CheckOutBranch(appReleaseBranch)
-			if err != nil {
-				return errors.Wrapf(err, "could not check out %q branch for app %q", appReleaseBranch, name)
-			}
-		}
-
-		err = app.Repo.Pull(ctx)
-		if err != nil {
-			return errors.Wrapf(err, "pull app %q", name)
-		}
-
-	}
-
-	app, err = b.ReloadApp(name)
-	if err != nil {
-		return errors.Wrap(err, "reload app")
-	}
-
-	appManifest, err := app.GetManifest(ctx)
-	if err != nil {
-		return err
-	}
-
-	if appManifest.DiffersFrom(currentAppManifest.AppMetadata) {
-		ctx.Log.Info("Updating manifest.")
-		appManifest.PinToRelease(r.ReleaseMetadata)
-		err = r.AddApp(appManifest, true)
+	if currentAppManifest != nil {
+		latestCommitHash, err := app.GetMostRecentCommitFromBranch(ctx, branch)
 		if err != nil {
 			return err
 		}
-	} else {
-		ctx.Log.Debug("No changes detected.")
+		if strings.HasPrefix(latestCommitHash, currentAppManifest.Hashes.Commit) {
+			ctx.Log.Infof("No changes detected, keeping app at %s@%s (most recent commit to %s is %s).", currentAppManifest.Version, currentAppManifest.Hashes.Commit, branch, latestCommitHash)
+			return nil
+		}
+	}
+
+	updatedAppManifest, err := app.GetManifestFromBranch(ctx, branch)
+	if err != nil {
+		return errors.Wrapf(err, "get manifest for %q from branch %q", name, branch)
+	}
+
+	previousVersion := "unknown"
+	previousCommit := "unknown"
+	if currentAppManifest != nil {
+		previousVersion = currentAppManifest.Version.String()
+		previousCommit = currentAppManifest.Hashes.Commit
+	}
+	currentVersion := updatedAppManifest.Version.String()
+	currentCommit := updatedAppManifest.Hashes.Commit
+
+	ctx.Log.Infof("Changes detected, will update app in release manifest: %s@%s => %s@%s", previousVersion, previousCommit, currentVersion, currentCommit)
+
+	err = r.AddApp(updatedAppManifest, false)
+
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -377,8 +366,8 @@ func (r *ReleaseManifest) RemoveApp(appName string) {
 }
 
 func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool) error {
-	r.MarkDirty()
 	r.init()
+	r.MarkDirty()
 	appManifests, err := r.GetAppManifests()
 	if err != nil {
 		return err
