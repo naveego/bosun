@@ -49,7 +49,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		svc, err := b.GetIssueService(repoPath)
+		svc, err := b.GetIssueService()
 		if err != nil {
 			return errors.New("get issue service")
 		}
@@ -76,12 +76,23 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			BranchPattern: app.Branching.Feature,
 		}
 
-		_, err = svc.Create(issue, parent)
+		number, err := svc.Create(issue, parent)
 		if err != nil {
 			return err
 		}
 
-		return nil
+		g, err := git.NewGitWrapper(repoPath)
+		if err != nil {
+			return err
+		}
+
+		branch, err := app.Branching.RenderFeature(issue.Slug(), number)
+		if err != nil {
+			return errors.Wrap(err, "could not create branch")
+		}
+
+		err = g.CreateBranch(branch)
+		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringP(ArgGitTitle, "n", "", "Issue title.")
@@ -120,7 +131,7 @@ var gitTaskShow = addCommand(gitTaskCmd, &cobra.Command{
 			return err
 		}
 
-		svc, err := b.GetIssueService(localRepo.Path)
+		svc, err := b.GetIssueService()
 		if err != nil {
 			return err
 		}

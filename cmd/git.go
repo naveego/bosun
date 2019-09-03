@@ -28,11 +28,6 @@ var gitCmd = &cobra.Command{
 
 func init() {
 
-	gitDeployCmd.AddCommand(gitDeployStartCmd)
-	gitDeployCmd.AddCommand(gitDeployUpdateCmd)
-
-	gitCmd.AddCommand(gitDeployCmd)
-
 	rootCmd.AddCommand(gitCmd)
 }
 
@@ -61,11 +56,6 @@ func getMaybeAuthenticatedGithubClient() *github.Client {
 	}
 
 	return git.NewGithubClient(token)
-}
-
-var gitDeployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Deploy-related commands.",
 }
 
 var gitTokenCmd = addCommand(gitCmd, &cobra.Command{
@@ -105,64 +95,6 @@ var gitRepoCommand = addCommand(gitCmd, &cobra.Command{
 		return nil
 	},
 })
-
-var gitDeployStartCmd = &cobra.Command{
-	Use:   "start {cluster}",
-	Args:  cobra.ExactArgs(1),
-	Short: "Notifies github that a deploy has happened.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		client := mustGetGithubClient()
-
-		cluster := args[0]
-		sha := pkg.NewCommand("git rev-parse HEAD").MustOut()
-		isProd := cluster == "blue"
-
-		deploymentRequest := &github.DeploymentRequest{
-			Description:           github.String(fmt.Sprintf("Deployment to %s", cluster)),
-			Environment:           &cluster,
-			Ref:                   &sha,
-			ProductionEnvironment: &isProd,
-			Task:                  github.String("deploy"),
-		}
-
-		org, repo := getOrgAndRepo()
-
-		deployment, _, err := client.Repositories.CreateDeployment(context.Background(), org, repo, deploymentRequest)
-		if err != nil {
-			return err
-		}
-
-		id := *deployment.ID
-		fmt.Println(id)
-		return nil
-	},
-}
-
-var gitDeployUpdateCmd = &cobra.Command{
-	Use:   "update {deployment-id} {success|failure}",
-	Args:  cobra.ExactArgs(2),
-	Short: "Notifies github that a deploy has happened.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		client := mustGetGithubClient()
-
-		org, repo := getOrgAndRepo()
-
-		deploymentID, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return errors.Wrap(err, "invalid deployment ID")
-		}
-
-		req := &github.DeploymentStatusRequest{
-			State: &args[1],
-		}
-
-		_, _, err = client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deploymentID, req)
-		if err != nil {
-			return err
-		}
-		return nil
-	},
-}
 
 var issueNumberRE = regexp.MustCompile(`issue/#?(\d+)`)
 
@@ -458,7 +390,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	}
 
 	b := MustGetBosun()
-	svc, err := b.GetIssueService(repoPath)
+	svc, err := b.GetIssueService()
 	if err != nil {
 		return errors.New("get issue service")
 	}

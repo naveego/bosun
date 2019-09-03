@@ -4,14 +4,31 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/go-github/v20/github"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"os"
-	"strings"
+	"time"
 )
 
-func CreateDeploy(client *github.Client, orgSlashRepo, ref, environment string) (int64, error) {
+type Deployer struct {
+	github       *github.Client
+	issueService issues.IssueService
+	dir          string
+	org          string
+	repo         string
+}
 
-	org, repo, err := parseOrgSlashRepo(orgSlashRepo)
+func NewDeployer(repoRef issues.RepoRef, client *github.Client, issueService issues.IssueService) (*Deployer, error) {
+
+	return &Deployer{
+		github:       client,
+		issueService: issueService,
+		org:          repoRef.Org,
+		repo:         repoRef.Repo,
+	}, nil
+}
+
+func (d Deployer) CreateDeploy(ref, environment string) (int64, error) {
 
 	deploymentRequest := &github.DeploymentRequest{
 		Description:      github.String(fmt.Sprintf("Deployment to %s", environment)),
@@ -22,7 +39,7 @@ func CreateDeploy(client *github.Client, orgSlashRepo, ref, environment string) 
 		RequiredContexts: &[]string{},
 	}
 
-	deployment, _, err := client.Repositories.CreateDeployment(context.Background(), org, repo, deploymentRequest)
+	deployment, _, err := d.github.Repositories.CreateDeployment(context.Background(), d.org, d.repo, deploymentRequest)
 	if err != nil {
 		return 0, err
 	}
@@ -32,10 +49,11 @@ func CreateDeploy(client *github.Client, orgSlashRepo, ref, environment string) 
 	return id, nil
 }
 
-func UpdateDeploy(client *github.Client, orgSlashRepo string, deployID int64, state string) error {
+func (d Deployer) UpdateDeploy(deployID int64, state string, message string) error {
 
 	req := &github.DeploymentStatusRequest{
-		State: &state,
+		State:       &state,
+		Description: &message,
 	}
 
 	buildID, ok := os.LookupEnv("TEAMCITY_BUILD_ID")
@@ -43,19 +61,36 @@ func UpdateDeploy(client *github.Client, orgSlashRepo string, deployID int64, st
 		req.LogURL = github.String(fmt.Sprintf("https://ci.n5o.black/viewLog.html?buildId=%s", buildID))
 	}
 
-	org, repo, err := parseOrgSlashRepo(orgSlashRepo)
-
-	_, _, err = client.Repositories.CreateDeploymentStatus(context.Background(), org, repo, deployID, req)
+	_, _, err := d.github.Repositories.CreateDeploymentStatus(context.Background(), d.org, d.repo, deployID, req)
 
 	return err
 }
 
-func parseOrgSlashRepo(orgSlashRepo string) (org string, repo string, err error) {
-	segs := strings.Split(orgSlashRepo, "/")
-	if len(segs) != 2 {
-		return "", "", errors.Errorf("orgSlashRepo must be org/repo, not like %q", orgSlashRepo)
-	}
-	org, repo = segs[0], segs[1]
+func (d Deployer) GetMostRecentSuccessfulDeployment() (*github.Deployment, error) {
 
-	return
+	recentDeployments, _, err := d.github.Repositories.ListDeployments(timeoutContext(5*time.Second), d.org, d.repo, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, deployment := range recentDeployments {
+		statuses, _, err := d.github.Repositories.ListDeploymentStatuses(timeoutContext(5*time.Second), d.org, d.repo, deployment.GetID(), nil)
+		if err != nil {
+			return nil, err
+		}
+		for _, status := range statuses {
+			if status.GetState() == "success" {
+				return deployment, nil
+			}
+		}
+	}
+	return nil, errors.Errorf("could not find a recent successful deployment (checked %d deployments)", len(recentDeployments))
+}
+
+func stdctx() context.Context {
+	return timeoutContext(5 * time.Second)
+}
+
+func timeoutContext(timeout time.Duration) context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	return ctx
 }

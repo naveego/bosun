@@ -6,11 +6,9 @@ import (
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/issues"
-	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 type GitAcceptPRCommand struct {
@@ -24,7 +22,6 @@ type GitAcceptPRCommand struct {
 
 func (c GitAcceptPRCommand) Execute() error {
 	var err error
-	var out string
 
 	client := c.Client
 	repoPath, err := GetRepoPath(c.RepoDirectory)
@@ -32,7 +29,7 @@ func (c GitAcceptPRCommand) Execute() error {
 		return err
 	}
 	org, repo := GetOrgAndRepoFromPath(repoPath)
-	g, _ := NewGitWrapper(repoPath)
+	//g, _ := NewGitWrapper(repoPath)
 
 	number := c.PRNumber
 
@@ -40,6 +37,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	if err != nil {
 		return errors.Errorf("could not get pull request %d: %s", number, err)
 	}
+	mergeBranch := pr.GetHead().GetRef()
 	baseBranch := pr.GetBase().GetRef()
 
 	if pr.ClosedAt != nil {
@@ -48,93 +46,104 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	if pr.GetMergeable() == false {
 		return errors.Errorf(`branch %s not mergeable: %s; please merge %s into %s, push to github, then try again`,
-			pr.GetBase().GetRef(),
+			baseBranch,
 			pr.GetMergeableState(),
-			pr.GetHead().GetRef())
+			mergeBranch)
 	}
 
-	stashed := false
-	if g.IsDirty() {
-		stashed = true
-		pkg.Log.Info("Stashing changes before merge...")
-		out, err = g.Exec("stash")
-		if err != nil {
-			return errors.Wrapf(err, "tried to stash before merge, but: %s", out)
-		}
-	}
+	mergeMessage := fmt.Sprintf("%s\n%s\nMerge of PR #%d", pr.GetTitle(), pr.GetBody(), number)
+	mergeResult, _, err := client.PullRequests.Merge(context.Background(), org, repo, number, mergeMessage, &github.PullRequestOptions{})
 
-	currentBranch := g.Branch()
-	defer func() {
-		pkg.Log.Info("Returning to branch you were on before merging...")
-		if err = util.CheckHandleMsg(g.Exec("checkout", currentBranch)); err != nil {
-			pkg.Log.WithError(err).Error("Could not return to branch.")
-		}
-		if stashed {
-			pkg.Log.Info("Applying stashed changes...")
-			if err = util.CheckHandleMsg(g.Exec("stash", "apply")); err != nil {
-				pkg.Log.WithError(err).Error("Could not apply stashed changes.")
-			}
-		}
-	}()
-
-	if err = util.CheckHandle(g.Fetch("--all")); err != nil {
-		return errors.Wrap(err, "fetching")
-	}
-
-	mergeBranch := pr.GetHead().GetRef()
-
-	out, err = g.Exec("branch")
-	if err = util.CheckHandle(err); err != nil {
-		return err
-	}
-
-	if strings.Contains(out, mergeBranch) {
-		pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
-		if err = util.CheckHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
-			return err
-		}
-	} else {
-		pkg.Log.Infof("Pulling and checking out merge branch %q", mergeBranch)
-		if err = util.CheckHandleMsg(g.Exec("checkout", "-b", mergeBranch, "origin/"+pr.GetBase().GetRef())); err != nil {
-			return err
-		}
-	}
-
-	if err = util.CheckHandleMsg(g.Exec("pull")); err != nil {
-		return err
-	}
-
-	if !c.DoNotMergeBaseIntoBranch {
-		pkg.Log.Infof("Merging %s into %s...", baseBranch, mergeBranch)
-		out, err = g.Exec("merge", baseBranch)
-
-		if !pr.GetMergeable() || err != nil {
-			return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
-		}
-	}
-
-	pkg.Log.Infof("Checking out %s...", baseBranch)
-	if err = util.CheckHandleMsg(g.Exec("checkout", baseBranch)); err != nil {
-		return err
-	}
-
-	pkg.Log.Infof("Pulling %s...", baseBranch)
-	if err = util.CheckHandleMsg(g.Exec("pull")); err != nil {
-		return err
-	}
-
-	pkg.Log.Infof("Merging %s into %s...", mergeBranch, baseBranch)
-	out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("%s\n%s\nMerge of PR #%d", pr.GetTitle(), pr.GetBody(), number))
 	if err != nil {
-		return errors.Errorf("could not merge into %s", baseBranch)
+		return errors.Wrap(err, "github merge failed")
 	}
 
-	pkg.Log.Infof("Pushing %s...", baseBranch)
-	if err = util.CheckHandleMsg(g.Exec("push", "origin", baseBranch)); err != nil {
-		return err
+	if !mergeResult.GetMerged() {
+		return errors.Errorf("merge failed mysteriously with message %q", mergeResult.GetMessage())
 	}
 
-	pkg.Log.Info("Merge completed.")
+	// stashed := false
+	// if g.IsDirty() {
+	// 	stashed = true
+	// 	pkg.Log.Info("Stashing changes before merge...")
+	// 	out, err = g.Exec("stash")
+	// 	if err != nil {
+	// 		return errors.Wrapf(err, "tried to stash before merge, but: %s", out)
+	// 	}
+	// }
+	//
+	// currentBranch := g.Branch()
+	// defer func() {
+	// 	pkg.Log.Info("Returning to branch you were on before merging...")
+	// 	if err = util.CheckHandleMsg(g.Exec("checkout", currentBranch)); err != nil {
+	// 		pkg.Log.WithError(err).Error("Could not return to branch.")
+	// 	}
+	// 	if stashed {
+	// 		pkg.Log.Info("Applying stashed changes...")
+	// 		if err = util.CheckHandleMsg(g.Exec("stash", "apply")); err != nil {
+	// 			pkg.Log.WithError(err).Error("Could not apply stashed changes.")
+	// 		}
+	// 	}
+	// }()
+	//
+	// if err = util.CheckHandle(g.Fetch("--all")); err != nil {
+	// 	return errors.Wrap(err, "fetching")
+	// }
+	//
+	// mergeBranch := pr.GetHead().GetRef()
+	//
+	// out, err = g.Exec("branch")
+	// if err = util.CheckHandle(err); err != nil {
+	// 	return err
+	// }
+	//
+	// if strings.Contains(out, mergeBranch) {
+	// 	pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
+	// 	if err = util.CheckHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
+	// 		return err
+	// 	}
+	// } else {
+	// 	pkg.Log.Infof("Pulling and checking out merge branch %q", mergeBranch)
+	// 	if err = util.CheckHandleMsg(g.Exec("checkout", "-b", mergeBranch, "origin/"+pr.GetBase().GetRef())); err != nil {
+	// 		return err
+	// 	}
+	// }
+	//
+	// if err = util.CheckHandleMsg(g.Exec("pull")); err != nil {
+	// 	return err
+	// }
+	//
+	// if !c.DoNotMergeBaseIntoBranch {
+	// 	pkg.Log.Infof("Merging %s into %s...", baseBranch, mergeBranch)
+	// 	out, err = g.Exec("merge", baseBranch)
+	//
+	// 	if !pr.GetMergeable() || err != nil {
+	// 		return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
+	// 	}
+	// }
+	//
+	// pkg.Log.Infof("Checking out %s...", baseBranch)
+	// if err = util.CheckHandleMsg(g.Exec("checkout", baseBranch)); err != nil {
+	// 	return err
+	// }
+	//
+	// pkg.Log.Infof("Pulling %s...", baseBranch)
+	// if err = util.CheckHandleMsg(g.Exec("pull")); err != nil {
+	// 	return err
+	// }
+	//
+	// pkg.Log.Infof("Merging %s into %s...", mergeBranch, baseBranch)
+	// out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("%s\n%s\nMerge of PR #%d", pr.GetTitle(), pr.GetBody(), number))
+	// if err != nil {
+	// 	return errors.Errorf("could not merge into %s", baseBranch)
+	// }
+	//
+	// pkg.Log.Infof("Pushing %s...", baseBranch)
+	// if err = util.CheckHandleMsg(g.Exec("push", "origin", baseBranch)); err != nil {
+	// 	return err
+	// }
+	//
+	// pkg.Log.Info("Merge completed.")
 
 	segs := regexp.MustCompile(`(issue)/#?(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
 	if len(segs) == 0 {

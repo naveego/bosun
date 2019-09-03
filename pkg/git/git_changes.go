@@ -11,7 +11,7 @@ type GitChange struct {
 	Title          string
 	Body           string
 	Date           string
-	Issue          issues.IssueRef
+	Issue          *issues.IssueRef
 	CommitID       string
 	CommitType     string
 	Committer      string
@@ -56,10 +56,10 @@ func (g GitChanges) MapToStories(svc issues.IssueService) ([]*GitChangeStory, er
 
 	for _, change := range g {
 		var changeStory *GitChangeStory
-		if change.Issue.Valid() != nil {
+		if change.Issue == nil {
 			continue
 		}
-		parentRef, ok := childToParentMap[change.Issue]
+		parentRef, ok := childToParentMap[*change.Issue]
 		if ok {
 			changeStory, ok = refToChangeStory[parentRef]
 			if ok {
@@ -68,7 +68,7 @@ func (g GitChanges) MapToStories(svc issues.IssueService) ([]*GitChangeStory, er
 			}
 		}
 
-		parentRefs, err := svc.GetParentRefs(change.Issue)
+		parentRefs, err := svc.GetParentRefs(*change.Issue)
 		if err != nil {
 			continue
 		}
@@ -88,7 +88,7 @@ func (g GitChanges) MapToStories(svc issues.IssueService) ([]*GitChangeStory, er
 
 		parentRef = parent.Ref()
 
-		childToParentMap[change.Issue] = parentRef
+		childToParentMap[*change.Issue] = parentRef
 
 		changeStory = &GitChangeStory{
 			Changes:    GitChanges{change},

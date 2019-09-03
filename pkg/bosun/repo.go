@@ -5,6 +5,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"path/filepath"
 )
@@ -125,4 +126,11 @@ func (r *Repo) Merge(fromBranch, toBranch string) error {
 	err = g.Pull()
 
 	return err
+}
+
+func (r *Repo) GetRef() (issues.RepoRef, error) {
+	if r == nil {
+		return issues.RepoRef{}, errors.New("repo not set")
+	}
+	return issues.ParseRepoRef(r.Name)
 }

@@ -1,11 +1,8 @@
 package issues
 
 import (
-	"fmt"
 	"github.com/naveego/bosun/pkg/util/multierr"
-	"github.com/pkg/errors"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -24,6 +21,7 @@ type Issue struct {
 	ProgressState   string   `yaml:"progressState,omitempty"`
 	ProgressStateID int      `yaml:"progressStateId,omitempty"`
 	BranchPattern   string   `yaml:"branchPattern,omitempty"`
+	Labels          []string `yaml:"labels,omitempty"`
 
 	IsClosed bool `yaml:"isClosed,omitempty"`
 
@@ -53,44 +51,6 @@ type Estimate struct {
 	Value int
 }
 
-var issueRefRE = regexp.MustCompile(`(.+)/(.+)#(\d+)`)
-
-type IssueRef string
-
-func NewIssueRef(org, repo string, number int) IssueRef {
-	return IssueRef(fmt.Sprintf("%s/%s#%d", org, repo, number))
-}
-
-func ParseIssueRef(raw string) (IssueRef, error) {
-	ref := IssueRef(raw)
-	err := ref.Valid()
-	return ref, err
-}
-
-func (s IssueRef) String() string { return string(s) }
-func (s IssueRef) Valid() error {
-	if string(s) == "" {
-		return errors.New("issue ref is empty")
-	}
-	if issueRefRE.MatchString(string(s)) {
-		return nil
-	}
-	return errors.Errorf(`invalid issue ref (want 'org/repo#number', got %q)`, s)
-}
-
-func (s IssueRef) Parts() (org string, repo string, number int, err error) {
-	matches := issueRefRE.FindStringSubmatch(string(s))
-	if len(matches) == 0 {
-		return "", "", 0, errors.Errorf(`invalid issue ref (want 'org/repo#number', got %q)`, s)
-	}
-
-	number, err = strconv.Atoi(matches[3])
-	if err != nil {
-		return "", "", 0, errors.Errorf(`invalid issue number (want 'org/repo#number', got %q): %s`, s, err)
-	}
-	return matches[1], matches[2], number, nil
-}
-
 type IssueService interface {
 	// Assign the user who created the task, attach body and milestone
 	Create(issue Issue, parent *IssueRef) (int, error)
@@ -99,10 +59,10 @@ type IssueService interface {
 	RemoveDependency(from, to IssueRef) error
 	// Put the task and depending issue into In Progress column on the ZenHub board
 	SetProgress(issue IssueRef, column string) error
+	ChangeLabels(ref IssueRef, add []string, remove []string) error
 	GetParentRefs(issue IssueRef) ([]IssueRef, error)
 	GetChildRefs(issue IssueRef) ([]IssueRef, error)
 	GetIssue(issue IssueRef) (Issue, error)
-	GetIssuesFromCommitsSince(org, repo, since string) ([]Issue, error)
 	GetClosedIssue(org, repoName string) ([]int, error)
 	// Check if a story's children are all closed before moving it to Waiting for Merge
 }

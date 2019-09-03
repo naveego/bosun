@@ -23,3 +23,21 @@ var _ = Describe("Issue", func() {
 		Entry("simple", "smoooooooooshedwordswithnogapsthatistoolong", "smoooooooooshedwordswithnogapsthatistoolong"),
 	)
 })
+
+var _ = Describe("RepoRef", func() {
+	DescribeTable("should parse", func(input string, expected issues.RepoRef) {
+		Expect(issues.ParseRepoRef(input)).To(Equal(expected))
+	},
+		Entry("org/repo", "org/repo", issues.RepoRef{Org: "org", Repo: "repo"}),
+		Entry("org/repo#7", "org/repo#7", issues.RepoRef{Org: "org", Repo: "repo"}),
+	)
+})
+
+var _ = Describe("IssueRef", func() {
+	DescribeTable("should parse", func(input string, expected issues.IssueRef) {
+		Expect(issues.ParseIssueRef(input)).To(Equal(expected))
+	},
+		Entry("org/repo#7", "org/repo#7", issues.IssueRef{RepoRef: issues.RepoRef{Org: "org", Repo: "repo"}, Number: 7}),
+		Entry("nonsense org/repo#7sequlae", "nonsense org/repo#7sequlae", issues.IssueRef{RepoRef: issues.RepoRef{Org: "org", Repo: "repo"}, Number: 7}),
+	)
+})

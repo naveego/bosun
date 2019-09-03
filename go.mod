@@ -127,7 +127,7 @@ require (
 	github.com/onsi/gomega v1.5.0
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
-	github.com/opencontainers/runc v0.1.1 // indirect
+	github.com/opencontainers/runc v0.1.1
 	github.com/ory-am/common v0.4.0 // indirect
 	github.com/ory/dockertest v3.3.2+incompatible // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect

@@ -685,3 +685,37 @@ func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]bosun.Val
 
 	return valueSets, err
 }
+
+func getOrAddGitRoot(b *bosun.Bosun, dir string) (string, error) {
+	roots := b.GetGitRoots()
+	var err error
+	if dir == "" {
+		if len(roots) == 0 {
+			p := promptui.Prompt{
+				Label: "Provide git root (apps will be cloned to ./org/repo in the dir you specify)",
+			}
+			dir, err = p.Run()
+			if err != nil {
+				return "", err
+			}
+		} else {
+			dir = roots[0]
+		}
+	}
+	rootExists := false
+	for _, root := range roots {
+		if root == dir {
+			rootExists = true
+			break
+		}
+	}
+	if !rootExists {
+		b.AddGitRoot(dir)
+		err = b.SaveAndReload()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return dir, nil
+}

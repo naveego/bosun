@@ -92,3 +92,19 @@ func (g GitWrapper) Log(args ...string) ([]string, error) {
 	lines := strings.Split(out, "\n")
 	return lines, err
 }
+
+func (g GitWrapper) CreateBranch(branch string) error {
+	pkg.Log.Infof("Creating branch %q.", branch)
+	_, err := g.Exec("checkout", "-B", branch)
+	if err != nil {
+		return errors.Wrap(err, "create branch")
+	}
+
+	pkg.Log.WithField("branch", branch).Info("Pushing branch.")
+	err = pkg.NewCommand("git", "push", "-u", "origin", branch).RunE()
+	if err != nil {
+		return errors.Wrap(err, "push branch")
+	}
+
+	return nil
+}

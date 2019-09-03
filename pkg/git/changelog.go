@@ -177,7 +177,7 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 					Date:           date,
 					Valid:          true,
 					IssueLink:      issueLink,
-					Issue:          issue,
+					Issue:          &issue,
 					BreakingChange: CommitHasBreakingChange(bodyBuilder.String()),
 				}
 				allChanges = append(allChanges, change)

@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/naveego/bosun/pkg/util"
 	"net/http"
 
-	//"github.com/naveego/bosun/pkg/git"
+	// "github.com/naveego/bosun/pkg/git"
 
-	//"github.com/coreos/etcd/client"
+	// "github.com/coreos/etcd/client"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/issues"
@@ -26,15 +25,34 @@ import (
 type IssueService struct {
 	Config
 	github *github.Client
-	git    GitWrapper
-	log    *logrus.Entry
+	//git    GitWrapper
+	log *logrus.Entry
 }
 
-func NewIssueService(config Config, gitWrapper GitWrapper, log *logrus.Entry) (issues.IssueService, error) {
+func (s IssueService) ChangeLabels(ref issues.IssueRef, add []string, remove []string) error {
+
+	org, repo, number, _ := ref.Parts()
+	if len(add) > 0 {
+		_, _, err := s.github.Issues.AddLabelsToIssue(stdctx(), org, repo, number, add)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, label := range remove {
+		_, err := s.github.Issues.RemoveLabelForIssue(stdctx(), org, repo, number, label)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func NewIssueService(config Config, log *logrus.Entry) (issues.IssueService, error) {
 
 	s := IssueService{
 		Config: config,
-		git:    gitWrapper,
 		log:    log,
 	}
 
@@ -55,43 +73,6 @@ func (s IssueService) ctx() context.Context {
 
 func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 	return nil
-}
-
-func (s IssueService) GetIssuesFromCommitsSince(org, repo, since string) ([]issues.Issue, error) {
-
-	currentHash := s.git.Commit()
-	changesBlob, err := s.git.Exec("log", "--left-right", "--cherry-pick", "--no-merges", "--no-color", fmt.Sprintf("%s...%s", since, currentHash))
-	if err != nil {
-		return nil, errors.Wrap(err, "get changes between commits")
-	}
-	/*changes := strings.Split(changesBlob, "Closes")
-	if err != nil {
-		return nil, err
-	}*/
-	reg := regexp.MustCompile(`#[0-9]+`)
-	closedIssueStrings := reg.FindAllString(changesBlob, -1)
-	regNum := regexp.MustCompile(`[0-9]+`)
-	var closedIssueNums []int
-	for _, closedIssueString := range closedIssueStrings {
-		numString := regNum.FindAllString(closedIssueString, 1)
-		nString := numString[0]
-		num, err := strconv.Atoi(nString)
-		if err != nil {
-			return nil, errors.Wrap(err, "convert issue num to int")
-		}
-		closedIssueNums = append(closedIssueNums, num)
-	}
-
-	var closedIssues []issues.Issue
-	for _, closedIssueNum := range closedIssueNums {
-		curIssue := issues.Issue{
-			Org:    org,
-			Repo:   repo,
-			Number: closedIssueNum,
-		}
-		closedIssues = append(closedIssues, curIssue)
-	}
-	return closedIssues, nil
 }
 
 func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, error) {
@@ -174,32 +155,6 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 	log = log.WithField("issue", issue.Number)
 
 	log.Info("Created issue.")
-
-	branchPattern := issue.BranchPattern
-	if branchPattern == "" {
-		branchPattern = "issue/{{.Number}}/{{.Slug}}"
-	}
-	branchName, err := util.RenderTemplate(branchPattern, issue)
-	if err != nil {
-		return -1, err
-	}
-	s.log.WithField("branch", branchName).Info("Creating branch.")
-	err = pkg.NewCommand("git", "checkout", "-b", branchName).RunE()
-	if err != nil {
-		return -1, err
-	}
-
-	s.log.Infof("Creating branch %q.", branchName)
-	_, err = s.git.Exec("checkout", "-B", branchName)
-	if err != nil {
-		return -1, errors.Wrap(err, "create branch")
-	}
-
-	s.log.WithField("branch", branchName).Info("Pushing branch.")
-	err = pkg.NewCommand("git", "push", "-u", "origin", branchName).RunE()
-	if err != nil {
-		return -1, errors.Wrap(err, "push branch")
-	}
 
 	// update parent issue body
 	if parent != nil {
@@ -358,6 +313,11 @@ func (s IssueService) GetIssue(ref issues.IssueRef) (issues.Issue, error) {
 		Title:  issue.GetTitle(),
 		Body:   issue.GetBody(),
 	}
+
+	for _, label := range issue.Labels {
+		out.Labels = append(out.Labels, label.GetName())
+	}
+
 	if issue.Assignee != nil {
 		out.Assignee = issue.Assignee.GetLogin()
 	}

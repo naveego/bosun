@@ -1140,7 +1140,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 				continue
 			}
 
-			issueService, err := b.GetIssueService(target.dir)
+			issueService, err := b.GetIssueService()
 			if err != nil {
 				return err
 			}

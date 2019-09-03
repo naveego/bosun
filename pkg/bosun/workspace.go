@@ -12,22 +12,23 @@ import (
 const logConfigs = false
 
 type Workspace struct {
-	Path               string                 `yaml:"-" json:"-"`
-	CurrentEnvironment string                 `yaml:"currentEnvironment" json:"currentEnvironment"`
-	CurrentPlatform    string                 `yaml:"currentPlatform" json:"currentPlatform"`
-	CurrentRelease     string                 `yaml:"currentRelease" json:"currentRelease"`
-	Imports            []string               `yaml:"imports,omitempty" json:"imports"`
-	GitRoots           []string               `yaml:"gitRoots" json:"gitRoots"`
-	ScratchDir         string                 `yaml:"scratchDir" json:"scratchDir"`
-	HostIPInMinikube   string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
-	AppStates          AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
-	ClonePaths         map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
-	MergedBosunFile    *File                  `yaml:"-" json:"merged"`
-	ImportedBosunFiles map[string]*File       `yaml:"-" json:"imported"`
-	GithubToken        *CommandValue          `yaml:"githubToken" json:"githubToken"`
-	ZenhubToken        *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
-	Minikube           MinikubeConfig         `yaml:"minikube" json:"minikube"`
-	LocalRepos         map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
+	Path                string                 `yaml:"-" json:"-"`
+	CurrentEnvironment  string                 `yaml:"currentEnvironment" json:"currentEnvironment"`
+	CurrentPlatform     string                 `yaml:"currentPlatform" json:"currentPlatform"`
+	CurrentRelease      string                 `yaml:"currentRelease" json:"currentRelease"`
+	Imports             []string               `yaml:"imports,omitempty" json:"imports"`
+	GitRoots            []string               `yaml:"gitRoots" json:"gitRoots"`
+	GithubToken         *CommandValue          `yaml:"githubToken" json:"githubToken"`
+	ScratchDir          string                 `yaml:"scratchDir" json:"scratchDir"`
+	HostIPInMinikube    string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
+	AppStates           AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
+	ClonePaths          map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
+	MergedBosunFile     *File                  `yaml:"-" json:"merged"`
+	ImportedBosunFiles  map[string]*File       `yaml:"-" json:"imported"`
+	ZenhubToken         *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
+	Minikube            MinikubeConfig         `yaml:"minikube" json:"minikube"`
+	LocalRepos          map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
+	GithubCloneProtocol string                 `yaml:"githubCloneProtocol"`
 }
 
 func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -64,6 +65,9 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if w.ScratchDir == "" {
 		w.ScratchDir = "/tmp/bosun"
+	}
+	if w.GithubCloneProtocol == "" {
+		w.GithubCloneProtocol = "ssh"
 	}
 
 	return nil

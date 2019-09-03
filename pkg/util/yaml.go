@@ -6,6 +6,15 @@ import (
 	"io/ioutil"
 )
 
+func MustYaml(value interface{}) string {
+
+	data, err := yaml.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
+
 func SaveYaml(path string, value interface{}) error {
 
 	data, err := yaml.Marshal(value)

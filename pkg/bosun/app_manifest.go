@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"time"
 )
@@ -14,6 +15,11 @@ type AppMetadata struct {
 	Hashes               AppHashes       `yaml:"hashes"`
 	Timestamp            time.Time       `yaml:"timestamp" json:"timestamp"`
 	Branch               string          `yaml:"branch" json:"branch"`
+}
+
+func (a *AppMetadata) RepoRef() issues.RepoRef {
+	ref, _ := issues.ParseRepoRef(a.Repo)
+	return ref
 }
 
 func (a *AppMetadata) PinToRelease(release *ReleaseMetadata) {

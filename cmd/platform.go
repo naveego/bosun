@@ -17,8 +17,12 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
+	"os"
+	"path/filepath"
 )
 
 func init() {
@@ -114,6 +118,53 @@ var _ = addCommand(platformCmd, &cobra.Command{
 				return err
 			}
 		}
+
+		err = p.Save(ctx)
+		return err
+	},
+}, withFilteringFlags)
+
+var _ = addCommand(platformCmd, &cobra.Command{
+	Use:   "add-repo {org/repo...}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Adds a repo and its apps to the platform.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		repoRef, err := issues.ParseRepoRef(args[0])
+		if err != nil {
+			return err
+		}
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+		ctx := b.NewContext()
+		log := ctx.GetLog()
+		ws := b.GetWorkspace()
+		path := ""
+		for _, gitRoot := range ws.GitRoots {
+			dir := filepath.Join(gitRoot, repoRef.String())
+			if _, err = os.Stat(dir); err == nil {
+				path = dir
+				break
+			}
+		}
+		if path != "" {
+			log.Infof("Found repo locally at %q", path)
+		} else {
+			dir, err := getOrAddGitRoot(b, "")
+			if err != nil {
+				return err
+			}
+			log.Infof("Cloning repo into %q", dir)
+			err = git.CloneRepo(repoRef, ws.GithubCloneProtocol, dir)
+			if err != nil {
+				return err
+			}
+			path = filepath.Join(dir, repoRef.String())
+		}
+
+		//bosunFilePath := filepath.Join(path, "bosun.yaml")
 
 		err = p.Save(ctx)
 		return err

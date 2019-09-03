@@ -28,6 +28,10 @@ type issueSvc struct {
 	knownRepoIDs map[string]int
 }
 
+func (s issueSvc) ChangeLabels(ref issues.IssueRef, add []string, remove []string) error {
+	return s.wrapped.ChangeLabels(ref, add, remove)
+}
+
 // TODO: take an injected issueSvc parameter, delegate all non zenhub things to it.
 func NewIssueService(wrapped issues.IssueService, config Config, log *logrus.Entry) (issues.IssueService, error) {
 

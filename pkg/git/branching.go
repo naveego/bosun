@@ -106,10 +106,10 @@ func (b BranchSpec) GetReleaseNameAndVersion(branch BranchName) (name, version s
 	return
 }
 
-func (b BranchSpec) RenderFeature(name, number string) (string, error) {
+func (b BranchSpec) RenderFeature(name string, number interface{}) (string, error) {
 	template, err := util.RenderTemplate(b.Feature, map[string]string{
 		string(BranchPartSlug):   name,
-		string(BranchPartNumber): number,
+		string(BranchPartNumber): fmt.Sprintf("%v", number),
 	})
 	return template, err
 }

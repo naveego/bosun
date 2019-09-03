@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
@@ -122,36 +121,9 @@ var _ = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := MustGetBosun()
 
-			dir := viper.GetString(ArgAppCloneDir)
-			roots := b.GetGitRoots()
-			var err error
-			if dir == "" {
-				if len(roots) == 0 {
-					p := promptui.Prompt{
-						Label: "Provide git root (apps will be cloned to ./org/repo in the dir you specify)",
-					}
-					dir, err = p.Run()
-					if err != nil {
-						return err
-					}
-				} else {
-					dir = roots[0]
-				}
-			}
-			rootExists := false
-			for _, root := range roots {
-				if root == dir {
-					rootExists = true
-					break
-				}
-			}
-			if !rootExists {
-				b.AddGitRoot(dir)
-				err = b.Save()
-				if err != nil {
-					return err
-				}
-				b = MustGetBosun()
+			dir, err := getOrAddGitRoot(b, viper.GetString(ArgAppCloneDir))
+			if err != nil {
+				return err
 			}
 
 			repos, err := getFilterParams(b, args).Chain().ToGetAtLeast(1).FromErr(b.GetRepos())

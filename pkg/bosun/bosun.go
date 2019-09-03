@@ -332,6 +332,28 @@ func (b *Bosun) Save() error {
 	return nil
 }
 
+func (b *Bosun) SaveAndReload() error {
+
+	path := b.ws.Path
+
+	err := b.Save()
+	if err != nil {
+		return err
+	}
+
+	config, err := LoadWorkspace(path)
+	params := b.params
+
+	reloaded, err := New(params, config)
+	if err != nil {
+		return err
+	}
+
+	*b = *reloaded
+
+	return nil
+}
+
 func (b *Bosun) SetInWorkspace(path string, value interface{}) error {
 
 	ws := b.ws
@@ -900,7 +922,7 @@ func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
 	}
 }
 
-func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
+func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
@@ -928,12 +950,7 @@ func (b *Bosun) GetIssueService(repoPath string) (issues.IssueService, error) {
 		return nil, errors.Wrap(err, "get zenhub token")
 	}
 
-	g, err := git.NewGitWrapper(repoPath)
-	if err != nil {
-		return nil, err
-	}
-
-	gis, err := git.NewIssueService(*gc, g, pkg.Log.WithField("cmp", "github"))
+	gis, err := git.NewIssueService(*gc, pkg.Log.WithField("cmp", "github"))
 	if err != nil {
 		return nil, errors.Wrapf(err, "get github issue service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
 	}
@@ -1036,4 +1053,17 @@ func (b *Bosun) GetGithubToken() (string, error) {
 	}
 
 	return token, nil
+}
+
+func (b *Bosun) GetDeployer(repo issues.RepoRef) (*git.Deployer, error) {
+
+	token, err := b.GetGithubToken()
+	if err != nil {
+		return nil, err
+	}
+	client := git.NewGithubClient(token)
+	svc, err := b.GetIssueService()
+
+	deployer, err := git.NewDeployer(repo, client, svc)
+	return deployer, err
 }

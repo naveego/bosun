@@ -7,7 +7,6 @@ import (
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
-	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/kube"
 	v1 "k8s.io/api/core/v1"
@@ -553,13 +552,14 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 	env := ctx.Env
 
 	log.Info("Deploy progress will be reported to github.")
-	gitToken, err := ctx.Bosun.GetGithubToken()
+
+	deployer, err := ctx.Bosun.GetDeployer(a.RepoRef())
 	if err != nil {
-		return nil, errors.Wrap(err, "get github token")
+		return nil, err
 	}
-	client := git.NewGithubClient(gitToken)
+
 	// create the deployment
-	deployID, err := git.CreateDeploy(client, a.Repo, a.Branch, env.Name)
+	deployID, err := deployer.CreateDeploy(a.Branch, env.Name)
 	if err != nil {
 		return nil, errors.Wrap(err, "create deploy")
 	}
@@ -567,7 +567,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 	// ensure that the deployment is updated when we return.
 	return func(failure error) {
 		if failure != nil {
-			_ = git.UpdateDeploy(client, a.Repo, deployID, "failure")
+			_ = deployer.UpdateDeploy(deployID, "failure", failure.Error())
 		} else {
 
 			// log.Info("Move ready to go stories to UAT")
@@ -638,7 +638,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 			// 		}
 			// 		log.Info("move parent story to Waiting for UAT ", parentIssueRef.String())
 			//
-			_ = git.UpdateDeploy(client, a.Repo, deployID, "success")
+			_ = deployer.UpdateDeploy(deployID, "success", "")
 
 		}
 	}, err
