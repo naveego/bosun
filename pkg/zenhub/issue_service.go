@@ -66,7 +66,6 @@ func (s issueSvc) GetIssuesFromCommitsSince(org, repo, since string) ([]issues.I
 func (s issueSvc) Create(issue issues.Issue, parent *issues.IssueRef) (int, error) {
 
 	issueNumber, err := s.wrapped.Create(issue, parent)
-	dumpJSON("issueNumber", issueNumber)
 
 	// the below issueNumber used to be issue.Number
 	newIssueRef := issues.NewIssueRef(issue.Org, issue.Repo, issueNumber)
@@ -95,7 +94,7 @@ func (s issueSvc) Create(issue issues.Issue, parent *issues.IssueRef) (int, erro
 		}
 	}
 
-	return -1, nil
+	return issueNumber, nil
 
 }
 
