@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/oliveagle/jsonpath"
 	"github.com/pkg/errors"
@@ -187,6 +188,34 @@ var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 		}
 
 		fmt.Printf("Added %s to imports in user config.\n", filename)
+
+		return err
+	},
+})
+
+var configAddRepoCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:   "add-repo {org/repo} [dir]",
+	Args:  cobra.RangeArgs(1, 2),
+	Short: "Adds a github repo to the workspace.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun()
+
+		rawRepoRef := args[0]
+		repoRef, err := issues.ParseRepoRef(rawRepoRef)
+		if err != nil {
+			return err
+		}
+		dir := ""
+		if len(args) == 2 {
+			dir = args[1]
+		}
+		dir, err = getOrAddGitRoot(b, dir)
+		if err != nil {
+			return err
+		}
+
+		err = b.AddRepo(repoRef, dir)
 
 		return err
 	},

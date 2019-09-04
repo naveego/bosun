@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/mirror"
@@ -19,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -1066,4 +1068,35 @@ func (b *Bosun) GetDeployer(repo issues.RepoRef) (*git.Deployer, error) {
 
 	deployer, err := git.NewDeployer(repo, client, svc)
 	return deployer, err
+}
+
+func (b *Bosun) AddRepo(ref issues.RepoRef, dir string) error {
+	ws := b.ws
+	var repo *LocalRepo
+	var ok bool
+	if repo, ok = ws.LocalRepos[ref.String()]; ok {
+		if !strings.HasPrefix(repo.Path, dir) {
+			cli.ConfirmOrExit("Repo %s is already cloned to %q, are you sure you want to move it to %q?", repo.Path, filepath.Join(dir, ref.String()))
+		}
+	} else {
+		repo = &LocalRepo{
+			Name:ref
+		}
+	}
+
+	if path != "" {
+		log.Infof("Found repo locally at %q", path)
+	} else {
+		dir, err := getOrAddGitRoot(b, "")
+		if err != nil {
+			return err
+		}
+		log.Infof("Cloning repo into %q", dir)
+		err = git.CloneRepo(repoRef, ws.GithubCloneProtocol, dir)
+		if err != nil {
+			return err
+		}
+		path = filepath.Join(dir, repoRef.String())
+	}
+
 }

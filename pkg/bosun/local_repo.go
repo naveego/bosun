@@ -7,7 +7,8 @@ import (
 )
 
 type LocalRepo struct {
-	Name   string         `yaml:"-" json:""`
+	Name   string         `yaml:"-" json:"-"`
+	Ref    string         `yaml:"-" json:"-"`
 	Path   string         `yaml:"path,omitempty" json:"path,omitempty"`
 	branch git.BranchName `yaml:"-" json:"-"`
 }
