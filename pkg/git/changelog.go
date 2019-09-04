@@ -66,6 +66,7 @@ var bumpMap = map[string]semver.Bump{
 	"style":             semver.BumpNone,
 	"test":              semver.BumpNone,
 	"chore":             semver.BumpNone,
+	"deploy":            semver.BumpPatch,
 	MalformedCommitFlag: semver.BumpPatch,
 }
 
