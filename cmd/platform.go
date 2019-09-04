@@ -19,6 +19,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -69,7 +70,8 @@ var _ = addCommand(platformCmd, &cobra.Command{
 })
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "update-unstable [names...]",
+	Use:   "update {stable|unstable} [names...]",
+	Args:  cobra.MinimumNArgs(1),
 	Short: "Updates the manifests of the provided apps on the unstable branch with the provided apps. Defaults to using the 'develop' branch of the apps.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -80,9 +82,16 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
+		slot := args[0]
+		switch slot {
+		case bosun.SlotStable, bosun.SlotUnstable:
+		default:
+			return errors.Errorf("invalid slot, wanted %s or %s, got %q", bosun.SlotStable, bosun.SlotUnstable, slot)
+		}
+
 		if viper.GetBool(argPlatformUpdateKnown) {
 			args = []string{}
-			release, err := p.GetUnstableRelease()
+			release, err := p.GetReleaseManifestBySlot(slot)
 			if err != nil {
 				return err
 			}
@@ -107,7 +116,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 				branch = app.Branching.GetBranchTemplate(git.BranchTypeDevelop)
 			}
 
-			err = p.RefreshApp(ctx, app.Name, branch, bosun.SlotUnstable)
+			err = p.RefreshApp(ctx, app.Name, branch, slot)
 			if err != nil {
 				ctx.Log.WithError(err).Warn("Could not refresh.")
 			}
@@ -123,7 +132,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 })
 
 const (
-	argPlatformUpdateBranch = "branch-type"
+	argPlatformUpdateBranch = "branch"
 	argPlatformUpdateKnown  = "known"
 )
 

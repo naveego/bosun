@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/go-getter/helper/url"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/mongo"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -354,9 +355,29 @@ type MongoAction struct {
 	Connection     mongo.Connection `yaml:"connection" json:"connection"`
 	DatabaseFile   string           `yaml:"databaseFile" json:"databaseFile"`
 	RebuildDB      bool             `yaml:"rebuildDb"`
+	Script         string           `yaml:"script,omitempty"`
 }
 
 func (a *MongoAction) Execute(ctx BosunContext) error {
+
+	if a.Script != "" {
+
+		script, err := util.RenderTemplate(a.Script, ctx.GetTemplateArgs())
+		if err != nil {
+			return errors.Wrap(err, "render script")
+		}
+
+		cmd := mongo.ScriptCommand{
+			Conn:   a.Connection,
+			Script: script,
+			Log:    ctx.Log,
+		}
+
+		err = cmd.Execute()
+
+		return err
+	}
+
 	var dataFile []byte
 
 	databaseFilePath := ctx.ResolvePath(a.DatabaseFile)

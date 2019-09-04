@@ -105,7 +105,7 @@ func (c *Command) prepare() {
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
 	Log.WithField("exe", exe).WithField("args", c.Args).
-	//	WithField("env", c.cmd.Env).
+		//	WithField("env", c.cmd.Env).
 		Debug("Command prepared.")
 
 	c.prepared = true
@@ -158,6 +158,7 @@ func (c *Command) RunOut() (string, error) {
 	return result, err
 }
 
+// RunOutLog runs the command and returns all output as a string.
 func (c *Command) RunOutLog() (string, error) {
 	c.prepare()
 	var result string

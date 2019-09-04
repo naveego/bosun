@@ -573,7 +573,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 					return app, nil
 				} else {
-					ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName)
+					ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
 
 					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
 					if err != nil {

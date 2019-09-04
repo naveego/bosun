@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -9,6 +10,15 @@ import (
 func MustYaml(value interface{}) string {
 
 	data, err := yaml.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
+
+func MustJSON(value interface{}) string {
+
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		panic(err)
 	}

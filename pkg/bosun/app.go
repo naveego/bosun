@@ -18,7 +18,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type App struct {
@@ -762,12 +761,11 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 		appManifest = &AppManifest{
 			AppConfig: appConfig,
 			AppMetadata: &AppMetadata{
-				Name:      appConfig.Name,
-				Repo:      appConfig.RepoName,
-				Timestamp: time.Now(),
-				Version:   a.Version,
-				Branch:    a.GetBranchName().String(),
-				Hashes:    hashes,
+				Name:    appConfig.Name,
+				Repo:    appConfig.RepoName,
+				Version: a.Version,
+				Branch:  a.GetBranchName().String(),
+				Hashes:  hashes,
 			},
 		}
 

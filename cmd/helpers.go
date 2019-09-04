@@ -643,7 +643,15 @@ func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppMani
 
 	ctx := b.NewContext()
 
-	appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{}, appManifest)
+	valueSets, err := getValueSetSlice(b, ctx.Env)
+	if err != nil {
+		return nil, err
+	}
+
+	appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{
+		Environment: ctx.Env,
+		ValueSets:   valueSets,
+	}, appManifest)
 	if err != nil {
 		return nil, err
 	}

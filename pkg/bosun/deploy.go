@@ -70,6 +70,11 @@ type DeploySettings struct {
 	ForceDeployApps    map[string]bool
 }
 
+func (d DeploySettings) WithValueSets(valueSets ...ValueSet) DeploySettings {
+	d.ValueSets = append(d.ValueSets, valueSets...)
+	return d
+}
+
 func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 	if d.Manifest != nil {
 		if d.Manifest.Name == SlotUnstable {
