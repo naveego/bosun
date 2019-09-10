@@ -868,40 +868,32 @@ var appPullCmd = addCommand(
 			if err != nil {
 				return err
 			}
-			return pullApps(ctx, apps)
+			return pullApps(ctx, apps, viper.GetBool("rebase"))
 		},
+	}, func(cmd *cobra.Command) {
+		cmd.Flags().Bool("rebase", false, "Rebase rather than merge")
 	})
 
-func pullApps(ctx bosun.BosunContext, apps []*bosun.App) error {
-	repos := map[string]*bosun.Repo{}
-	for _, app := range apps {
-		if app.Repo == nil {
-			if app.RepoName == "" {
-				ctx.Log.Errorf("no repo identified for app %q", app.Name)
-			}
+func pullApps(ctx bosun.BosunContext, apps bosun.AppList, rebase bool) error {
+	return apps.ForEachRepo(func(app *bosun.App) error {
+		repo := app.Repo
 
-			continue
-		}
-		if app.Repo.CheckCloned() != nil {
-			ctx.Log.Warnf("%q is not cloned", app.Name)
-		}
-		repos[app.RepoName] = app.Repo
-	}
-
-	var lastFailure error
-	for _, repo := range repos {
 		log := ctx.Log.WithField("repo", repo.Name)
+		if repo.LocalRepo.IsDirty() {
+			log.Error("Repo is dirty, cannot pull.")
+			return nil
+		}
 		log.Info("Pulling...")
-		err := repo.Pull(ctx)
+		err := repo.Pull(ctx, rebase)
 		if err != nil {
-			lastFailure = err
+			return errors.Wrapf(err, "pulling %q", repo.Name)
 			log.WithError(err).Error("Error pulling.")
 		} else {
 			log.Info("Pulled.")
 		}
-	}
+		return nil
+	})
 
-	return lastFailure
 }
 
 var appScriptCmd = addCommand(appCmd, &cobra.Command{

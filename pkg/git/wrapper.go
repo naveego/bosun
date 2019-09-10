@@ -63,6 +63,12 @@ func (g GitWrapper) Pull() error {
 
 }
 
+func (g GitWrapper) PullRebase() error {
+	err := pkg.NewCommand("git", "-C", g.dir, "pull", "--rebase").RunE()
+	return err
+
+}
+
 var fetched = map[string]bool{}
 var fetchedMu = &sync.Mutex{}
 

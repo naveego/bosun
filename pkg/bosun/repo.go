@@ -84,15 +84,17 @@ func (r Repo) GetLocalBranchName() git.BranchName {
 	return r.LocalRepo.branch
 }
 
-func (r *Repo) Pull(ctx BosunContext) error {
+func (r *Repo) Pull(ctx BosunContext, rebase bool) error {
 	if err := r.CheckCloned(); err != nil {
 		return err
 	}
 
 	g, _ := git.NewGitWrapper(r.LocalRepo.Path)
-	err := g.Pull()
-
-	return err
+	if rebase {
+		return g.PullRebase()
+	} else {
+		return g.Pull()
+	}
 }
 
 func (r *Repo) Fetch() error {

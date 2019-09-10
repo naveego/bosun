@@ -168,13 +168,16 @@ var _ = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			rebase := viper.GetBool("rebase")
 			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
 				ctx.Log.Info("Fetching...")
-				err := repo.Pull(ctx)
+				err := repo.Pull(ctx, rebase)
 				return err
 			})
 		},
-	}, withFilteringFlags)
+	}, withFilteringFlags, func(cmd *cobra.Command) {
+		cmd.Flags().Bool("rebase", false, "Rebase rather than merge.")
+	})
 
 var _ = addCommand(
 	repoCmd,

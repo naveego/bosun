@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/cheynewallace/tabby"
 	"github.com/fatih/color"
 	"github.com/kyokomi/emoji"
@@ -12,6 +13,31 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+const (
+	AppListColName    = "app"
+	AppListColCloned  = "cloned"
+	AppListColVersion = "version"
+	AppListColRepo    = "repo"
+	AppListColBranch  = "branch"
+	AppListColDirty   = "dirty"
+	AppListColStale   = "stale"
+	AppListColPath    = "path"
+)
+
+var appListAlwaysColumns = []string{
+	AppListColName,
+	AppListColRepo,
+	AppListColCloned,
+	AppListColVersion,
+	AppListColBranch,
+}
+
+var appListOptionalColumns = []string{
+	AppListColDirty,
+	AppListColStale,
+	AppListColPath,
+}
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "list",
@@ -30,40 +56,65 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		t := tabby.New()
-		t.AddHeader("APP", "CLONED", "VERSION", "REPO", "PATH", "BRANCH")
+		cols := appListAlwaysColumns[0:]
+		colsMap := map[string]bool{}
+		for _, col := range appListOptionalColumns {
+			if viper.GetBool(col) {
+				cols = append(cols, col)
+			}
+		}
+		for _, col := range cols {
+			colsMap[col] = true
+		}
+
+		var out []map[string]string
+
 		for _, app := range apps {
-			var isCloned, repo, path, branch, version string
-			repo = app.RepoName
+			row := map[string]string{}
+
+			row[AppListColName] = app.Name
+			row[AppListColRepo] = app.RepoName
 
 			if app.IsRepoCloned() {
-				isCloned = emoji.Sprint(":heavy_check_mark:")
-				if app.BranchForRelease {
-					branch = app.GetBranchName().String()
-				} else {
-					branch = ""
+				row[AppListColCloned] = fmtBool(true)
+				row[AppListColBranch] = app.GetBranchName().String()
+				row[AppListColVersion] = app.Version.String()
+				if colsMap[AppListColDirty] {
+					row[AppListColDirty] = fmtBool(app.Repo.LocalRepo.IsDirty())
 				}
-				version = app.Version.String()
+				if colsMap[AppListColStale] {
+					row[AppListColStale] = app.Repo.LocalRepo.GetUpstreamStatus()
+				}
 			} else {
-				isCloned = emoji.Sprint("    :x:")
-				branch = ""
-				version = app.Version.String()
+				row[AppListColCloned] = fmtBool(false)
+				row[AppListColVersion] = app.Version.String()
 			}
 
 			if app.IsFromManifest {
 				manifest, _ := app.GetManifest(ctx)
-				path, _ = filepath.Rel(wd, manifest.AppConfig.FromPath)
+				row[AppListColPath], _ = filepath.Rel(wd, manifest.AppConfig.FromPath)
 			} else {
-				path, _ = filepath.Rel(wd, app.AppConfig.FromPath)
+				row[AppListColPath], _ = filepath.Rel(wd, app.AppConfig.FromPath)
 			}
-			t.AddLine(app.Name, isCloned, version, repo, path, branch)
+			out = append(out, row)
 		}
 
-		t.Print()
-
-		return nil
+		return renderOutput(out, cols...)
 	},
+}, func(cmd *cobra.Command) {
+
+	for _, col := range appListOptionalColumns {
+		cmd.Flags().Bool(col, false, fmt.Sprintf("Include %q column", col))
+	}
 })
+
+func fmtBool(b bool) string {
+	if b {
+		return emoji.Sprint(":heavy_check_mark:")
+	} else {
+		return emoji.Sprint("    :x:")
+	}
+}
 
 var appListReposCmd = addCommand(appCmd, &cobra.Command{
 	Use:          "list-repos",

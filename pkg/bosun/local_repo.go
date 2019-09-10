@@ -173,3 +173,22 @@ func (r *LocalRepo) GetMostRecentTagRef(pattern string) (string, error) {
 	}
 	return lines[0], nil
 }
+
+func (r *LocalRepo) GetUpstreamStatus() string {
+	g := r.git()
+	_ = g.Fetch()
+	upstream := "@{u}"
+	local, _ := g.Exec("rev-parse", "@")
+	remote, _ := g.Exec("rev-parse", upstream)
+	base, _ := g.Exec("merge-base", "@", upstream)
+	if local == remote {
+		return "up-to-date"
+	}
+	if local == base {
+		return "behind"
+	}
+	if remote == "base" {
+		return "ahead"
+	}
+	return "diverged"
+}

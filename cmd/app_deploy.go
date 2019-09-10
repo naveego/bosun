@@ -102,7 +102,7 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 				deploySettings.Manifest.DefaultDeployApps[app.Name] = true
 			}
 		} else if viper.GetBool(ArgAppLatest) {
-			err = pullApps(ctx, apps)
+			err = pullApps(ctx, apps, true)
 			deploySettings.ValueSets = append(deploySettings.ValueSets, bosun.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
 		}
 
