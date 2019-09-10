@@ -68,6 +68,7 @@ type DeploySettings struct {
 	Filter             *filter.Chain // If set, only apps which match the filter will be deployed.
 	IgnoreDependencies bool
 	ForceDeployApps    map[string]bool
+	Recycle            bool
 }
 
 func (d DeploySettings) WithValueSets(valueSets ...ValueSet) DeploySettings {
@@ -394,6 +395,12 @@ func (r *Deploy) Deploy(ctx BosunContext) error {
 
 		if err != nil {
 			return err
+		}
+		if r.Recycle {
+			err = app.Recycle(ctx)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

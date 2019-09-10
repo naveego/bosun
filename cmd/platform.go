@@ -75,12 +75,11 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Short: "Updates the manifests of the provided apps on the unstable branch with the provided apps. Defaults to using the 'develop' branch of the apps.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
+		ctx := b.NewContext()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
 		}
-
-		ctx := b.NewContext()
 
 		slot := args[0]
 		switch slot {
@@ -89,13 +88,18 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return errors.Errorf("invalid slot, wanted %s or %s, got %q", bosun.SlotStable, bosun.SlotUnstable, slot)
 		}
 
+		release, err := p.GetReleaseManifestBySlot(slot)
+		if err != nil {
+			return err
+		}
 		if viper.GetBool(argPlatformUpdateKnown) {
 			args = []string{}
-			release, err := p.GetReleaseManifestBySlot(slot)
-			if err != nil {
-				return err
-			}
 			for name := range release.GetAllAppMetadata() {
+				args = append(args, name)
+			}
+		} else if viper.GetBool(argPlatformUpdateDeployed) {
+			args = []string{}
+			for name := range release.DefaultDeployApps {
 				args = append(args, name)
 			}
 		}
@@ -112,7 +116,13 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			}
 
 			branch := viper.GetString(argPlatformUpdateBranch)
-			if branch == "" {
+			switch branch {
+			case string(git.BranchTypeRelease):
+				branch, err = app.Branching.RenderRelease(release.GetBranchParts())
+				if err != nil {
+					return err
+				}
+			case "":
 				branch = app.Branching.GetBranchTemplate(git.BranchTypeDevelop)
 			}
 
@@ -128,12 +138,14 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	},
 }, withFilteringFlags, func(cmd *cobra.Command) {
 	cmd.Flags().String(argPlatformUpdateBranch, "", "The branch to update from.")
-	cmd.Flags().Bool(argPlatformUpdateKnown, false, "If set, updates all apps currently in the unstable release.")
+	cmd.Flags().Bool(argPlatformUpdateKnown, false, "If set, updates all apps currently in the release.")
+	cmd.Flags().Bool(argPlatformUpdateDeployed, false, "If set, updates all apps currently marked to be deployed in the release.")
 })
 
 const (
-	argPlatformUpdateBranch = "branch"
-	argPlatformUpdateKnown  = "known"
+	argPlatformUpdateBranch   = "branch"
+	argPlatformUpdateKnown    = "known"
+	argPlatformUpdateDeployed = "deployed"
 )
 
 var _ = addCommand(platformCmd, &cobra.Command{

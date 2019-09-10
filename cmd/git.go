@@ -171,6 +171,31 @@ func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 	return issueNum, issue.GetNumber(), nil
 }
 
+func (c GitPullRequestCommand) rebase() error {
+	g, err := git.NewGitWrapper(c.LocalRepoPath)
+	if err != nil {
+		return err
+	}
+
+	err = g.Fetch()
+	if err != nil {
+		return err
+	}
+
+	_, err = g.Exec("rebase", "origin", c.Base)
+	if err != nil {
+		color.Red("Rebase failed, please fix merges and try again.")
+		return err
+	}
+
+	err = g.Push()
+	if err != nil {
+		return errors.Wrap(err, "push rebased branch")
+	}
+
+	return nil
+}
+
 const (
 	ArgPullRequestReviewers = "reviewer"
 	ArgPullRequestTitle     = "title"

@@ -52,6 +52,7 @@ const (
 	BranchPartSlug    = BranchPart("Slug")
 	BranchPartVersion = BranchPart("Version")
 	BranchPartNumber  = BranchPart("Number")
+	BranchPartName    = BranchPart("Name")
 )
 
 func (b BranchSpec) IsRelease(branch BranchName) bool {
@@ -154,6 +155,7 @@ func decomposeBranch(template string, branch BranchName) (BranchParts, error) {
 		string(BranchPartSlug):    fmt.Sprintf(`(?P<%s>[^/]+)`, BranchPartSlug),
 		string(BranchPartVersion): fmt.Sprintf(`(?P<%s>[^/]+)`, BranchPartVersion),
 		string(BranchPartNumber):  fmt.Sprintf(`(?P<%s>[^/]+)`, BranchPartNumber),
+		string(BranchPartName):    fmt.Sprintf(`(?P<%s>[^/]+)`, BranchPartName),
 	}
 
 	template, err := util.RenderTemplate(template, in)

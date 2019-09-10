@@ -533,6 +533,10 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 // major|minor|patch|major.minor.patch. If major.minor.patch is provided,
 // the version is set to that value.
 func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
+
+	log := ctx.WithApp(a).GetLog()
+	wasDirty := a.Repo.LocalRepo.IsDirty()
+
 	version, err := NewVersion(bumpOrVersion)
 	if err == nil {
 		a.Version = version
@@ -552,16 +556,18 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 		}
 	}
 
-	packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
-	if _, err = os.Stat(packageJSONPath); err == nil {
-		ctx.Log.Info("package.json detected, its version will be updated.")
-		err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
-			WithDir(filepath.Dir(a.FromPath)).
-			RunE()
-		if err != nil {
-			return errors.Errorf("failed to update version in package.json: %s", err)
-		}
-	}
+	// this package.json update is annoying and just makes builds slower right now so I'm disabling it:
+
+	// packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
+	// if _, err = os.Stat(packageJSONPath); err == nil {
+	// 	log.Info("package.json detected, its version will be updated.")
+	// 	err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
+	// 		WithDir(filepath.Dir(a.FromPath)).
+	// 		RunE()
+	// 	if err != nil {
+	// 		return errors.Errorf("failed to update version in package.json: %s", err)
+	// 	}
+	// }
 
 	if a.HasChart() {
 		m, err := a.getChartAsMap()
@@ -584,10 +590,14 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 		return errors.Wrap(err, "save parent file")
 	}
 
-	commitMsg := fmt.Sprintf("chore(version): %s bump to %s", bumpOrVersion, a.Version)
-	err = a.Repo.LocalRepo.Commit(commitMsg, ".")
-	if err != nil {
-		return errors.Wrap(err, "commit bumped files")
+	if wasDirty {
+		log.Warn("Repo was dirty, will not commit bumped files.")
+	} else {
+		commitMsg := fmt.Sprintf("chore(version): %s bump to %s", bumpOrVersion, a.Version)
+		err = a.Repo.LocalRepo.Commit(commitMsg, ".")
+		if err != nil {
+			return errors.Wrap(err, "commit bumped files")
+		}
 	}
 
 	return nil
@@ -654,6 +664,9 @@ func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
 	envs := map[string]*EnvironmentConfig{}
 	for envNames := range a.Values {
 		for _, envName := range strings.Split(envNames, ",") {
+			if envName == ValueSetAll {
+				continue
+			}
 			if _, ok := envs[envName]; !ok {
 				env, err := ctx.Bosun.GetEnvironment(envName)
 				if err != nil {
@@ -813,34 +826,52 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 
 	currentBranch := g.Branch()
 
-	err = g.Fetch()
-	if err != nil {
-		return nil, err
+	useWorktreeCheckout := false
+	forced := ctx.GetParams().Force
+	onBranch := currentBranch == branch
+	if forced && onBranch {
+		ctx.GetLog().Warn("Skipping worktree checkout because --force parameter was provided.")
+		useWorktreeCheckout = false
+	} else if forced {
+		return nil, errors.Errorf("--force provided but branch %q is not checked out (current branch is %s)", branch, currentBranch)
+	} else {
+		useWorktreeCheckout = true
 	}
-	repoDirName := filepath.Base(a.Repo.LocalRepo.Path)
-	worktreePath := fmt.Sprintf("/tmp/%s-worktree", repoDirName)
-	tmpBranchName := fmt.Sprintf("worktree-%s", xid.New())
-	_, err = g.Exec("branch", "--track", tmpBranchName, fmt.Sprintf("origin/%s", branch))
-	if err != nil {
-		return nil, errors.Wrapf(err, "checking out tmp branch tracking origin/%q", branch)
-	}
-	defer func() {
-		ctx.Log.Debugf("Deleting worktree %s", worktreePath)
-		_, _ = g.Exec("checkout", currentBranch)
+
+	bosunFile := a.FromPath
+
+	if useWorktreeCheckout {
+
+		err = g.Fetch()
+		if err != nil {
+			return nil, err
+		}
+		repoDirName := filepath.Base(a.Repo.LocalRepo.Path)
+		worktreePath := fmt.Sprintf("/tmp/%s-worktree", repoDirName)
+		tmpBranchName := fmt.Sprintf("worktree-%s", xid.New())
+		_, err = g.Exec("branch", "--track", tmpBranchName, fmt.Sprintf("origin/%s", branch))
+		if err != nil {
+			return nil, errors.Wrapf(err, "checking out tmp branch tracking origin/%q", branch)
+		}
+		defer func() {
+			ctx.Log.Debugf("Deleting worktree %s", worktreePath)
+			_, _ = g.Exec("checkout", currentBranch)
+			_, _ = g.Exec("worktree", "remove", worktreePath)
+			_, _ = g.Exec("branch", "-D", tmpBranchName)
+		}()
+
+		ctx.Log.Debugf("Creating worktree for %s at %s", tmpBranchName, worktreePath)
 		_, _ = g.Exec("worktree", "remove", worktreePath)
-		_, _ = g.Exec("branch", "-D", tmpBranchName)
-	}()
+		_, err = g.Exec("worktree", "add", worktreePath, tmpBranchName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "create work tree for checking out branch %q", tmpBranchName)
+		}
 
-	ctx.Log.Debugf("Creating worktree for %s at %s", tmpBranchName, worktreePath)
-	_, _ = g.Exec("worktree", "remove", worktreePath)
-	_, err = g.Exec("worktree", "add", worktreePath, tmpBranchName)
-	if err != nil {
-		return nil, errors.Wrapf(err, "create work tree for checking out branch %q", tmpBranchName)
+		// bosunFile should now be pulled from the worktree
+		bosunFile = strings.Replace(a.FromPath, a.Repo.LocalRepo.Path, "", 1)
+		bosunFile = filepath.Join(worktreePath, bosunFile)
 	}
 
-	// bosunFile should now be pulled from the worktree
-	bosunFile := strings.Replace(a.FromPath, a.Repo.LocalRepo.Path, "", 1)
-	bosunFile = filepath.Join(worktreePath, bosunFile)
 	provider := NewFilePathAppProvider(ctx.GetLog())
 
 	app, err := provider.GetAppByPathAndName(bosunFile, a.Name)

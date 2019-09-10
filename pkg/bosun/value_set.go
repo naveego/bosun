@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const ValueSetAll = "all"
+
 type ValueSet struct {
 	ConfigShared `yaml:",inline"`
 	Dynamic      map[string]*CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
@@ -97,13 +99,14 @@ func (a ValueSetMap) ExtractValueSetByName(name string) ValueSet {
 
 // ExtractValueSetByName returns a merged ValueSet
 // comprising the ValueSets under each key which contains the provided names.
+// The process starts with the values under the key "all", then
 // ValueSets with the same name are merged in order from least specific key
 // to most specific, so values under the key "red" will overwrite values under "red,green",
 // which will overwrite values under "red,green,blue", and so on. Then the
 // ValueSets with each name are merged in the order the names were provided.
 func (a ValueSetMap) ExtractValueSetByNames(names ...string) ValueSet {
 
-	out := ValueSet{}
+	out := a.ExtractValueSetByName(ValueSetAll)
 
 	for _, name := range names {
 		vs := a.ExtractValueSetByName(name)
@@ -118,7 +121,9 @@ func (a ValueSetMap) ExtractValueSetByNames(names ...string) ValueSet {
 // Each ValueSet will have its name set to the value of the name it's under.
 func (a ValueSetMap) CanonicalizedCopy() ValueSetMap {
 
-	out := ValueSetMap{}
+	out := ValueSetMap{
+		ValueSetAll: ValueSet{},
+	}
 
 	for k := range a {
 		names := strings.Split(k, ",")

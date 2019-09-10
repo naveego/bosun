@@ -287,10 +287,26 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 		}
 	}
 
-	err = deployableApps.FetchAll(ctx.Services())
-	if err != nil {
-		return err
-	}
+	branchParts := plan.ReleaseMetadata.GetBranchParts()
+	err = deployableApps.ForEachRepo(func(app *App) error {
+		releaseBranch, err := app.Branching.RenderRelease(branchParts)
+		if err != nil {
+			return err
+		}
+
+		if app.Repo.LocalRepo.GetCurrentBranch() == releaseBranch {
+			err = app.Repo.LocalRepo.git().Pull()
+			if err != nil {
+				return err
+			}
+		} else {
+			err = app.Repo.LocalRepo.SwitchToBranchAndPull(ctx.Services(), app.Branching.Develop)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 
 	grouped := deployableApps.GroupByAppThenProvider()
 

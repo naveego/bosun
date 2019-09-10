@@ -60,6 +60,13 @@ type ReleaseManifest struct {
 	Slot              string                  `yaml:"-"`
 }
 
+func (r *ReleaseMetadata) GetBranchParts() git.BranchParts {
+	return git.BranchParts{
+		git.BranchPartVersion: r.Version.String(),
+		git.BranchPartName:    r.Name,
+	}
+}
+
 func NewReleaseManifest(metadata *ReleaseMetadata) *ReleaseManifest {
 	r := &ReleaseManifest{ReleaseMetadata: metadata}
 	r.init()
@@ -272,13 +279,13 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 		ctx.GetLog().Warnf("Could not get previous manifest for %q from release %q: %s", r.String(), name, err)
 	}
 
-	if currentAppManifest != nil {
+	if currentAppManifest != nil && !ctx.GetParams().Force {
 		latestCommitHash, err := app.GetMostRecentCommitFromBranch(ctx, branch)
 		if err != nil {
 			return err
 		}
 		if strings.HasPrefix(latestCommitHash, currentAppManifest.Hashes.Commit) {
-			ctx.Log.Infof("No changes detected, keeping app at %s@%s (most recent commit to %s is %s).", currentAppManifest.Version, currentAppManifest.Hashes.Commit, branch, latestCommitHash)
+			ctx.Log.Infof("No changes detected, keeping app at %s@%s (most recent commit to %s is %s), use --force to override.", currentAppManifest.Version, currentAppManifest.Hashes.Commit, branch, latestCommitHash)
 			return nil
 		}
 	}
