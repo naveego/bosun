@@ -1,12 +1,16 @@
 package bosun
 
-import "github.com/naveego/bosun/pkg/git"
+import (
+	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/git"
+)
 
 type RepoFile struct {
 	File       `yaml:",inline"`
-	Name       string         `yaml:"name"`
-	APIVersion string         `yaml:"apiVersion,omitempty"`
-	Branching  git.BranchSpec `yaml:"branching,omitempty"`
+	Name       string            `yaml:"name"`
+	APIVersion string            `yaml:"apiVersion,omitempty"`
+	Branching  git.BranchSpec    `yaml:"branching,omitempty"`
+	AppFolders map[string]string `yaml:"appFolders"`
 }
 
 func (f *RepoFile) MarshalYAML() (interface{}, error) {
@@ -48,4 +52,17 @@ func (f *RepoFile) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	return err
+}
+
+type AppRequest struct {
+	Filter     filter.Filter
+	Name       string
+	Branch     string
+	BranchType git.BranchType
+}
+
+type AppStore interface {
+	GetApp(req AppRequest) (*App, error)
+	GetApps(req AppRequest) ([]*App, error)
+	SaveApp(app *App) error
 }
