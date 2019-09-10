@@ -62,27 +62,6 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
 
-		// TODO: move parent story if possible
-		// parents, err := issueSvc.GetParentRefs(issueRf)
-		// if err != nil {
-		// 	return errors.Wrap(err, "get parents for current issue")
-		// }
-		//pkg.Log.WithField("parents", parents).Info("parents returned")
-
-		// var parent issues.IssueRef
-		// if len(parents) > 0 {
-		// 	parentOrg := parents[0].Org
-		// 	parentRepo := parents[0].Repo
-		// 	parentNumber := parents[0].Number
-		// 	parent = issues.NewIssueRef(parentOrg, parentRepo, parentNumber)
-		// 	pkg.Log.WithField("parent ref", parent)
-		// 	columnUAT := issues.ColumnWaitingForUAT
-		// 	err = issueSvc.SetProgress(parent, columnUAT)
-		// 	if err != nil {
-		// 		return errors.Wrap(err, "move parent story to UAT")
-		// 	}
-		// }
-
 		column := issues.ColumnWaitingForMerge
 		err = issueSvc.SetProgress(issueRf, column)
 		if err != nil {

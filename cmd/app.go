@@ -144,10 +144,6 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 			return err
 		}
 
-		if g.IsDirty() {
-			return errors.New("repo is dirty")
-		}
-
 		wantsTag := viper.GetBool(ArgAppBumpTag)
 
 		var bump string

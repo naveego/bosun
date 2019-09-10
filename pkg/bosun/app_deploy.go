@@ -491,7 +491,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	plan, err := a.PlanReconciliation(ctx)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "planning reconciliation")
 	}
 
 	if len(plan) == 0 {
@@ -512,9 +512,9 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 				var ok bool
 				err, ok = r.(error)
 				if ok {
-					err = errors.Errorf("%s: panicked with error: %s\n%s", err, debug.Stack())
+					err = errors.Errorf("panicked with error: %s\n%s", err, debug.Stack())
 				} else {
-					err = errors.Errorf("%s: panicked: %v\n%s", r, debug.Stack())
+					err = errors.Errorf("panicked: %v\n%s", r, debug.Stack())
 				}
 			}
 
@@ -536,7 +536,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		err = step.Action(stepCtx)
 		if err != nil {
 			stepCtx.Log.WithError(err).Error("Deploy failed.")
-			return err
+			return errors.Wrapf(err, "step %q failed", step.Name)
 		}
 		stepCtx.Log.Info("Step complete.")
 	}
@@ -688,7 +688,7 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
-	return err
+	return errors.Wrapf(err, "delete using args %v", args)
 }
 
 func (a *AppDeploy) Rollback(ctx BosunContext) error {
@@ -699,14 +699,14 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
-	return err
+	return errors.Wrapf(err, "rollback using args %v", args)
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
 	args := append([]string{"install", "--name", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
-	return err
+	return errors.Wrapf(err, "install using args %v", args)
 }
 
 func (a *AppDeploy) Upgrade(ctx BosunContext) error {
@@ -716,7 +716,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 	}
 	out, err := pkg.NewCommand("helm", args...).RunOut()
 	ctx.Log.Debug(out)
-	return err
+	return errors.Wrapf(err, "upgrade using args %v", args)
 }
 
 func (a *AppDeploy) GetStatus() (string, error) {

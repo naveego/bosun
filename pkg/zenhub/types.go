@@ -1,7 +1,5 @@
 package zenhub
 
-import "github.com/naveego/bosun/pkg/issues"
-
 type RepoConfig struct {
 	ID int `yaml:"id" json:"id"`
 }
@@ -24,10 +22,10 @@ type Assignees struct {
 
 // Workspace represents a zenhub workspace
 type Workspace struct {
-	Name string `json:"name"`
-	Description string `json:"description"`
-	ID string `json:"id"`
-	Repositories []int `json:"repositories"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	ID           string `json:"id"`
+	Repositories []int  `json:"repositories"`
 }
 
 type Workspaces struct {
@@ -41,34 +39,34 @@ type Pipelines struct {
 
 // Pipeline represents a zenhub pipeline.
 type Pipeline struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Issues      []issues.Issue `json:"issues"`
-	IssueNumber int     `json:"issue_number"`
-	IsEpic      bool    `json:"is_epic"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Issues      []issues.Issue `json:"issues"`
+	IssueNumber int  `json:"issue_number"`
+	IsEpic      bool `json:"is_epic"`
 }
 
 // Issue represents a zenhub issue.
 type ZenhubIssue struct {
-	IssueNumber int      `json:"issue_number"`
-	Estimate    Estimate `json:"estimate"`
-	Position    int      `json:"position"`
-	IsEpic      bool     `json:"is_epic"`
-	Pipeline ZenhubIssuePipelineData `json:"pipeline"`
+	IssueNumber int                     `json:"issue_number"`
+	Estimate    Estimate                `json:"estimate"`
+	Position    int                     `json:"position"`
+	IsEpic      bool                    `json:"is_epic"`
+	Pipeline    ZenhubIssuePipelineData `json:"pipeline"`
 }
 
 // IssueData is used for response of zenhub api
 type IssueData struct {
-	Estimate Estimate `json:"estimate"`
-	PlusOnes []PlusOne `json:"plus_ones"`
-	Pipeline IssueDataPipeline `json:"pipeline"`
+	Estimate  Estimate            `json:"estimate"`
+	PlusOnes  []PlusOne           `json:"plus_ones"`
+	Pipeline  IssueDataPipeline   `json:"pipeline"`
 	Pipelines []IssueDataPipeline `json:"pipelines"`
-	IsEpic bool `json:"is_epic"`
+	IsEpic    bool                `json:"is_epic"`
 }
 
 type IssueDataPipeline struct {
-	Name string `json:"name"`
-	PipelineID string `json:"pipeline_id"`
+	Name        string `json:"name"`
+	PipelineID  string `json:"pipeline_id"`
 	WorkspaceID string `json:"workspace_id"`
 }
 
@@ -104,13 +102,13 @@ type DependenciesPackage struct {
 
 type Dependency struct {
 	Blocking DependencyIssue `json:"blocking"`
-	Blocked DependencyIssue `json:"blocked"`
+	Blocked  DependencyIssue `json:"blocked"`
 }
 
 func NewDependency(blocking, blocked DependencyIssue) Dependency {
 	d := Dependency{
 		Blocking: blocking,
-		Blocked: blocked,
+		Blocked:  blocked,
 	}
 	return d
 }
@@ -123,7 +121,7 @@ type DependencyIssue struct {
 func NewDependencyIssue(repoId, issueNumber int) DependencyIssue {
 
 	di := DependencyIssue{
-		RepoID: repoId,
+		RepoID:      repoId,
 		IssueNumber: issueNumber,
 	}
 	return di

@@ -287,10 +287,26 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 		}
 	}
 
-	err = deployableApps.FetchAll(ctx.Services())
-	if err != nil {
-		return err
-	}
+	branchParts := plan.ReleaseMetadata.GetBranchParts()
+	err = deployableApps.ForEachRepo(func(app *App) error {
+		releaseBranch, err := app.Branching.RenderRelease(branchParts)
+		if err != nil {
+			return err
+		}
+
+		if app.Repo.LocalRepo.GetCurrentBranch() == releaseBranch {
+			err = app.Repo.LocalRepo.git().Pull()
+			if err != nil {
+				return err
+			}
+		} else {
+			err = app.Repo.LocalRepo.SwitchToBranchAndPull(ctx.Services(), app.Branching.Develop)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 
 	grouped := deployableApps.GroupByAppThenProvider()
 
@@ -573,7 +589,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 					return app, nil
 				} else {
-					ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName)
+					ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
 
 					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
 					if err != nil {

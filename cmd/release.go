@@ -476,6 +476,7 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 			Environment: ctx.Env,
 			ValueSets:   valueSets,
 			Manifest:    release,
+			Recycle:     viper.GetBool(ArgReleaseRecycle),
 		}
 
 		getFilterParams(b, args).ApplyToDeploySettings(&deploySettings)
@@ -511,6 +512,7 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgReleaseSkipValidate, false, "Skips running validation before deploying the release.")
+	cmd.Flags().Bool(ArgReleaseRecycle, false, "Recycles apps after they are deployed.")
 },
 	withFilteringFlags,
 	withValueSetFlags)
@@ -566,6 +568,7 @@ var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
 }, withFilteringFlags)
 
 const ArgReleaseSkipValidate = "skip-validation"
+const ArgReleaseRecycle = "recycle"
 
 var releaseDiffCmd = addCommand(
 	releaseCmd,
@@ -727,4 +730,19 @@ func getDeployableApps(b *bosun.Bosun, args []string) ([]*bosun.App, error) {
 		return nil, err
 	}
 	return apps, nil
+}
+
+func getReleaseBySlot(platform *bosun.Platform, slot string) (*bosun.ReleaseManifest, error) {
+
+	switch slot {
+	case bosun.SlotStable, bosun.SlotUnstable:
+	default:
+		return nil, errors.Errorf("invalid slot, wanted %s or %s, got %q", bosun.SlotStable, bosun.SlotUnstable, slot)
+	}
+
+	release, err := platform.GetReleaseManifestBySlot(slot)
+	if err != nil {
+		return nil, err
+	}
+	return release, nil
 }

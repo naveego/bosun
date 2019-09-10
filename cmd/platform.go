@@ -19,6 +19,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -69,24 +70,36 @@ var _ = addCommand(platformCmd, &cobra.Command{
 })
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "update-unstable [names...]",
+	Use:   "update {stable|unstable} [names...]",
+	Args:  cobra.MinimumNArgs(1),
 	Short: "Updates the manifests of the provided apps on the unstable branch with the provided apps. Defaults to using the 'develop' branch of the apps.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
+		ctx := b.NewContext()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
 		}
 
-		ctx := b.NewContext()
+		slot := args[0]
+		switch slot {
+		case bosun.SlotStable, bosun.SlotUnstable:
+		default:
+			return errors.Errorf("invalid slot, wanted %s or %s, got %q", bosun.SlotStable, bosun.SlotUnstable, slot)
+		}
 
+		release, err := p.GetReleaseManifestBySlot(slot)
+		if err != nil {
+			return err
+		}
 		if viper.GetBool(argPlatformUpdateKnown) {
 			args = []string{}
-			release, err := p.GetUnstableRelease()
-			if err != nil {
-				return err
-			}
 			for name := range release.GetAllAppMetadata() {
+				args = append(args, name)
+			}
+		} else if viper.GetBool(argPlatformUpdateDeployed) {
+			args = []string{}
+			for name := range release.DefaultDeployApps {
 				args = append(args, name)
 			}
 		}
@@ -103,11 +116,17 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			}
 
 			branch := viper.GetString(argPlatformUpdateBranch)
-			if branch == "" {
+			switch branch {
+			case string(git.BranchTypeRelease):
+				branch, err = app.Branching.RenderRelease(release.GetBranchParts())
+				if err != nil {
+					return err
+				}
+			case "":
 				branch = app.Branching.GetBranchTemplate(git.BranchTypeDevelop)
 			}
 
-			err = p.RefreshApp(ctx, app.Name, branch, bosun.SlotUnstable)
+			err = p.RefreshApp(ctx, app.Name, branch, slot)
 			if err != nil {
 				ctx.Log.WithError(err).Warn("Could not refresh.")
 			}
@@ -119,12 +138,14 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	},
 }, withFilteringFlags, func(cmd *cobra.Command) {
 	cmd.Flags().String(argPlatformUpdateBranch, "", "The branch to update from.")
-	cmd.Flags().Bool(argPlatformUpdateKnown, false, "If set, updates all apps currently in the unstable release.")
+	cmd.Flags().Bool(argPlatformUpdateKnown, false, "If set, updates all apps currently in the release.")
+	cmd.Flags().Bool(argPlatformUpdateDeployed, false, "If set, updates all apps currently marked to be deployed in the release.")
 })
 
 const (
-	argPlatformUpdateBranch = "branch-type"
-	argPlatformUpdateKnown  = "known"
+	argPlatformUpdateBranch   = "branch"
+	argPlatformUpdateKnown    = "known"
+	argPlatformUpdateDeployed = "deployed"
 )
 
 var _ = addCommand(platformCmd, &cobra.Command{

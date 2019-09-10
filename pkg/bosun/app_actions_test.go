@@ -4,6 +4,7 @@ import (
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"gopkg.in/yaml.v2"
 )
 
 var _ = Describe("AppActions", func() {
@@ -66,6 +67,37 @@ Accept-Language: en-US,en;q=0.9
 			ctx := NewTestBosunContext()
 
 			Expect(sut.Execute(ctx)).To(Succeed())
+		})
+	})
+
+	Describe("MongoAction", func() {
+		It("should unmarshal correctly", func() {
+
+			raw := `
+name: client-migration
+when: BeforeDeploy
+mongo:
+  databaseFile: "test"
+  connection:
+    dbName: "auth"
+    kubePort:
+      forward: true
+      port: 27017
+      serviceName: mongodb-0
+    credentials:
+      type:       vault
+      vaultPath:  database/creds/mongodb-provisioner
+      authSource: admin
+  command: {
+      "find": "auth.clients"
+  }
+`
+			var appAction AppAction
+			Expect(yaml.Unmarshal([]byte(raw), &appAction)).To(Succeed())
+			actual := appAction.Mongo
+			Expect(actual).ToNot(BeNil())
+			Expect(actual.DatabaseFile).To(Equal("test"))
+			Expect(actual.Connection.Credentials.Type).To(Equal("vault"))
 		})
 	})
 })

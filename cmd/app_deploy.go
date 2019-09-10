@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -111,6 +113,20 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 
 		ctx.Log.Debugf("Created deploy")
 
+		if viper.GetBool(argAppDeployPreview) {
+			for _, app := range r.AppDeploys {
+				values, err := app.GetResolvedValues(ctx)
+				if err != nil {
+					return errors.Wrap(err, "get resolved values")
+				}
+				fmt.Printf("%s:\n", app.Name)
+				y := util.MustYaml(values)
+				fmt.Println(y)
+				fmt.Println()
+			}
+			return nil
+		}
+
 		err = r.Deploy(ctx)
 
 		if err != nil {
@@ -123,8 +139,14 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgAppDeployDeps, false, "Also deploy all dependencies of the requested apps.")
+	cmd.Flags().Bool(argAppDeployPreview, false, "Just dump the values which would be used to deploy, then exit.")
 	cmd.Flags().StringP(ArgAppFromRelease, "r", "", "Deploy using the specified release from the platform, rather than your local clone.")
 	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().StringSliceP(ArgAppValueSet, "v", []string{}, "Additional value sets to include in this deploy.")
 	cmd.Flags().StringSliceP(ArgAppSet, "s", []string{}, "Value overrides to set in this deploy, as key=value pairs.")
+
 })
+
+const (
+	argAppDeployPreview = "preview"
+)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
@@ -80,6 +81,8 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		fmt.Println(number)
 
 		g, err := git.NewGitWrapper(repoPath)
 		if err != nil {

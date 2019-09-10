@@ -84,6 +84,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 					"test:     Adding missing tests or correcting existing tests",
 					"build:    Changes that affect the build system or external dependencies",
 					"ci:       Changes to our CI configuration files and scripts",
+					"deploy:   Changes to the chart or bosun deploy configuration",
 					"chore:    Other changes that don't modify src or test files",
 					"revert:   Reverts a previous commit",
 				},

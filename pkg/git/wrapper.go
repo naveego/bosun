@@ -116,3 +116,8 @@ func (g GitWrapper) CreateBranch(branch string) error {
 
 	return nil
 }
+
+func (g GitWrapper) Push() error {
+	_, err := g.Exec("push")
+	return err
+}
