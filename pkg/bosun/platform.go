@@ -918,7 +918,18 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 	releaseBranch := fmt.Sprintf("release/%s", release.Version)
 
 	mergeTargets := map[string]*mergeTarget{
-		"devops": {
+		"devops-develop": {
+			dir:        platformDir,
+			name:       "devops",
+			version:    release.Version.String(),
+			fromBranch: releaseBranch,
+			toBranch:   "develop",
+			tags: map[string]string{
+				"":        release.Version.String(),
+				"release": release.Name,
+			},
+		},
+		"devops-master": {
 			dir:        platformDir,
 			name:       "devops",
 			version:    release.Version.String(),
@@ -969,7 +980,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 		mt, ok := mergeTargets[app.Repo.Name]
 		if !ok {
-			mt = &mergeTarget{
+			mergeTargets[app.Repo.Name] = &mergeTarget{
 				dir:        app.Repo.LocalRepo.Path,
 				version:    manifest.Version.String(),
 				name:       manifest.Name,
@@ -977,7 +988,17 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 				toBranch:   app.Branching.Master,
 				tags:       map[string]string{},
 			}
-			mergeTargets[app.Repo.Name] = mt
+
+			if app.Branching.Develop != app.Branching.Master {
+				mergeTargets[app.RepoName+"-develop"] = &mergeTarget{
+					dir:        app.Repo.LocalRepo.Path,
+					version:    manifest.Version.String(),
+					name:       manifest.Name,
+					fromBranch: appDeploy.Branch,
+					toBranch:   app.Branching.Develop,
+					tags:       map[string]string{},
+				}
+			}
 		}
 		mt.tags[app.Name] = fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String())
 	}
@@ -1069,58 +1090,43 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			}
 		}
 
-		log.Info("Checking for changes...")
-
-		diff, err := g.Exec("log", "origin/master..origin/"+releaseBranch, "--oneline")
+		gitToken, err := b.GetGithubToken()
 		if err != nil {
-			return errors.Errorf("find diffs: %s", err)
+			return err
+		}
+		gitClient := git.NewGithubClient(gitToken)
+
+		log.Info("Creating pull request.")
+		_, prNumber, err := git.GitPullRequestCommand{
+			LocalRepoPath: repoDir,
+			Base:          "master",
+			FromBranch:    releaseBranch,
+			Client:        gitClient,
+		}.Execute()
+		if err != nil {
+			ctx.Log.WithError(err).Error("Could not create pull request.")
+			continue
 		}
 
-		if len(diff) == 0 {
-			log.Info("No diffs found between release branch and master...")
-		} else {
+		issueService, err := b.GetIssueService()
+		if err != nil {
+			return err
+		}
+		log.Info("Accepting pull request.")
+		err = git.GitAcceptPRCommand{
+			PRNumber:                 prNumber,
+			RepoDirectory:            repoDir,
+			DoNotMergeBaseIntoBranch: true,
+			Client:                   gitClient,
+			IssueService:             issueService,
+		}.Execute()
 
-			log.Info("Deploy branch has diverged from master, will merge back...")
-
-			gitToken, err := b.GetGithubToken()
-			if err != nil {
-				return err
-			}
-			gitClient := git.NewGithubClient(gitToken)
-
-			log.Info("Creating pull request.")
-			_, prNumber, err := git.GitPullRequestCommand{
-				LocalRepoPath: repoDir,
-				Base:          "master",
-				FromBranch:    releaseBranch,
-				Client:        gitClient,
-			}.Execute()
-			if err != nil {
-				ctx.Log.WithError(err).Error("Could not create pull request.")
-				continue
-			}
-
-			issueService, err := b.GetIssueService()
-			if err != nil {
-				return err
-			}
-			log.Info("Accepting pull request.")
-			err = git.GitAcceptPRCommand{
-				PRNumber:                 prNumber,
-				RepoDirectory:            repoDir,
-				DoNotMergeBaseIntoBranch: true,
-				Client:                   gitClient,
-				IssueService:             issueService,
-			}.Execute()
-
-			if err != nil {
-				ctx.Log.WithError(err).Error("Could not accept pull request.")
-				continue
-			}
-
-			log.Info("Merged back to master.")
+		if err != nil {
+			ctx.Log.WithError(err).Error("Could not accept pull request.")
+			continue
 		}
 
+		log.Infof("Merged back to %s.", target.toBranch)
 	}
 
 	return nil
