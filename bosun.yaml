@@ -9,7 +9,7 @@ apps:
     release: ""
     feature: issue/{{.Number}}/{{.Slug}}
   repo: naveego/bosun
-  version: 1.16.2
+  version: 1.17.0
   images: []
   scripts:
   - name: publish
@@ -51,6 +51,16 @@ apps:
       rebuildDb: false
 repos:
 - name: bosun
+  branching:
+    master: ""
+    develop: ""
+    release: ""
+    feature: ""
   labels: {}
 - name: bosun
+  branching:
+    master: ""
+    develop: ""
+    release: ""
+    feature: ""
   labels: {}
