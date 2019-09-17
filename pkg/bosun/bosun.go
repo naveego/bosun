@@ -892,6 +892,9 @@ func (b *Bosun) GetRepos() []*Repo {
 				}
 			}
 		}
+		for _, app := range b.GetApps() {
+			b.repos[app.RepoName] = app.Repo
+		}
 
 	}
 

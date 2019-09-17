@@ -137,6 +137,8 @@ func (a ValueSetMap) CanonicalizedCopy() ValueSetMap {
 		vs.Name = name
 		out[name] = vs
 	}
+	// don't write out the "all" value set, it's integrated into the others
+	delete(out, ValueSetAll)
 
 	return out
 }

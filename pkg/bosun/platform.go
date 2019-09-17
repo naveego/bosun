@@ -980,7 +980,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 		mt, ok := mergeTargets[app.Repo.Name]
 		if !ok {
-			mergeTargets[app.Repo.Name] = &mergeTarget{
+			mt = &mergeTarget{
 				dir:        app.Repo.LocalRepo.Path,
 				version:    manifest.Version.String(),
 				name:       manifest.Name,
@@ -988,6 +988,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 				toBranch:   app.Branching.Master,
 				tags:       map[string]string{},
 			}
+			mergeTargets[app.Repo.Name] = mt
 
 			if app.Branching.Develop != app.Branching.Master {
 				mergeTargets[app.RepoName+"-develop"] = &mergeTarget{
@@ -1000,7 +1001,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 				}
 			}
 		}
-		mt.tags[app.Name] = fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String())
+		mt.tags[app.RepoName] = fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String())
 	}
 
 	if len(mergeTargets) == 0 {
@@ -1123,7 +1124,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 		if err != nil {
 			ctx.Log.WithError(err).Error("Could not accept pull request.")
-			continue
+			return errors.Wrapf(err, "failed to accept pr %d for %s", prNumber, repoDir)
 		}
 
 		log.Infof("Merged back to %s.", target.toBranch)

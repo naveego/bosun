@@ -12,6 +12,7 @@ import (
 
 type RepoConfig struct {
 	ConfigShared    `yaml:",inline"`
+	Branching       git.BranchSpec
 	FilteringLabels map[string]string `yaml:"labels" json:"labels"`
 }
 

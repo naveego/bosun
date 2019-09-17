@@ -80,8 +80,9 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 	if app.RepoName != "" {
 		app.Repo = &Repo{
 			RepoConfig: RepoConfig{
+				Branching: app.Branching.WithDefaults(),
 				ConfigShared: ConfigShared{
-					Name: app.Name,
+					Name: app.RepoName,
 				},
 			},
 		}
@@ -151,6 +152,7 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 	if app.RepoName != "" {
 		app.Repo = &Repo{
 			RepoConfig: RepoConfig{
+				Branching: app.Branching.WithDefaults(),
 				ConfigShared: ConfigShared{
 					Name: app.RepoName,
 				},
@@ -378,6 +380,7 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 
 		appConfig = c.Apps[index]
 	}
+	appConfig.Branching = appConfig.Branching.WithDefaults()
 	appConfig.SetParent(c)
 
 	repoPath, _ := git.GetRepoPath(bosunFile)
@@ -385,6 +388,9 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 	app := &App{
 		AppConfig: appConfig,
 		Repo: &Repo{
+			RepoConfig: RepoConfig{
+				Branching: appConfig.Branching.WithDefaults(),
+			},
 			LocalRepo: &LocalRepo{
 				Name: appConfig.RepoName,
 				Path: repoPath,

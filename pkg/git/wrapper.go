@@ -108,6 +108,10 @@ func (g GitWrapper) Log(args ...string) ([]string, error) {
 }
 
 func (g GitWrapper) CreateBranch(branch string) error {
+	if list, err := g.Exec("branch", "--list", branch); err == nil && len(list) > 0 {
+		return nil
+	}
+
 	pkg.Log.Infof("Creating branch %q.", branch)
 	_, err := g.Exec("checkout", "-B", branch)
 	if err != nil {

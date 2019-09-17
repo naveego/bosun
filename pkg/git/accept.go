@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 type GitAcceptPRCommand struct {
@@ -33,22 +34,28 @@ func (c GitAcceptPRCommand) Execute() error {
 
 	number := c.PRNumber
 
+GetPR:
 	pr, _, err := client.PullRequests.Get(context.Background(), org, repo, number)
 	if err != nil {
 		return errors.Errorf("could not get pull request %d: %s", number, err)
 	}
 	mergeBranch := pr.GetHead().GetRef()
-	baseBranch := pr.GetBase().GetRef()
 
 	if pr.ClosedAt != nil {
 		return errors.Errorf("already closed at %s", *pr.ClosedAt)
 	}
 
+	if pr.CreatedAt.After(time.Now().Add(-5 * time.Second)) {
+		pkg.Log.Warnf("PR is very new, waiting a little while before trying to merge.")
+		<-time.After(5 * time.Second)
+		goto GetPR
+	}
+
 	if pr.GetMergeable() == false {
-		return errors.Errorf(`branch %s not mergeable: %s; please merge %s into %s, push to github, then try again`,
-			baseBranch,
+		return errors.Errorf(`pr not mergeable: %s; please merge %s into %s, push to github, then try again`,
 			pr.GetMergeableState(),
-			mergeBranch)
+			pr.GetBase().GetRef(),
+			pr.GetHead().GetRef())
 	}
 
 	mergeMessage := fmt.Sprintf("%s\n%s\nMerge of PR #%d", pr.GetTitle(), pr.GetBody(), number)
@@ -158,9 +165,11 @@ func (c GitAcceptPRCommand) Execute() error {
 	prIssRef := issues.NewIssueRef(org, repo, issNum)
 
 	// move task to "Done"
-	err = c.IssueService.SetProgress(prIssRef, issues.ColumnDone)
-	if err != nil {
-		return errors.Wrap(err, "move task to done")
+	if c.IssueService != nil {
+		err = c.IssueService.SetProgress(prIssRef, issues.ColumnDone)
+		if err != nil {
+			pkg.Log.Warnf("Could not move issue %s to done status, you'll need to do that yourself. (error: %s)", prIssRef, err)
+		}
 	}
 
 	/* parents, err := svc.GetParentRefs(prIssRef)

@@ -55,6 +55,24 @@ const (
 	BranchPartName    = BranchPart("Name")
 )
 
+func (b BranchSpec) WithDefaults() BranchSpec {
+	if b.Master == "" {
+		b.Master = "master"
+	}
+	if b.Develop == "" {
+		// default behavior is trunk based development
+		b.Develop = "master"
+	}
+	if b.Release == "" {
+		// migrate BranchForRelease to p.Branching.Release pattern.
+		b.Release = "release/{{.Version}}"
+	}
+	if b.Feature == "" {
+		b.Feature = "issue/{{.Number}}/{{.Slug}}"
+	}
+	return b
+}
+
 func (b BranchSpec) IsRelease(branch BranchName) bool {
 	t, _ := b.GetBranchType(branch)
 	return t == BranchTypeRelease

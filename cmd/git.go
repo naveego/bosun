@@ -7,9 +7,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
-	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,7 +15,6 @@ import (
 	"os"
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 // gitCmd represents the git command
@@ -224,246 +221,28 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		ecmd := GitAcceptPRCommand{
+		client := mustGetGithubClient()
+
+		b := MustGetBosun()
+		svc, err := b.GetIssueService()
+		if err != nil {
+			b.NewContext().Log.Warnf("Could not get issue service, issues will not be updated: %s", err)
+		}
+
+		acceptPRCommand := git.GitAcceptPRCommand{
 			RepoDirectory: repoPath,
 			PRNumber:      prNumber,
+			Client:        client,
+			IssueService:  svc,
 		}
 
-		if len(args) > 1 {
-			ecmd.VersionBump = args[1]
-			b := MustGetBosun()
-
-			appsToBump := viper.GetStringSlice(ArgGitAcceptPRAppVersion)
-			app, err := getFilterParams(b, appsToBump).IncludeCurrent().GetApp()
-
-			if err != nil {
-				return errors.Wrap(err, "could not get app to version")
-			}
-
-			ecmd.AppsToVersion = []*bosun.App{app}
-		}
-
-		return ecmd.Execute()
+		return acceptPRCommand.Execute()
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(ArgGitAcceptPRAppVersion, []string{}, "Apps to apply version bump to.")
 })
 
 const ArgGitAcceptPRAppVersion = "app"
-
-type GitAcceptPRCommand struct {
-	PRNumber      int
-	RepoDirectory string
-	// if true, will skip merging the base branch back into the pr branch before merging into the target.
-	DoNotMergeBaseIntoBranch bool
-	AppsToVersion            []*bosun.App
-	VersionBump              string
-}
-
-func (c GitAcceptPRCommand) Execute() error {
-	var err error
-	var out string
-
-	client := mustGetGithubClient()
-	repoPath, err := git.GetRepoPath(c.RepoDirectory)
-	if err != nil {
-		return err
-	}
-	org, repo := git.GetOrgAndRepoFromPath(repoPath)
-	g, _ := git.NewGitWrapper(repoPath)
-
-	number := c.PRNumber
-
-	pr, _, err := client.PullRequests.Get(context.Background(), org, repo, number)
-	if err != nil {
-		return errors.Errorf("could not get pull request %d: %s", number, err)
-	}
-	baseBranch := pr.GetBase().GetRef()
-
-	if pr.ClosedAt != nil {
-		return errors.Errorf("already closed at %s", *pr.ClosedAt)
-	}
-
-	if pr.GetMergeable() == false {
-		return errors.Errorf(`branch %s not mergeable: %s; please merge %s into %s, push to github, then try again`,
-			pr.GetBase().GetRef(),
-			pr.GetMergeableState(),
-			pr.GetHead().GetRef())
-	}
-
-	stashed := false
-	if g.IsDirty() {
-		stashed = true
-		pkg.Log.Info("Stashing changes before merge...")
-		out, err = g.Exec("stash")
-		check(err, "tried to stash before merge, but: %s", out)
-	}
-
-	currentBranch := g.Branch()
-	defer func() {
-		pkg.Log.Info("Returning to branch you were on before merging...")
-		checkMsg(g.Exec("checkout", currentBranch))
-		if stashed {
-			pkg.Log.Info("Applying stashed changes...")
-			checkMsg(g.Exec("stash", "apply"))
-		}
-	}()
-
-	if err = checkHandle(g.Fetch("--all")); err != nil {
-		return errors.Wrap(err, "fetching")
-	}
-
-	mergeBranch := pr.GetHead().GetRef()
-
-	out, err = g.Exec("branch")
-	if err = checkHandle(err); err != nil {
-		return err
-	}
-
-	if strings.Contains(out, mergeBranch) {
-		pkg.Log.Infof("Checking out merge branch %q", mergeBranch)
-		if err = checkHandleMsg(g.Exec("checkout", mergeBranch)); err != nil {
-			return err
-		}
-	} else {
-		pkg.Log.Infof("Pulling and checking out merge branch %q", mergeBranch)
-		if err = checkHandleMsg(g.Exec("checkout", "-b", mergeBranch, "origin/"+pr.GetBase().GetRef())); err != nil {
-			return err
-		}
-	}
-
-	if err = checkHandleMsg(g.Exec("pull")); err != nil {
-		return err
-	}
-
-	if !c.DoNotMergeBaseIntoBranch {
-		pkg.Log.Infof("Merging %s into %s...", baseBranch, mergeBranch)
-		out, err = g.Exec("merge", baseBranch)
-
-		if !pr.GetMergeable() || err != nil {
-			return errors.Errorf("merge conflicts exist on branch %s, please resolve before trying again: %s", mergeBranch, err)
-		}
-	}
-
-	if len(c.AppsToVersion) > 0 {
-		b := MustGetBosun()
-		var finalVersion string
-		bump := c.VersionBump
-
-		for _, app := range c.AppsToVersion {
-
-			pkg.Log.Infof("Bumping version (%s) for %s...", bump, app.Name)
-
-			err = appBump(b, app, bump)
-			if err != nil {
-				return err
-			}
-
-			finalVersion = app.Version.String()
-		}
-
-		out, err := g.Exec("add", ".")
-		if err != nil {
-			return checkHandle(err)
-		}
-		fmt.Println(out)
-
-		out, err = g.Exec("commit", "-m", fmt.Sprintf("Bumping version to %s while approving PR %d", finalVersion, number))
-		if err != nil {
-			return checkHandle(err)
-		}
-		fmt.Println(out)
-
-		pkg.Log.Infof("Tagging merge with (%s)...", finalVersion)
-		if err = checkHandleMsg(g.Exec("tag", finalVersion, "--force")); err != nil {
-			return err
-		}
-
-		pkg.Log.Info("Pushing tagged merge...")
-		if err = checkHandleMsg(g.Exec("push", "origin", mergeBranch, "--tags")); err != nil {
-			return err
-		}
-	}
-
-	pkg.Log.Infof("Checking out %s...", baseBranch)
-	if err = checkHandleMsg(g.Exec("checkout", baseBranch)); err != nil {
-		return err
-	}
-
-	pkg.Log.Infof("Pulling %s...", baseBranch)
-	if err = checkHandleMsg(g.Exec("pull")); err != nil {
-		return err
-	}
-
-	pkg.Log.Infof("Merging %s into %s...", mergeBranch, baseBranch)
-	out, err = g.Exec("merge", "--no-ff", mergeBranch, "-m", fmt.Sprintf("%s\n%s\nMerge of PR #%d", pr.GetTitle(), pr.GetBody(), number))
-	if err != nil {
-		return errors.Errorf("could not merge into %s", baseBranch)
-	}
-
-	pkg.Log.Infof("Pushing %s...", baseBranch)
-	if err = checkHandleMsg(g.Exec("push", "origin", baseBranch)); err != nil {
-		return err
-	}
-
-	pkg.Log.Info("Merge completed.")
-
-	segs := regexp.MustCompile(`(issue)/#?(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
-	if len(segs) == 0 {
-		pkg.Log.Warn("Branch did not contain an issue number, not attempting to close issues.")
-		return nil
-	}
-
-	b := MustGetBosun()
-	svc, err := b.GetIssueService()
-	if err != nil {
-		return errors.New("get issue service")
-	}
-
-	issNum, err := strconv.Atoi(segs[2])
-	if err != nil {
-		return errors.New("get issue number from branch name")
-	}
-	prIssRef := issues.NewIssueRef(org, repo, issNum)
-
-	// move task to "Done"
-	err = svc.SetProgress(prIssRef, issues.ColumnDone)
-	if err != nil {
-		return errors.Wrap(err, "move task to done")
-	}
-
-	/* parents, err := svc.GetParentRefs(prIssRef)
-	if err != nil {
-		return errors.Wrap(err, "get parents for current issue")
-	}
-	if len(parents) > 0 {
-
-		parent := parents[0]
-
-		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
-
-		allChildren, err := svc.GetChildRefs(parentIssueRef)
-		if err != nil {
-			return errors.New("get all children of parent issue")
-		}
-
-		var ok = true
-		for _, child := range allChildren {
-			if !child.IsClosed {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			err = svc.SetProgress(parentIssueRef, issues.ColumnWaitingForUAT)
-			if err != nil {
-				return errors.New("move parent story to Waiting for UAT")
-			}
-		}
-	} */
-
-	return nil
-}
 
 func getOrgAndRepo() (string, string) {
 	return git.GetCurrentOrgAndRepo()
