@@ -107,7 +107,7 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 		appManifests := map[string]*AppManifest{}
 
 		allAppMetadata := r.GetAllAppMetadata()
-		for appName, _ := range allAppMetadata {
+		for appName, appMetadata := range allAppMetadata {
 			appReleasePath := filepath.Join(r.dir, appName+".yaml")
 			b, err := ioutil.ReadFile(appReleasePath)
 			if err != nil {
@@ -120,6 +120,7 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 			}
 
 			appManifest.AppConfig.FromPath = appReleasePath
+			appManifest.AppMetadata = appMetadata
 
 			appManifests[appName] = appManifest
 		}
@@ -379,7 +380,10 @@ func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool
 	if err != nil {
 		return err
 	}
+	manifest.AppMetadata.PinToRelease(r.ReleaseMetadata)
+
 	appManifests[manifest.Name] = manifest
+
 	r.AppMetadata[manifest.Name] = manifest.AppMetadata
 	if addToDefaultDeploys {
 		if r.DefaultDeployApps == nil {

@@ -452,9 +452,10 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 }, withFilteringFlags)
 
 var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:           "deploy",
-	Short:         "Deploys the release.",
-	Long:          "Deploys the current release to the current environment.",
+	Use:   "deploy [apps...]",
+	Short: "Deploys the release.",
+	Long: `Deploys the current release to the current environment. If apps are provided, 
+only those apps will be deployed. Otherwise, all apps in the release will be deployed (subject to --include flags).`,
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -473,10 +474,14 @@ var releaseDeployCmd = addCommand(releaseCmd, &cobra.Command{
 		}
 
 		deploySettings := bosun.DeploySettings{
-			Environment: ctx.Env,
-			ValueSets:   valueSets,
-			Manifest:    release,
-			Recycle:     viper.GetBool(ArgReleaseRecycle),
+			Environment:     ctx.Env,
+			ValueSets:       valueSets,
+			Manifest:        release,
+			Recycle:         viper.GetBool(ArgReleaseRecycle),
+			ForceDeployApps: map[string]bool{},
+		}
+		for _, appName := range args {
+			deploySettings.ForceDeployApps[appName] = true
 		}
 
 		getFilterParams(b, args).ApplyToDeploySettings(&deploySettings)

@@ -962,20 +962,28 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			continue
 		}
 
-		if appDeploy.Branch != releaseBranch {
-			ctx.Log.Warnf("App repo (%s) does not have a release branch for release %s (%s), nothing to merge.", app.RepoName, release.Name, release.Version)
+		if appDeploy.PinnedReleaseVersion == nil {
+			ctx.Log.Warnf("App repo (%s) does not have a release branch pinned, probably not part of this release.", app.RepoName, release.Name, release.Version)
+			continue
+		}
+
+		if *appDeploy.PinnedReleaseVersion != release.Version {
+			ctx.Log.Warnf("App repo (%s) is not changed for this release.", app.RepoName)
 			continue
 		}
 
 		manifest, err := app.GetManifest(ctx)
 		if err != nil {
-			ctx.Log.WithError(err).Errorf("App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
-			continue
+			return errors.Wrapf(err, "App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
 		}
 
 		if !app.IsRepoCloned() {
-			ctx.Log.Errorf("App repo (%s) for app %s is not cloned, cannot merge.", app.RepoName, app.Name)
-			continue
+			return errors.Errorf("App repo (%s) for app %s is not cloned, cannot merge.", app.RepoName, app.Name)
+		}
+
+		appBranch, err := app.Branching.RenderRelease(release.GetBranchParts())
+		if err != nil {
+			return err
 		}
 
 		mt, ok := mergeTargets[app.Repo.Name]
@@ -984,7 +992,7 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 				dir:        app.Repo.LocalRepo.Path,
 				version:    manifest.Version.String(),
 				name:       manifest.Name,
-				fromBranch: appDeploy.Branch,
+				fromBranch: appBranch,
 				toBranch:   app.Branching.Master,
 				tags:       map[string]string{},
 			}
@@ -995,33 +1003,35 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 					dir:        app.Repo.LocalRepo.Path,
 					version:    manifest.Version.String(),
 					name:       manifest.Name,
-					fromBranch: appDeploy.Branch,
+					fromBranch: appBranch,
 					toBranch:   app.Branching.Develop,
 					tags:       map[string]string{},
 				}
 			}
 		}
-		mt.tags[app.RepoName] = fmt.Sprintf("%s-%s", manifest.Version.String(), release.Version.String())
+
+		mt.tags[app.RepoName] = fmt.Sprintf("%s@%s-%s", app.Name, manifest.Version.String(), release.Version.String())
 	}
 
 	if len(mergeTargets) == 0 {
 		return errors.New("no apps found")
 	}
 
-	fmt.Println("About to merge back to master:")
-	for _, target := range mergeTargets {
-		fmt.Printf("- %s: %s (tags %+v)\n", target.name, target.version, target.tags)
+	fmt.Println("About to merge:")
+	for label, target := range mergeTargets {
+		fmt.Printf("- %s: %s@%s %s -> %s (tags %+v)\n", label, target.name, target.version, target.fromBranch, target.toBranch, target.tags)
 	}
 
-	for _, target := range mergeTargets {
+	warnings := multierr.New()
+
+	for targetLabel, target := range mergeTargets {
 
 		log := ctx.Log.WithField("repo", target.name)
 
 		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
 
 		if localRepo.IsDirty() {
-			log.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
-			continue
+			return errors.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
 		}
 
 		repoDir := localRepo.Path
@@ -1033,20 +1043,11 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			return err
 		}
 
-		changes, err := g.Exec("log", fmt.Sprintf("origin/%s..%s", target.toBranch, target.fromBranch), "--oneline")
-		if err != nil {
-			return err
-		}
-		if len(changes) == 0 {
-			log.Infof("Branch %q has already been merged into %q.", target.fromBranch, target.toBranch)
-			continue
-		}
-
 		log.Info("Checking out release branch...")
 
-		_, err = g.Exec("checkout", releaseBranch)
+		_, err = g.Exec("checkout", target.fromBranch)
 		if err != nil {
-			return errors.Errorf("checkout %s: %s", repoDir, releaseBranch)
+			return errors.Errorf("checkout %s: %s", repoDir, target.fromBranch)
 		}
 
 		log.Info("Pulling release branch...")
@@ -1055,82 +1056,85 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			return err
 		}
 
-		var tags []string
-		if len(target.tags) == 1 {
-			for _, tag := range target.tags {
-				tags = []string{tag}
-			}
-		} else {
-			for app, tag := range target.tags {
-				tags = append(tags, fmt.Sprintf("%s+%s", tag, app))
-			}
-		}
-
-		tagged := false
-		log.Info("Tagging release branch...")
-		for _, tag := range tags {
-			tagArgs := []string{"tag", tag, "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
-			tagArgs = append(tagArgs, "--force")
-			_, err = g.Exec(tagArgs...)
-			if err != nil {
-				log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
-			} else {
-				tagged = true
-			}
-		}
-
-		if tagged {
-			log.Info("Pushing tags...")
-
-			pushArgs := []string{"push", "--tags"}
-			pushArgs = append(pushArgs, "--force")
-
-			_, err = g.Exec(pushArgs...)
-			if err != nil {
-				return errors.Errorf("push tags: %s", err)
-			}
-		}
-
-		gitToken, err := b.GetGithubToken()
+		log.Infof("Checking out base branch %s...", target.toBranch)
+		_, err = g.Exec("checkout", target.toBranch)
 		if err != nil {
 			return err
 		}
-		gitClient := git.NewGithubClient(gitToken)
 
-		log.Info("Creating pull request.")
-		_, prNumber, err := git.GitPullRequestCommand{
-			LocalRepoPath: repoDir,
-			Base:          "master",
-			FromBranch:    releaseBranch,
-			Client:        gitClient,
-		}.Execute()
+		log.Infof("Pulling base branch %s...", target.toBranch)
+		_, err = g.Exec("pull")
 		if err != nil {
-			ctx.Log.WithError(err).Error("Could not create pull request.")
+			return errors.Wrapf(err, "Could not pull branch, you'll need to resolve any merge conflicts.")
+		}
+
+		var tags []string
+		for _, tag := range target.tags {
+			tags = []string{tag}
+		}
+
+		changes, err := g.Exec("log", fmt.Sprintf("%s..%s", target.toBranch, target.fromBranch), "--oneline")
+		if err != nil {
+			return err
+		}
+		if len(changes) == 0 {
+			log.Infof("Branch %q has already been merged into %q.", target.fromBranch, target.toBranch)
+		} else {
+			tagged := false
+			log.Info("Tagging release branch...")
+			for _, tag := range tags {
+				tagArgs := []string{"tag", tag, "-a", "-m", fmt.Sprintf("Release %s", release.Name)}
+				tagArgs = append(tagArgs, "--force")
+				_, err = g.Exec(tagArgs...)
+				if err != nil {
+					log.WithError(err).Warn("Could not tag repo, skipping merge. Set --force flag to force tag.")
+				} else {
+					tagged = true
+				}
+			}
+
+			if tagged {
+				log.Info("Pushing tags...")
+
+				pushArgs := []string{"push", "--tags"}
+				pushArgs = append(pushArgs, "--force")
+
+				_, err = g.Exec(pushArgs...)
+				if err != nil {
+					return errors.Errorf("push tags: %s", err)
+				}
+			}
+
+			log.Infof("Merging into branch %s...", target.toBranch)
+
+			_, err = g.Exec("merge", "-m", fmt.Sprintf("Merge %s into %s to commit release %s", target.fromBranch, target.toBranch, release.Version), target.fromBranch)
+			if err != nil {
+				warnings.Collect(errors.Errorf("Merge for %s from %s to %s failed (you'll need to complete the merge yourself): %s", targetLabel, target.fromBranch, target.toBranch, err))
+				continue
+			}
+		}
+
+		changes, err = g.Exec("log", fmt.Sprintf("origin/%s..%s", target.toBranch, target.fromBranch), "--oneline")
+		if err != nil {
+			return err
+		}
+		if len(changes) == 0 {
+			log.Infof("Branch %s has already been pushed", target.toBranch)
 			continue
 		}
 
-		issueService, err := b.GetIssueService()
-		if err != nil {
-			return err
-		}
-		log.Info("Accepting pull request.")
-		err = git.GitAcceptPRCommand{
-			PRNumber:                 prNumber,
-			RepoDirectory:            repoDir,
-			DoNotMergeBaseIntoBranch: true,
-			Client:                   gitClient,
-			IssueService:             issueService,
-		}.Execute()
+		log.Infof("Pushing branch %s...", target.toBranch)
 
+		_, err = g.Exec("push")
 		if err != nil {
-			ctx.Log.WithError(err).Error("Could not accept pull request.")
-			return errors.Wrapf(err, "failed to accept pr %d for %s", prNumber, repoDir)
+			warnings.Collect(errors.Errorf("Push for %s of branch %s failed (you'll need to push it yourself): %s", targetLabel, target.toBranch, err))
+			continue
 		}
 
-		log.Infof("Merged back to %s.", target.toBranch)
+		log.Infof("Merged back to %s and pushed.", target.toBranch)
 	}
 
-	return nil
+	return warnings.ToError()
 }
 
 type mergeTarget struct {
