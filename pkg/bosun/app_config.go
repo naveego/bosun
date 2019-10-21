@@ -26,22 +26,46 @@ type AppConfig struct {
 	HarborProject    string         `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
 	Version          semver.Version `yaml:"version,omitempty" json:"version,omitempty"`
 	// The location of a standard go version file for this app.
-	GoVersionFile string             `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
-	Chart         string             `yaml:"chart,omitempty" json:"chart,omitempty"`
-	ChartPath     string             `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
-	RunCommand    []string           `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
-	DependsOn     []Dependency       `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
-	Labels        filter.Labels      `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Minikube      *AppMinikubeConfig `yaml:"minikube,omitempty" json:"minikube,omitempty"`
-	Images        []AppImageConfig   `yaml:"images" json:"images"`
-	Values        ValueSetMap        `yaml:"values,omitempty" json:"values,omitempty"`
-	Scripts       []*Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
-	Actions       []*AppAction       `yaml:"actions,omitempty" json:"actions,omitempty"`
-	Parent        *File              `yaml:"-" json:"-"`
+	GoVersionFile  string             `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
+	Chart          string             `yaml:"chart,omitempty" json:"chart,omitempty"`
+	ChartPath      string             `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
+	RunCommand     []string           `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
+	DependsOn      []Dependency       `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	Labels         filter.Labels      `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Minikube       *AppMinikubeConfig `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	Images         []AppImageConfig   `yaml:"images" json:"images"`
+	Values         ValueSetMap        `yaml:"values,omitempty" json:"values,omitempty"`
+	Scripts        []*Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Actions        []*AppAction       `yaml:"actions,omitempty" json:"actions,omitempty"`
+	ReleaseHistory AppReleaseHistory  `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
+	Parent         *File              `yaml:"-" json:"-"`
 	// If true, this app repo is only a ref, not a real cloned repo.
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.
 	manifest       *AppManifest `yaml:"-" json:"-"` // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
+}
+
+type AppReleaseHistory []AppReleaseHistoryEntry
+type AppReleaseHistoryEntry struct {
+	ReleaseVersion string
+	Version        string
+}
+
+func (a *AppConfig) AddReleaseToHistory(releaseVersion string) {
+	thisVersion := a.Version.String()
+	var history AppReleaseHistory
+	var found bool
+	for _, entry := range a.ReleaseHistory {
+		if entry.ReleaseVersion == releaseVersion {
+			entry.Version = thisVersion
+			found = true
+		}
+		history = append(history, entry)
+	}
+	if !found {
+		history = append(AppReleaseHistory{{ReleaseVersion: releaseVersion, Version: thisVersion}}, history...)
+	}
+	a.ReleaseHistory = history
 }
 
 func (a *AppConfig) MarshalYAML() (interface{}, error) {

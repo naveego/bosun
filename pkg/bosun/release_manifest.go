@@ -46,18 +46,52 @@ func (p releaseMetadataSorting) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 // Instances should be manipulated using methods on the platform,
 // not updated directly.
 type ReleaseManifest struct {
-	*ReleaseMetadata  `yaml:"metadata"`
-	DefaultDeployApps map[string]bool         `yaml:"defaultDeployApps"`
-	AppMetadata       map[string]*AppMetadata `yaml:"apps"`
-	ValueSets         ValueSetMap             `yaml:"valueSets,omitempty"`
-	Platform          *Platform               `yaml:"-"`
-	plan              *ReleasePlan            `yaml:"-"`
-	toDelete          []string                `yaml:"-"`
-	dirty             bool                    `yaml:"-"`
-	dir               string                  `yaml:"-"`
-	appManifests      map[string]*AppManifest `yaml:"-" json:"-"`
-	deleted           bool                    `yaml:"-"`
-	Slot              string                  `yaml:"-"`
+	*ReleaseMetadata           `yaml:"metadata"`
+	DefaultDeployApps_OBSOLETE map[string]bool         `yaml:"defaultDeployApps,omitempty"`
+	UpgradedApps               map[string]bool         `yaml:"upgradedApps,omitempty"`
+	AppMetadata                map[string]*AppMetadata `yaml:"apps"`
+	ValueSets                  ValueSetMap             `yaml:"valueSets,omitempty"`
+	Platform                   *Platform               `yaml:"-"`
+	plan                       *ReleasePlan            `yaml:"-"`
+	toDelete                   []string                `yaml:"-"`
+	dirty                      bool                    `yaml:"-"`
+	dir                        string                  `yaml:"-"`
+	appManifests               map[string]*AppManifest `yaml:"-" json:"-"`
+	deleted                    bool                    `yaml:"-"`
+	Slot                       string                  `yaml:"-"`
+}
+
+func (r *ReleaseManifest) MarshalYAML() (interface{}, error) {
+	if r == nil {
+		return nil, nil
+	}
+	type proxy ReleaseManifest
+	p := proxy(*r)
+
+	return &p, nil
+}
+
+func (r *ReleaseManifest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxy ReleaseManifest
+	var p proxy
+	if r != nil {
+		p = proxy(*r)
+	}
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		*r = ReleaseManifest(p)
+	}
+
+	if r.DefaultDeployApps_OBSOLETE != nil && r.UpgradedApps == nil {
+		r.UpgradedApps = r.DefaultDeployApps_OBSOLETE
+		r.DefaultDeployApps_OBSOLETE = nil
+	}
+
+	r.init()
+
+	return err
 }
 
 func (r *ReleaseMetadata) GetBranchParts() git.BranchParts {
@@ -130,34 +164,6 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 	return r.appManifests, nil
 }
 
-func (r *ReleaseManifest) MarshalYAML() (interface{}, error) {
-	if r == nil {
-		return nil, nil
-	}
-	type proxy ReleaseManifest
-	p := proxy(*r)
-
-	return &p, nil
-}
-
-func (r *ReleaseManifest) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type proxy ReleaseManifest
-	var p proxy
-	if r != nil {
-		p = proxy(*r)
-	}
-
-	err := unmarshal(&p)
-
-	if err == nil {
-		*r = ReleaseManifest(p)
-	}
-
-	r.init()
-
-	return err
-}
-
 // init ensures the instance is ready to use.
 func (r *ReleaseManifest) init() {
 	if r.AppMetadata == nil {
@@ -172,7 +178,7 @@ func (r *ReleaseManifest) Headers() []string {
 func (r *ReleaseManifest) Rows() [][]string {
 	var out [][]string
 	for _, name := range util.SortedKeys(r.AppMetadata) {
-		deploy := r.DefaultDeployApps[name]
+		deploy := r.UpgradedApps[name]
 		app := r.AppMetadata[name]
 		fromReleaseText := ""
 		if app.PinnedReleaseVersion != nil {
@@ -237,6 +243,19 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 			}
 		}
 
+		app.AddReleaseToHistory(r.Version.String())
+		err = app.Parent.Save()
+		if err != nil {
+			return nil, errors.Wrap(err, "saving after adding release to app history")
+		}
+
+		err = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.Parent.FromPath)
+		if err != nil &&
+			!strings.Contains(err.Error(), "no changes added to commit") &&
+			!strings.Contains(err.Error(), "nothing to commit") {
+			return nil, err
+		}
+
 		if bump != "none" {
 			if expectedVersion.LessThan(app.Version) {
 				log.Warnf("Skipping version bump %q because version on branch is already %s (source branch is version %s).", bump, app.Version, expectedVersion)
@@ -247,12 +266,12 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 				if err != nil {
 					return nil, errors.Wrap(err, "bumping version")
 				}
-
-				err = localRepo.Push()
-				if err != nil {
-					return nil, errors.Wrap(err, "pushing branch")
-				}
 			}
+		}
+
+		err = localRepo.Push()
+		if err != nil {
+			return nil, errors.Wrap(err, "pushing branch")
 		}
 
 		log.Info("App has been branched and bumped correctly.")
@@ -266,12 +285,70 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 	return app, nil
 }
 
+func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
+
+	requestedApps := map[string]bool{}
+	for _, app := range apps {
+		requestedApps[app.Name] = true
+	}
+
+	switch r.Slot {
+	case SlotStable:
+		allAppManifests, err := r.GetAppManifests()
+		if err != nil {
+			return err
+		}
+		for _, app := range allAppManifests {
+			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
+				err = r.RefreshApp(ctx, app.Name, app.AppConfig.Branching.Master)
+				if err != nil {
+					ctx.Log.WithError(err).Errorf("Unable to refresh %q", app.Name)
+				}
+			}
+		}
+	case SlotUnstable:
+		allAppManifests, err := r.GetAppManifests()
+		if err != nil {
+			return err
+		}
+		for _, app := range allAppManifests {
+			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
+				err = r.RefreshApp(ctx, app.Name, app.AppConfig.Branching.Develop)
+				if err != nil {
+					ctx.Log.WithError(err).Errorf("Unable to refresh %q", app.Name)
+				}
+			}
+		}
+	case SlotCurrent:
+
+		allAppManifests, err := r.GetAppManifests()
+		if err != nil {
+			return err
+		}
+		for _, app := range allAppManifests {
+			// only update if app was requested or no apps were requested
+			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
+				// only update this app has a release branch:
+				if app.PinnedReleaseVersion != nil && *app.PinnedReleaseVersion == r.Version {
+					err = r.RefreshApp(ctx, app.Name, app.Branch)
+					if err != nil {
+						ctx.Log.WithError(err).Errorf("Unable to refresh %q", app.Name)
+					}
+				}
+			}
+		}
+	default:
+		return errors.Errorf("unsupported slot %q", r.Slot)
+	}
+	return nil
+}
+
 func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch string) error {
 
 	b := ctx.Bosun
-	app, err := b.GetApp(name)
+	app, err := b.workspaceAppProvider.GetApp(name)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "get local version of app %s to refresh", name)
 	}
 	ctx = ctx.WithApp(app)
 
@@ -369,7 +446,7 @@ func (r *ReleaseManifest) RemoveApp(appName string) {
 	r.init()
 	delete(r.AppMetadata, appName)
 	delete(r.appManifests, appName)
-	delete(r.DefaultDeployApps, appName)
+	delete(r.UpgradedApps, appName)
 	r.toDelete = append(r.toDelete, appName)
 }
 
@@ -380,18 +457,55 @@ func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool
 	if err != nil {
 		return err
 	}
-	manifest.AppMetadata.PinToRelease(r.ReleaseMetadata)
 
 	appManifests[manifest.Name] = manifest
 
 	r.AppMetadata[manifest.Name] = manifest.AppMetadata
 	if addToDefaultDeploys {
-		if r.DefaultDeployApps == nil {
-			r.DefaultDeployApps = map[string]bool{}
+		if r.UpgradedApps == nil {
+			r.UpgradedApps = map[string]bool{}
 		}
-		r.DefaultDeployApps[manifest.Name] = true
+		r.UpgradedApps[manifest.Name] = true
 	}
 	return nil
+}
+
+func (r *ReleaseManifest) PrepareAppManifest(ctx BosunContext, app *App, bump semver.Bump) (*AppManifest, error) {
+
+	switch r.Slot {
+	case SlotStable:
+		return app.GetManifestFromBranch(ctx, app.Branching.Master)
+	case SlotUnstable:
+		return app.GetManifestFromBranch(ctx, app.Branching.Develop)
+	case SlotCurrent:
+		// we pass the expected version here to avoid multiple bumps
+		// if something goes wrong during branching
+
+		if app.BranchForRelease {
+
+			developAppManifest, err := app.GetManifestFromBranch(ctx, app.Branching.Develop)
+
+			releaseBranch, err := r.ReleaseMetadata.GetReleaseBranchName(app.Branching)
+			if err != nil {
+				return nil, errors.Wrap(err, "create release branch name")
+			}
+
+			bumpedApp, err := r.BumpForRelease(ctx, app, app.Branching.Develop, releaseBranch, bump, developAppManifest.Version)
+			if err != nil {
+				return nil, errors.Wrapf(err, "upgrading app %s", app.Name)
+			}
+			appManifest, err := bumpedApp.GetManifestFromBranch(ctx, releaseBranch)
+			if err != nil {
+				return nil, errors.Wrapf(err, "get latest version of manifest from app")
+			}
+			return appManifest, err
+		} else {
+			return app.GetManifestFromBranch(ctx, app.Branching.Develop)
+		}
+	default:
+		return nil, errors.Errorf("invalid slot %q", r.Slot)
+	}
+
 }
 
 func (r *ReleaseManifest) GetAppManifest(name string) (*AppManifest, error) {

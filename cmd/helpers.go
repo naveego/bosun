@@ -47,44 +47,55 @@ func MustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
 	return b
 }
 
-func mustGetCurrentRelease(b *bosun.Bosun) *bosun.ReleaseManifest {
-	r, err := b.GetStableReleaseManifest()
+func mustGetActiveRelease(b *bosun.Bosun) *bosun.ReleaseManifest {
+	r, err := getActiveRelease(b)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	return r
+}
+func getActiveRelease(b *bosun.Bosun) (*bosun.ReleaseManifest, error) {
 
-	// r, err := b.GetCurrentRelease()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	//
-	// whitelist := viper.GetStringSlice(ArgFilteringInclude)
-	// if len(whitelist) > 0 {
-	// 	toReleaseSet := map[string]bool{}
-	// 	for _, r := range whitelist {
-	// 		toReleaseSet[r] = true
-	// 	}
-	// 	for k, app := range r.AppReleases {
-	// 		if !toReleaseSet[k] {
-	// 			pkg.Log.Warnf("Skipping %q because it was not listed in the --%s flag.", k, ArgFilteringInclude)
-	// 			app.DesiredState.Status = bosun.StatusUnchanged
-	// 			app.Excluded = true
-	// 		}
-	// 	}
-	// }
-	//
-	// blacklist := viper.GetStringSlice(ArgFilteringExclude)
-	// for _, name := range blacklist {
-	// 	pkg.Log.Warnf("Skipping %q because it was excluded by the --%s flag.", name, ArgFilteringExclude)
-	// 	if app, ok := r.AppReleases[name]; ok {
-	// 		app.DesiredState.Status = bosun.StatusUnchanged
-	// 		app.Excluded = true
-	// 	}
-	// }
-	//
-	// return r
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := p.GetReleaseManifestBySlot(bosun.SlotCurrent)
+
+	return r, err
+}
+
+func mustGetRelease(p *bosun.Platform, requestedSlot string, allowedSlots ...string) *bosun.ReleaseManifest {
+
+	r, err := getRelease(p, requestedSlot, allowedSlots...)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return r
+}
+
+func getRelease(p *bosun.Platform, requestedSlot string, allowedSlots ...string) (*bosun.ReleaseManifest, error) {
+	if len(allowedSlots) == 0 {
+		allowedSlots = []string{bosun.SlotCurrent, bosun.SlotUnstable, bosun.SlotStable}
+	}
+	allowed := false
+	for _, slot := range allowedSlots {
+		if requestedSlot == slot {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return nil, errors.Errorf("invalid slot %q (allowed slots are %+v)", requestedSlot, allowedSlots)
+	}
+
+	r, err := p.GetReleaseManifestBySlot(requestedSlot)
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
 func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {

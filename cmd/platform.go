@@ -99,7 +99,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			}
 		} else if viper.GetBool(argPlatformUpdateDeployed) {
 			args = []string{}
-			for name := range release.DefaultDeployApps {
+			for name := range release.UpgradedApps {
 				args = append(args, name)
 			}
 		}

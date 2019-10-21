@@ -97,9 +97,9 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 
 			deploySettings.Manifest = stableRelease
 			// reset the default deploy apps so that only the selected apps are deployed
-			deploySettings.Manifest.DefaultDeployApps = map[string]bool{}
+			deploySettings.Manifest.UpgradedApps = map[string]bool{}
 			for _, app := range apps {
-				deploySettings.Manifest.DefaultDeployApps[app.Name] = true
+				deploySettings.Manifest.UpgradedApps[app.Name] = true
 			}
 		} else if viper.GetBool(ArgAppLatest) {
 			err = pullApps(ctx, apps, true)

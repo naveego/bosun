@@ -19,7 +19,7 @@ import (
 const WorkspaceProviderName = "workspace"
 const FileProviderName = "file"
 
-var DefaultAppProviderPriority = []string{WorkspaceProviderName, SlotNext, SlotUnstable, SlotStable, FileProviderName}
+var DefaultAppProviderPriority = []string{WorkspaceProviderName, SlotCurrent, SlotUnstable, SlotStable, FileProviderName}
 
 type AppProvider interface {
 	fmt.Stringer

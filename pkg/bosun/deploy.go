@@ -141,7 +141,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			return nil, err
 		}
 		for _, manifest := range appManifests {
-			if !settings.Manifest.DefaultDeployApps[manifest.Name] {
+			if !settings.Manifest.UpgradedApps[manifest.Name] {
 				if !settings.ForceDeployApps[manifest.Name] {
 					ctx.Log.Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
 					deploy.Filtered[manifest.Name] = true

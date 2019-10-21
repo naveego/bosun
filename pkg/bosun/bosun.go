@@ -37,6 +37,7 @@ type Bosun struct {
 	platform             *Platform
 	appProvider          ChainAppProvider
 	appProviders         []AppProvider
+	workspaceAppProvider AppConfigAppProvider
 }
 
 type Parameters struct {
@@ -99,13 +100,15 @@ func New(params Parameters, ws *Workspace) (*Bosun, error) {
 
 func (b *Bosun) initializeAppProviders() {
 
+	b.workspaceAppProvider = NewAppConfigAppProvider(b.ws)
+
 	b.appProviders = []AppProvider{
-		NewAppConfigAppProvider(b.ws),
+		b.workspaceAppProvider,
 	}
 
 	p, err := b.GetCurrentPlatform()
 	if err == nil {
-		for _, slot := range []string{SlotUnstable, SlotNext, SlotStable} {
+		for _, slot := range []string{SlotUnstable, SlotCurrent, SlotStable} {
 			if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
 				b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 			}
@@ -948,10 +951,10 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 		GithubToken: zc.GithubToken,
 	}
 
-	zc.ZenhubToken, err = b.GetZenhubToken()
-	if err != nil {
-		return nil, errors.Wrap(err, "get zenhub token")
-	}
+	// zc.ZenhubToken, err = b.GetZenhubToken()
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "get zenhub token")
+	// }
 
 	gis, err := git.NewIssueService(*gc, pkg.Log.WithField("cmp", "github"))
 	if err != nil {

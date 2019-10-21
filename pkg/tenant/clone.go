@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
@@ -158,11 +158,18 @@ func (p *Planner) ValidatePlan() error {
 	}
 
 	p.log.Info("Validating Metabase MongoDB connection...")
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
 	metabaseConnection, err := bmongo.GetPreparedConnection(p.log, plan.MongoConnection)
 	if err != nil {
-		errs = errs.With("metabase mongoConnection is invalid: %s", err)
+		errs = errs.With("metabase mongoConnection is invalid: %+v", err)
 	} else {
-		p.log.Info("Metabase MongoDB connection OK.")
+		names, listErr := metabaseConnection.Client.ListDatabaseNames(ctx, bson.D{})
+		if listErr != nil {
+			errs = errs.With("metabase mongoConnection is invalid: %+v", listErr)
+		} else {
+			p.log.Infof("Metabase MongoDB connection OK (found %d databases).", len(names))
+		}
 	}
 
 	var goBetweenConnection bmongo.PreparedConnection

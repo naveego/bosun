@@ -160,6 +160,14 @@ func (v Version) Equal(versionB Version) bool {
 	return v.Compare(versionB) == 0
 }
 
+// Equal tests if v points to a version which is equal to versionB.
+func (v *Version) EqualSafe(versionB Version) bool {
+	if v == nil {
+		return false
+	}
+	return v.Compare(versionB) == 0
+}
+
 // LessThan tests if v is less than versionB.
 func (v Version) LessThan(versionB Version) bool {
 	return v.Compare(versionB) < 0

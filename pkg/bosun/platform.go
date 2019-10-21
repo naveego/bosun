@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	SlotNext         = "next"
+	SlotCurrent      = "current"
 	SlotStable       = "stable"
 	SlotUnstable     = "unstable"
 	SlotPrevious     = "previous"
@@ -102,11 +102,8 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-func (p *Platform) GetNextRelease() (*ReleaseManifest, error) {
-	if p.NextReleaseName == "" {
-		return nil, errors.New("no next release defined")
-	}
-	return p.GetReleaseManifestBySlot(SlotNext)
+func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
+	return p.GetReleaseManifestBySlot(SlotCurrent)
 }
 
 func (p *Platform) GetStableRelease() (*ReleaseManifest, error) {
@@ -122,7 +119,7 @@ func (p *Platform) GetUnstableRelease() (*ReleaseManifest, error) {
 }
 
 func (p *Platform) MustGetNextRelease() *ReleaseManifest {
-	return p.MustGetReleaseManifestBySlot(SlotNext)
+	return p.MustGetReleaseManifestBySlot(SlotCurrent)
 }
 
 func (p *Platform) MustGetStableRelease() *ReleaseManifest {
@@ -161,8 +158,8 @@ type ReleasePlanSettings struct {
 }
 
 func (p *Platform) checkPlanningOngoing() error {
-	if p.NextReleaseName != "" {
-		return errors.Errorf("currently editing plan for release %q, commit or discard the plan before starting a new one", p.NextReleaseName)
+	if release, err := p.GetCurrentRelease(); err == nil {
+		return errors.Errorf("currently editing plan for release %q, commit or discard the plan before starting a new one", release.String())
 	}
 	return nil
 }
@@ -269,50 +266,76 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	manifest.plan = plan
 	p.NextReleaseName = settings.Name
 
-	p.SetReleaseManifest(SlotNext, manifest)
+	p.SetReleaseManifest(SlotCurrent, manifest)
 
 	return plan, nil
 }
 
-func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
-	apps, err := ctx.Bosun.GetAllVersionsOfAllApps(WorkspaceProviderName, SlotStable)
+// UpdatePlan updates the plan using the provided apps. If no apps are provided, all apps in the unstable release will be updated in the plan.
+func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App) error {
+
+	workspaceAppProvider := ctx.Bosun.workspaceAppProvider
+
+	unstableManifest, err := p.GetUnstableRelease()
+	if err != nil {
+		return errors.Wrap(err, "must have an unstable release to plan a release")
+	}
+	err = unstableManifest.RefreshApps(ctx, apps...)
 	if err != nil {
 		return err
 	}
 
-	deployableApps := AppList{}
-	for _, app := range apps {
-		if app.HasChart() {
-			deployableApps = append(deployableApps, app)
+	currentManifest, err := p.GetCurrentRelease()
+	if err != nil {
+		currentManifest = &ReleaseManifest{
+			ReleaseMetadata: plan.ReleaseMetadata,
+			Slot:            SlotCurrent,
+		}
+	}
+	err = currentManifest.RefreshApps(ctx, apps...)
+	if err != nil {
+		return err
+	}
+
+	stableManifest, err := p.GetStableRelease()
+	if err != nil {
+		stableManifest = &ReleaseManifest{
+			Slot: SlotStable,
 		}
 	}
 
-	branchParts := plan.ReleaseMetadata.GetBranchParts()
-	err = deployableApps.ForEachRepo(func(app *App) error {
-		releaseBranch, err := app.Branching.RenderRelease(branchParts)
-		if err != nil {
-			return err
-		}
+	unstableAppProvider := NewReleaseManifestAppProvider(unstableManifest)
+	unstableApps, err := unstableAppProvider.GetAllApps()
+	if err != nil {
+		return errors.Wrap(err, "get unstable apps")
+	}
 
-		if app.Repo.LocalRepo.GetCurrentBranch() == releaseBranch {
-			err = app.Repo.LocalRepo.git().Pull()
-			if err != nil {
-				return err
+	currentAppProvider := NewReleaseManifestAppProvider(currentManifest)
+	currentApps, err := currentAppProvider.GetAllApps()
+	if err != nil {
+		return errors.Wrap(err, "get current apps")
+	}
+
+	stableAppProvider := NewReleaseManifestAppProvider(stableManifest)
+	stableApps, err := stableAppProvider.GetAllApps()
+	if err != nil {
+		return errors.Wrap(err, "get stable apps")
+	}
+
+	if len(apps) == 0 {
+		apps = AppList{}
+		for _, app := range unstableApps {
+			if app.HasChart() {
+				apps = append(apps, app)
 			}
-		} else {
-			err = app.Repo.LocalRepo.SwitchToBranchAndPull(ctx.Services(), app.Branching.Develop)
-			if err != nil {
-				return err
-			}
 		}
-		return nil
-	})
+	}
 
-	grouped := deployableApps.GroupByAppThenProvider()
+	for _, app := range apps {
 
-	for appName, byProvider := range grouped {
+		appName := app.Name
 
-		log := ctx.Log.WithField("app", appName)
+		log := ctx.Log.WithField("app", app.Name)
 
 		appPlan, ok := plan.Apps[appName]
 		if !ok {
@@ -322,45 +345,82 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 			}
 		}
 
-		for providerName, appVersion := range byProvider {
-			appProviderPlan := AppProviderPlan{
-				Version: appVersion.Version.String(),
+		var stableVersion *App
+		var unstableVersion *App
+		var currentVersion *App
+		var diffVersion *App
+		var diffSlot string
+
+		if stableVersion, ok = stableApps[appName]; ok {
+			appPlan.Providers[SlotStable] = AppProviderPlan{
+				Version: stableVersion.Version.String(),
+				Branch:  stableVersion.AppManifest.Branch,
+				Commit:  stableVersion.AppManifest.Hashes.Commit,
 			}
+		}
 
-			if providerName == WorkspaceProviderName {
-				cloned := appVersion.Repo.CheckCloned() == nil
-				owned := appVersion.BranchForRelease
-				log.Info("Computing change log...")
-				if cloned && owned {
-
-					developVersion, err := appVersion.GetManifestFromBranch(ctx, appVersion.Branching.Develop)
-					if err != nil {
-						return err
-					}
-					appProviderPlan.Version = developVersion.Version.String()
-
-					localRepo := appVersion.Repo.LocalRepo
-					g, _ := localRepo.Git()
-					previousRelease, err := localRepo.GetMostRecentTagRef("*-*")
-					if err != nil {
-						return errors.Wrapf(err, "could not get most recent tag for %q", appName)
-					}
-
-					changeLog, err := g.ChangeLog(appVersion.Branching.Master, previousRelease, nil, git.GitChangeLogOptions{})
-					if err != nil {
-						return errors.Wrapf(err, "could not get changelog for %q", appName)
-					}
-
-					if len(changeLog.Changes) > 0 {
-						appProviderPlan.Bump = changeLog.VersionBump
-						for _, change := range changeLog.Changes.FilterByBump(semver.BumpMajor, semver.BumpMinor, semver.BumpPatch) {
-							appProviderPlan.Changelog = append(appProviderPlan.Changelog, fmt.Sprintf("%s (%s) %s", change.Title, change.Committer, change.Issue))
-						}
-					}
+		if currentVersion, ok = currentApps[appName]; ok && currentVersion.AppManifest.PinnedReleaseVersion.Equal(currentManifest.Version) {
+			diffSlot = SlotCurrent
+			diffVersion = currentVersion
+			appPlan.Providers[SlotCurrent] = AppProviderPlan{
+				Version: currentVersion.Version.String(),
+				Branch:  currentVersion.AppManifest.Branch,
+				Commit:  currentVersion.AppManifest.Hashes.Commit,
+			}
+		} else if unstableVersion, ok = unstableApps[appName]; ok {
+			if stableVersion == nil || stableVersion.AppManifest.Hashes.Commit != unstableVersion.AppManifest.Hashes.Commit {
+				// If the unstable version is different from the stable version, make it available as an option
+				diffSlot = SlotUnstable
+				diffVersion = unstableVersion
+				appPlan.Providers[SlotUnstable] = AppProviderPlan{
+					Version: unstableVersion.Version.String(),
+					Branch:  unstableVersion.AppManifest.Branch,
+					Commit:  unstableVersion.AppManifest.Hashes.Commit,
 				}
 			}
+		} else {
+			return errors.Errorf("mysterious app %q does not come from any release", appName)
+		}
 
-			appPlan.Providers[providerName] = appProviderPlan
+		if stableVersion != nil {
+
+			localVersion, localVersionErr := workspaceAppProvider.GetApp(appName)
+			if localVersionErr != nil {
+				return errors.Wrapf(localVersionErr, "get local version of app %q", appName)
+			}
+
+			cloned := localVersion.Repo.CheckCloned() == nil
+			owned := localVersion.BranchForRelease
+			if cloned && owned && diffVersion != nil {
+				diffProviderPlan := appPlan.Providers[diffSlot]
+				log.Info("Computing change log...")
+
+				developVersion, changeLogErr := localVersion.GetManifestFromBranch(ctx, diffVersion.AppManifest.Branch)
+				if changeLogErr != nil {
+					return changeLogErr
+				}
+				diffProviderPlan.Version = developVersion.Version.String()
+
+				localRepo := localVersion.Repo.LocalRepo
+				g, changeLogErr := localRepo.Git()
+				if changeLogErr != nil {
+					return errors.Wrapf(changeLogErr, "could not get most recent tag for %q", appName)
+				}
+
+				changeLog, changeLogErr := g.ChangeLog(diffVersion.AppManifest.Hashes.Commit, stableVersion.AppManifest.Hashes.Commit, nil, git.GitChangeLogOptions{})
+				if changeLogErr != nil {
+					return errors.Wrapf(changeLogErr, "could not get changelog for %q", appName)
+				}
+
+				if len(changeLog.Changes) > 0 {
+					diffProviderPlan.Bump = changeLog.VersionBump
+					for _, change := range changeLog.Changes.FilterByBump(semver.BumpMajor, semver.BumpMinor, semver.BumpPatch) {
+						diffProviderPlan.Changelog = append(diffProviderPlan.Changelog, fmt.Sprintf("%s (%s) %s", change.Title, change.Committer, change.Issue))
+					}
+				}
+
+				appPlan.Providers[diffSlot] = diffProviderPlan
+			}
 		}
 
 		// If the app has no changes and the version hasn't been changed manually, we'll default to the stable version
@@ -382,67 +442,27 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan) error {
 	return nil
 }
 
-func (p *Platform) RePlanRelease(ctx BosunContext) (*ReleasePlan, error) {
-	if err := p.checkPlanningOngoing(); err != nil {
-		return nil, err
-	}
-
-	manifest, err := p.GetStableRelease()
+func (p *Platform) RePlanRelease(ctx BosunContext, apps ...*App) (*ReleasePlan, error) {
+	current, err := p.GetCurrentRelease()
 	if err != nil {
 		return nil, err
 	}
 
-	previous, err := p.GetPreviousRelease()
-	if err != nil {
-		return nil, err
-	}
-
-	p.SetReleaseManifest(SlotStable, previous)
-
-	plan, err := manifest.GetPlan()
+	plan, err := current.GetPlan()
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not load release plan; if release is old, move release plan from manifest.yaml to a new plan.yaml file")
 	}
 
-	err = p.UpdatePlan(ctx, plan)
+	err = p.UpdatePlan(ctx, plan, apps...)
 	if err != nil {
 		return nil, err
 	}
 
-	p.NextReleaseName = manifest.Name
+	current.plan = plan
 
-	p.SetReleaseManifest(SlotNext, manifest)
+	p.SetReleaseManifest(SlotCurrent, current)
 
-	ctx.Log.Infof("Prepared new release plan for %s.", manifest)
-
-	return plan, nil
-}
-
-func (p *Platform) RefreshPlan(ctx BosunContext) (*ReleasePlan, error) {
-	if err := p.checkPlanningOngoing(); err == nil {
-		return nil, errors.New("no next release found")
-	}
-
-	manifest, err := p.GetNextRelease()
-	if err != nil {
-		return nil, err
-	}
-
-	plan, err := manifest.GetPlan()
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not load release plan; if release is old, move release plan from manifest.yaml to a new plan.yaml file")
-	}
-
-	err = p.UpdatePlan(ctx, plan)
-	if err != nil {
-		return nil, err
-	}
-
-	p.NextReleaseName = manifest.Name
-
-	p.SetReleaseManifest(SlotNext, manifest)
-
-	ctx.Log.Infof("Refreshed release plan for %s.", manifest)
+	ctx.Log.Infof("Prepared new release plan for %s.", current)
 
 	return plan, nil
 }
@@ -457,7 +477,7 @@ func (p *Platform) GetPlan(ctx BosunContext) (*ReleasePlan, error) {
 		return nil, errors.New("no release being planned")
 	}
 
-	release, err := p.GetNextRelease()
+	release, err := p.GetCurrentRelease()
 	if err != nil {
 		return nil, err
 	}
@@ -497,11 +517,11 @@ func (p *Platform) ValidatePlan(ctx BosunContext) (map[string]AppValidationResul
 
 func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
-	nextRelease, err := p.GetNextRelease()
+	currentRelease, err := p.GetCurrentRelease()
 	if err != nil {
 		return nil, err
 	}
-	plan, err := nextRelease.GetPlan()
+	plan, err := currentRelease.GetPlan()
 	if err != nil {
 		return nil, err
 	}
@@ -510,10 +530,6 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Copy the current stable release and make it the previous release.
-	previous := stable.Clone()
-	p.SetReleaseManifest(SlotPrevious, previous)
 
 	releaseMetadata := plan.ReleaseMetadata
 	releaseManifest := NewReleaseManifest(releaseMetadata)
@@ -535,7 +551,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		return nil, err
 	}
 
-	appCh := make(chan *App, len(plan.Apps))
+	appCh := make(chan *AppManifest, len(plan.Apps))
 	errCh := make(chan error)
 
 	dispatcher := worker.NewDispatcher(ctx.Log, 100)
@@ -549,54 +565,54 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		repo := originalApp.RepoName
 
 		dispatcher.Dispatch(repo, func() {
-			app, err := func() (*App, error) {
+			app, err := func() (*AppManifest, error) {
 
 				var app *App
 				appPlan := plan.Apps[appName]
+
+				log := ctx.WithLogField("app", appName).Log
 
 				validationResult := validationResults[appName]
 				if validationResult.Err != nil {
 					return nil, errors.Errorf("app %q failed validation: %s", appName, validationResult.Err)
 				}
 
-				if appPlan.ChosenProvider == WorkspaceProviderName {
+				switch appPlan.ChosenProvider {
+				case SlotStable:
+					log.Infof("App %q will not be upgraded in this release; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
+
+					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
+					return stable.PrepareAppManifest(ctx, app, semver.BumpNone)
+
+				case SlotUnstable:
 					// we pass the expected version here to avoid multiple bumps
 					// if something goes wrong during branching
-					providerPlan := appPlan.Providers[WorkspaceProviderName]
-					app, err = ctx.Bosun.GetAppFromProvider(appName, WorkspaceProviderName)
+
+					log.Infof("App %q will be upgraded in this release; adding version from unstable release.", appName)
+
+					providerPlan := appPlan.Providers[SlotUnstable]
+					app, err = ctx.Bosun.GetAppFromProvider(appName, SlotUnstable)
 					if err != nil {
 						return nil, errors.Errorf("app does not exist")
 					}
-					if app.BranchForRelease {
-						bump := semver.BumpNone
-						if providerPlan.Bump != "" {
-							bump = providerPlan.Bump
-						}
-						if appPlan.BumpOverride != "" {
-							bump = appPlan.BumpOverride
-						}
-
-						releaseBranch, err := releaseMetadata.GetReleaseBranchName(app.Branching)
-						if err != nil {
-							return nil, errors.Wrap(err, "create release branch name")
-						}
-
-						app, err = releaseManifest.BumpForRelease(ctx, app, app.Branching.Develop, releaseBranch, bump, semver.New(providerPlan.Version))
-						if err != nil {
-							return nil, errors.Wrapf(err, "upgrading app %s", appName)
-						}
+					bump := semver.BumpNone
+					if providerPlan.Bump != "" {
+						bump = providerPlan.Bump
+					}
+					if appPlan.BumpOverride != "" {
+						bump = appPlan.BumpOverride
 					}
 
-					return app, nil
-				} else {
-					ctx.Log.Infof("No upgrade available for app %q; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
+					appManifest, err := currentRelease.PrepareAppManifest(ctx, app, bump)
+					return appManifest, err
+
+				case SlotCurrent:
+					log.Infof("App %q has already been added to this release.", appName)
 
 					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
-					if err != nil {
-						return nil, errors.Wrap(err, "app does not exist")
-					}
-
-					return app, nil
+					return currentRelease.PrepareAppManifest(ctx, app, semver.BumpNone)
+				default:
+					return nil, errors.Errorf("invalid provider %q", appPlan.ChosenProvider)
 				}
 			}()
 
@@ -610,34 +626,29 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 	for range plan.Apps {
 		select {
-		case app := <-appCh:
+		case appManifest := <-appCh:
 
-			var appManifest *AppManifest
-			appManifest, err = app.GetManifest(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if appPlan, ok := plan.Apps[app.Name]; ok {
+			if appPlan, ok := plan.Apps[appManifest.Name]; ok {
 
-				ctx.Log.WithField("app", app.Name).WithField("version", app.Version).Info("Adding app to release.")
+				ctx.Log.WithField("app", appManifest.Name).WithField("version", appManifest.Version).Info("Adding app to release.")
 				err = releaseManifest.AddApp(appManifest, appPlan.Deploy)
 				if err != nil {
 					return nil, err
 				}
 			} else {
-				ctx.Log.WithField("app", app.Name).Warn("Requested app was not in plan!")
+				ctx.Log.WithField("app", appManifest.Name).Warn("Requested app was not in plan!")
 			}
 		case commitErr := <-errCh:
 			return nil, commitErr
 		}
 	}
 
-	p.SetReleaseManifest(SlotStable, releaseManifest)
+	p.SetReleaseManifest(SlotCurrent, releaseManifest)
 
 	ctx.Log.Infof("Added release %q to releases for platform.", releaseManifest.Name)
 
 	releaseManifest.MarkDirty()
-	nextRelease.MarkDeleted()
+	currentRelease.MarkDeleted()
 
 	p.NextReleaseName = ""
 
@@ -732,12 +743,13 @@ func writeYaml(path string, value interface{}) error {
 }
 
 func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
-	if name == SlotUnstable {
-		manifest, err := p.GetUnstableRelease()
+	switch name {
+	case SlotCurrent, SlotUnstable, SlotStable:
+		r, err := p.GetReleaseManifestBySlot(name)
 		if err != nil {
 			return nil, err
 		}
-		return manifest.ReleaseMetadata, nil
+		return r.ReleaseMetadata, nil
 	}
 
 	for _, rm := range p.ReleaseMetadata {
@@ -795,6 +807,14 @@ func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, erro
 	}
 
 	dir := p.GetManifestDirectoryPath(slot)
+
+	if _, err := os.Stat(dir); err != nil {
+		if slot == SlotCurrent {
+			return nil, errors.Wrap(err, "error getting directory, you may not be on a release branch")
+		}
+		return nil, err
+	}
+
 	manifestPath := filepath.Join(dir, "manifest.yaml")
 
 	b, err := ioutil.ReadFile(manifestPath)
@@ -892,20 +912,24 @@ func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
 	manifest.Slot = slot
 	p.releaseManifests[slot] = manifest.MarkDirty()
 	var updatedMetadata []*ReleaseMetadata
-	// replace metadata
+	replaced := false
 	for _, metadata := range p.ReleaseMetadata {
 		if metadata.Name == manifest.Name {
 			updatedMetadata = append(updatedMetadata, manifest.ReleaseMetadata)
+			replaced = true
 		} else {
 			updatedMetadata = append(updatedMetadata, metadata)
 		}
 	}
+	if !replaced {
+		updatedMetadata = append(updatedMetadata, manifest.ReleaseMetadata)
+	}
 	p.ReleaseMetadata = updatedMetadata
 }
 
-func (p *Platform) CommitStableRelease(ctx BosunContext) error {
+func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
-	release, err := p.GetStableRelease()
+	release, err := p.GetCurrentRelease()
 	if err != nil {
 		return err
 	}
@@ -949,9 +973,14 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 
 	b := ctx.Bosun
 
-	for _, appDeploy := range release.AppMetadata {
+	for name := range release.UpgradedApps {
 
-		app, err := b.GetAppFromProvider(appDeploy.Name, WorkspaceProviderName)
+		appDeploy, err := release.GetAppManifest(name)
+		if err != nil {
+			return err
+		}
+
+		app, err := b.GetAppFromProvider(name, WorkspaceProviderName)
 		if err != nil {
 			ctx.Log.WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
 			continue
@@ -962,15 +991,15 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 			continue
 		}
 
-		if appDeploy.PinnedReleaseVersion == nil {
-			ctx.Log.Warnf("App repo (%s) does not have a release branch pinned, probably not part of this release.", app.RepoName, release.Name, release.Version)
-			continue
-		}
-
-		if *appDeploy.PinnedReleaseVersion != release.Version {
-			ctx.Log.Warnf("App repo (%s) is not changed for this release.", app.RepoName)
-			continue
-		}
+		// if appDeploy.PinnedReleaseVersion == nil {
+		// 	ctx.Log.Warnf("App repo (%s) does not have a release branch pinned, probably not part of this release.", app.RepoName, release.Name, release.Version)
+		// 	continue
+		// }
+		//
+		// if *appDeploy.PinnedReleaseVersion != release.Version {
+		// 	ctx.Log.Warnf("App repo (%s) is not changed for this release.", app.RepoName)
+		// 	continue
+		// }
 
 		manifest, err := app.GetManifest(ctx)
 		if err != nil {
@@ -1023,6 +1052,21 @@ func (p *Platform) CommitStableRelease(ctx BosunContext) error {
 	}
 
 	warnings := multierr.New()
+
+	errs := multierr.New()
+	// validate that merge will work
+	for _, target := range mergeTargets {
+
+		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
+
+		if localRepo.IsDirty() {
+			errs.Collect(errors.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path))
+		}
+	}
+
+	if err = errs.ToError(); err != nil {
+		return err
+	}
 
 	for targetLabel, target := range mergeTargets {
 

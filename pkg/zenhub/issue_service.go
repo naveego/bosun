@@ -20,8 +20,8 @@ import (
 type issueSvc struct {
 	Config
 	//gitisvc git.issueSvc
-	wrapped      issues.IssueService
-	zenhub       *API
+	wrapped issues.IssueService
+	//zenhub       *API
 	git          git.GitWrapper
 	log          *logrus.Entry
 	githubClient *github.Client
@@ -49,7 +49,7 @@ func NewIssueService(wrapped issues.IssueService, config Config, log *logrus.Ent
 
 	s.githubClient = github.NewClient(tc)
 
-	s.zenhub = New(config.ZenhubToken, s.githubClient)
+	// s.zenhub = New(config.ZenhubToken, s.githubClient)
 
 	return s, nil
 }
@@ -121,35 +121,35 @@ func Split(r rune) bool {
 
 func (s issueSvc) AddDependency(from, to issues.IssueRef, parentIssueNum int) error {
 
-	orgFrom, repoFrom, numFrom, err := from.Parts()
-	if err != nil {
-		return errors.Wrap(err, "split 'from' IssueRef")
-	}
+	// orgFrom, repoFrom, numFrom, err := from.Parts()
+	// if err != nil {
+	// 	return errors.Wrap(err, "split 'from' IssueRef")
+	// }
+	//
+	// orgTo, repoTo, _, err := to.Parts()
+	// if err != nil {
+	// 	return errors.Wrap(err, "split 'to' IssueRef")
+	// }
+	//
+	// blockingId, err := s.getRepoID(orgFrom, repoFrom)
+	// if err != nil {
+	// 	return errors.Wrap(err, "getting blocking issue id")
+	// }
+	// blockedId, err := s.getRepoID(orgTo, repoTo)
+	// if err != nil {
+	// 	return errors.Wrap(err, "getting blocked issue id")
+	// }
 
-	orgTo, repoTo, _, err := to.Parts()
-	if err != nil {
-		return errors.Wrap(err, "split 'to' IssueRef")
-	}
+	// blockingIssue := NewDependencyIssue(blockingId, numFrom)
+	// //fmt.Printf("blocking di:%v, %v", blockingId, blockingNum)
+	// blockedIssue := NewDependencyIssue(blockedId, parentIssueNum)
 
-	blockingId, err := s.getRepoID(orgFrom, repoFrom)
-	if err != nil {
-		return errors.Wrap(err, "getting blocking issue id")
-	}
-	blockedId, err := s.getRepoID(orgTo, repoTo)
-	if err != nil {
-		return errors.Wrap(err, "getting blocked issue id")
-	}
-
-	blockingIssue := NewDependencyIssue(blockingId, numFrom)
-	//fmt.Printf("blocking di:%v, %v", blockingId, blockingNum)
-	blockedIssue := NewDependencyIssue(blockedId, parentIssueNum)
-
-	depToAdd := NewDependency(blockingIssue, blockedIssue)
+	// depToAdd := NewDependency(blockingIssue, blockedIssue)
 	//dumpJSON("dependency", depToAdd)
-	err = s.zenhub.AddDependency(&depToAdd)
-	if err != nil {
-		return err
-	}
+	// err = s.zenhub.AddDependency(&depToAdd)
+	// if err != nil {
+	// 	return err
+	// }
 
 	//s.log.Warn("Adding dependencies not implemented yet.")
 	return nil
@@ -161,37 +161,37 @@ func (s issueSvc) RemoveDependency(from, to issues.IssueRef) error {
 
 func (s issueSvc) SetProgress(issue issues.IssueRef, column string) error {
 
-	org, repoName, issueNum, err := issue.Parts()
-
-	repoId, err := s.getRepoID(org, repoName)
-	if err != nil {
-		return errors.Wrap(err, "set progress - get repo id")
-	}
+	// org, repoName, issueNum, err := issue.Parts()
+	//
+	// repoId, err := s.getRepoID(org, repoName)
+	// if err != nil {
+	// 	return errors.Wrap(err, "set progress - get repo id")
+	// }
 
 	//dumpJSON("repoId", repoId)
 
-	issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
-	if err != nil {
-		return errors.Wrap(err, "get issue data")
-	}
-
-	//dumpJSON("issueData", issueData)
-
-	workspaceId := issueData.Pipeline.WorkspaceID
-
-	// Change the workspace id if it was still in "Team One"
-	if workspaceId == "5c00a1ba4b5806bc2bf951e1" {
-		workspaceId = "5cee878e76309a690b06a240" // This is the workspace id of "Tasks" in naveegoinc
-	}
-	pipelineID, err := s.zenhub.GetPipelineID(workspaceId, repoId, column)
-	if err != nil {
-		return errors.Wrap(err, "set progress - get pipeline id")
-	}
-
-	err = s.zenhub.MovePipeline(workspaceId, repoId, issueNum, pipelineID)
-	if err != nil {
-		return errors.Wrap(err, "set progress - move issue between pipelines")
-	}
+	// issueData, err := s.zenhub.GetIssueData(repoId, issueNum)
+	// if err != nil {
+	// 	return errors.Wrap(err, "get issue data")
+	// }
+	//
+	// //dumpJSON("issueData", issueData)
+	//
+	// workspaceId := issueData.Pipeline.WorkspaceID
+	//
+	// // Change the workspace id if it was still in "Team One"
+	// if workspaceId == "5c00a1ba4b5806bc2bf951e1" {
+	// 	workspaceId = "5cee878e76309a690b06a240" // This is the workspace id of "Tasks" in naveegoinc
+	// }
+	// pipelineID, err := s.zenhub.GetPipelineID(workspaceId, repoId, column)
+	// if err != nil {
+	// 	return errors.Wrap(err, "set progress - get pipeline id")
+	// }
+	//
+	// err = s.zenhub.MovePipeline(workspaceId, repoId, issueNum, pipelineID)
+	// if err != nil {
+	// 	return errors.Wrap(err, "set progress - move issue between pipelines")
+	// }
 
 	//dumpJSON("moved", pipelineID)
 
@@ -245,27 +245,27 @@ func (s issueSvc) GetIssue(ref issues.IssueRef) (issues.Issue, error) {
 	if err != nil {
 		return issue, err
 	}
-
-	var repoID int
-	if issue.GithubRepoID == nil {
-		org, repo, _, _ := ref.Parts()
-		repoID, err = s.getRepoID(org, repo)
-		if err != nil {
-			return issue, err
-		}
-	} else {
-		repoID = int(*issue.GithubRepoID)
-	}
-
-	issueData, err := s.zenhub.GetIssueData(repoID, issue.Number)
-
-	if err != nil {
-		return issue, errors.Wrapf(err, "get zenhub issue data for %s using repoID %d and issue number %d", ref, repoID, issue.Number)
-	}
-
-	issue.Estimate = issueData.Estimate.Value
-	issue.ProgressState = issueData.Pipeline.Name
-	issue.MappedProgressState = s.TaskColumnMapping.ReverseLookup(issueData.Pipeline.Name)
+	//
+	// var repoID int
+	// if issue.GithubRepoID == nil {
+	// 	org, repo, _, _ := ref.Parts()
+	// 	repoID, err = s.getRepoID(org, repo)
+	// 	if err != nil {
+	// 		return issue, err
+	// 	}
+	// } else {
+	// 	repoID = int(*issue.GithubRepoID)
+	// }
+	//
+	// issueData, err := s.zenhub.GetIssueData(repoID, issue.Number)
+	//
+	// if err != nil {
+	// 	return issue, errors.Wrapf(err, "get zenhub issue data for %s using repoID %d and issue number %d", ref, repoID, issue.Number)
+	// }
+	//
+	// issue.Estimate = issueData.Estimate.Value
+	// issue.ProgressState = issueData.Pipeline.Name
+	// issue.MappedProgressState = s.TaskColumnMapping.ReverseLookup(issueData.Pipeline.Name)
 
 	return issue, nil
 }

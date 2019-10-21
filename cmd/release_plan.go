@@ -73,29 +73,6 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 	},
 })
 
-var releasePlanRefreshCmd = addCommand(releasePlanCmd, &cobra.Command{
-	Use:          "refresh",
-	Short:        "Re-analyzes apps and updates plan",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b, p := getReleaseCmdDeps()
-		ctx := b.NewContext()
-		_, err := p.GetPlan(ctx)
-		if err != nil {
-			return err
-		}
-
-		_, err = p.RefreshPlan(ctx)
-		if err != nil {
-			return err
-		}
-
-		err = p.Save(ctx)
-
-		return err
-	},
-})
-
 //
 // var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.Command{
 // 	Use:          "add {name}",
@@ -175,7 +152,7 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Short: "Discard the current release plan.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, p := getReleaseCmdDeps()
-		plan, err := p.GetNextRelease()
+		plan, err := p.GetCurrentRelease()
 		if err != nil {
 			return err
 		}
@@ -240,7 +217,17 @@ var releasePlanCommitCmd = addCommand(releasePlanCmd, &cobra.Command{
 			return err
 		}
 
-		return p.Save(ctx)
+		err = p.Save(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = b.UseRelease(bosun.SlotCurrent)
+		if err != nil {
+			return err
+		}
+
+		return b.Save()
 	},
 })
 
