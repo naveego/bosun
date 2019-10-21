@@ -77,6 +77,7 @@ type MinikubeConfig struct {
 	HostIP   string `yaml:"hostIP" json:"hostIP"`
 	Driver   string `yaml:"driver" json:"driver"`
 	DiskSize string `yaml:"diskSize" json:"diskSize"`
+	Version  string `yaml:"version" json:"version"`
 }
 
 type State struct {
