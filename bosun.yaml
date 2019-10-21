@@ -9,7 +9,7 @@ apps:
     release: ""
     feature: issue/{{.Number}}/{{.Slug}}
   repo: naveego/bosun
-  version: 1.17.1
+  version: 1.18.0
   images: []
   scripts:
   - name: publish
@@ -49,6 +49,7 @@ apps:
           authSource: admin
       databaseFile: test/mongo/db.yaml
       rebuildDb: false
+  releaseHistory: []
 repos:
 - name: bosun
   branching:
