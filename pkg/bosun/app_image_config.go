@@ -3,10 +3,11 @@ package bosun
 import "fmt"
 
 type AppImageConfig struct {
-	ImageName   string `yaml:"imageName" json:"imageName,omitempty"`
-	ProjectName string `yaml:"projectName,omitempty" json:"projectName,omitempty"`
-	Dockerfile  string `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
-	ContextPath string `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
+	ImageName    string   `yaml:"imageName" json:"imageName,omitempty"`
+	ProjectName  string   `yaml:"projectName,omitempty" json:"projectName,omitempty"`
+	Dockerfile   string   `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
+	ContextPath  string   `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
+	BuildCommand []string `yaml:"buildCommand,omitempty" json:"buildCommand,omitempty"`
 }
 
 func (a AppImageConfig) GetFullName() string {

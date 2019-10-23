@@ -296,18 +296,29 @@ func (a *App) BuildImages(ctx BosunContext) error {
 			contextPath = ctx.ResolvePath(contextPath)
 		}
 
-		args := []string{
-			"build",
-			"-f", dockerfilePath,
-			"--build-arg", fmt.Sprintf("VERSION_NUMBER=%s", a.Version),
-			"--build-arg", fmt.Sprintf("COMMIT=%s", a.GetCommit()),
-			"--build-arg", fmt.Sprintf("BUILD_NUMBER=%s", os.Getenv("BUILD_NUMBER")),
-			"--tag", image.GetFullName(),
-			contextPath,
+		var buildCommand []string
+		if len(image.BuildCommand) > 0 {
+			buildCommand = image.BuildCommand
+		} else {
+			buildCommand = []string{
+				"docker",
+				"build",
+				"-f", dockerfilePath,
+				"--build-arg", fmt.Sprintf("VERSION_NUMBER=%s", a.Version),
+				"--build-arg", fmt.Sprintf("COMMIT=%s", a.GetCommit()),
+				"--build-arg", fmt.Sprintf("BUILD_NUMBER=%s", os.Getenv("BUILD_NUMBER")),
+				"--tag", image.GetFullName(),
+				contextPath,
+			}
 		}
 
 		ctx.Log.Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
-		_, err := pkg.NewCommand("docker", args...).RunOutLog()
+		_, err := pkg.NewCommand(buildCommand[0], buildCommand[1:]...).
+			WithEnvValue("VERSION_NUMBER", a.Version.String()).
+			WithEnvValue("COMMIT", a.GetCommit()).
+			WithEnvValue("BUILD_NUMBER", os.Getenv("BUILD_NUMBER")).
+			RunOutLog()
+
 		if err != nil {
 			return errors.Wrapf(err, "build image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
 		}
