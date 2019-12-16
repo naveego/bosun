@@ -38,20 +38,11 @@ import (
 var pullSecretForce bool
 
 const (
-	ArgKubePullSecretUsername          = "pull-secret-username"
-	ArgKubePullSecretPassword          = "pull-secret-password"
-	ArgKubePullSecretPasswordLpassPath = "pull-secret-password-path"
-	ArgKubeDashboardUrl                = "url"
+	ArgKubeDashboardUrl = "url"
 )
 
 func init() {
 	kubeCmd.AddCommand(dashboardTokenCmd)
-
-	pullSecretCmd.Flags().BoolVarP(&pullSecretForce, "force", "f", false, "Force create (overwrite) the secret even if it already exists.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretUsername, "", "User for pulling from docker harbor.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretPassword, "", "Secret password for pulling from docker harbor.")
-	pullSecretCmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "FromPath in LastPass for the password for pulling from docker harbor.")
-	kubeCmd.AddCommand(pullSecretCmd)
 
 	rootCmd.AddCommand(kubeCmd)
 }
@@ -173,7 +164,7 @@ var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
 var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "pull-secret [username] [password]",
 	Args:  cobra.RangeArgs(0, 2),
-	Short: "Sets a pull secret in kubernetes for https://docker.n5o.black.",
+	Short: "Sets a pull secret in kubernetes.",
 	Long:  `If username and password not provided then the value from your docker config will be used.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var err error
@@ -181,16 +172,19 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 
 		namespace := viper.GetString(ArgKubePullSecretNamespace)
 
+		name := viper.GetString(ArgKubePullSecretName)
+		target := viper.GetString(ArgKubePullSecretTarget)
+
 		force := viper.GetBool("force")
 		if !force {
-			out, err := pkg.NewCommand(fmt.Sprintf("kubectl get secret docker-n5o-black -n %s", namespace)).RunOut()
+			out, err := pkg.NewCommand(fmt.Sprintf("kubectl get secret %s -n %s", name, namespace)).RunOut()
 			fmt.Println(out)
 			if err == nil {
 				color.Yellow("Pull secret already exists (run with --force parameter to overwrite).")
 				return nil
 			}
 		} else {
-			_ = pkg.NewCommand("kubectl delete secret docker-n5o-black -n " + namespace).RunE()
+			_ = pkg.NewCommand(fmt.Sprintf("kubectl delete secret %s -n %s", name, namespace)).RunE()
 
 		}
 
@@ -213,15 +207,16 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 				return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
 			}
 
-			auths := dockerConfig["auths"].(map[string]interface{})
-			entry := auths["docker.n5o.black"].(map[string]interface{})
-			if entry == nil {
-				return errors.New("no docker.n5o.black entry in docker config, you should docker login first")
+			auths, ok := dockerConfig["auths"].(map[string]interface{})
+
+			entry, ok := auths[target].(map[string]interface{})
+			if !ok {
+				return errors.Errorf("no %q entry in docker config, you should docker login first", target)
 			}
 			authBase64, _ := entry["auth"].(string)
 			auth, err := base64.StdEncoding.DecodeString(authBase64)
 			if err != nil {
-				return errors.Errorf("invalid docker.n5o.black entry in docker config, you should docker login first: %s", err)
+				return errors.Errorf("invalid %q entry in docker config, you should docker login first: %s", target, err)
 			}
 			segs := strings.Split(string(auth), ":")
 			username, password = segs[0], segs[1]
@@ -252,9 +247,9 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 
 		err = pkg.NewCommand("kubectl",
 			"create", "secret", "docker-registry",
-			"docker-n5o-black",
+			name,
 			"-n", namespace,
-			"--docker-server=https://docker.n5o.black",
+			fmt.Sprintf("--docker-server=%s", target),
 			fmt.Sprintf("--docker-username=%s", username),
 			fmt.Sprintf("--docker-password=%s", password),
 			fmt.Sprintf("--docker-email=%s", username),
@@ -266,11 +261,23 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 		return err
 	},
 }, func(cmd *cobra.Command) {
+	cmd.Flags().BoolVarP(&pullSecretForce, "force", "f", false, "Force create (overwrite) the secret even if it already exists.")
+	cmd.Flags().String(ArgKubePullSecretName, "docker-n5o-black", "Name of pull secret in k8s.")
+	cmd.Flags().String(ArgKubePullSecretTarget, "docker.n5o.black", "Domain of docker repository.")
+	cmd.Flags().String(ArgKubePullSecretUsername, "", "User for pulling from docker.")
+	cmd.Flags().String(ArgKubePullSecretPassword, "", "Secret password for pulling from docker.")
+	cmd.Flags().String(ArgKubePullSecretPasswordLpassPath, "", "FromPath in LastPass for the password for pulling from docker harbor.")
+
 	cmd.Flags().String(ArgKubePullSecretNamespace, "default", "The namespace to deploy the secret into.")
 })
 
 const (
-	ArgKubePullSecretNamespace = "namespace"
+	ArgKubePullSecretName              = "name"
+	ArgKubePullSecretTarget            = "target"
+	ArgKubePullSecretUsername          = "username"
+	ArgKubePullSecretPassword          = "password"
+	ArgKubePullSecretPasswordLpassPath = "password-path"
+	ArgKubePullSecretNamespace         = "namespace"
 )
 
 // kubectlProxy runs "kubectl proxy", returning host:port

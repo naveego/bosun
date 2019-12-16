@@ -246,8 +246,8 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 	// 	}
 	//
 	// 	appCommit := a.App.GetCommit()
-	// 	if appCommit != a.Commit {
-	// 		errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.Commit, appCommit))
+	// 	if appCommit != a.GetCurrentCommit {
+	// 		errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.GetCurrentCommit, appCommit))
 	// 	}
 	// }
 

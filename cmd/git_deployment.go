@@ -47,7 +47,7 @@ var gitDeployDryRunCmd = addCommand(gitDeploymentCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		head := g.Commit()
+		head := g.GetCurrentCommit()
 		changeLog, err := g.ChangeLog(previousRef, head, nil, git.GitChangeLogOptions{})
 		if err != nil {
 			return err

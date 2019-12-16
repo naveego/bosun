@@ -153,7 +153,7 @@ func (a *App) GetBranchName() git.BranchName {
 func (a *App) GetCommit() string {
 	if a.IsRepoCloned() && a.commit == "" {
 		g, _ := git.NewGitWrapper(a.FromPath)
-		a.commit = strings.Trim(g.Commit(), "'")
+		a.commit = strings.Trim(g.GetCurrentCommit(), "'")
 	}
 	return a.commit
 }
@@ -310,6 +310,10 @@ func (a *App) BuildImages(ctx BosunContext) error {
 				"--tag", image.GetFullName(),
 				contextPath,
 			}
+
+			if ctx.GetParams().Sudo {
+				buildCommand = append([]string{"sudo"}, buildCommand...)
+			}
 		}
 
 		ctx.Log.Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
@@ -370,11 +374,11 @@ func (a *App) PublishImages(ctx BosunContext) error {
 		for _, taggedName := range a.GetTaggedImageNames(tag) {
 			ctx.Log.Infof("Tagging and pushing %q", taggedName)
 			untaggedName := strings.Split(taggedName, ":")[0]
-			_, err := pkg.NewCommand("docker", "tag", untaggedName, taggedName).RunOutLog()
+			_, err := pkg.NewCommand("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParams().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
-			_, err = pkg.NewCommand("docker", "push", taggedName).RunOutLog()
+			_, err = pkg.NewCommand("docker", "push", taggedName).Sudo(ctx.GetParams().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
@@ -503,7 +507,7 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 //
 // 		r.Branch = a.GetBranchName()
 // 		r.Repo = a.GetRepoPath()
-// 		r.Commit = a.GetCommit()
+// 		r.GetCurrentCommit = a.GetCommit()
 //
 // 	}
 //
@@ -825,12 +829,13 @@ func (a *App) GetMostRecentCommitFromBranch(ctx BosunContext, branch string) (st
 }
 
 func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManifest, error) {
-	err := a.Repo.CheckCloned()
+
+	wsApp, err := ctx.Bosun.GetAppFromWorkspace(a.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	g, err := a.Repo.LocalRepo.Git()
+	g, err := wsApp.Repo.LocalRepo.Git()
 	if err != nil {
 		return nil, err
 	}
@@ -849,7 +854,7 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 		useWorktreeCheckout = true
 	}
 
-	bosunFile := a.FromPath
+	bosunFile := wsApp.FromPath
 
 	if useWorktreeCheckout {
 
@@ -857,7 +862,7 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 		if err != nil {
 			return nil, err
 		}
-		repoDirName := filepath.Base(a.Repo.LocalRepo.Path)
+		repoDirName := filepath.Base(wsApp.Repo.LocalRepo.Path)
 		worktreePath := fmt.Sprintf("/tmp/%s-worktree", repoDirName)
 		tmpBranchName := fmt.Sprintf("worktree-%s", xid.New())
 		_, err = g.Exec("branch", "--track", tmpBranchName, fmt.Sprintf("origin/%s", branch))
@@ -879,13 +884,13 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 		}
 
 		// bosunFile should now be pulled from the worktree
-		bosunFile = strings.Replace(a.FromPath, a.Repo.LocalRepo.Path, "", 1)
+		bosunFile = strings.Replace(wsApp.FromPath, wsApp.Repo.LocalRepo.Path, "", 1)
 		bosunFile = filepath.Join(worktreePath, bosunFile)
 	}
 
 	provider := NewFilePathAppProvider(ctx.GetLog())
 
-	app, err := provider.GetAppByPathAndName(bosunFile, a.Name)
+	app, err := provider.GetAppByPathAndName(bosunFile, wsApp.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -900,4 +905,14 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 	manifest.Branch = branch
 
 	return manifest, nil
+}
+
+func (a *App) GetMostRecentReleaseVersion() *semver.Version {
+	for _, entry := range a.ReleaseHistory {
+		version, err := semver.NewVersion(entry.ReleaseVersion)
+		if err != nil {
+			return &version
+		}
+	}
+	return nil
 }

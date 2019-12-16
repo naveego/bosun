@@ -172,7 +172,7 @@ func (r *ReleaseManifest) init() {
 }
 
 func (r *ReleaseManifest) Headers() []string {
-	return []string{"Name", "Version", "From Release", "Commit Hash", "Deploying"}
+	return []string{"Name", "Version", "From Release", "GetCurrentCommit Hash", "Deploying"}
 }
 
 func (r *ReleaseManifest) Rows() [][]string {
@@ -470,20 +470,29 @@ func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool
 	return nil
 }
 
-func (r *ReleaseManifest) PrepareAppManifest(ctx BosunContext, app *App, bump semver.Bump) (*AppManifest, error) {
+func (r *ReleaseManifest) PrepareAppManifest(ctx BosunContext, app *App, bump semver.Bump, branch string) (*AppManifest, error) {
 
 	switch r.Slot {
 	case SlotStable:
-		return app.GetManifestFromBranch(ctx, app.Branching.Master)
+		if branch == "" {
+			branch = app.Branching.Master
+		}
+		return app.GetManifestFromBranch(ctx, branch)
 	case SlotUnstable:
+		if branch == "" {
+			branch = app.Branching.Develop
+		}
 		return app.GetManifestFromBranch(ctx, app.Branching.Develop)
 	case SlotCurrent:
-		// we pass the expected version here to avoid multiple bumps
-		// if something goes wrong during branching
-
+		if branch == "" {
+			branch = app.Branching.Develop
+		}
 		if app.BranchForRelease {
 
-			developAppManifest, err := app.GetManifestFromBranch(ctx, app.Branching.Develop)
+			developAppManifest, err := app.GetManifestFromBranch(ctx, branch)
+			if err != nil {
+				return nil, errors.Wrapf(err, "get manifest for %q from %q", app.Name, app.Branching.Develop)
+			}
 
 			releaseBranch, err := r.ReleaseMetadata.GetReleaseBranchName(app.Branching)
 			if err != nil {
@@ -500,7 +509,7 @@ func (r *ReleaseManifest) PrepareAppManifest(ctx BosunContext, app *App, bump se
 			}
 			return appManifest, err
 		} else {
-			return app.GetManifestFromBranch(ctx, app.Branching.Develop)
+			return app.GetManifestFromBranch(ctx, branch)
 		}
 	default:
 		return nil, errors.Errorf("invalid slot %q", r.Slot)

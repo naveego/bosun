@@ -42,12 +42,22 @@ func (g GitWrapper) Exec(args ...string) (string, error) {
 	return out, err
 }
 
+func (g GitWrapper) ExecVerbose(args ...string) (string, error) {
+	args = append([]string{"-C", g.dir}, args...)
+
+	out, err := pkg.NewCommand("git", args...).RunOutLog()
+	if err != nil {
+		return "", errors.Errorf("git %s\nOutput: %s\nError: %s", strings.Join(args, " "), out, err)
+	}
+	return out, err
+}
+
 func (g GitWrapper) Branch() string {
 	o, _ := pkg.NewCommand("git", "-C", g.dir, "rev-parse", "--abbrev-ref", "HEAD").RunOut()
 	return o
 }
 
-func (g GitWrapper) Commit() string {
+func (g GitWrapper) GetCurrentCommit() string {
 	o, _ := pkg.NewCommand("git", "-C", g.dir, "log", "--pretty=format:'%h'", "-n", "1").RunOut()
 	return strings.Trim(o, "'")
 }
@@ -129,5 +139,21 @@ func (g GitWrapper) CreateBranch(branch string) error {
 
 func (g GitWrapper) Push() error {
 	_, err := g.Exec("push")
+	return err
+}
+
+func (g GitWrapper) CheckOutBranch(branch string) error {
+	_, err := g.Exec("checkout", branch)
+	return err
+}
+
+func (g GitWrapper) AddAndCommit(message string, files ...string) error {
+	args := append([]string{"add"}, files...)
+	_, err := g.Exec(args...)
+	if err != nil {
+		return err
+	}
+
+	_, err = g.Exec("commit", "-m", message)
 	return err
 }

@@ -51,6 +51,7 @@ type Parameters struct {
 	NoCurrentEnv     bool
 	ConfirmedEnv     string
 	ProviderPriority []string
+	Sudo             bool
 }
 
 func New(params Parameters, ws *Workspace) (*Bosun, error) {
@@ -248,6 +249,11 @@ func (b *Bosun) GetApp(name string) (*App, error) {
 
 func (b *Bosun) GetAppFromProvider(appName, providerName string) (*App, error) {
 	app, err := b.appProvider.GetAppFromProvider(appName, providerName)
+	return app, err
+}
+
+func (b *Bosun) GetAppFromWorkspace(appName string) (*App, error) {
+	app, err := b.appProvider.GetAppFromProvider(appName, WorkspaceProviderName)
 	return app, err
 }
 

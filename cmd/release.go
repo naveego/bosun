@@ -327,7 +327,9 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 
 		ctx := b.NewContext()
 
-		appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(args[2]))
+		branch := viper.GetString(ArgReleaseAddBranch)
+
+		appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(args[2]), branch)
 		if err != nil {
 			return err
 		}
@@ -340,7 +342,13 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 		err = p.Save(ctx)
 		return err
 	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
 })
+
+const (
+	ArgReleaseAddBranch = "branch"
+)
 
 //
 // var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
@@ -403,9 +411,18 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		return validateDeploy(b, ctx, deploy)
 	},
 },
-	withFilteringFlags)
+	withFilteringFlags,
+	func(cmd *cobra.Command) {
+		cmd.Flags().Bool(ArgReleaseValidateNoProgress, false, "Do not emit progress bars.")
+	})
+
+const (
+	ArgReleaseValidateNoProgress = "no-progress"
+)
 
 func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deploy) error {
+
+	showProgress := !viper.GetBool(ArgReleaseValidateNoProgress)
 
 	hasErrors := false
 
@@ -413,7 +430,10 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 
 	var wg sync.WaitGroup
 	// pass &wg (optional), so p will wait for it eventually
-	p := mpb.New(mpb.WithWaitGroup(&wg))
+	var p *mpb.Progress
+	if showProgress {
+		p = mpb.New(mpb.WithWaitGroup(&wg))
+	}
 
 	errmu := new(sync.Mutex)
 
@@ -431,9 +451,12 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 		if app.Excluded {
 			continue
 		}
+		var bar *mpb.Bar
 		wg.Add(1)
-		bar := p.AddBar(100, mpb.PrependDecorators(decor.Name(app.Name)),
-			mpb.AppendDecorators(decor.OnComplete(decor.EwmaETA(decor.ET_STYLE_GO, 60), "done")))
+		if showProgress {
+			bar = p.AddBar(100, mpb.PrependDecorators(decor.Name(app.Name)),
+				mpb.AppendDecorators(decor.OnComplete(decor.EwmaETA(decor.ET_STYLE_GO, 60), "done")))
+		}
 
 		go func() {
 			err := app.Validate(ctx)
@@ -442,12 +465,18 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 				defer errmu.Unlock()
 				errs[app.Name] = err
 			}
-			bar.IncrBy(100, time.Since(start))
+			if showProgress {
+				bar.IncrBy(100, time.Since(start))
+			}
 			wg.Done()
 		}()
 
 	}
-	p.Wait()
+	if showProgress {
+		p.Wait()
+	} else {
+		wg.Wait()
+	}
 
 	t := tablewriter.NewWriter(os.Stdout)
 	t.SetHeader([]string{"app", "state"})

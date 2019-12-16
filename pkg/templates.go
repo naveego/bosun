@@ -240,17 +240,23 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 
 			return string(cert), nil
 		},
-		"kube_service_token": func(context string, serviceAccount string) (string, error) {
+		"kube_service_token": func(context string, serviceAccount string, optionalNamespace ...string) (string, error) {
+
 			if context == "" {
 				return "", errors.New("context parameter was not set")
 			}
 
-			o, err := NewCommand("kubectl", "--context", context, "get", "serviceaccounts", serviceAccount, "-o", "jsonpath={.secrets[0].name}").RunOut()
+			namespace := "default"
+			if len(optionalNamespace) > 0 {
+				namespace = optionalNamespace[0]
+			}
+
+			o, err := NewCommand("kubectl", "--namespace", namespace, "--context", context, "get", "serviceaccounts", serviceAccount, "-o", "jsonpath={.secrets[0].name}").RunOut()
 			if err != nil {
 				return "", errors.Errorf("getting service account data for account %q in context %q: %s", serviceAccount, context, err)
 			}
 
-			o, err = NewCommand(fmt.Sprintf(`kubectl --context=%s get secrets %s -o jsonpath={.data.token}'`, context, o)).RunOut()
+			o, err = NewCommand(fmt.Sprintf(`kubectl --namespace %s  --context=%s get secrets %s -o jsonpath={.data.token}'`, namespace, context, o)).RunOut()
 			if err != nil {
 				return "", err
 			}

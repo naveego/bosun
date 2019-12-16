@@ -207,7 +207,7 @@ var releasePlanValidateCmd = addCommand(releasePlanCmd, &cobra.Command{
 var releasePlanCommitCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Use:   "commit",
 	Args:  cobra.NoArgs,
-	Short: "Commit the current release plan.",
+	Short: "GetCurrentCommit the current release plan.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, p := getReleaseCmdDeps()
 		ctx := b.NewContext()

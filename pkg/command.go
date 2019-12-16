@@ -3,6 +3,7 @@ package pkg
 import (
 	"context"
 	"fmt"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/pkg/errors"
 	"io"
 	"os"
@@ -22,6 +23,7 @@ type Command struct {
 	ctx      context.Context
 	prepared bool
 	cmd      *exec.Cmd
+	sudo     bool
 }
 
 func NewCommand(exe string, args ...string) *Command {
@@ -90,6 +92,11 @@ func (c *Command) prepare() {
 	} else {
 		command := fmt.Sprintf("%s %s", *c.Exe, strings.Join(c.Args, " "))
 		c.Command = &command
+	}
+
+	if c.sudo {
+		c.Args = append([]string{*c.Exe}, c.Args...)
+		c.Exe = to.StringPtr("sudo")
 	}
 
 	exe, _ := exec.LookPath(*c.Exe)
@@ -178,6 +185,12 @@ func (c *Command) RunOutLog() (string, error) {
 	})
 
 	return result, err
+}
+
+func (c *Command) Sudo(enabled bool) *Command {
+	c.sudo = enabled
+	return c
+
 }
 
 // Blocks until fn returns, or ctx is done. If ctx is done first

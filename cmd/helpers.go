@@ -109,6 +109,7 @@ func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
 		params = optionalParams[0]
 	}
 
+	params.Sudo = viper.GetBool(ArgGlobalSudo)
 	params.Verbose = viper.GetBool(ArgGlobalVerbose)
 	params.DryRun = viper.GetBool(ArgGlobalDryRun)
 	params.NoReport = viper.GetBool(ArgGlobalNoReport)

@@ -150,7 +150,12 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			msg = builder.String()
 		}
 
-		out, err = g.Exec("commit", "-m", msg)
+		commitArgs := []string{"commit", "-m", msg}
+		if viper.GetBool(ArgGitCommitNoVerify) {
+			commitArgs = append(commitArgs, "--no-verify")
+		}
+
+		out, err = g.ExecVerbose(commitArgs...)
 
 		if err != nil {
 			tmpErr := saveCommitTmpFile(msg)
@@ -158,13 +163,13 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 				return errors.Errorf("could not write tmp file\noriginal error: %s\ntmp file error: %s", err, tmpErr)
 			}
 
-			color.Red("Commit failed:\n")
+			color.Red("GetCurrentCommit failed:\n")
 			color.Yellow("%s\n", err.Error())
 			color.Blue("You can retry this commit using the --retry flag.")
 			os.Exit(1)
 		}
 
-		color.Green("Commit succeeded.\n")
+		color.Green("GetCurrentCommit succeeded.\n")
 
 		return nil
 	},
@@ -199,6 +204,7 @@ func saveCommitTmpFile(msg string) error {
 }
 
 const (
-	GitRetry          = "retry"
-	TempFileGitCommit = "/tmp/bosun_git_commit"
+	GitRetry             = "retry"
+	ArgGitCommitNoVerify = "no-verify"
+	TempFileGitCommit    = "/tmp/bosun_git_commit"
 )

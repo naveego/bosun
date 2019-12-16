@@ -142,6 +142,9 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	if appManifest == nil {
+		return nil, errors.Errorf("appManifest was nil for app %q", name)
+	}
 
 	app = &App{
 		Provider:    a,
@@ -173,6 +176,7 @@ func (a ReleaseManifestAppProvider) GetAllApps() (map[string]*App, error) {
 	}
 	for name := range appManifests {
 		out[name], err = a.GetApp(name)
+
 		if err != nil {
 			return nil, err
 		}
@@ -362,6 +366,8 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 		if index < 0 {
 
 			sort.Strings(appNames)
+
+			pkg.Log.Infof("Couldn't find requested app %q in file %q which contained %#v.", name, bosunFile, appNames)
 
 			if !terminal.IsTerminal(int(os.Stdout.Fd())) {
 				return nil, errors.Errorf("multiple apps found in %q, but no user available to choose; try importing the bosun file and referencing the app by name (apps were: %s)", bosunFile, strings.Join(appNames, ", "))

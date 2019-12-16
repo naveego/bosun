@@ -43,7 +43,7 @@ func (r *LocalRepo) Commit(message string, filesToAdd ...string) error {
 		return err
 	}
 
-	_, err = g.Exec("commit", "-m", message)
+	_, err = g.Exec("commit", "-m", message, "--no-verify")
 
 	if err != nil {
 		return err
@@ -125,7 +125,7 @@ func (r *LocalRepo) SwitchToBranchAndPull(logger Logger, name string) error {
 
 func (r *LocalRepo) GetCurrentCommit() string {
 	r.mustBeCloned()
-	return r.git().Commit()
+	return r.git().GetCurrentCommit()
 }
 
 func (r *LocalRepo) git() git.GitWrapper {

@@ -44,7 +44,7 @@ var metaVersionCmd = addCommand(metaCmd, &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf(`Version: %s
 Timestamp: %s
-Commit: %s
+GetCurrentCommit: %s
 `, Version, Timestamp, Commit)
 	},
 })

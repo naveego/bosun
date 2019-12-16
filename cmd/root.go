@@ -45,7 +45,7 @@ var rootCmd = TraverseRunHooks(&cobra.Command{
 	Version: fmt.Sprintf(`
 Version: %s
 Timestamp: %s
-Commit: %s
+GetCurrentCommit: %s
 `, Version, Timestamp, Commit),
 	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
@@ -117,6 +117,7 @@ func Execute() {
 }
 
 const (
+	ArgGlobalSudo         = "sudo"
 	ArgGlobalVerbose      = "verbose"
 	ArgGlobalDryRun       = "dry-run"
 	ArgGlobalCluster      = "cluster"
@@ -141,6 +142,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
+	rootCmd.PersistentFlags().Bool(ArgGlobalSudo, false, "Use sudo when running commands like docker.")
 	rootCmd.PersistentFlags().String(ArgGlobalConfirmedEnv, "", "Set to confirm that the environment is correct when targeting a protected environment.")
 	rootCmd.PersistentFlags().MarkHidden(ArgGlobalConfirmedEnv)
 	rootCmd.PersistentFlags().Bool(ArgGlobalProfile, false, "Dump profiling info.")

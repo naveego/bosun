@@ -352,14 +352,20 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 		var diffSlot string
 
 		if stableVersion, ok = stableApps[appName]; ok {
+
 			appPlan.Providers[SlotStable] = AppProviderPlan{
-				Version: stableVersion.Version.String(),
-				Branch:  stableVersion.AppManifest.Branch,
-				Commit:  stableVersion.AppManifest.Hashes.Commit,
+				Version:        stableVersion.Version.String(),
+				Branch:         stableVersion.AppManifest.Branch,
+				Commit:         stableVersion.AppManifest.Hashes.Commit,
+				ReleaseVersion: stableVersion.GetMostRecentReleaseVersion(),
 			}
+
+			log.Infof("Found stable version of app (%s)", appPlan.Providers[SlotStable])
 		}
 
-		if currentVersion, ok = currentApps[appName]; ok && currentVersion.AppManifest.PinnedReleaseVersion.Equal(currentManifest.Version) {
+		log.Info("Finding current version or unstable version for app...")
+
+		if currentVersion, ok = currentApps[appName]; ok && currentVersion.AppManifest.PinnedReleaseVersion.EqualSafe(currentManifest.Version) {
 			diffSlot = SlotCurrent
 			diffVersion = currentVersion
 			appPlan.Providers[SlotCurrent] = AppProviderPlan{
@@ -367,6 +373,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 				Branch:  currentVersion.AppManifest.Branch,
 				Commit:  currentVersion.AppManifest.Hashes.Commit,
 			}
+			log.Infof("Found current version of app (%s)", appPlan.Providers[SlotCurrent])
 		} else if unstableVersion, ok = unstableApps[appName]; ok {
 			if stableVersion == nil || stableVersion.AppManifest.Hashes.Commit != unstableVersion.AppManifest.Hashes.Commit {
 				// If the unstable version is different from the stable version, make it available as an option
@@ -377,6 +384,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 					Branch:  unstableVersion.AppManifest.Branch,
 					Commit:  unstableVersion.AppManifest.Hashes.Commit,
 				}
+				log.Infof("Found unstable version of app (%s)", appPlan.Providers[SlotUnstable])
 			}
 		} else {
 			return errors.Errorf("mysterious app %q does not come from any release", appName)
@@ -582,7 +590,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 					log.Infof("App %q will not be upgraded in this release; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
 
 					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
-					return stable.PrepareAppManifest(ctx, app, semver.BumpNone)
+					return stable.PrepareAppManifest(ctx, app, semver.BumpNone, "")
 
 				case SlotUnstable:
 					// we pass the expected version here to avoid multiple bumps
@@ -591,7 +599,6 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 					log.Infof("App %q will be upgraded in this release; adding version from unstable release.", appName)
 
 					providerPlan := appPlan.Providers[SlotUnstable]
-					app, err = ctx.Bosun.GetAppFromProvider(appName, SlotUnstable)
 					if err != nil {
 						return nil, errors.Errorf("app does not exist")
 					}
@@ -603,14 +610,14 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 						bump = appPlan.BumpOverride
 					}
 
-					appManifest, err := currentRelease.PrepareAppManifest(ctx, app, bump)
+					appManifest, err := currentRelease.PrepareAppManifest(ctx, originalApp, bump, "")
 					return appManifest, err
 
 				case SlotCurrent:
 					log.Infof("App %q has already been added to this release.", appName)
 
 					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
-					return currentRelease.PrepareAppManifest(ctx, app, semver.BumpNone)
+					return currentRelease.PrepareAppManifest(ctx, app, semver.BumpNone, "")
 				default:
 					return nil, errors.Errorf("invalid provider %q", appPlan.ChosenProvider)
 				}
@@ -941,6 +948,14 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 	releaseBranch := fmt.Sprintf("release/%s", release.Version)
 
+	progress := map[string]bool{}
+	progressFileName := filepath.Join(os.TempDir(), fmt.Sprintf("bosun-release-commit-%s.yaml", release.Version))
+	_ = util.LoadYaml(progressFileName, &progress)
+
+	defer func() {
+		_ = util.SaveYaml(progressFileName, progress)
+	}()
+
 	mergeTargets := map[string]*mergeTarget{
 		"devops-develop": {
 			dir:        platformDir,
@@ -974,6 +989,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 	b := ctx.Bosun
 
 	for name := range release.UpgradedApps {
+		log := ctx.Log.WithField("app", name)
 
 		appDeploy, err := release.GetAppManifest(name)
 		if err != nil {
@@ -1017,29 +1033,39 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 		mt, ok := mergeTargets[app.Repo.Name]
 		if !ok {
-			mt = &mergeTarget{
-				dir:        app.Repo.LocalRepo.Path,
-				version:    manifest.Version.String(),
-				name:       manifest.Name,
-				fromBranch: appBranch,
-				toBranch:   app.Branching.Master,
-				tags:       map[string]string{},
-			}
-			mergeTargets[app.Repo.Name] = mt
-
-			if app.Branching.Develop != app.Branching.Master {
-				mergeTargets[app.RepoName+"-develop"] = &mergeTarget{
+			masterName := app.Repo.Name
+			if progress[masterName] {
+				log.Infof("Release version has already been merged to master.")
+			} else {
+				mt = &mergeTarget{
 					dir:        app.Repo.LocalRepo.Path,
 					version:    manifest.Version.String(),
 					name:       manifest.Name,
 					fromBranch: appBranch,
-					toBranch:   app.Branching.Develop,
+					toBranch:   app.Branching.Master,
 					tags:       map[string]string{},
+				}
+				mt.tags[app.RepoName] = fmt.Sprintf("%s@%s-%s", app.Name, manifest.Version.String(), release.Version.String())
+				mergeTargets[masterName] = mt
+			}
+
+			if app.Branching.Develop != app.Branching.Master {
+				developName := app.RepoName + "-develop"
+				if progress[developName] {
+					log.Info("Release version has already been merged to develop.")
+				} else {
+
+					mergeTargets[developName] = &mergeTarget{
+						dir:        app.Repo.LocalRepo.Path,
+						version:    manifest.Version.String(),
+						name:       manifest.Name,
+						fromBranch: appBranch,
+						toBranch:   app.Branching.Develop,
+						tags:       map[string]string{},
+					}
 				}
 			}
 		}
-
-		mt.tags[app.RepoName] = fmt.Sprintf("%s@%s-%s", app.Name, manifest.Version.String(), release.Version.String())
 	}
 
 	if len(mergeTargets) == 0 {
@@ -1164,6 +1190,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 		}
 		if len(changes) == 0 {
 			log.Infof("Branch %s has already been pushed", target.toBranch)
+			progress[targetLabel] = true
 			continue
 		}
 
@@ -1176,9 +1203,82 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 		}
 
 		log.Infof("Merged back to %s and pushed.", target.toBranch)
+
+		progress[targetLabel] = true
 	}
 
-	return warnings.ToError()
+	err = warnings.ToError()
+	if err != nil {
+		return warnings.ToError()
+	}
+
+	err = p.makeCurrentReleaseStable(ctx, p.Branching.Develop)
+	if err != nil {
+		return err
+	}
+	err = p.makeCurrentReleaseStable(ctx, p.Branching.Master)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) error {
+
+	log := ctx.WithLogField("branch", branch).GetLog()
+
+	g, _ := git.NewGitWrapper(p.FromPath)
+	err := g.CheckOutBranch(branch)
+	if err != nil {
+		return err
+	}
+
+	current, err := p.GetCurrentRelease()
+	if err != nil {
+		return err
+	}
+	stable, err := p.GetStableRelease()
+	if err != nil {
+		return err
+	}
+
+	currentDir := current.dir
+
+	log.Info("Deleting stable release directory.")
+	err = os.RemoveAll(stable.dir)
+	if err != nil {
+		return err
+	}
+
+	log.Info("Saving current release as stable release.")
+	p.SetReleaseManifest(SlotStable, current)
+
+	err = p.Save(ctx)
+	if err != nil {
+		return err
+	}
+
+	log.Info("Deleting old current release directory.")
+	err = os.RemoveAll(currentDir)
+	if err != nil {
+		return err
+	}
+
+	log.Info("Current release has become the stable release.")
+
+	message := fmt.Sprintf("Committing release %s to %s.", current.Version, branch)
+	err = g.AddAndCommit(message, ".")
+	if err != nil {
+		return err
+	}
+
+	err = g.Push()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type mergeTarget struct {

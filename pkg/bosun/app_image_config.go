@@ -4,6 +4,7 @@ import "fmt"
 
 type AppImageConfig struct {
 	ImageName    string   `yaml:"imageName" json:"imageName,omitempty"`
+	Repository   string   `yaml:"repository,omitempty" json:"repository,omitempty"`
 	ProjectName  string   `yaml:"projectName,omitempty" json:"projectName,omitempty"`
 	Dockerfile   string   `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
 	ContextPath  string   `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
@@ -11,11 +12,25 @@ type AppImageConfig struct {
 }
 
 func (a AppImageConfig) GetFullName() string {
-	return fmt.Sprintf("docker.n5o.black/%s/%s", a.ProjectName, a.ImageName)
+	if a.Repository == "" {
+		a.Repository = "docker.n5o.black"
+	}
+	if a.ProjectName == "" {
+		a.ProjectName = "private"
+	}
+
+	return fmt.Sprintf("%s/%s/%s", a.Repository, a.ProjectName, a.ImageName)
 }
 
 func (a AppImageConfig) GetFullNameWithTag(tag string) string {
-	return fmt.Sprintf("docker.n5o.black/%s/%s:%s", a.ProjectName, a.ImageName, tag)
+	if a.Repository == "" {
+		a.Repository = "docker.n5o.black"
+	}
+	if a.ProjectName == "" {
+		a.ProjectName = "private"
+	}
+
+	return fmt.Sprintf("%s/%s/%s:%s", a.Repository, a.ProjectName, a.ImageName, tag)
 }
 
 func (a *AppImageConfig) MarshalYAML() (interface{}, error) {
@@ -47,6 +62,10 @@ func (a *AppImageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	_ = unmarshal(&m)
 	if name, ok := m["name"]; ok {
 		a.ImageName = name
+	}
+
+	if a.Repository == "" {
+		a.Repository = "docker.n5o.black"
 	}
 
 	return err

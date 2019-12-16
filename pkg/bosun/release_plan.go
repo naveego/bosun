@@ -84,11 +84,16 @@ func (a *AppPlan) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type AppProviderPlan struct {
-	Version   string      `yaml:"version"`
-	Branch    string      `yaml:"branch"`
-	Commit    string      `yaml:"commit"`
-	Bump      semver.Bump `yaml:"bump,omitempty"`
-	Changelog []string    `yaml:"changelog,omitempty"`
+	Version        string          `yaml:"version"`
+	Branch         string          `yaml:"branch"`
+	Commit         string          `yaml:"commit"`
+	Bump           semver.Bump     `yaml:"bump,omitempty"`
+	Changelog      []string        `yaml:"changelog,omitempty"`
+	ReleaseVersion *semver.Version `yaml:"releaseVersion,omitempty"`
+}
+
+func (a AppProviderPlan) String() string {
+	return fmt.Sprintf("%s@%s", a.Version, a.Commit)
 }
 
 func (a *AppPlan) IsProviderChosen() bool {

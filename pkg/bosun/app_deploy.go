@@ -43,7 +43,7 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 // 	Namespace        string         `yaml:"namespace" json:"namespace"`
 // 	Repo             string         `yaml:"repo" json:"repo"`
 // 	Branch           git.BranchName `yaml:"branch" json:"branch"`
-// 	Commit           string         `yaml:"commit" json:"commit"`
+// 	GetCurrentCommit           string         `yaml:"commit" json:"commit"`
 // 	Version          semver.Version `yaml:"version" json:"version"`
 // 	SyncedAt         time.Time      `yaml:"syncedAt" json:"syncedAt"`
 // 	Chart            string         `yaml:"chart" json:"chart"`
@@ -58,6 +58,13 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 // 	ValueOverrides ValueSetMap `yaml:"valueOverrides" json:"valueOverrides"`
 // 	ParentConfig   *ReleaseConfig         `yaml:"-" json:"-"`
 // }
+
+type BosunAppTemplateValues struct {
+	Tag            string `yaml:"tag"`
+	Version        string `yaml:"version"`
+	ReleaseVersion string `yaml:"releaseVersion"`
+	Environment    string `yaml:"environment"`
+}
 
 type AppDeploy struct {
 	FromPath     string
@@ -100,9 +107,20 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 	// put the tag as the lowest priority of the augmenting value sets, so
 	// that it can be overwritten by user-provided value sets.
 
+	bosunAppTemplateValues := BosunAppTemplateValues{
+		Version:        manifest.Version.String(),
+		ReleaseVersion: "Transient",
+		Tag:            settings.GetImageTag(manifest.AppMetadata),
+		Environment:    ctx.Env.Name,
+	}
+	if manifest.PinnedReleaseVersion != nil {
+		bosunAppTemplateValues.ReleaseVersion = manifest.PinnedReleaseVersion.String()
+	}
+
 	appDeploySettings.ValueSets = append([]ValueSet{{
 		Static: Values{
-			"tag": settings.GetImageTag(manifest.AppMetadata),
+			"tag":   settings.GetImageTag(manifest.AppMetadata),
+			"bosun": bosunAppTemplateValues,
 		},
 	}}, appDeploySettings.ValueSets...)
 	appDeploy := &AppDeploy{
