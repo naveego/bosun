@@ -9,7 +9,7 @@ apps:
     release: ""
     feature: issue/{{.Number}}/{{.Slug}}
   repo: naveego/bosun
-  version: 1.19.0
+  version: 1.19.1
   images: []
   scripts:
   - name: publish
