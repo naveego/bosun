@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
@@ -102,6 +103,51 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 		}
 
 		return nil
+	},
+})
+
+var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:          "list-definitions",
+	Aliases:      []string{"lsdf", "list-def", "list-defs"},
+	Short:        "Lists all cluster definitions. ",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		return renderOutput(p.Clusters)
+	},
+})
+
+var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:          "configure-cluster {name} ",
+	Args:         cobra.ExactArgs(1),
+	Short:        "Configures a cluster which is defined on the platform. ",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		c, err := p.GetCluster(args[0])
+		if err != nil {
+			return err
+		}
+		ctx := b.NewContext()
+		ktx := kube.KubeCommandContext{
+			Log: ctx.Log,
+		}
+
+		err = c.Configure(ktx)
+
+		return err
 	},
 })
 

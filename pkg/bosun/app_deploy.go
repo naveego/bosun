@@ -59,13 +59,6 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 // 	ParentConfig   *ReleaseConfig         `yaml:"-" json:"-"`
 // }
 
-type BosunAppTemplateValues struct {
-	Tag            string `yaml:"tag"`
-	Version        string `yaml:"version"`
-	ReleaseVersion string `yaml:"releaseVersion"`
-	Environment    string `yaml:"environment"`
-}
-
 type AppDeploy struct {
 	FromPath     string
 	*AppManifest `yaml:"-" json:"-"`
@@ -107,14 +100,14 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 	// put the tag as the lowest priority of the augmenting value sets, so
 	// that it can be overwritten by user-provided value sets.
 
-	bosunAppTemplateValues := BosunAppTemplateValues{
-		Version:        manifest.Version.String(),
-		ReleaseVersion: "Transient",
-		Tag:            settings.GetImageTag(manifest.AppMetadata),
-		Environment:    ctx.Env.Name,
+	bosunAppTemplateValues := Values{
+		"version":        manifest.Version.String(),
+		"releaseVersion": "Transient",
+		"tag":            settings.GetImageTag(manifest.AppMetadata),
+		"environment":    ctx.Env.Name,
 	}
 	if manifest.PinnedReleaseVersion != nil {
-		bosunAppTemplateValues.ReleaseVersion = manifest.PinnedReleaseVersion.String()
+		bosunAppTemplateValues["releaseVersion"] = manifest.PinnedReleaseVersion.String()
 	}
 
 	appDeploySettings.ValueSets = append([]ValueSet{{

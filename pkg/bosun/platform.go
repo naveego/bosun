@@ -5,6 +5,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
@@ -47,6 +48,7 @@ type Platform struct {
 	Apps                         []*AppMetadata              `yaml:"apps"`
 	ZenHubConfig                 *zenhub.Config              `yaml:"zenHubConfig"`
 	NextReleaseName              string                      `yaml:"nextReleaseName,omitempty"`
+	Clusters                     []kube.KubeConfigDefinition `yaml:"clusters"`
 	releaseManifests             map[string]*ReleaseManifest `yaml:"-"`
 }
 
@@ -100,6 +102,15 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	return err
+}
+
+func (p *Platform) GetCluster(name string) (*kube.KubeConfigDefinition, error) {
+	for _, cluster := range p.Clusters {
+		if cluster.Name == name {
+			return &cluster, nil
+		}
+	}
+	return nil, errors.Errorf("no cluster found with name %q", name)
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
