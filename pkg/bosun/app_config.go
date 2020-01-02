@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
@@ -159,10 +160,10 @@ func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[
 func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 type appValuesConfigV1 struct {
-	Set     map[string]*CommandValue `yaml:"set,omitempty" json:"set,omitempty"`
-	Dynamic map[string]*CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
-	Files   []string                 `yaml:"files,omitempty" json:"files,omitempty"`
-	Static  Values                   `yaml:"static,omitempty" json:"static,omitempty"`
+	Set     map[string]*command.CommandValue `yaml:"set,omitempty" json:"set,omitempty"`
+	Dynamic map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
+	Files   []string                         `yaml:"files,omitempty" json:"files,omitempty"`
+	Static  Values                           `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
 func (a *AppConfig) SetParent(fragment *File) {
@@ -201,7 +202,7 @@ func (a ValueSet) Combine(other ValueSet) ValueSet {
 	_ = yaml.Unmarshal(y, &other)
 
 	if out.Dynamic == nil {
-		out.Dynamic = map[string]*CommandValue{}
+		out.Dynamic = map[string]*command.CommandValue{}
 	}
 	if out.Static == nil {
 		out.Static = Values{}

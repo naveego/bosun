@@ -7,6 +7,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -202,8 +203,8 @@ func (c BosunContext) GetParameters() cli.Parameters {
 	return cli.Parameters{}
 }
 
-func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
-	tv := pkg.TemplateValues{
+func (c BosunContext) TemplateValues() templating.TemplateValues {
+	tv := templating.TemplateValues{
 		Cluster: c.Env.Cluster,
 		Domain:  c.Env.Domain,
 	}
@@ -226,7 +227,7 @@ func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
 	}
 
 	return &pkg.TemplateHelper{
-		TemplateValues: c.GetTemplateArgs(),
+		TemplateValues: c.TemplateValues(),
 		VaultClient:    vaultClient,
 	}, nil
 }

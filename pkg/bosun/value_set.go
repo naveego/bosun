@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -10,9 +11,9 @@ const ValueSetAll = "all"
 
 type ValueSet struct {
 	ConfigShared `yaml:",inline"`
-	Dynamic      map[string]*CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
-	Files        []string                 `yaml:"files,omitempty" json:"files,omitempty"`
-	Static       Values                   `yaml:"static,omitempty" json:"static,omitempty"`
+	Dynamic      map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
+	Files        []string                         `yaml:"files,omitempty" json:"files,omitempty"`
+	Static       Values                           `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
 func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -35,7 +36,7 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			v1.Static = Values{}
 		}
 		if v1.Set == nil {
-			v1.Set = map[string]*CommandValue{}
+			v1.Set = map[string]*command.CommandValue{}
 		}
 		a.Files = v1.Files
 		a.Static = v1.Static

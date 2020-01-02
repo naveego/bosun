@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh/terminal"
@@ -23,7 +24,7 @@ import (
 )
 
 type TemplateHelper struct {
-	TemplateValues TemplateValues
+	TemplateValues templating.TemplateValues
 	VaultClient    *vault.Client
 }
 

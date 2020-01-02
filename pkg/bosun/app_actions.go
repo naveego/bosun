@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"github.com/hashicorp/go-getter/helper/url"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/mongo"
-	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -18,7 +19,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"text/template"
 	"time"
 )
 
@@ -214,7 +214,7 @@ func (a *VaultAction) Execute(ctx BosunContext) error {
 		layoutBytes, _ = yaml.Marshal(a.Layout)
 	}
 
-	templateArgs := ctx.GetTemplateArgs()
+	templateArgs := ctx.TemplateValues()
 
 	vaultLayout, err = pkg.LoadVaultLayoutFromBytes("action", layoutBytes, templateArgs, vaultClient)
 	if err != nil {
@@ -256,7 +256,7 @@ type ScriptAction string
 func (a *ScriptAction) Execute(ctx BosunContext) error {
 
 	script := *a
-	cmd := Command{
+	cmd := command.Command{
 		Script: string(script),
 	}
 
@@ -277,9 +277,9 @@ func (a BosunAction) Execute(ctx BosunContext) error {
 }
 
 type TestAction struct {
-	Exec *Command `yaml:"exec,omitempty" json:"exec,omitempty"`
-	HTTP string   `yaml:"http,omitempty" json:"http,omitempty"`
-	TCP  string   `yaml:"tcp,omitempty" json:"tcp,omitempty"`
+	Exec *command.Command `yaml:"exec,omitempty" json:"exec,omitempty"`
+	HTTP string           `yaml:"http,omitempty" json:"http,omitempty"`
+	TCP  string           `yaml:"tcp,omitempty" json:"tcp,omitempty"`
 }
 
 func (t *TestAction) Execute(ctx BosunContext) error {
@@ -294,7 +294,7 @@ func (t *TestAction) Execute(ctx BosunContext) error {
 	}
 
 	if t.HTTP != "" {
-		target, err := renderTemplate(ctx, t.HTTP)
+		target, err := templating.RenderTemplate(t.HTTP, ctx.TemplateValues())
 		c := http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -320,7 +320,7 @@ func (t *TestAction) Execute(ctx BosunContext) error {
 	}
 
 	if t.TCP != "" {
-		target, err := renderTemplate(ctx, t.HTTP)
+		target, err := templating.RenderTemplate(t.HTTP, ctx.TemplateValues())
 		d := new(net.Dialer)
 		conn, err := d.DialContext(ctx.Ctx(), "tcp", target)
 		if conn != nil {
@@ -330,24 +330,6 @@ func (t *TestAction) Execute(ctx BosunContext) error {
 	}
 
 	return errors.New("test must have exec, http, or tcp element")
-}
-
-func renderTemplate(ctx BosunContext, tmpl string) (string, error) {
-
-	if !strings.Contains(tmpl, "{{") {
-		return tmpl, nil
-	}
-	t, err := template.New("").Parse(tmpl)
-	if err != nil {
-		return "", err
-	}
-
-	templateArgs := ctx.GetTemplateArgs()
-	w := new(strings.Builder)
-	err = t.Execute(w, templateArgs)
-
-	return w.String(), err
-
 }
 
 type MongoAction struct {
@@ -362,9 +344,9 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 
 	if a.Script != "" {
 
-		script, err := util.RenderTemplate(a.Script, ctx.GetTemplateArgs())
+		script, err := templating.RenderTemplate(a.Script, ctx.TemplateValues())
 		if err != nil {
-			return errors.Wrap(err, "render script")
+			return errors.Wrap(err, "RenderEnvironmentSettingScript script")
 		}
 
 		cmd := mongo.ScriptCommand{

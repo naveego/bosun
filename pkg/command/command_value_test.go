@@ -1,8 +1,9 @@
-package bosun_test
+package command_test
 
 import (
 	"fmt"
 	. "github.com/naveego/bosun/pkg/bosun"
+	. "github.com/naveego/bosun/pkg/command"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -25,7 +26,7 @@ var _ = Describe("CommandValue", func() {
 	var ctx BosunContext
 
 	BeforeEach(func() {
-		ctx = BosunContext{Log: logrus.NewEntry(logrus.StandardLogger())}
+		ctx = BosunContext{}.WithLog(logrus.NewEntry(logrus.StandardLogger()))
 	})
 
 	Describe("marshalling", func() {

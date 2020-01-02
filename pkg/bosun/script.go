@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"os"
@@ -14,11 +15,11 @@ import (
 
 type Script struct {
 	ConfigShared `yaml:",inline"`
-	File         *File         `yaml:"-" json:"-"`
-	Steps        []ScriptStep  `yaml:"steps,omitempty" json:"steps,omitempty"`
-	Literal      *Command      `yaml:"literal,omitempty" json:"literal,omitempty"`
-	BranchFilter string        `yaml:"branchFilter,omitempty" json:"branchFilter,omitempty"`
-	Params       []ScriptParam `yaml:"params,omitempty" json:"params,omitempty"`
+	File         *File            `yaml:"-" json:"-"`
+	Steps        []ScriptStep     `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Literal      *command.Command `yaml:"literal,omitempty" json:"literal,omitempty"`
+	BranchFilter string           `yaml:"branchFilter,omitempty" json:"branchFilter,omitempty"`
+	Params       []ScriptParam    `yaml:"params,omitempty" json:"params,omitempty"`
 }
 
 type ScriptParam struct {
@@ -49,7 +50,7 @@ type ScriptStep struct {
 	// will be run in the directory containing this script.
 	Bosun []string `yaml:"bosun,flow,omitempty" json:"bosun,omitempty"`
 	// Cmd is a standard shell command.
-	Cmd *Command `yaml:"cmd,omitempty" json:"cmd,omitempty"`
+	Cmd *command.Command `yaml:"cmd,omitempty" json:"cmd,omitempty"`
 	// Action is an action to execute in the current context.
 	Action *AppAction `yaml:"action,omitempty" json:"action,omitempty"`
 }
@@ -101,7 +102,7 @@ type scriptStepV1 struct {
 	Command     string                 `yaml:"command" json:"command"`
 	Args        []string               `yaml:"args" json:"args"`
 	Flags       map[string]interface{} `yaml:"flags" json:"flags"`
-	Literal     *CommandValue          `yaml:"literal,omitempty" json:"literal,omitempty"`
+	Literal     *command.CommandValue  `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
 func (s *Script) Execute(ctx BosunContext, steps ...int) error {
@@ -135,7 +136,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 	}
 
 	if _, err = env.Render(ctx); err != nil {
-		return errors.Wrap(err, "render environment")
+		return errors.Wrap(err, "RenderEnvironmentSettingScript environment")
 	}
 
 	if len(s.Params) > 0 {
@@ -157,7 +158,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 
 	if s.Literal != nil {
 		ctx.Log().Debug("Executing literal script, not bosun script.")
-		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
+		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), command.CommandOpts{StreamOutput: true})
 		if err != nil {
 			return err
 		}
@@ -212,7 +213,7 @@ func (s ScriptStep) Execute(ctx BosunContext, index int) error {
 	if s.Cmd != nil {
 		log.Debug("Step is a shell command, not a bosun command.")
 
-		_, err := s.Cmd.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
+		_, err := s.Cmd.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), command.CommandOpts{StreamOutput: true})
 		return err
 	}
 

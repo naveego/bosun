@@ -3,6 +3,7 @@ package bosun
 import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/pkg/errors"
 	"log"
 	"os"
@@ -28,16 +29,16 @@ type EnvironmentConfig struct {
 }
 
 type EnvironmentVariable struct {
-	FromPath string        `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
-	Name     string        `yaml:"name" json:"name"`
-	From     *CommandValue `yaml:"from" json:"from"`
-	Value    string        `yaml:"-" json:"-"`
+	FromPath string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
+	Name     string                `yaml:"name" json:"name"`
+	From     *command.CommandValue `yaml:"from" json:"from"`
+	Value    string                `yaml:"-" json:"-"`
 }
 
 type EnvironmentCommand struct {
-	FromPath string        `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
-	Name     string        `yaml:"name" json:"name"`
-	Exec     *CommandValue `yaml:"exec,omitempty" json:"exec,omitempty"`
+	FromPath string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
+	Name     string                `yaml:"name" json:"name"`
+	Exec     *command.CommandValue `yaml:"exec,omitempty" json:"exec,omitempty"`
 }
 
 type HelmRepo struct {
@@ -161,7 +162,7 @@ func (e *EnvironmentConfig) Render(ctx BosunContext) (string, error) {
 		return "", err
 	}
 
-	s := render(vars)
+	s := command.RenderEnvironmentSettingScript(vars)
 
 	return s, nil
 }

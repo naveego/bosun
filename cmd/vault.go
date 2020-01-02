@@ -19,6 +19,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -58,7 +59,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			return err
 		}
 
-		templateArgs := pkg.TemplateValues{
+		templateArgs := templating.TemplateValues{
 			Cluster: viper.GetString(ArgGlobalCluster),
 			Domain:  viper.GetString(ArgGlobalDomain),
 			Values: map[string]interface{}{

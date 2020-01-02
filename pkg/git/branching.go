@@ -2,7 +2,7 @@ package git
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"regexp"
 	"strconv"
@@ -127,7 +127,7 @@ func (b BranchSpec) GetBranchType(branch BranchName) (BranchType, error) {
 }
 
 func (b BranchSpec) RenderRelease(parameters BranchParts) (string, error) {
-	template, err := util.RenderTemplate(b.Release, parameters.Map())
+	template, err := templating.RenderTemplate(b.Release, parameters.Map())
 	return template, err
 }
 
@@ -141,7 +141,7 @@ func (b BranchSpec) GetReleaseNameAndVersion(branch BranchName) (name, version s
 }
 
 func (b BranchSpec) RenderFeature(name string, number interface{}) (string, error) {
-	template, err := util.RenderTemplate(b.Feature, map[string]string{
+	template, err := templating.RenderTemplate(b.Feature, map[string]string{
 		string(BranchPartSlug):   name,
 		string(BranchPartNumber): fmt.Sprintf("%v", number),
 	})
@@ -176,7 +176,7 @@ func decomposeBranch(template string, branch BranchName) (BranchParts, error) {
 		string(BranchPartName):    fmt.Sprintf(`(?P<%s>[^/]+)`, BranchPartName),
 	}
 
-	template, err := util.RenderTemplate(template, in)
+	template, err := templating.RenderTemplate(template, in)
 	if err != nil {
 		return nil, errors.Wrapf(err, "invalid template %q", template)
 	}

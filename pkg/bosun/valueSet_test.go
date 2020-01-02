@@ -2,6 +2,7 @@ package bosun_test
 
 import (
 	. "github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/command"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
@@ -9,7 +10,7 @@ import (
 
 var _ = Describe("ValueSetMap", func() {
 
-	input := yamlize(
+	input := command.yamlize(
 		// language=yaml
 		`
   green:

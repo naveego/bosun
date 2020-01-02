@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -19,14 +20,14 @@ type Workspace struct {
 	CurrentRelease      string                 `yaml:"currentRelease" json:"currentRelease"`
 	Imports             []string               `yaml:"imports,omitempty" json:"imports"`
 	GitRoots            []string               `yaml:"gitRoots" json:"gitRoots"`
-	GithubToken         *CommandValue          `yaml:"githubToken" json:"githubToken"`
+	GithubToken         *command.CommandValue  `yaml:"githubToken" json:"githubToken"`
 	ScratchDir          string                 `yaml:"scratchDir" json:"scratchDir"`
 	HostIPInMinikube    string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
 	AppStates           AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
 	ClonePaths          map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
 	MergedBosunFile     *File                  `yaml:"-" json:"merged"`
 	ImportedBosunFiles  map[string]*File       `yaml:"-" json:"imported"`
-	ZenhubToken         *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
+	ZenhubToken         *command.CommandValue  `yaml:"zenhubToken" json:"zenhubToken"`
 	Minikube            *kube.MinikubeConfig   `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	LocalRepos          map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
 	GithubCloneProtocol string                 `yaml:"githubCloneProtocol"`

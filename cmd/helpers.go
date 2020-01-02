@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
@@ -696,10 +697,10 @@ func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]bosun.Val
 	}
 	if len(valueOverrides) > 0 {
 		overrideValueSet := bosun.ValueSet{
-			Dynamic: map[string]*bosun.CommandValue{},
+			Dynamic: map[string]*command.CommandValue{},
 		}
 		for k, v := range valueOverrides {
-			overrideValueSet.Dynamic[k] = &bosun.CommandValue{Value: v}
+			overrideValueSet.Dynamic[k] = &command.CommandValue{Value: v}
 		}
 		valueSets = append(valueSets, overrideValueSet)
 	}

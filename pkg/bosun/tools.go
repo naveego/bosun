@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/hashicorp/go-getter"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
@@ -101,8 +102,8 @@ func (t ToolDef) RunInstall(ctx BosunContext) error {
 
 func (i Installer) Execute(ctx BosunContext) error {
 	if i.Script != "" {
-		cmd := &Command{Script: i.Script}
-		_, err := cmd.Execute(ctx, CommandOpts{StreamOutput: true})
+		cmd := &command.Command{Script: i.Script}
+		_, err := cmd.Execute(ctx, command.CommandOpts{StreamOutput: true})
 		return err
 	}
 

@@ -8,6 +8,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/mirror"
@@ -973,8 +974,8 @@ func (b *Bosun) GetZenhubToken() (string, error) {
 		fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
 		script := pkg.RequestStringFromUser("Command")
 
-		ws.ZenhubToken = &CommandValue{
-			Command: Command{
+		ws.ZenhubToken = &command.CommandValue{
+			Command: command.Command{
 				Script: script,
 			},
 		}
@@ -1023,8 +1024,8 @@ func (b *Bosun) GetGithubToken() (string, error) {
 			fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
 			script := pkg.RequestStringFromUser("Command")
 
-			ws.GithubToken = &CommandValue{
-				Command: Command{
+			ws.GithubToken = &command.CommandValue{
+				Command: command.Command{
 					Script: script,
 				},
 			}

@@ -1,6 +1,6 @@
 // +build windows
 
-package bosun
+package command
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func  render(vars map[string]string) string {
+func RenderEnvironmentSettingScript(vars map[string]string) string {
 	w := new(strings.Builder)
 
 	for k, v := range vars {
@@ -18,8 +18,7 @@ func  render(vars map[string]string) string {
 	return w.String()
 }
 
-
-func getCommandForScript(file string) *pkg.Command {
+func GetCommandForScript(file string) *pkg.Command {
 	cmd := pkg.NewCommand("cmd", "/q", "/c", file)
 	return cmd
 }

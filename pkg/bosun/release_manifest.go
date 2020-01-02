@@ -5,6 +5,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -29,7 +30,7 @@ func (r ReleaseMetadata) String() string {
 }
 
 func (r ReleaseMetadata) GetReleaseBranchName(branchSpec git.BranchSpec) (string, error) {
-	return util.RenderTemplate(branchSpec.Release, r)
+	return templating.RenderTemplate(branchSpec.Release, r)
 }
 
 type releaseMetadataSorting []*ReleaseMetadata
