@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/mongo"
+	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
@@ -24,7 +25,7 @@ type E2ETestConfig struct {
 	E2EBookendScripts `yaml:",inline"`
 	Dependencies      []*Dependency          `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
 	Variables         map[string]interface{} `yaml:"variables,omitempty" json:"variables"`
-	Steps             []ScriptStep           `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Steps             []script.ScriptStep    `yaml:"steps,omitempty" json:"steps,omitempty"`
 }
 
 type E2EContext struct {
@@ -36,11 +37,11 @@ type E2EContext struct {
 const e2eContextKey = "e2e.context"
 
 func WithE2EContext(ctx BosunContext, e2eCtx E2EContext) BosunContext {
-	return ctx.WithKeyedValue(e2eContextKey, e2eCtx)
+	return ctx.WithValue(e2eContextKey, e2eCtx).(BosunContext)
 }
 
 func GetE2EContext(ctx BosunContext) E2EContext {
-	x := ctx.GetKeyedValue(e2eContextKey)
+	x := ctx.GetValue(e2eContextKey)
 	if x != nil {
 		return x.(E2EContext)
 	}
@@ -75,8 +76,8 @@ type E2ESuite struct {
 }
 
 type E2EBookendScripts struct {
-	SetupScript    *Script `yaml:"setupScript,omitempty" json:"setupScript"`
-	TeardownScript *Script `yaml:"teardownScript,omitempty" json:"teardownScript,omitempty"`
+	SetupScript    *script.Script `yaml:"setupScript,omitempty" json:"setupScript"`
+	TeardownScript *script.Script `yaml:"teardownScript,omitempty" json:"teardownScript,omitempty"`
 }
 
 func (e E2EBookendScripts) Setup(ctx BosunContext) error {
@@ -146,7 +147,7 @@ func (s *E2ESuite) LoadTests(ctx BosunContext) error {
 func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) {
 
 	runID := xid.New().String()
-	releaseValues := &PersistableValues{
+	releaseValues := &values.PersistableValues{
 		Values: values.Values{
 			"e2e": values.Values{
 				"runID": runID,
@@ -155,8 +156,8 @@ func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) 
 	}
 
 	ctx = ctx.WithDir(s.FromPath).
-		WithLogField("suite", s.Name).
-		WithPersistableValues(releaseValues)
+		WithLogField("suite", s.Name).(BosunContext).
+		WithPersistableValues(releaseValues).(BosunContext)
 
 	err := s.LoadTests(ctx)
 	if err != nil {
@@ -184,7 +185,7 @@ func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) 
 			return nil, errors.Wrapf(err, "could not prepare suite mongo connection %q", k)
 		}
 		s.PreparedConnections = append(s.PreparedConnections, p)
-		run.Ctx = run.Ctx.WithKeyedValue(k, v)
+		run.Ctx = run.Ctx.WithValue(k, v).(BosunContext)
 	}
 
 	// get the configs which should be in this run

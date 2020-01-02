@@ -3,6 +3,7 @@ package command
 import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
@@ -74,11 +75,11 @@ Convert:
 
 type ExecutionContext interface {
 	cli.ParametersGetter
-	cli.Pwder
+	cli.WithPwder
 	cli.EnvironmentVariableGetter
 	templating.TemplateValuer
-	util.Logger
-	util.Ctxer
+	util.WithLogFielder
+	core.Ctxer
 }
 
 func (d *Command) String() string {

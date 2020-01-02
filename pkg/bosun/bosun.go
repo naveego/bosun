@@ -12,6 +12,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/mirror"
+	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
@@ -205,10 +206,10 @@ func (b *Bosun) GetVaultClient() (*vault.Client, error) {
 	return b.vaultClient, err
 }
 
-func (b *Bosun) GetScripts() []*Script {
+func (b *Bosun) GetScripts() []*script.Script {
 	env := b.GetCurrentEnvironment()
 
-	scripts := make([]*Script, len(env.Scripts))
+	scripts := make([]*script.Script, len(env.Scripts))
 	copy(scripts, env.Scripts)
 	copy(scripts, b.GetMergedConfig().Scripts)
 	for _, app := range b.GetAppsSortedByName() {
@@ -221,7 +222,7 @@ func (b *Bosun) GetScripts() []*Script {
 	return scripts
 }
 
-func (b *Bosun) GetScript(name string) (*Script, error) {
+func (b *Bosun) GetScript(name string) (*script.Script, error) {
 	for _, script := range b.GetScripts() {
 		if script.Name == name {
 			return script, nil

@@ -7,6 +7,8 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/ioc"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
@@ -26,13 +28,14 @@ type BosunContext struct {
 	Env    *EnvironmentConfig
 	Dir    string
 	log    *logrus.Entry
-	Values *PersistableValues
+	Values *values.PersistableValues
 	// Release         *Deploy
 	AppRepo         *App
 	AppRelease      *AppDeploy
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
 	contextValues   map[string]interface{}
+	provider        ioc.Provider
 }
 
 // NewTestBosunContext creates a new BosunContext for testing purposes.
@@ -70,7 +73,7 @@ func (c BosunContext) Ctx() context.Context {
 	return c.ctx
 }
 
-func (c BosunContext) WithKeyedValue(key string, value interface{}) BosunContext {
+func (c BosunContext) WithValue(key string, value interface{}) core.StringKeyValuer {
 	c.LogLine(1, "[Context] Set value at %q to %T", key, value)
 	kvs := map[string]interface{}{}
 	for k, v := range c.contextValues {
@@ -81,8 +84,14 @@ func (c BosunContext) WithKeyedValue(key string, value interface{}) BosunContext
 	return c
 }
 
-func (c BosunContext) GetKeyedValue(key string) interface{} {
-	return c.contextValues[key]
+func (c BosunContext) GetValue(key string, defaultValue ...interface{}) interface{} {
+	if out, ok := c.contextValues[key]; ok {
+		return out
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	panic(fmt.Sprintf("no value with key %q", key))
 }
 
 //
@@ -114,7 +123,7 @@ func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 	return c.WithDir(a.AppConfig.FromPath)
 }
 
-func (c BosunContext) WithPersistableValues(v *PersistableValues) BosunContext {
+func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interface{} {
 	c.Values = v
 	c.valuesAsEnvVars = nil
 
@@ -146,7 +155,7 @@ func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
 	return c
 }
 
-func (c BosunContext) WithLogField(key string, value interface{}) BosunContext {
+func (c BosunContext) WithLogField(key string, value interface{}) util.WithLogFielder {
 	c.log = c.Log().WithField(key, value)
 	return c
 }
@@ -155,16 +164,12 @@ func (c BosunContext) GetVaultClient() (*vault.Client, error) {
 	return c.Bosun.GetVaultClient()
 }
 
-func (c BosunContext) IsDryRun() bool {
-	return c.Bosun.params.DryRun
-}
-
 func (c BosunContext) WithContext(ctx context.Context) BosunContext {
 	c.ctx = ctx
 	return c
 }
 
-func (c BosunContext) WithTimeout(timeout time.Duration) BosunContext {
+func (c BosunContext) WithTimeout(timeout time.Duration) core.Ctxer {
 	ctx, _ := context.WithTimeout(c.Ctx(), timeout)
 	return c.WithContext(ctx)
 }
@@ -240,7 +245,7 @@ func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
 }
 
 func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
-	if c.Log != nil {
+	if c.Log() != nil {
 		_, file, line, _ := runtime.Caller(skip)
 		c.Log().WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
 	}
@@ -320,6 +325,7 @@ func (c BosunContext) GetDomain() string {
 	}
 	return ""
 }
+
 func (c BosunContext) GetCluster() string {
 	if c.Env != nil {
 		return c.Env.Cluster
@@ -341,4 +347,56 @@ func (c BosunContext) Pwd() string {
 	}
 	pwd, _ := os.Getwd()
 	return pwd
+}
+
+func (c BosunContext) WithPwd(pwd string) cli.WithPwder {
+	return c.WithDir(pwd)
+}
+
+func (c BosunContext) WithStringValue(key string, value string) core.StringKeyValuer {
+	if c.contextValues == nil {
+		c.contextValues = map[string]interface{}{}
+	}
+	c.contextValues[key] = value
+	return c
+}
+
+func (c BosunContext) GetStringValue(key string, defaultValue ...string) string {
+	switch key {
+	case core.KeyEnv:
+		return c.Env.Name
+	case core.KeyCluster:
+		return c.GetCluster()
+	case core.KeyDomain:
+		return c.GetDomain()
+	}
+
+	if out, ok := c.contextValues[key].(string); ok {
+		return out
+	}
+
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+
+	panic(fmt.Sprintf("no value in context under key %q", key))
+}
+
+func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
+	if c.provider == nil {
+		var container = ioc.NewContainer()
+		container.BindFactory(c.GetVaultClient)
+
+		c.provider = container
+	}
+
+	return c.provider.Provide(out, options...)
+}
+
+func (c BosunContext) EnsureEnvironment() error {
+	return c.Env.Ensure(c)
+}
+
+func (c BosunContext) GetReleaseValues() *values.PersistableValues {
+	return c.Values
 }

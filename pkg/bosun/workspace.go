@@ -56,14 +56,17 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		w.LocalRepos = map[string]*LocalRepo{}
 	}
 
-	if w.Minikube.DiskSize == "" {
-		w.Minikube.DiskSize = "40g"
-	}
-	if w.Minikube.Driver == "" {
-		w.Minikube.Driver = "virtualbox"
-	}
-	if w.Minikube.HostIP == "" {
-		w.Minikube.HostIP = "192.168.99.1"
+	if w.Minikube != nil {
+
+		if w.Minikube.DiskSize == "" {
+			w.Minikube.DiskSize = "40g"
+		}
+		if w.Minikube.Driver == "" {
+			w.Minikube.Driver = "virtualbox"
+		}
+		if w.Minikube.HostIP == "" {
+			w.Minikube.HostIP = "192.168.99.1"
+		}
 	}
 	if w.ScratchDir == "" {
 		w.ScratchDir = "/tmp/bosun"

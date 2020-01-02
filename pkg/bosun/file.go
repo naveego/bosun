@@ -5,6 +5,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/mirror"
+	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -23,7 +24,7 @@ type File struct {
 	Config       *Workspace             `yaml:"-" json:"-"`
 	Tools        []*ToolDef             `yaml:"tools,omitempty" json:"tools"`
 	TestSuites   []*E2ESuiteConfig      `yaml:"testSuites,omitempty" json:"testSuites,omitempty"`
-	Scripts      []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Scripts      []*script.Script       `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	ValueSets    []*values.ValueSet     `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 	Platforms    []*Platform            `yaml:"platforms,omitempty" json:"platforms,omitempty"`
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -84,7 +85,7 @@ value`}}, `dv:
 		)
 
 		It("should assign string to Value", func() {
-			input := yamlize(`
+			input := util.Yamlize(`
 dv: some-value
 `)
 			var sut container
@@ -96,7 +97,7 @@ dv: some-value
 		})
 
 		It("should assign array to Command", func() {
-			input := yamlize(`
+			input := util.Yamlize(`
 dv: [some,command]
 `)
 			var sut container
@@ -110,7 +111,7 @@ dv: [some,command]
 		})
 
 		It("should assign multiline to script", func() {
-			input := yamlize(`
+			input := util.Yamlize(`
 dv: |
   some
   script
@@ -148,14 +149,14 @@ echo %testVar%
 			})
 
 			It("should include env values", func() {
-				ctx = ctx.WithPersistableValues(&PersistableValues{
+				ctx = ctx.WithPersistableValues(&values.PersistableValues{
 					Values: values.Values{
 						"test": values.Values{
 							"nested": "value",
 						},
 						"APP_VERSION": "1.2.3",
 					},
-				})
+				}).(BosunContext)
 				sut := &CommandValue{
 					Command: Command{Command: []string{"env"}},
 				}

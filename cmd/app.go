@@ -20,10 +20,12 @@ import (
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/kube"
+	script2 "github.com/naveego/bosun/pkg/script"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
@@ -926,7 +928,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 			panic("will not happen because of mustGetApp")
 		}
 
-		var script *bosun.Script
+		var script *script2.Script
 		var scriptNames []string
 		for _, s := range app.Scripts {
 			scriptNames = append(scriptNames, s.Name)
@@ -943,7 +945,7 @@ var appScriptCmd = addCommand(appCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ctx = ctx.WithPersistableValues(values)
+		ctx = ctx.WithPersistableValues(values).(bosun.BosunContext)
 
 		err = script.Execute(ctx, scriptStepsSlice...)
 
@@ -1005,7 +1007,7 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 			panic("will not happen because of mustGetApp")
 		}
 
-		var action *bosun.AppAction
+		var action *actions.AppAction
 		var actionNames []string
 		for _, a := range app.Actions {
 			actionNames = append(actionNames, a.Name)
@@ -1024,7 +1026,7 @@ var appActionCmd = addCommand(appCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ctx = ctx.WithPersistableValues(values)
+		ctx = ctx.WithPersistableValues(values).(bosun.BosunContext)
 
 		err = action.Execute(ctx)
 

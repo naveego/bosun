@@ -1,7 +1,7 @@
-package bosun_test
+package actions_test
 
 import (
-	. "github.com/naveego/bosun/pkg/bosun"
+	. "github.com/naveego/bosun/pkg/actions"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
@@ -46,7 +46,7 @@ var _ = Describe("AppActions", func() {
 				URL:    "https://google.com",
 			}
 
-			ctx := NewTestBosunContext()
+			ctx := NewTestActionContext()
 
 			Expect(sut.Execute(ctx)).To(Succeed())
 		})
@@ -64,7 +64,7 @@ Accept-Language: en-US,en;q=0.9
 `,
 			}
 
-			ctx := NewTestBosunContext()
+			ctx := NewTestActionContext()
 
 			Expect(sut.Execute(ctx)).To(Succeed())
 		})

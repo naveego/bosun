@@ -6,6 +6,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/kube"
@@ -17,8 +18,6 @@ import (
 
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -313,7 +312,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	if desired.Status == StatusDeployed {
 		for i := range a.AppConfig.Actions {
 			action := a.AppConfig.Actions[i]
-			if strings.Contains(string(action.When), ActionBeforeDeploy) {
+			if strings.Contains(string(action.When), actions.ActionBeforeDeploy) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
 					Description: action.Description,
@@ -352,7 +351,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	if desired.Status == StatusDeployed {
 		for i := range a.AppConfig.Actions {
 			action := a.AppConfig.Actions[i]
-			if strings.Contains(string(action.When), ActionAfterDeploy) {
+			if strings.Contains(string(action.When), actions.ActionAfterDeploy) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
 					Description: action.Description,
@@ -368,46 +367,8 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 }
 
-type PersistableValues struct {
-	Values   values.Values
-	FilePath string
-}
-
-func (r *PersistableValues) PersistValues() (string, error) {
-	if r.FilePath == "" {
-
-		// b, err := r.Values.YAML()
-		// if err != nil {
-		// 	return "", err
-		// }
-		// r.FilePath = server.GetDefaultServer().AddValueFile(uuid.New().String(), []byte(b))
-
-		tmp, err := ioutil.TempFile(os.TempDir(), "bosun-release-*.yaml")
-		if err != nil {
-			return "", err
-		}
-		defer tmp.Close()
-		err = r.Values.Encode(tmp)
-		if err != nil {
-			return "", err
-		}
-		r.FilePath = tmp.Name()
-		return r.FilePath, nil
-	}
-	return r.FilePath, nil
-
-}
-
-func (r *PersistableValues) Cleanup() {
-	err := os.Remove(r.FilePath)
-	if err != nil && !os.IsNotExist(err) {
-		pkg.Log.WithError(err).WithField("path", r.FilePath).
-			Fatal("Failed to clean up persisted values file, which make contain secrets. You must manually delete this file.")
-	}
-}
-
-func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*PersistableValues, error) {
-	r := &PersistableValues{
+func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValues, error) {
+	r := &values.PersistableValues{
 		Values: values.Values{},
 	}
 
@@ -478,7 +439,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	}
 	defer values.Cleanup()
 
-	ctx = ctx.WithPersistableValues(values)
+	ctx = ctx.WithPersistableValues(values).(BosunContext)
 
 	// clear helm release cache after work is done
 	defer func() { a.helmRelease = nil }()
@@ -892,10 +853,10 @@ func (a *AppDeploy) getHelmNamespaceArgs(ctx BosunContext) []string {
 }
 
 func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
-	if ctx.IsVerbose() {
+	if ctx.GetParameters().Verbose {
 		return []string{"--debug"}
 	}
-	if ctx.IsDryRun() {
+	if ctx.GetParameters().DryRun {
 		return []string{"--dry-run"}
 	}
 	return []string{}

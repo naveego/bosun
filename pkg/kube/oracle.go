@@ -18,7 +18,7 @@ type ConfigureOracleClusterCommand struct {
 func (oc OracleClusterConfig) ConfigureKubernetes(ctx CommandContext) error {
 
 	if contextIsDefined(ctx.Name) && !ctx.Force {
-		ctx.Log.Infof("Kubernetes context %q already exists (use --force to configure anyway).")
+		ctx.Log.Infof("Kubernetes context %q already exists (use --force to configure anyway).", ctx.Name)
 		return nil
 	}
 

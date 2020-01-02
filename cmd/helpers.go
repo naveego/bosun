@@ -644,7 +644,7 @@ func printOutput(out interface{}, columns ...string) error {
 
 }
 
-func getResolvedValuesFromApp(b *bosun.Bosun, app *bosun.App) (*bosun.PersistableValues, error) {
+func getResolvedValuesFromApp(b *bosun.Bosun, app *bosun.App) (*values.PersistableValues, error) {
 	ctx := b.NewContext().WithDir(app.FromPath)
 
 	appManifest, err := app.GetManifest(ctx)
@@ -654,7 +654,7 @@ func getResolvedValuesFromApp(b *bosun.Bosun, app *bosun.App) (*bosun.Persistabl
 	return getResolvedValuesFromAppManifest(b, appManifest)
 }
 
-func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppManifest) (*bosun.PersistableValues, error) {
+func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppManifest) (*values.PersistableValues, error) {
 
 	ctx := b.NewContext()
 

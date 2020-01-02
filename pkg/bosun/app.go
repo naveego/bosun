@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	actions2 "github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
@@ -736,11 +737,11 @@ func (a *App) ExportValues(ctx BosunContext) (values.ValueSetMap, error) {
 	return valueCopy, nil
 }
 
-func (a *App) ExportActions(ctx BosunContext) ([]*AppAction, error) {
+func (a *App) ExportActions(ctx BosunContext) ([]*actions2.AppAction, error) {
 	var err error
-	var actions []*AppAction
+	var actions []*actions2.AppAction
 	for _, action := range a.Actions {
-		if action.When == ActionManual {
+		if action.When == actions2.ActionManual {
 			ctx.Log().Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
 		} else {
 			err = action.MakeSelfContained(ctx)

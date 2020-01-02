@@ -7,7 +7,3 @@ type Daemon struct {
 
 type Client struct {
 }
-
-func NewClient() (*Client, error) {
-
-}

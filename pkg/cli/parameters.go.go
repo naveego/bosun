@@ -25,6 +25,11 @@ type Pwder interface {
 	Pwd() string
 }
 
+type WithPwder interface {
+	Pwder
+	WithPwd(pwd string) WithPwder
+}
+
 // EnvironmentVariableGetter can return a map of environment variables.
 type EnvironmentVariableGetter interface {
 	GetEnvironmentVariables() map[string]string

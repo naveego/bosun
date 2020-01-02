@@ -1,11 +1,13 @@
-package bosun
+package script
 
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"os"
 	"os/exec"
@@ -14,9 +16,14 @@ import (
 	"strings"
 )
 
+type ScriptContext interface {
+	actions.ActionContext
+	EnsureEnvironment() error
+	GetReleaseValues() *values.PersistableValues
+}
+
 type Script struct {
 	core.ConfigShared `yaml:",inline"`
-	File              *File            `yaml:"-" json:"-"`
 	Steps             []ScriptStep     `yaml:"steps,omitempty" json:"steps,omitempty"`
 	Literal           *command.Command `yaml:"literal,omitempty" json:"literal,omitempty"`
 	BranchFilter      string           `yaml:"branchFilter,omitempty" json:"branchFilter,omitempty"`
@@ -53,7 +60,7 @@ type ScriptStep struct {
 	// Cmd is a standard shell command.
 	Cmd *command.Command `yaml:"cmd,omitempty" json:"cmd,omitempty"`
 	// Action is an action to execute in the current context.
-	Action *AppAction `yaml:"action,omitempty" json:"action,omitempty"`
+	Action *actions.AppAction `yaml:"action,omitempty" json:"action,omitempty"`
 }
 
 func (s *ScriptStep) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -106,11 +113,10 @@ type scriptStepV1 struct {
 	Literal     *command.CommandValue  `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
-func (s *Script) Execute(ctx BosunContext, steps ...int) error {
+func (s *Script) Execute(ctx ScriptContext, steps ...int) error {
 	var err error
 
-	ctx = ctx.WithDir(s.FromPath)
-	env := ctx.Env
+	ctx = ctx.WithPwd(s.FromPath).(ScriptContext)
 
 	if s.BranchFilter != "" {
 		branchRE, err := regexp.Compile(s.BranchFilter)
@@ -132,19 +138,15 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 		}
 	}
 
-	if err = env.Ensure(ctx); err != nil {
+	if err = ctx.EnsureEnvironment(); err != nil {
 		return errors.Wrap(err, "ensure environment")
 	}
 
-	if _, err = env.Render(ctx); err != nil {
-		return errors.Wrap(err, "RenderEnvironmentSettingScript environment")
-	}
-
 	if len(s.Params) > 0 {
-		if ctx.Values == nil {
+		releaseValues := ctx.GetReleaseValues()
+		if releaseValues == nil {
 			return errors.New("script has params but no release values provided")
 		}
-		releaseValues := *ctx.Values
 
 		for _, param := range s.Params {
 			_, ok := releaseValues.Values[param.Name]
@@ -159,7 +161,8 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 
 	if s.Literal != nil {
 		ctx.Log().Debug("Executing literal script, not bosun script.")
-		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), command.CommandOpts{StreamOutput: true})
+		scriptCtx := ctx.WithPwd(filepath.Dir(s.FromPath)).(ScriptContext)
+		_, err = s.Literal.Execute(scriptCtx, command.CommandOpts{StreamOutput: true})
 		if err != nil {
 			return err
 		}
@@ -191,7 +194,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 		}
 		step := s.Steps[i]
 
-		stepCtx := ctx.WithLog(ctx.Log().WithField("step", i))
+		stepCtx := ctx.WithLogField("step", i).(ScriptContext)
 		err = step.Execute(stepCtx, i)
 		if err != nil {
 			return errors.Wrapf(err, "script %q abended on step %q (%d)", s.Name, s.Name, i)
@@ -201,7 +204,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 	return nil
 }
 
-func (s ScriptStep) Execute(ctx BosunContext, index int) error {
+func (s ScriptStep) Execute(ctx ScriptContext, index int) error {
 
 	log := ctx.Log()
 	if s.Name != "" {
@@ -213,8 +216,9 @@ func (s ScriptStep) Execute(ctx BosunContext, index int) error {
 
 	if s.Cmd != nil {
 		log.Debug("Step is a shell command, not a bosun command.")
+		cmdCtx := ctx.WithPwd(filepath.Dir(s.FromPath)).(command.ExecutionContext)
 
-		_, err := s.Cmd.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), command.CommandOpts{StreamOutput: true})
+		_, err := s.Cmd.Execute(cmdCtx, command.CommandOpts{StreamOutput: true})
 		return err
 	}
 
@@ -236,19 +240,19 @@ func (s ScriptStep) Execute(ctx BosunContext, index int) error {
 	var stepArgs []string
 	stepArgs = append(stepArgs, s.Bosun...)
 	stepArgs = append(stepArgs, "--step", fmt.Sprintf("%d", index))
-	if ctx.IsVerbose() {
+	if ctx.GetParameters().Verbose {
 		stepArgs = append(stepArgs, "--verbose")
 	}
-	if ctx.IsDryRun() {
+	if ctx.GetParameters().DryRun {
 		stepArgs = append(stepArgs, "--dry-run")
 	}
 
-	stepArgs = append(stepArgs, "--domain", ctx.GetDomain())
-	stepArgs = append(stepArgs, "--cluster", ctx.GetCluster())
+	stepArgs = append(stepArgs, "--domain", ctx.GetStringValue(core.KeyDomain))
+	stepArgs = append(stepArgs, "--cluster", ctx.GetStringValue(core.KeyCluster))
 
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Dir).RunE()
+	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err

@@ -2,8 +2,10 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/zenhub"
@@ -26,19 +28,19 @@ type AppConfig struct {
 	HarborProject    string         `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
 	Version          semver.Version `yaml:"version,omitempty" json:"version,omitempty"`
 	// The location of a standard go version file for this app.
-	GoVersionFile  string             `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
-	Chart          string             `yaml:"chart,omitempty" json:"chart,omitempty"`
-	ChartPath      string             `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
-	RunCommand     []string           `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
-	DependsOn      []Dependency       `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
-	Labels         filter.Labels      `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Minikube       *AppMinikubeConfig `yaml:"minikube,omitempty" json:"minikube,omitempty"`
-	Images         []AppImageConfig   `yaml:"images" json:"images"`
-	Values         values.ValueSetMap `yaml:"values,omitempty" json:"values,omitempty"`
-	Scripts        []*Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
-	Actions        []*AppAction       `yaml:"actions,omitempty" json:"actions,omitempty"`
-	ReleaseHistory AppReleaseHistory  `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
-	Parent         *File              `yaml:"-" json:"-"`
+	GoVersionFile  string               `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
+	Chart          string               `yaml:"chart,omitempty" json:"chart,omitempty"`
+	ChartPath      string               `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
+	RunCommand     []string             `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
+	DependsOn      []Dependency         `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	Labels         filter.Labels        `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Minikube       *AppMinikubeConfig   `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	Images         []AppImageConfig     `yaml:"images" json:"images"`
+	Values         values.ValueSetMap   `yaml:"values,omitempty" json:"values,omitempty"`
+	Scripts        []*script.Script     `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Actions        []*actions.AppAction `yaml:"actions,omitempty" json:"actions,omitempty"`
+	ReleaseHistory AppReleaseHistory    `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
+	Parent         *File                `yaml:"-" json:"-"`
 	// If true, this app repo is only a ref, not a real cloned repo.
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.

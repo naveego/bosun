@@ -4,6 +4,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"log"
@@ -21,7 +22,7 @@ type EnvironmentConfig struct {
 	IsLocal   bool                   `yaml:"isLocal" json:"isLocal"`
 	Commands  []*EnvironmentCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
 	Variables []*EnvironmentVariable `yaml:"variables,omitempty" json:"variables,omitempty"`
-	Scripts   []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Scripts   []*script.Script       `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
 	AppValues *values.ValueSet `yaml:"appValues" json:"appValues"`
