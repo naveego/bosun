@@ -4,6 +4,7 @@ import (
 	"fmt"
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/values"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -12,10 +13,6 @@ import (
 	"runtime"
 	"strings"
 )
-
-func yamlize(y string) string {
-	return strings.Replace(y, "\t", "  ", -1)
-}
 
 type container struct {
 	DV *CommandValue `yaml:"dv" json:"dv"`
@@ -152,8 +149,8 @@ echo %testVar%
 
 			It("should include env values", func() {
 				ctx = ctx.WithPersistableValues(&PersistableValues{
-					Values: Values{
-						"test": Values{
+					Values: values.Values{
+						"test": values.Values{
 							"nested": "value",
 						},
 						"APP_VERSION": "1.2.3",

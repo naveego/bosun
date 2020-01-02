@@ -2,7 +2,9 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/mongo"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"path/filepath"
@@ -10,7 +12,7 @@ import (
 )
 
 type E2ESuiteConfig struct {
-	ConfigShared      `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 	E2EBookendScripts `yaml:",inline"`
 	MongoConnections  map[string]mongo.Connection `yaml:"mongoConnections,omitempty"`
 	TestFiles         []string                    `yaml:"tests"`
@@ -18,7 +20,7 @@ type E2ESuiteConfig struct {
 }
 
 type E2ETestConfig struct {
-	ConfigShared      `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 	E2EBookendScripts `yaml:",inline"`
 	Dependencies      []*Dependency          `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
 	Variables         map[string]interface{} `yaml:"variables,omitempty" json:"variables"`
@@ -64,7 +66,7 @@ func (e *E2ETestConfig) SetFromPath(path string) {
 }
 
 type E2EStepConfig struct {
-	ConfigShared `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 }
 
 type E2ESuite struct {
@@ -145,8 +147,8 @@ func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) 
 
 	runID := xid.New().String()
 	releaseValues := &PersistableValues{
-		Values: Values{
-			"e2e": Values{
+		Values: values.Values{
+			"e2e": values.Values{
 				"runID": runID,
 			},
 		},

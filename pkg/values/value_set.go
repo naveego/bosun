@@ -2,10 +2,10 @@ package values
 
 import (
 	"github.com/imdario/mergo"
-	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
 	"strings"
 )
 
@@ -15,7 +15,7 @@ type ValueSet struct {
 	core.ConfigShared `yaml:",inline"`
 	Dynamic           map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
 	Files             []string                         `yaml:"files,omitempty" json:"files,omitempty"`
-	Static            bosun.Values                     `yaml:"static,omitempty" json:"static,omitempty"`
+	Static            Values                           `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
 func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -26,7 +26,7 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if _, ok := m["set"]; ok {
 		// is v1
-		var v1 bosun.appValuesConfigV1
+		var v1 appValuesConfigV1
 		err = unmarshal(&v1)
 		if err != nil {
 			return errors.WithStack(err)
@@ -35,7 +35,7 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			*a = ValueSet{}
 		}
 		if v1.Static == nil {
-			v1.Static = bosun.Values{}
+			v1.Static = Values{}
 		}
 		if v1.Set == nil {
 			v1.Set = map[string]*command.CommandValue{}
@@ -58,6 +58,44 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	*a = ValueSet(p)
 	return nil
+}
+
+type appValuesConfigV1 struct {
+	Set     map[string]*command.CommandValue `yaml:"set,omitempty" json:"set,omitempty"`
+	Dynamic map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
+	Files   []string                         `yaml:"files,omitempty" json:"files,omitempty"`
+	Static  Values                           `yaml:"static,omitempty" json:"static,omitempty"`
+}
+
+// Combine returns a new ValueSet with the values from
+// other added after (and/or overwriting) the values from this instance)
+func (a ValueSet) Combine(other ValueSet) ValueSet {
+
+	// clone the valueSet to ensure we don't mutate `a`
+	y, _ := yaml.Marshal(a)
+	var out ValueSet
+	_ = yaml.Unmarshal(y, &out)
+
+	// clone the other valueSet to ensure we don't capture items from it
+	y, _ = yaml.Marshal(other)
+	_ = yaml.Unmarshal(y, &other)
+
+	if out.Dynamic == nil {
+		out.Dynamic = map[string]*command.CommandValue{}
+	}
+	if out.Static == nil {
+		out.Static = Values{}
+	}
+
+	out.Files = append(out.Files, other.Files...)
+
+	out.Static.Merge(other.Static)
+
+	for k, v := range other.Dynamic {
+		out.Dynamic[k] = v
+	}
+
+	return out
 }
 
 // ValueSetMap is a map of (possibly multiple) names
@@ -154,12 +192,12 @@ func (a ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, err
 		Static: a.Static.Clone(),
 	}
 
-	mergedValues := bosun.Values{}
+	mergedValues := Values{}
 
 	// merge together values loaded from files
 	for _, file := range a.Files {
 		file = pathResolver.ResolvePath(file, "VALUE_SET", a.Name)
-		valuesFromFile, err := bosun.ReadValuesFile(file)
+		valuesFromFile, err := ReadValuesFile(file)
 		if err != nil {
 			return out, errors.Errorf("reading values file %q: %s", file, err)
 		}

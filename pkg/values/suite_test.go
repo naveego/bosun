@@ -1,4 +1,4 @@
-package command_test
+package values_test
 
 import (
 	"os"
@@ -23,5 +23,5 @@ func TestBosun(t *testing.T) {
 	RootPkgBosunDir, _ = os.Getwd()
 	RootDir = filepath.Join(RootPkgBosunDir, "../../")
 	IntegrationTestDir = filepath.Join(RootDir, "integration")
-	RunSpecs(t, "Command Suite")
+	RunSpecs(t, "Values Suite")
 }

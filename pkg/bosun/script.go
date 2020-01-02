@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"os"
@@ -14,12 +15,12 @@ import (
 )
 
 type Script struct {
-	ConfigShared `yaml:",inline"`
-	File         *File            `yaml:"-" json:"-"`
-	Steps        []ScriptStep     `yaml:"steps,omitempty" json:"steps,omitempty"`
-	Literal      *command.Command `yaml:"literal,omitempty" json:"literal,omitempty"`
-	BranchFilter string           `yaml:"branchFilter,omitempty" json:"branchFilter,omitempty"`
-	Params       []ScriptParam    `yaml:"params,omitempty" json:"params,omitempty"`
+	core.ConfigShared `yaml:",inline"`
+	File              *File            `yaml:"-" json:"-"`
+	Steps             []ScriptStep     `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Literal           *command.Command `yaml:"literal,omitempty" json:"literal,omitempty"`
+	BranchFilter      string           `yaml:"branchFilter,omitempty" json:"branchFilter,omitempty"`
+	Params            []ScriptParam    `yaml:"params,omitempty" json:"params,omitempty"`
 }
 
 type ScriptParam struct {
@@ -45,7 +46,7 @@ func (s *Script) SetFromPath(path string) {
 }
 
 type ScriptStep struct {
-	ConfigShared `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 	// Bosun is a list of arguments to pass to a child instance of bosun, which
 	// will be run in the directory containing this script.
 	Bosun []string `yaml:"bosun,flow,omitempty" json:"bosun,omitempty"`

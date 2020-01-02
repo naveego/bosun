@@ -3,13 +3,20 @@ package values
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"strings"
 )
+
+// This code is copied from the Helm project, https://github.com/helm/helm/blob/58be8e461c9ab8e86ea2ad519601e1a288f21e8c/pkg/chartutil/values.go
+
+// ErrNoTable indicates that a chart does not have a matching table.
+type ErrNoTable error
+
+// ErrNoValue indicates that Values does not contain a key with a value
+type ErrNoValue error
 
 // Values represents a collection of chart values.
 type Values map[string]interface{}
@@ -274,7 +281,7 @@ func istable(v interface{}) bool {
 func tableLookup(v Values, simple string) (Values, error) {
 	v2, ok := v[simple]
 	if !ok {
-		return v, bosun.ErrNoTable(fmt.Errorf("no table named %q (%v)", simple, v))
+		return v, ErrNoTable(fmt.Errorf("no table named %q (%v)", simple, v))
 	}
 	if vv, ok := v2.(map[string]interface{}); ok {
 		return vv, nil
@@ -287,7 +294,7 @@ func tableLookup(v Values, simple string) (Values, error) {
 		return vv, nil
 	}
 
-	var e bosun.ErrNoTable = fmt.Errorf("no table named %q", simple)
+	var e ErrNoTable = fmt.Errorf("no table named %q", simple)
 	return map[string]interface{}{}, e
 }
 

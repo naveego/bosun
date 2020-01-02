@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"io"
 	"os/exec"
@@ -60,7 +61,7 @@ type Deploy struct {
 
 type DeploySettings struct {
 	Environment        *EnvironmentConfig
-	ValueSets          []ValueSet
+	ValueSets          []values.ValueSet
 	Manifest           *ReleaseManifest
 	Apps               map[string]*App
 	AppDeploySettings  map[string]AppDeploySettings
@@ -71,7 +72,7 @@ type DeploySettings struct {
 	Recycle            bool
 }
 
-func (d DeploySettings) WithValueSets(valueSets ...ValueSet) DeploySettings {
+func (d DeploySettings) WithValueSets(valueSets ...values.ValueSet) DeploySettings {
 	d.ValueSets = append(d.ValueSets, valueSets...)
 	return d
 }
@@ -97,14 +98,14 @@ func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 
 type AppDeploySettings struct {
 	Environment     *EnvironmentConfig
-	ValueSets       []ValueSet
+	ValueSets       []values.ValueSet
 	UseLocalContent bool // if true, the app will be deployed using the local chart
 }
 
 func (d DeploySettings) GetAppDeploySettings(name string) AppDeploySettings {
 	appSettings := d.AppDeploySettings[name]
 
-	var valueSets []ValueSet
+	var valueSets []values.ValueSet
 
 	// If the release manifest has value sets defined, they should be at a lower priority than the app value sets.
 	if d.Manifest != nil {

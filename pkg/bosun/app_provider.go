@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
@@ -81,7 +82,7 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 		app.Repo = &Repo{
 			RepoConfig: RepoConfig{
 				Branching: app.Branching.WithDefaults(),
-				ConfigShared: ConfigShared{
+				ConfigShared: core.ConfigShared{
 					Name: app.RepoName,
 				},
 			},
@@ -156,7 +157,7 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 		app.Repo = &Repo{
 			RepoConfig: RepoConfig{
 				Branching: app.Branching.WithDefaults(),
-				ConfigShared: ConfigShared{
+				ConfigShared: core.ConfigShared{
 					Name: app.RepoName,
 				},
 			},

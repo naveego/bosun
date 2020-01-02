@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/kube"
@@ -37,7 +38,7 @@ var (
 // Platform is a collection of releasable apps which work together in a single cluster.
 // The platform contains a history of all releases created for the platform.
 type Platform struct {
-	ConfigShared                 `yaml:",inline"`
+	core.ConfigShared            `yaml:",inline"`
 	DefaultChartRepo             string                      `yaml:"defaultChartRepo"`
 	Branching                    git.BranchSpec              `yaml:"branching"`
 	ReleaseBranchFormat_OBSOLETE string                      `yaml:"releaseBranchFormat,omitempty"`

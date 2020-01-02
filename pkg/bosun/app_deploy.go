@@ -9,6 +9,7 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/values"
 	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -100,7 +101,7 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 	// put the tag as the lowest priority of the augmenting value sets, so
 	// that it can be overwritten by user-provided value sets.
 
-	bosunAppTemplateValues := Values{
+	bosunAppTemplateValues := values.Values{
 		"version":        manifest.Version.String(),
 		"releaseVersion": "Transient",
 		"tag":            settings.GetImageTag(manifest.AppMetadata),
@@ -110,8 +111,8 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 		bosunAppTemplateValues["releaseVersion"] = manifest.PinnedReleaseVersion.String()
 	}
 
-	appDeploySettings.ValueSets = append([]ValueSet{{
-		Static: Values{
+	appDeploySettings.ValueSets = append([]values.ValueSet{{
+		Static: values.Values{
 			"tag":   settings.GetImageTag(manifest.AppMetadata),
 			"bosun": bosunAppTemplateValues,
 		},
@@ -368,7 +369,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 }
 
 type PersistableValues struct {
-	Values   Values
+	Values   values.Values
 	FilePath string
 }
 
@@ -407,7 +408,7 @@ func (r *PersistableValues) Cleanup() {
 
 func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*PersistableValues, error) {
 	r := &PersistableValues{
-		Values: Values{},
+		Values: values.Values{},
 	}
 
 	// Make environment values available
@@ -423,7 +424,7 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*PersistableValues, err
 
 	importedValues := a.AppConfig.Values.ExtractValueSetByNames(ctx.Env.ValueSets...)
 
-	appValues := append([]ValueSet{importedValues}, a.AppDeploySettings.ValueSets...)
+	appValues := append([]values.ValueSet{importedValues}, a.AppDeploySettings.ValueSets...)
 
 	for _, v := range appValues {
 

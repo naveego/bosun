@@ -2,13 +2,12 @@ package bosun
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"path/filepath"
 	"strings"
 )
@@ -35,7 +34,7 @@ type AppConfig struct {
 	Labels         filter.Labels      `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Minikube       *AppMinikubeConfig `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	Images         []AppImageConfig   `yaml:"images" json:"images"`
-	Values         ValueSetMap        `yaml:"values,omitempty" json:"values,omitempty"`
+	Values         values.ValueSetMap `yaml:"values,omitempty" json:"values,omitempty"`
 	Scripts        []*Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	Actions        []*AppAction       `yaml:"actions,omitempty" json:"actions,omitempty"`
 	ReleaseHistory AppReleaseHistory  `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
@@ -149,7 +148,6 @@ type Dependency struct {
 	Name     string         `yaml:"name" json:"name,omitempty"`
 	FromPath string         `yaml:"-" json:"fromPath,omitempty"`
 	Repo     string         `yaml:"repo,omitempty" json:"repo,omitempty"`
-	App      *App           `yaml:"-" json:"-"`
 	Version  semver.Version `yaml:"version,omitempty" json:"version,omitempty"`
 }
 
@@ -158,13 +156,6 @@ type Dependencies []Dependency
 func (d Dependencies) Len() int           { return len(d) }
 func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[j].Name) < 0 }
 func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
-
-type appValuesConfigV1 struct {
-	Set     map[string]*command.CommandValue `yaml:"set,omitempty" json:"set,omitempty"`
-	Dynamic map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
-	Files   []string                         `yaml:"files,omitempty" json:"files,omitempty"`
-	Static  Values                           `yaml:"static,omitempty" json:"static,omitempty"`
-}
 
 func (a *AppConfig) SetParent(fragment *File) {
 	a.FromPath = fragment.FromPath
@@ -186,37 +177,6 @@ func (a *AppConfig) GetNamespace() string {
 		return a.Namespace
 	}
 	return "default"
-}
-
-// Combine returns a new ValueSet with the values from
-// other added after (and/or overwriting) the values from this instance)
-func (a ValueSet) Combine(other ValueSet) ValueSet {
-
-	// clone the valueSet to ensure we don't mutate `a`
-	y, _ := yaml.Marshal(a)
-	var out ValueSet
-	_ = yaml.Unmarshal(y, &out)
-
-	// clone the other valueSet to ensure we don't capture items from it
-	y, _ = yaml.Marshal(other)
-	_ = yaml.Unmarshal(y, &other)
-
-	if out.Dynamic == nil {
-		out.Dynamic = map[string]*command.CommandValue{}
-	}
-	if out.Static == nil {
-		out.Static = Values{}
-	}
-
-	out.Files = append(out.Files, other.Files...)
-
-	out.Static.Merge(other.Static)
-
-	for k, v := range other.Dynamic {
-		out.Dynamic[k] = v
-	}
-
-	return out
 }
 
 type AppStatesByEnvironment map[string]AppStateMap

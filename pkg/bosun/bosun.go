@@ -12,6 +12,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/mirror"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -358,7 +359,7 @@ func (b *Bosun) SetInWorkspace(path string, value interface{}) error {
 	if err != nil {
 		return errors.Wrap(err, "marshalling for save")
 	}
-	v, err := ReadValues(data)
+	v, err := values.ReadValues(data)
 	if err != nil {
 		panic(err)
 	}
@@ -386,9 +387,9 @@ func (b *Bosun) GetInWorkspace(path string) (interface{}, error) {
 	ws := b.ws
 	data, err := yaml.Marshal(ws)
 	if err != nil {
-		return Values{}, errors.Wrap(err, "marshalling for save")
+		return values.Values{}, errors.Wrap(err, "marshalling for save")
 	}
-	v, err := ReadValues(data)
+	v, err := values.ReadValues(data)
 	if err != nil {
 		panic(err)
 	}
@@ -463,7 +464,7 @@ func (b *Bosun) GetEnvironments() []*EnvironmentConfig {
 	return b.file.Environments
 }
 
-func (b *Bosun) GetValueSet(name string) (*ValueSet, error) {
+func (b *Bosun) GetValueSet(name string) (*values.ValueSet, error) {
 	for _, vs := range b.file.ValueSets {
 		if vs.Name == name {
 			return vs, nil
@@ -472,8 +473,8 @@ func (b *Bosun) GetValueSet(name string) (*ValueSet, error) {
 	return nil, errors.Errorf("no valueSet named %q", name)
 }
 
-func (b *Bosun) GetValueSetSlice(names []string) ([]ValueSet, error) {
-	var out []ValueSet
+func (b *Bosun) GetValueSetSlice(names []string) ([]values.ValueSet, error) {
+	var out []values.ValueSet
 	want := map[string]bool{}
 	for _, name := range names {
 		want[name] = false
@@ -495,13 +496,13 @@ func (b *Bosun) GetValueSetSlice(names []string) ([]ValueSet, error) {
 	return out, nil
 }
 
-func (b *Bosun) GetValueSetsForEnv(env *EnvironmentConfig) ([]*ValueSet, error) {
-	vss := map[string]*ValueSet{}
+func (b *Bosun) GetValueSetsForEnv(env *EnvironmentConfig) ([]*values.ValueSet, error) {
+	vss := map[string]*values.ValueSet{}
 	for _, vs := range b.file.ValueSets {
 		vss[vs.Name] = vs
 	}
 
-	var out []*ValueSet
+	var out []*values.ValueSet
 	for _, name := range env.ValueSets {
 		vs, ok := vss[name]
 		if !ok {
@@ -510,18 +511,18 @@ func (b *Bosun) GetValueSetsForEnv(env *EnvironmentConfig) ([]*ValueSet, error) 
 		out = append(out, vs)
 	}
 
-	mirror.Sort(out, func(a, b *ValueSet) bool {
+	mirror.Sort(out, func(a, b *values.ValueSet) bool {
 		return a.Name < b.Name
 	})
 
 	return out, nil
 }
 
-func (b *Bosun) GetValueSets() []*ValueSet {
-	out := make([]*ValueSet, len(b.file.ValueSets))
+func (b *Bosun) GetValueSets() []*values.ValueSet {
+	out := make([]*values.ValueSet, len(b.file.ValueSets))
 	copy(out, b.file.ValueSets)
 
-	mirror.Sort(out, func(a, b *ValueSet) bool {
+	mirror.Sort(out, func(a, b *values.ValueSet) bool {
 		return a.Name < b.Name
 	})
 

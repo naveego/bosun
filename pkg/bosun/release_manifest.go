@@ -7,6 +7,7 @@ import (
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -51,7 +52,7 @@ type ReleaseManifest struct {
 	DefaultDeployApps_OBSOLETE map[string]bool         `yaml:"defaultDeployApps,omitempty"`
 	UpgradedApps               map[string]bool         `yaml:"upgradedApps,omitempty"`
 	AppMetadata                map[string]*AppMetadata `yaml:"apps"`
-	ValueSets                  ValueSetMap             `yaml:"valueSets,omitempty"`
+	ValueSets                  values.ValueSetMap      `yaml:"valueSets,omitempty"`
 	Platform                   *Platform               `yaml:"-"`
 	plan                       *ReleasePlan            `yaml:"-"`
 	toDelete                   []string                `yaml:"-"`

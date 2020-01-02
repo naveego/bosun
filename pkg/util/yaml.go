@@ -5,7 +5,13 @@ import (
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"strings"
 )
+
+// Yamlize ensures that a string is valid YAML.
+func Yamlize(y string) string {
+	return strings.Replace(y, "\t", "  ", -1)
+}
 
 func MustYaml(value interface{}) string {
 

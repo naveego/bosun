@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
@@ -11,9 +12,9 @@ import (
 )
 
 type RepoConfig struct {
-	ConfigShared    `yaml:",inline"`
-	Branching       git.BranchSpec
-	FilteringLabels map[string]string `yaml:"labels" json:"labels"`
+	core.ConfigShared `yaml:",inline"`
+	Branching         git.BranchSpec
+	FilteringLabels   map[string]string `yaml:"labels" json:"labels"`
 }
 
 type Repo struct {

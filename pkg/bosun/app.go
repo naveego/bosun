@@ -9,6 +9,7 @@ import (
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/stevenle/topsort"
@@ -673,13 +674,13 @@ func omitStrings(from []string, toOmit ...string) []string {
 // ExportValues creates an ValueSetMap instance with all the values
 // for releasing this app, reified into their environments, including values from
 // files and from the default values.yaml file for the chart.
-func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
+func (a *App) ExportValues(ctx BosunContext) (values.ValueSetMap, error) {
 	ctx = ctx.WithApp(a)
 	var err error
 	envs := map[string]*EnvironmentConfig{}
 	for envNames := range a.Values {
 		for _, envName := range strings.Split(envNames, ",") {
-			if envName == ValueSetAll {
+			if envName == values.ValueSetAll {
 				continue
 			}
 			if _, ok := envs[envName]; !ok {
@@ -692,7 +693,7 @@ func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
 			}
 		}
 	}
-	var defaultValues Values
+	var defaultValues values.Values
 
 	if a.HasChart() {
 		chartRef := a.getAbsoluteChartPathOrChart(ctx)
@@ -704,12 +705,12 @@ func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
 		if err != nil {
 			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
 		}
-		defaultValues, err = ReadValues([]byte(valuesYaml))
+		defaultValues, err = values.ReadValues([]byte(valuesYaml))
 		if err != nil {
 			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
 		}
 	} else {
-		defaultValues = Values{}
+		defaultValues = values.Values{}
 	}
 
 	valueCopy := a.Values.CanonicalizedCopy()

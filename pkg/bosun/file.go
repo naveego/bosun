@@ -5,6 +5,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/mirror"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -23,7 +24,7 @@ type File struct {
 	Tools        []*ToolDef             `yaml:"tools,omitempty" json:"tools"`
 	TestSuites   []*E2ESuiteConfig      `yaml:"testSuites,omitempty" json:"testSuites,omitempty"`
 	Scripts      []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
-	ValueSets    []*ValueSet            `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	ValueSets    []*values.ValueSet     `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 	Platforms    []*Platform            `yaml:"platforms,omitempty" json:"platforms,omitempty"`
 
 	// merged indicates that this File has had File instances merged into it and cannot be saved.

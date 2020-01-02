@@ -11,6 +11,7 @@ import (
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -681,7 +682,7 @@ func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppMani
 // getValueSetSlice gets the value sets for the provided environment
 // and for any additional value sets specified using --value-sets,
 // and creates an additional valueSet from any --set parameters.
-func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]bosun.ValueSet, error) {
+func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]values.ValueSet, error) {
 	valueSetNames := util.ConcatStrings(env.ValueSets, viper.GetStringSlice(ArgAppValueSet))
 	valueSets, err := b.GetValueSetSlice(valueSetNames)
 	if err != nil {
@@ -696,7 +697,7 @@ func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]bosun.Val
 		valueOverrides[segs[0]] = segs[1]
 	}
 	if len(valueOverrides) > 0 {
-		overrideValueSet := bosun.ValueSet{
+		overrideValueSet := values.ValueSet{
 			Dynamic: map[string]*command.CommandValue{},
 		}
 		for k, v := range valueOverrides {

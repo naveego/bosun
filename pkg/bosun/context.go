@@ -9,6 +9,7 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
@@ -214,7 +215,7 @@ func (c BosunContext) TemplateValues() templating.TemplateValues {
 		values.MustSetAtPath("domain", c.Env.Domain)
 		tv.Values = values
 	} else {
-		tv.Values = Values{}
+		tv.Values = values.Values{}
 	}
 
 	return tv

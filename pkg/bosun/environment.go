@@ -4,6 +4,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"log"
 	"os"
@@ -23,9 +24,9 @@ type EnvironmentConfig struct {
 	Scripts   []*Script              `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues *ValueSet  `yaml:"appValues" json:"appValues"`
-	HelmRepos []HelmRepo `yaml:"helmRepos,omitempty" json:"helmRepos,omitempty"`
-	ValueSets []string   `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	AppValues *values.ValueSet `yaml:"appValues" json:"appValues"`
+	HelmRepos []HelmRepo       `yaml:"helmRepos,omitempty" json:"helmRepos,omitempty"`
+	ValueSets []string         `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 }
 
 type EnvironmentVariable struct {

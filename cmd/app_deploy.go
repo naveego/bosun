@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -103,7 +104,7 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 			}
 		} else if viper.GetBool(ArgAppLatest) {
 			err = pullApps(ctx, apps, true)
-			deploySettings.ValueSets = append(deploySettings.ValueSets, bosun.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
+			deploySettings.ValueSets = append(deploySettings.ValueSets, values.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
 		}
 
 		r, err := bosun.NewDeploy(ctx, deploySettings)
