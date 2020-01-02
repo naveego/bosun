@@ -1,8 +1,8 @@
 package bosun_test
 
 import (
-	. "github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/values"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
@@ -40,7 +40,7 @@ var _ = Describe("ValueSetMap", func() {
 
 	It("should extract values by name", func() {
 
-		var sut ValueSetMap
+		var sut values.ValueSetMap
 		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 		redValues := sut.ExtractValueSetByName("green")
 		Expect(redValues.Static).To(HaveKeyWithValue("green1", "d"), "it is in the green set")
@@ -49,7 +49,7 @@ var _ = Describe("ValueSetMap", func() {
 	})
 
 	It("should extract multiple values by name", func() {
-		var sut ValueSetMap
+		var sut values.ValueSetMap
 		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 		redValues := sut.ExtractValueSetByNames("green", "red")
 		Expect(redValues.Static).To(HaveKeyWithValue("green1", "d"), "it is in the green set")
@@ -58,7 +58,7 @@ var _ = Describe("ValueSetMap", func() {
 		Expect(redValues.Static).To(HaveKeyWithValue("red1", "b"), "the red,green key should be integrated")
 	})
 	It("should canonicalize correctly", func() {
-		var sut ValueSetMap
+		var sut values.ValueSetMap
 		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 		actual := sut.CanonicalizedCopy()
 		Expect(actual["red"].Static).To(

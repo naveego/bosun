@@ -1,8 +1,10 @@
-package bosun
+package values
 
 import (
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -10,10 +12,10 @@ import (
 const ValueSetAll = "all"
 
 type ValueSet struct {
-	ConfigShared `yaml:",inline"`
-	Dynamic      map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
-	Files        []string                         `yaml:"files,omitempty" json:"files,omitempty"`
-	Static       Values                           `yaml:"static,omitempty" json:"static,omitempty"`
+	core.ConfigShared `yaml:",inline"`
+	Dynamic           map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
+	Files             []string                         `yaml:"files,omitempty" json:"files,omitempty"`
+	Static            bosun.Values                     `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
 func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -24,7 +26,7 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if _, ok := m["set"]; ok {
 		// is v1
-		var v1 appValuesConfigV1
+		var v1 bosun.appValuesConfigV1
 		err = unmarshal(&v1)
 		if err != nil {
 			return errors.WithStack(err)
@@ -33,7 +35,7 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			*a = ValueSet{}
 		}
 		if v1.Static == nil {
-			v1.Static = Values{}
+			v1.Static = bosun.Values{}
 		}
 		if v1.Set == nil {
 			v1.Set = map[string]*command.CommandValue{}
@@ -146,20 +148,20 @@ func (a ValueSetMap) CanonicalizedCopy() ValueSetMap {
 
 // WithFilesLoaded resolves all file system dependencies into static values
 // on this instance, then clears those dependencies.
-func (a ValueSet) WithFilesLoaded(ctx BosunContext) (ValueSet, error) {
+func (a ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, error) {
 
 	out := ValueSet{
 		Static: a.Static.Clone(),
 	}
 
-	mergedValues := Values{}
+	mergedValues := bosun.Values{}
 
 	// merge together values loaded from files
 	for _, file := range a.Files {
-		file = ctx.ResolvePath(file, "VALUE_SET", a.Name)
-		valuesFromFile, err := ReadValuesFile(file)
+		file = pathResolver.ResolvePath(file, "VALUE_SET", a.Name)
+		valuesFromFile, err := bosun.ReadValuesFile(file)
 		if err != nil {
-			return out, errors.Errorf("reading values file %q for env key %q: %s", file, ctx.Env.Name, err)
+			return out, errors.Errorf("reading values file %q: %s", file, err)
 		}
 		mergedValues.Merge(valuesFromFile)
 	}
