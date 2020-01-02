@@ -377,12 +377,12 @@ var appAcceptActualCmd = &cobra.Command{
 			}
 			appDeploy, err := bosun.NewAppDeploy(ctx, deploySettings, appManifest)
 			if err != nil {
-				ctx.Log.WithError(err).Error("Error creating app deploy for current state analysis.")
+				ctx.Log().WithError(err).Error("Error creating app deploy for current state analysis.")
 				continue
 			}
 			ctx = ctx.WithAppDeploy(appDeploy)
 
-			log := ctx.Log
+			log := ctx.Log()
 			log.Debug("Getting actual state...")
 			err = appDeploy.LoadActualState(ctx, false)
 			p.Add(1)
@@ -439,7 +439,7 @@ var appStatusCmd = &cobra.Command{
 					ctx := b.NewContext().WithAppDeploy(appRelease)
 					err := appRelease.LoadActualState(ctx, false)
 					if err != nil {
-						ctx.Log.WithError(err).Fatal()
+						ctx.Log().WithError(err).Fatal()
 					}
 					p.Add(1)
 				}()
@@ -567,14 +567,14 @@ var appToggleCmd = &cobra.Command{
 				appServiceChanged = true
 			} else {
 				// force upgrade the app to restore it to its normal state.
-				ctx.Log.Info("Deleting app.")
+				ctx.Log().Info("Deleting app.")
 				app.DesiredState.Status = bosun.StatusNotFound
 				err = app.Reconcile(ctx)
 				if err != nil {
 					return err
 				}
 
-				ctx.Log.Info("Re-deploying app.")
+				ctx.Log().Info("Re-deploying app.")
 				app.DesiredState.Status = bosun.StatusDeployed
 
 				err = app.Reconcile(ctx)
@@ -595,7 +595,7 @@ var appToggleCmd = &cobra.Command{
 				return errors.Wrap(err, "get kube client for tweaking service")
 			}
 
-			ctx.Log.Warn("Recycling kube-dns to ensure new services are routed correctly.")
+			ctx.Log().Warn("Recycling kube-dns to ensure new services are routed correctly.")
 
 			podClient := client.CoreV1().Pods("kube-system")
 			pods, err := podClient.List(metav1.ListOptions{
@@ -608,12 +608,12 @@ var appToggleCmd = &cobra.Command{
 				return errors.New("no kube-dns pods found")
 			}
 			for _, pod := range pods.Items {
-				ctx.Log.Warnf("Deleting pod %q...", pod.Name)
+				ctx.Log().Warnf("Deleting pod %q...", pod.Name)
 				err = podClient.Delete(pod.Name, metav1.NewDeleteOptions(0))
 				if err != nil {
 					return errors.Wrapf(err, "delete pod %q", pod.Name)
 				}
-				ctx.Log.Warnf("Pod %q deleted. Kube-hosted services may be unavailable for a short time.", pod.Name)
+				ctx.Log().Warnf("Pod %q deleted. Kube-hosted services may be unavailable for a short time.", pod.Name)
 			}
 		}
 
@@ -649,7 +649,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 			ctx := ctx.WithAppDeploy(appRelease)
 
 			if env.IsLocal && pullLatest {
-				ctx.Log.Info("Pulling latest version of image(s) on minikube...")
+				ctx.Log().Info("Pulling latest version of image(s) on minikube...")
 				for _, image := range appRelease.AppConfig.GetImages() {
 					imageName := image.GetFullNameWithTag("latest")
 					err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
@@ -659,7 +659,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 				}
 			}
 
-			ctx.Log.Info("Recycling app...")
+			ctx.Log().Info("Recycling app...")
 			err := appRelease.Recycle(ctx)
 			if err != nil {
 				return err
@@ -878,7 +878,7 @@ func pullApps(ctx bosun.BosunContext, apps bosun.AppList, rebase bool) error {
 	return apps.ForEachRepo(func(app *bosun.App) error {
 		repo := app.Repo
 
-		log := ctx.Log.WithField("repo", repo.Name)
+		log := ctx.Log().WithField("repo", repo.Name)
 		if repo.LocalRepo.IsDirty() {
 			log.Error("Repo is dirty, cannot pull.")
 			return nil
@@ -1082,7 +1082,7 @@ var appCloneCmd = addCommand(
 			ctx := b.NewContext()
 			var lastErr error
 			for _, app := range apps {
-				log := ctx.Log.WithField("app", app.Name).WithField("repo", app.Repo)
+				log := ctx.Log().WithField("app", app.Name).WithField("repo", app.Repo)
 
 				if app.IsRepoCloned() {
 					pkg.Log.Infof("App already cloned to %q", app.FromPath)

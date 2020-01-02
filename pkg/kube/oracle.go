@@ -11,17 +11,20 @@ type OracleClusterConfig struct {
 }
 
 type ConfigureOracleClusterCommand struct {
-	KubeConfigDefinition KubeConfigDefinition
-	KubeCommandContext   KubeCommandContext
+	KubeConfigDefinition ConfigDefinition
+	KubeCommandContext   CommandContext
 }
 
-func (c ConfigureOracleClusterCommand) Execute() error {
+func (oc OracleClusterConfig) ConfigureKubernetes(ctx CommandContext) error {
 
-	oc := c.KubeConfigDefinition.Oracle
+	if contextIsDefined(ctx.Name) && !ctx.Force {
+		ctx.Log.Infof("Kubernetes context %q already exists (use --force to configure anyway).")
+		return nil
+	}
 
 	kubeConfigPath := os.ExpandEnv("$HOME/.kube/config")
-	if c.KubeCommandContext.KubeConfigPath != "" {
-		kubeConfigPath = c.KubeCommandContext.KubeConfigPath
+	if ctx.KubeConfigPath != "" {
+		kubeConfigPath = ctx.KubeConfigPath
 	}
 
 	err := pkg.NewCommand("oci", "ce", "cluster", "create-kubeconfig",
@@ -40,7 +43,7 @@ func (c ConfigureOracleClusterCommand) Execute() error {
 	err = pkg.NewCommand("kubectl", "config",
 		"rename-context",
 		"context-"+opaqueName,
-		c.KubeConfigDefinition.Name,
+		ctx.Name,
 	).RunE()
 
 	return err

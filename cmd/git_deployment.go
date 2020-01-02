@@ -38,7 +38,7 @@ var gitDeployDryRunCmd = addCommand(gitDeploymentCmd, &cobra.Command{
 		}
 
 		ctx := b.NewContext()
-		log := ctx.Log
+		log := ctx.Log()
 
 		log.Infof("Found recent deployment:\n%s", util.MustYaml(previousDeployment))
 

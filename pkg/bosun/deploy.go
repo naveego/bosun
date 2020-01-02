@@ -143,7 +143,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		for _, manifest := range appManifests {
 			if !settings.Manifest.UpgradedApps[manifest.Name] {
 				if !settings.ForceDeployApps[manifest.Name] {
-					ctx.Log.Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
+					ctx.Log().Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
 					deploy.Filtered[manifest.Name] = true
 					continue
 				}
@@ -181,7 +181,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		deploy.AppDeploys = filtered.(map[string]*AppDeploy)
 		for name := range appDeploys {
 			if _, ok := deploy.AppDeploys[name]; !ok {
-				ctx.Log.Warnf("App %q was filtered out of the release.", name)
+				ctx.Log().Warnf("App %q was filtered out of the release.", name)
 				deploy.Filtered[name] = true
 			}
 		}
@@ -322,7 +322,7 @@ func checkImageExists(ctx BosunContext, name string) error {
 // 	for _, dep := range topology {
 // 		if r.AppReleaseConfigs[dep] == nil {
 // 			if _, ok := r.Exclude[dep]; ok {
-// 				ctx.Log.Warnf("Dependency %q is not being added because it is in the exclude list. "+
+// 				ctx.Log().Warnf("Dependency %q is not being added because it is in the exclude list. "+
 // 					"Add it using the `add` command if want to override this exclusion.", dep)
 // 				continue
 // 			}
@@ -373,7 +373,7 @@ func (r *Deploy) Deploy(ctx BosunContext) error {
 		}
 
 		if app.DesiredState.Status == StatusUnchanged {
-			ctx.WithAppDeploy(app).Log.Infof("Skipping deploy because desired state was %q.", StatusUnchanged)
+			ctx.WithAppDeploy(app).Log().Infof("Skipping deploy because desired state was %q.", StatusUnchanged)
 			continue
 		}
 
@@ -389,7 +389,7 @@ func (r *Deploy) Deploy(ctx BosunContext) error {
 
 		ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)
 
-		app.DesiredState.Force = ctx.GetParams().Force
+		app.DesiredState.Force = ctx.GetParameters().Force
 
 		err = app.Reconcile(ctx)
 

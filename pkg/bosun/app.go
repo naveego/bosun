@@ -211,10 +211,10 @@ func (a *App) PublishChart(ctx BosunContext, force bool) error {
 
 	branch := a.GetBranchName()
 	if a.Branching.IsFeature(branch) || a.Branching.IsDevelop(branch) {
-		if ctx.GetParams().Force {
-			ctx.Log.WithField("branch", branch).Warn("You should only publish the chart from the master or release branches (overridden by --force).")
+		if ctx.GetParameters().Force {
+			ctx.Log().WithField("branch", branch).Warn("You should only publish the chart from the master or release branches (overridden by --force).")
 		} else {
-			ctx.Log.WithField("branch", branch).Warn("You can only push charts from the master or release branches (override by setting the --force flag).")
+			ctx.Log().WithField("branch", branch).Warn("You can only push charts from the master or release branches (override by setting the --force flag).")
 			return nil
 		}
 	}
@@ -311,12 +311,12 @@ func (a *App) BuildImages(ctx BosunContext) error {
 				contextPath,
 			}
 
-			if ctx.GetParams().Sudo {
+			if ctx.GetParameters().Sudo {
 				buildCommand = append([]string{"sudo"}, buildCommand...)
 			}
 		}
 
-		ctx.Log.Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
+		ctx.Log().Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
 		_, err := pkg.NewCommand(buildCommand[0], buildCommand[1:]...).
 			WithEnvValue("VERSION_NUMBER", a.Version.String()).
 			WithEnvValue("COMMIT", a.GetCommit()).
@@ -347,10 +347,10 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	branch := a.GetBranchName()
 
 	if a.Branching.IsFeature(branch) {
-		if ctx.GetParams().Force {
-			ctx.Log.WithField("branch", branch).Warn("You should not push images from a feature branch (overridden by --force).")
+		if ctx.GetParameters().Force {
+			ctx.Log().WithField("branch", branch).Warn("You should not push images from a feature branch (overridden by --force).")
 		} else {
-			ctx.Log.WithField("branch", branch).Warn("You cannot push images from a feature branch (override by setting the --force flag).")
+			ctx.Log().WithField("branch", branch).Warn("You cannot push images from a feature branch (override by setting the --force flag).")
 			return nil
 		}
 	}
@@ -372,13 +372,13 @@ func (a *App) PublishImages(ctx BosunContext) error {
 
 	for _, tag := range tags {
 		for _, taggedName := range a.GetTaggedImageNames(tag) {
-			ctx.Log.Infof("Tagging and pushing %q", taggedName)
+			ctx.Log().Infof("Tagging and pushing %q", taggedName)
 			untaggedName := strings.Split(taggedName, ":")[0]
-			_, err := pkg.NewCommand("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParams().Sudo).RunOutLog()
+			_, err := pkg.NewCommand("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
-			_, err = pkg.NewCommand("docker", "push", taggedName).Sudo(ctx.GetParams().Sudo).RunOutLog()
+			_, err = pkg.NewCommand("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
@@ -450,7 +450,7 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 // 		SyncedAt:         time.Now(),
 // 	}
 //
-// 	ctx.Log.Debug("Getting app release config.")
+// 	ctx.Log().Debug("Getting app release config.")
 //
 // 	if !isTransient && a.BranchForRelease {
 //
@@ -466,7 +466,7 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 // 			return nil, err
 // 		}
 // 		if strings.Contains(branches, branchName) {
-// 			ctx.Log.Info("Checking out release branch...")
+// 			ctx.Log().Info("Checking out release branch...")
 // 			_, err := g.Exec("checkout", branchName)
 // 			if err != nil {
 // 				return nil, err
@@ -481,7 +481,7 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 // 				return nil, errors.New("patch release not implemented yet, you must create the release branch manually")
 // 			}
 //
-// 			ctx.Log.Info("Creating release branch...")
+// 			ctx.Log().Info("Creating release branch...")
 // 			_, err = g.Exec("checkout", "master")
 // 			if err != nil {
 // 				return nil, errors.Wrap(err, "checkout master")
@@ -549,7 +549,7 @@ func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string
 // the version is set to that value.
 func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 
-	log := ctx.WithApp(a).GetLog()
+	log := ctx.WithApp(a).Log()
 	wasDirty := a.Repo.LocalRepo.IsDirty()
 
 	version, err := NewVersion(bumpOrVersion)
@@ -685,7 +685,7 @@ func (a *App) ExportValues(ctx BosunContext) (ValueSetMap, error) {
 			if _, ok := envs[envName]; !ok {
 				env, err := ctx.Bosun.GetEnvironment(envName)
 				if err != nil {
-					ctx.Log.Warnf("App values include key for environment %q, but no such environment has been defined.", envName)
+					ctx.Log().Warnf("App values include key for environment %q, but no such environment has been defined.", envName)
 					continue
 				}
 				envs[envName] = env
@@ -740,7 +740,7 @@ func (a *App) ExportActions(ctx BosunContext) ([]*AppAction, error) {
 	var actions []*AppAction
 	for _, action := range a.Actions {
 		if action.When == ActionManual {
-			ctx.Log.Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
+			ctx.Log().Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
 		} else {
 			err = action.MakeSelfContained(ctx)
 			if err != nil {
@@ -843,10 +843,10 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 	currentBranch := g.Branch()
 
 	useWorktreeCheckout := false
-	forced := ctx.GetParams().Force
+	forced := ctx.GetParameters().Force
 	onBranch := currentBranch == branch
 	if forced && onBranch {
-		ctx.GetLog().Warn("Skipping worktree checkout because --force parameter was provided.")
+		ctx.Log().Warn("Skipping worktree checkout because --force parameter was provided.")
 		useWorktreeCheckout = false
 	} else if forced {
 		return nil, errors.Errorf("--force provided but branch %q is not checked out (current branch is %s)", branch, currentBranch)
@@ -870,13 +870,13 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 			return nil, errors.Wrapf(err, "checking out tmp branch tracking origin/%q", branch)
 		}
 		defer func() {
-			ctx.Log.Debugf("Deleting worktree %s", worktreePath)
+			ctx.Log().Debugf("Deleting worktree %s", worktreePath)
 			_, _ = g.Exec("checkout", currentBranch)
 			_, _ = g.Exec("worktree", "remove", worktreePath)
 			_, _ = g.Exec("branch", "-D", tmpBranchName)
 		}()
 
-		ctx.Log.Debugf("Creating worktree for %s at %s", tmpBranchName, worktreePath)
+		ctx.Log().Debugf("Creating worktree for %s at %s", tmpBranchName, worktreePath)
 		_, _ = g.Exec("worktree", "remove", worktreePath)
 		_, err = g.Exec("worktree", "add", worktreePath, tmpBranchName)
 		if err != nil {
@@ -888,14 +888,14 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 		bosunFile = filepath.Join(worktreePath, bosunFile)
 	}
 
-	provider := NewFilePathAppProvider(ctx.GetLog())
+	provider := NewFilePathAppProvider(ctx.Log())
 
 	app, err := provider.GetAppByPathAndName(bosunFile, wsApp.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx.Log.Infof("Creating manifest from branch %q...", branch)
+	ctx.Log().Infof("Creating manifest from branch %q...", branch)
 	manifest, err := app.GetManifest(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create manifest from branch %q", branch)

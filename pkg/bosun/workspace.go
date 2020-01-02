@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -26,7 +27,7 @@ type Workspace struct {
 	MergedBosunFile     *File                  `yaml:"-" json:"merged"`
 	ImportedBosunFiles  map[string]*File       `yaml:"-" json:"imported"`
 	ZenhubToken         *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
-	Minikube            MinikubeConfig         `yaml:"minikube" json:"minikube"`
+	Minikube            *kube.MinikubeConfig   `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	LocalRepos          map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
 	GithubCloneProtocol string                 `yaml:"githubCloneProtocol"`
 }
@@ -71,13 +72,6 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	return nil
-}
-
-type MinikubeConfig struct {
-	HostIP   string `yaml:"hostIP" json:"hostIP"`
-	Driver   string `yaml:"driver" json:"driver"`
-	DiskSize string `yaml:"diskSize" json:"diskSize"`
-	Version  string `yaml:"version" json:"version"`
 }
 
 type State struct {

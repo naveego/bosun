@@ -7,6 +7,7 @@ import (
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
@@ -29,7 +30,7 @@ const (
 	OutputYaml  = "yaml"
 )
 
-func MustGetBosun(optionalParams ...bosun.Parameters) *bosun.Bosun {
+func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 	b, err := getBosun(optionalParams...)
 	if err != nil {
 		log.Fatal(err)
@@ -98,13 +99,13 @@ func getRelease(p *bosun.Platform, requestedSlot string, allowedSlots ...string)
 	return r, nil
 }
 
-func getBosun(optionalParams ...bosun.Parameters) (*bosun.Bosun, error) {
+func getBosun(optionalParams ...cli.Parameters) (*bosun.Bosun, error) {
 	config, err := bosun.LoadWorkspace(viper.GetString(ArgBosunConfigFile))
 	if err != nil {
 		return nil, err
 	}
 
-	var params bosun.Parameters
+	var params cli.Parameters
 	if len(optionalParams) > 0 {
 		params = optionalParams[0]
 	}
@@ -153,7 +154,7 @@ func getAppDeploysFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppDepl
 			continue
 		}
 		ctx := b.NewContext()
-		ctx.Log.Debug("Creating transient release...")
+		ctx.Log().Debug("Creating transient release...")
 		valueSetNames := util.ConcatStrings(ctx.Env.ValueSets, viper.GetStringSlice(ArgAppValueSet))
 		valueSets, err := b.GetValueSetSlice(valueSetNames)
 		if err != nil {

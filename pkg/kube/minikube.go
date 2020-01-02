@@ -1,4 +1,4 @@
-package bosun
+package kube
 
 import (
 	"github.com/naveego/bosun/pkg"
@@ -6,19 +6,29 @@ import (
 	"runtime"
 )
 
-func MinikubeUp(ctx BosunContext) error {
+type MinikubeConfig struct {
+	HostIP   string `yaml:"hostIP" json:"hostIP"`
+	Driver   string `yaml:"driver" json:"driver"`
+	DiskSize string `yaml:"diskSize" json:"diskSize"`
+	Version  string `yaml:"version" json:"version"`
+}
 
-	ws := ctx.Bosun.GetWorkspace()
-	cfg := ws.Minikube
+func (c MinikubeConfig) ConfigureKubernetes(ctx CommandContext) error {
+
+	if c.DiskSize == "" {
+		c.DiskSize = "40G"
+	}
+	if c.Version == "" {
+		c.Version = "1.14.0"
+	}
+	if c.Driver == "" {
+		c.Driver = "virtualbox"
+	}
 
 	err := pkg.NewCommand("minikube", "ip").RunE()
 	if err == nil {
-		pkg.Log.Info("minikube already running")
+		pkg.Log.Info("Minikube is already running.")
 		return nil
-	}
-
-	if cfg.Driver == "" {
-		cfg.Driver = "virtualbox"
 	}
 
 	pkg.Log.Info("Resetting virtualbox DHCP leases...")
@@ -36,16 +46,11 @@ func MinikubeUp(ctx BosunContext) error {
 
 	pkg.NewCommand("minikube config set embed-certs true").MustRun()
 
-	version := cfg.Version
-	if version == "" {
-		version = "1.14.0"
-	}
-
-	if cfg.Driver == "none" {
+	if c.Driver == "none" {
 		cmd := pkg.NewCommand("sudo",
 			"minikube",
 			"start",
-			"--kubernetes-version=v"+version,
+			"--kubernetes-version=v"+c.Version,
 			"--vm-driver=none",
 			"--extra-config=apiserver.service-node-port-range=80-32000",
 		).WithEnvValue("CHANGE_MINIKUBE_NONE_USER", "true")
@@ -57,21 +62,21 @@ func MinikubeUp(ctx BosunContext) error {
 				"start",
 				"--memory=16000",
 				"--cpus=2",
-				"--kubernetes-version=v"+version,
-				"--vm-driver", cfg.Driver,
+				"--kubernetes-version=v"+c.Version,
+				"--vm-driver", c.Driver,
 				"--hyperv-virtual-switch", "Default Switch",
 				"--extra-config=apiserver.service-node-port-range=80-32000",
-				"--disk-size="+ws.Minikube.DiskSize,
+				"--disk-size="+c.DiskSize,
 			).RunE()
 		} else {
 			err = pkg.NewCommand("minikube",
 				"start",
 				"--memory=16000",
 				"--cpus=2",
-				"--kubernetes-version=v"+version,
-				"--vm-driver", cfg.Driver,
+				"--kubernetes-version=v"+c.Version,
+				"--vm-driver", c.Driver,
 				"--extra-config=apiserver.service-node-port-range=80-32000",
-				"--disk-size="+ws.Minikube.DiskSize,
+				"--disk-size="+c.DiskSize,
 				//"-v=7",
 			).RunE()
 		}

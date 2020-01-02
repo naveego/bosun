@@ -238,14 +238,14 @@ var releaseImpactCmd = addCommand(releaseCmd, &cobra.Command{
 		// 		ctx := b.NewContext().WithAppDeploy(appRelease)
 		// 		values, err := appRelease.GetResolvedValues(ctx)
 		// 		if err != nil {
-		// 			ctx.Log.WithError(err).Error("Could not create values map for app release.")
+		// 			ctx.Log().WithError(err).Error("Could not create values map for app release.")
 		// 			return
 		// 		}
 		//
 		// 		ctx = ctx.WithPersistableValues(values)
 		// 		err = appRelease.LoadActualState(ctx, true)
 		// 		if err != nil {
-		// 			ctx.Log.WithError(err).Error("Could not load actual state.")
+		// 			ctx.Log().WithError(err).Error("Could not load actual state.")
 		// 			return
 		// 		}
 		// 		complete += 1
@@ -527,7 +527,7 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 				if action.Test != nil {
 					err := action.Execute(ctx)
 					if err != nil {
-						ctx.Log.WithError(err).Error("Test failed.")
+						ctx.Log().WithError(err).Error("Test failed.")
 					}
 				}
 			}
@@ -588,9 +588,9 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		if viper.GetBool(ArgReleaseSkipValidate) {
-			ctx.Log.Warn("Validation disabled.")
+			ctx.Log().Warn("Validation disabled.")
 		} else {
-			ctx.Log.Info("Validating...")
+			ctx.Log().Info("Validating...")
 			err = validateDeploy(b, ctx, deploy)
 			if err != nil {
 				return err

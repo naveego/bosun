@@ -6,6 +6,7 @@ import (
 	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -22,7 +23,7 @@ type BosunContext struct {
 	Bosun  *Bosun
 	Env    *EnvironmentConfig
 	Dir    string
-	Log    *logrus.Entry
+	log    *logrus.Entry
 	Values *PersistableValues
 	// Release         *Deploy
 	AppRepo         *App
@@ -44,7 +45,7 @@ func NewTestBosunContext() BosunContext {
 		Dir:   dir,
 		Env:   &EnvironmentConfig{},
 		Bosun: testBosun,
-		Log:   logrus.WithField("TEST", "INSTANCE"),
+		log:   logrus.WithField("TEST", "INSTANCE"),
 	}
 }
 
@@ -95,8 +96,8 @@ func (c BosunContext) WithApp(a *App) BosunContext {
 		return c
 	}
 	c.AppRepo = a
-	c.Log = c.Log.WithField("app", a.Name)
-	c.Log.Debug("")
+	c.log = c.Log().WithField("app", a.Name)
+	c.Log().Debug("")
 	c.LogLine(1, "[Context] Changed App.")
 	return c.WithDir(a.FromPath)
 }
@@ -106,7 +107,7 @@ func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 		return c
 	}
 	c.AppRelease = a
-	c.Log = c.Log.WithField("appDeploy", a.Name)
+	c.log = c.Log().WithField("appDeploy", a.Name)
 	c.LogLine(1, "[Context] Changed AppDeploy.")
 	return c.WithDir(a.AppConfig.FromPath)
 }
@@ -121,7 +122,7 @@ func (c BosunContext) WithPersistableValues(v *PersistableValues) BosunContext {
 	return c
 }
 
-func (c BosunContext) GetValuesAsEnvVars() map[string]string {
+func (c BosunContext) GetEnvironmentVariables() map[string]string {
 	if c.valuesAsEnvVars == nil {
 		if c.Values != nil {
 			c.valuesAsEnvVars = c.Values.Values.ToEnv("BOSUN_")
@@ -139,12 +140,12 @@ func (c BosunContext) GetValuesAsEnvVars() map[string]string {
 }
 
 func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
-	c.Log = log
+	c.log = log
 	return c
 }
 
 func (c BosunContext) WithLogField(key string, value interface{}) BosunContext {
-	c.Log = c.Log.WithField(key, value)
+	c.log = c.Log().WithField(key, value)
 	return c
 }
 
@@ -194,11 +195,11 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 	return path
 }
 
-func (c BosunContext) GetParams() Parameters {
+func (c BosunContext) GetParameters() cli.Parameters {
 	if c.Bosun != nil {
 		return c.Bosun.params
 	}
-	return Parameters{}
+	return cli.Parameters{}
 }
 
 func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
@@ -232,14 +233,14 @@ func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
 
 func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
 	c.Env = env
-	c.Log = c.Log.WithField("env", env.Name)
+	c.log = c.Log().WithField("env", env.Name)
 	return c
 }
 
 func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
 	if c.Log != nil {
 		_, file, line, _ := runtime.Caller(skip)
-		c.Log.WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
+		c.Log().WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
 	}
 }
 
@@ -254,7 +255,7 @@ func (c BosunContext) GetMinikubeDockerEnv() []string {
 				color.Red("Attempting to use docker for minikube panicked: %v", e)
 			}
 		}()
-		log := c.GetLog()
+		log := c.Log()
 		log.Info("Attempting to use docker agent in minikube...")
 		if err := pkg.NewCommand("minikube", "ip").RunE(); err != nil {
 			log.Warnf("Could not use minikube as a docker proxy: %s", err)
@@ -308,7 +309,7 @@ func (c BosunContext) GetMinikubeDockerEnv() []string {
 // }
 
 func (c BosunContext) IsVerbose() bool {
-	return c.GetParams().Verbose
+	return c.GetParameters().Verbose
 }
 
 func (c BosunContext) GetDomain() string {
@@ -324,10 +325,18 @@ func (c BosunContext) GetCluster() string {
 	return ""
 }
 
-// GetLog gets a logger safely.
-func (c BosunContext) GetLog() *logrus.Entry {
-	if c.Log != nil {
-		return c.Log
+// Log gets a logger safely.
+func (c BosunContext) Log() *logrus.Entry {
+	if c.log != nil {
+		return c.log
 	}
 	return logrus.NewEntry(logrus.StandardLogger())
+}
+
+func (c BosunContext) Pwd() string {
+	if c.Dir != "" {
+		return c.Dir
+	}
+	pwd, _ := os.Getwd()
+	return pwd
 }

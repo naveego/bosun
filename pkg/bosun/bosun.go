@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/mirror"
@@ -25,7 +26,7 @@ import (
 
 type Bosun struct {
 	mu                   *sync.Mutex
-	params               Parameters
+	params               cli.Parameters
 	ws                   *Workspace
 	file                 *File
 	vaultClient          *vault.Client
@@ -40,21 +41,7 @@ type Bosun struct {
 	workspaceAppProvider AppConfigAppProvider
 }
 
-type Parameters struct {
-	Verbose          bool
-	DryRun           bool
-	Force            bool
-	NoReport         bool
-	ForceTests       bool
-	ValueOverrides   map[string]string
-	FileOverrides    []string
-	NoCurrentEnv     bool
-	ConfirmedEnv     string
-	ProviderPriority []string
-	Sudo             bool
-}
-
-func New(params Parameters, ws *Workspace) (*Bosun, error) {
+func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 	if params.ProviderPriority == nil {
 		params.ProviderPriority = DefaultAppProviderPriority
 	}
@@ -450,7 +437,7 @@ func (b *Bosun) IsClusterAvailable() bool {
 		case result := <-resultCh:
 			b.clusterAvailable = &result
 			b.log.Debugf("Cluster is available: %t", result)
-		case <-time.After(2 * time.Second):
+		case <-time.After(5 * time.Second):
 			b.log.Warn("Cluster did not respond quickly, I will assume it is unavailable.")
 			if cmd.Process != nil {
 				cmd.Process.Kill()
@@ -547,7 +534,7 @@ func (b *Bosun) NewContext() BosunContext {
 	return BosunContext{
 		Bosun: b,
 		Env:   b.GetCurrentEnvironment(),
-		Log:   b.log,
+		log:   b.log,
 	}.WithDir(dir).WithContext(context.Background())
 
 }
@@ -645,7 +632,7 @@ func (b *Bosun) AddGitRoot(s string) {
 // TidyWorkspace updates the ClonePaths in the workspace based on the apps found in the imported files.
 func (b *Bosun) TidyWorkspace() {
 	ctx := b.NewContext()
-	log := ctx.Log
+	log := ctx.Log()
 	var importMap = map[string]struct{}{}
 
 	for _, repo := range b.GetRepos() {

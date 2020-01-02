@@ -141,7 +141,7 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 
 	a.ActualState = AppState{}
 
-	log := ctx.Log
+	log := ctx.Log()
 
 	if !ctx.Bosun.IsClusterAvailable() {
 		log.Debug("Cluster not available.")
@@ -266,7 +266,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	actual, desired := a.ActualState, a.DesiredState
 
-	log := ctx.Log.WithField("name", a.Name)
+	log := ctx.Log().WithField("name", a.Name)
 
 	log.WithField("state", desired.String()).Debug("Desired state.")
 	log.WithField("state", actual.String()).Debug("Actual state.")
@@ -443,7 +443,7 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*PersistableValues, err
 	}
 
 	// Finally, apply any overrides from parameters passed to this invocation of bosun.
-	for k, v := range ctx.GetParams().ValueOverrides {
+	for k, v := range ctx.GetParameters().ValueOverrides {
 		err := r.Values.SetAtPath(k, v)
 		if err != nil {
 			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
@@ -456,7 +456,7 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*PersistableValues, err
 
 func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
-	log := ctx.Log
+	log := ctx.Log()
 
 	if a.DesiredState.Status == StatusUnchanged {
 		log.Infof("Desired state is %q, nothing to do here.", StatusUnchanged)
@@ -487,7 +487,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		return errors.Errorf("error checking actual state for %q: %s", a.Name, err)
 	}
 
-	params := ctx.GetParams()
+	params := ctx.GetParameters()
 	env := ctx.Env
 
 	reportDeploy := !params.DryRun &&
@@ -543,13 +543,13 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	for _, step := range plan {
 		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
-		stepCtx.Log.Info("Executing step...")
+		stepCtx.Log().Info("Executing step...")
 		err = step.Action(stepCtx)
 		if err != nil {
-			stepCtx.Log.WithError(err).Error("Deploy failed.")
+			stepCtx.Log().WithError(err).Error("Deploy failed.")
 			return errors.Wrapf(err, "step %q failed", step.Name)
 		}
-		stepCtx.Log.Info("Step complete.")
+		stepCtx.Log().Info("Step complete.")
 	}
 
 	log.Debug("Plan executed.")
@@ -559,7 +559,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err error) {
 
-	log := ctx.Log
+	log := ctx.Log()
 	env := ctx.Env
 
 	log.Info("Deploy progress will be reported to github.")
@@ -681,9 +681,9 @@ func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 		return "", err
 	} else {
 		if msg == "" {
-			ctx.Log.Debug("Diff detected no changes.")
+			ctx.Log().Debug("Diff detected no changes.")
 		} else {
-			ctx.Log.Debugf("Diff result:\n%s\n", msg)
+			ctx.Log().Debugf("Diff result:\n%s\n", msg)
 		}
 	}
 
@@ -698,7 +698,7 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 	args = append(args, a.Name)
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
+	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "delete using args %v", args)
 }
 
@@ -709,14 +709,14 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
+	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "rollback using args %v", args)
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
 	args := append([]string{"install", "--name", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
+	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "install using args %v", args)
 }
 
@@ -726,7 +726,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 		args = append(args, "--force")
 	}
 	out, err := pkg.NewCommand("helm", args...).RunOut()
-	ctx.Log.Debug(out)
+	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "upgrade using args %v", args)
 }
 
@@ -746,7 +746,7 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext) error {
 
 	ctx = ctx.WithAppDeploy(a)
 
-	ctx.Log.Info("Configuring app to route traffic to localhost.")
+	ctx.Log().Info("Configuring app to route traffic to localhost.")
 
 	if a.AppConfig.Minikube == nil || len(a.AppConfig.Minikube.RoutableServices) == 0 {
 		return errors.New(`to route to localhost, app must have a minikube entry like this:
@@ -769,7 +769,7 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext) error {
 	}
 
 	for _, routableService := range a.AppConfig.Minikube.RoutableServices {
-		log := ctx.Log.WithField("routable_service", routableService.Name)
+		log := ctx.Log().WithField("routable_service", routableService.Name)
 
 		log.Info("Updating service and endpoint...")
 
@@ -902,12 +902,12 @@ func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
 
 func (a *AppDeploy) Recycle(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
-	ctx.Log.Info("Deleting pods...")
+	ctx.Log().Info("Deleting pods...")
 	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.AppConfig.GetNamespace(), "pods", "--selector=release="+a.AppConfig.Name).RunE()
 	if err != nil {
 		return err
 	}
-	ctx.Log.Info("Pods deleted, waiting for recreated pods to be ready.")
+	ctx.Log().Info("Pods deleted, waiting for recreated pods to be ready.")
 
 	for {
 		podsReady := true
@@ -937,7 +937,7 @@ func (a *AppDeploy) Recycle(ctx BosunContext) error {
 		color.White("...")
 
 		wait := 5 * time.Second
-		ctx.Log.Debugf("Waiting %s to check readiness again...", wait)
+		ctx.Log().Debugf("Waiting %s to check readiness again...", wait)
 		select {
 		case <-time.After(wait):
 		case <-ctx.Ctx().Done():
@@ -945,7 +945,7 @@ func (a *AppDeploy) Recycle(ctx BosunContext) error {
 		}
 	}
 
-	ctx.Log.Info("Recycle complete.")
+	ctx.Log().Info("Recycle complete.")
 
 	return nil
 }

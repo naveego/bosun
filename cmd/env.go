@@ -20,6 +20,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -47,7 +48,7 @@ var envCmd = addCommand(rootCmd, &cobra.Command{
 	Example: "$(bosun env {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b, err := getBosun(bosun.Parameters{NoCurrentEnv: true})
+		b, err := getBosun(cli.Parameters{NoCurrentEnv: true})
 		if err != nil {
 			return err
 		}

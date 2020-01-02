@@ -79,12 +79,12 @@ type E2EBookendScripts struct {
 
 func (e E2EBookendScripts) Setup(ctx BosunContext) error {
 	if e.SetupScript == nil {
-		ctx.Log.Debug("No setup script defined.")
+		ctx.Log().Debug("No setup script defined.")
 		return nil
 	}
 
 	if GetE2EContext(ctx).SkipSetup {
-		ctx.Log.Warn("Skipping setup because skip-teardown flag was set.")
+		ctx.Log().Warn("Skipping setup because skip-teardown flag was set.")
 		return nil
 	}
 
@@ -95,12 +95,12 @@ func (e E2EBookendScripts) Setup(ctx BosunContext) error {
 func (e E2EBookendScripts) Teardown(ctx BosunContext) error {
 
 	if e.TeardownScript == nil {
-		ctx.Log.Debug("No teardown script defined.")
+		ctx.Log().Debug("No teardown script defined.")
 		return nil
 	}
 
 	if GetE2EContext(ctx).SkipTeardown {
-		ctx.Log.Warn("Skipping teardown because skip-teardown flag was set.")
+		ctx.Log().Warn("Skipping teardown because skip-teardown flag was set.")
 		return nil
 	}
 
@@ -177,7 +177,7 @@ func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) 
 	for k, v := range s.MongoConnections {
 		// prepare the connection so that we establish a port forwarder (if needed)
 		// that will live for lifetime of the suite
-		p, err := v.Prepare(ctx.Log)
+		p, err := v.Prepare(ctx.Log())
 		if err != nil {
 			return nil, errors.Wrapf(err, "could not prepare suite mongo connection %q", k)
 		}
@@ -236,7 +236,7 @@ func (r *E2ERun) Execute() error {
 	// log if the suite teardown fails, but don't error out
 	defer func() {
 		if err := r.Suite.Teardown(r.Ctx); err != nil {
-			r.Ctx.Log.WithError(err).Error("Error during teardown.")
+			r.Ctx.Log().WithError(err).Error("Error during teardown.")
 		}
 	}()
 
@@ -289,7 +289,7 @@ func (t *Timed) StopTimer() {
 }
 
 func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
-	ctx = ctx.WithDir(e.FromPath).WithLog(ctx.Log.WithField("test", e.Name))
+	ctx = ctx.WithDir(e.FromPath).WithLog(ctx.Log().WithField("test", e.Name))
 
 	result := &E2EResult{
 		Name:   e.Name,
@@ -299,7 +299,7 @@ func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
 	result.StartTimer()
 	defer func(result *E2EResult) {
 		if err := e.Teardown(ctx); err != nil {
-			ctx.Log.WithError(err).Error("Error during teardown.")
+			ctx.Log().WithError(err).Error("Error during teardown.")
 		}
 		result.StopTimer()
 	}(result)
@@ -326,7 +326,7 @@ func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
 		result.Steps = append(result.Steps, stepResult)
 
 		if err != nil {
-			ctx.Log.WithError(err).Error("Step failed.")
+			ctx.Log().WithError(err).Error("Step failed.")
 			result.Passed = false
 			result.Error = err.Error()
 			stepResult.Passed = false

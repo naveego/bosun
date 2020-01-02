@@ -121,10 +121,10 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 		}
 		branch := g.Branch()
 		if !branchRE.MatchString(branch) {
-			if ctx.GetParams().Force {
-				ctx.GetLog().Warnf("Current branch %q does not match branchFilter %q, but overridden by --force.", branch, s.BranchFilter)
+			if ctx.GetParameters().Force {
+				ctx.Log().Warnf("Current branch %q does not match branchFilter %q, but overridden by --force.", branch, s.BranchFilter)
 			} else {
-				ctx.GetLog().Errorf("Current branch %q does not match branchFilter %q (override using --force).", branch, s.BranchFilter)
+				ctx.Log().Errorf("Current branch %q does not match branchFilter %q (override using --force).", branch, s.BranchFilter)
 				return nil
 			}
 		}
@@ -156,7 +156,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 	}
 
 	if s.Literal != nil {
-		ctx.Log.Debug("Executing literal script, not bosun script.")
+		ctx.Log().Debug("Executing literal script, not bosun script.")
 		_, err = s.Literal.Execute(ctx.WithDir(filepath.Dir(s.FromPath)), CommandOpts{StreamOutput: true})
 		if err != nil {
 			return err
@@ -189,7 +189,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 		}
 		step := s.Steps[i]
 
-		stepCtx := ctx.WithLog(ctx.Log.WithField("step", i))
+		stepCtx := ctx.WithLog(ctx.Log().WithField("step", i))
 		err = step.Execute(stepCtx, i)
 		if err != nil {
 			return errors.Wrapf(err, "script %q abended on step %q (%d)", s.Name, s.Name, i)
@@ -201,7 +201,7 @@ func (s *Script) Execute(ctx BosunContext, steps ...int) error {
 
 func (s ScriptStep) Execute(ctx BosunContext, index int) error {
 
-	log := ctx.Log
+	log := ctx.Log()
 	if s.Name != "" {
 		log = log.WithField("name", s.Name)
 	}

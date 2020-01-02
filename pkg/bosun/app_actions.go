@@ -60,7 +60,7 @@ type SelfContainer interface {
 // MakeSelfContained removes imports all file dependencies into literals,
 // then deletes those dependencies.
 func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
-	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name)).WithDir(a.FromPath)
+	ctx = ctx.WithLog(ctx.Log().WithField("action", a.Name)).WithDir(a.FromPath)
 
 	for _, action := range a.GetActions() {
 		if sc, ok := action.(SelfContainer); ok {
@@ -75,7 +75,7 @@ func (a *AppAction) MakeSelfContained(ctx BosunContext) error {
 }
 
 func (a *AppAction) Execute(ctx BosunContext) error {
-	log := ctx.Log
+	log := ctx.Log()
 
 	if a.Where != "" && !strings.Contains(a.Where, ctx.Env.Name) {
 		log.Debugf("Skipping because 'where' is %q but current environment is %q.", a.Where, ctx.Env.Name)
@@ -97,7 +97,7 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 
 	var err error
 
-	ctx = ctx.WithLog(ctx.Log.WithField("action", a.Name))
+	ctx = ctx.WithLog(ctx.Log().WithField("action", a.Name))
 	if a.FromPath != "" {
 		// if the action has its own FromPath, we'll use it, but usually
 		// actions are executed in a context which has already set the
@@ -108,7 +108,7 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 	for i := 0; i < attempts; i++ {
 		if i > 0 {
 			seconds := int(interval.Seconds())
-			ctx.Log.WithError(err).WithField("attempts_remaining", attempts-i).Errorf("Action failed, waiting %s...", interval)
+			ctx.Log().WithError(err).WithField("attempts_remaining", attempts-i).Errorf("Action failed, waiting %s...", interval)
 			if seconds > 0 {
 				fmt.Printf("\rWaiting: %d", seconds)
 				for ; seconds >= 0; seconds = seconds - 1 {
@@ -124,14 +124,14 @@ func (a *AppAction) Execute(ctx BosunContext) error {
 			}
 		}
 
-		ctx.Log.WithField("description", a.Description).Infof("Executing action...")
+		ctx.Log().WithField("description", a.Description).Infof("Executing action...")
 
 		attemptCtx := ctx.WithTimeout(timeout)
 
 		err = a.execute(attemptCtx)
 
 		if err == nil {
-			ctx.Log.Info("Action completed.")
+			ctx.Log().Info("Action completed.")
 			// succeeded
 			return nil
 		}
@@ -150,7 +150,7 @@ func (a *AppAction) execute(ctx BosunContext) error {
 
 	for _, action := range a.GetActions() {
 		ctx = ctx.WithLogField("action_type", fmt.Sprintf("%T", action))
-		ctx.Log.Debugf("Executing %T action...", action)
+		ctx.Log().Debugf("Executing %T action...", action)
 		err := action.Execute(ctx)
 		if err != nil {
 			return err
@@ -222,13 +222,13 @@ func (a *VaultAction) Execute(ctx BosunContext) error {
 	}
 
 	y, _ := yaml.Marshal(vaultLayout)
-	ctx.Log.Debugf("Vault layout from %s:\n%s\n", a.Layout, string(y))
+	ctx.Log().Debugf("Vault layout from %s:\n%s\n", a.Layout, string(y))
 
 	if ctx.IsDryRun() {
 		return nil
 	}
 
-	err = vaultLayout.Apply(a.CacheKey, ctx.GetParams().Force, vaultClient)
+	err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, vaultClient)
 	if err != nil {
 		return err
 	}
@@ -284,8 +284,8 @@ type TestAction struct {
 
 func (t *TestAction) Execute(ctx BosunContext) error {
 
-	if ctx.GetParams().DryRun {
-		ctx.Log.Info("Skipping test because this is a dry run.")
+	if ctx.GetParameters().DryRun {
+		ctx.Log().Info("Skipping test because this is a dry run.")
 		return nil
 	}
 	if t.Exec != nil {
@@ -301,7 +301,7 @@ func (t *TestAction) Execute(ctx BosunContext) error {
 			},
 		}
 
-		ctx.Log.WithField("url", target).Infof("Making HTTP GET request...")
+		ctx.Log().WithField("url", target).Infof("Making HTTP GET request...")
 
 		resp, err := c.Get(target)
 		if err != nil {
@@ -370,7 +370,7 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 		cmd := mongo.ScriptCommand{
 			Conn:   a.Connection,
 			Script: script,
-			Log:    ctx.Log,
+			Log:    ctx.Log(),
 		}
 
 		err = cmd.Execute()
@@ -387,7 +387,7 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 		return errors.Errorf("could not read file directly: %s", err)
 	}
 
-	ctx.Log.Debugf("parsing file '%s'", databaseFilePath)
+	ctx.Log().Debugf("parsing file '%s'", databaseFilePath)
 
 	db := mongo.Database{}
 	err = yaml.Unmarshal(dataFile, &db)
@@ -402,7 +402,7 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 		DB:        db,
 		DataDir:   dataDir,
 		RebuildDB: a.RebuildDB,
-		Log:       ctx.Log,
+		Log:       ctx.Log(),
 	}
 
 	if a.ConnectionName != "" {
@@ -418,7 +418,7 @@ func (a *MongoAction) Execute(ctx BosunContext) error {
 	}
 
 	j, _ := json.MarshalIndent(cmd, "", "  ")
-	ctx.Log.Debugf("Executing mongo import command: \n%s", string(j))
+	ctx.Log().Debugf("Executing mongo import command: \n%s", string(j))
 
 	err = cmd.Execute()
 
@@ -444,7 +444,7 @@ func (a *MongoAssertAction) Execute(ctx BosunContext) error {
 		}
 	}
 
-	pc, err := a.Connection.Prepare(ctx.Log)
+	pc, err := a.Connection.Prepare(ctx.Log())
 	if err != nil {
 		return errors.Wrap(err, "prepare connection")
 	}
@@ -497,7 +497,7 @@ func (a *HTTPAction) Execute(ctx BosunContext) error {
 		bodyBuffer := bytes.NewBuffer(bodyBytes)
 		a.Method = strings.ToUpper(a.Method)
 
-		ctx.Log.Debugf("Making %s request to %s...", a.Method, a.URL)
+		ctx.Log().Debugf("Making %s request to %s...", a.Method, a.URL)
 
 		req, err = http.NewRequest(a.Method, a.URL, bodyBuffer)
 		if err != nil {
@@ -529,7 +529,7 @@ func (a *HTTPAction) Execute(ctx BosunContext) error {
 		return errors.Wrap(err, "made request")
 	}
 
-	ctx.Log.Debugf("Request returned %d - %s.", resp.StatusCode, resp.Status)
+	ctx.Log().Debugf("Request returned %d - %s.", resp.StatusCode, resp.Status)
 
 	if len(a.OKCodes) == 0 {
 		a.OKCodes = []int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}

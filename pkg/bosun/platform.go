@@ -48,7 +48,7 @@ type Platform struct {
 	Apps                         []*AppMetadata              `yaml:"apps"`
 	ZenHubConfig                 *zenhub.Config              `yaml:"zenHubConfig"`
 	NextReleaseName              string                      `yaml:"nextReleaseName,omitempty"`
-	Clusters                     []kube.KubeConfigDefinition `yaml:"clusters"`
+	Clusters                     kube.ConfigDefinitions      `yaml:"clusters"`
 	releaseManifests             map[string]*ReleaseManifest `yaml:"-"`
 }
 
@@ -104,13 +104,8 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-func (p *Platform) GetCluster(name string) (*kube.KubeConfigDefinition, error) {
-	for _, cluster := range p.Clusters {
-		if cluster.Name == name {
-			return &cluster, nil
-		}
-	}
-	return nil, errors.Errorf("no cluster found with name %q", name)
+func (p *Platform) GetCluster(name string) (*kube.ConfigDefinition, error) {
+	return p.Clusters.GetKubeConfigDefinitionByName(name)
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
@@ -186,7 +181,7 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 		return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
 	}
 
-	log := ctx.Log
+	log := ctx.Log()
 
 	log.Debug("Checking if release branch exists...")
 
@@ -216,7 +211,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	if err := p.checkPlanningOngoing(); err != nil {
 		return nil, err
 	}
-	ctx.Log.Debug("Creating new release plan.")
+	ctx.Log().Debug("Creating new release plan.")
 
 	metadata := &ReleaseMetadata{
 		Version: settings.Version,
@@ -272,7 +267,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 		return nil, err
 	}
 
-	ctx.Log.Infof("Created new release plan %s.", manifest)
+	ctx.Log().Infof("Created new release plan %s.", manifest)
 
 	manifest.plan = plan
 	p.NextReleaseName = settings.Name
@@ -346,7 +341,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 
 		appName := app.Name
 
-		log := ctx.Log.WithField("app", app.Name)
+		log := ctx.Log().WithField("app", app.Name)
 
 		appPlan, ok := plan.Apps[appName]
 		if !ok {
@@ -481,7 +476,7 @@ func (p *Platform) RePlanRelease(ctx BosunContext, apps ...*App) (*ReleasePlan, 
 
 	p.SetReleaseManifest(SlotCurrent, current)
 
-	ctx.Log.Infof("Prepared new release plan for %s.", current)
+	ctx.Log().Infof("Prepared new release plan for %s.", current)
 
 	return plan, nil
 }
@@ -573,7 +568,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	appCh := make(chan *AppManifest, len(plan.Apps))
 	errCh := make(chan error)
 
-	dispatcher := worker.NewDispatcher(ctx.Log, 100)
+	dispatcher := worker.NewDispatcher(ctx.Log(), 100)
 
 	for _, unclosedAppName := range util.SortedKeys(plan.Apps) {
 		appName := unclosedAppName
@@ -589,7 +584,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				var app *App
 				appPlan := plan.Apps[appName]
 
-				log := ctx.WithLogField("app", appName).Log
+				log := ctx.WithLogField("app", appName).Log()
 
 				validationResult := validationResults[appName]
 				if validationResult.Err != nil {
@@ -648,13 +643,13 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 			if appPlan, ok := plan.Apps[appManifest.Name]; ok {
 
-				ctx.Log.WithField("app", appManifest.Name).WithField("version", appManifest.Version).Info("Adding app to release.")
+				ctx.Log().WithField("app", appManifest.Name).WithField("version", appManifest.Version).Info("Adding app to release.")
 				err = releaseManifest.AddApp(appManifest, appPlan.Deploy)
 				if err != nil {
 					return nil, err
 				}
 			} else {
-				ctx.Log.WithField("app", appManifest.Name).Warn("Requested app was not in plan!")
+				ctx.Log().WithField("app", appManifest.Name).Warn("Requested app was not in plan!")
 			}
 		case commitErr := <-errCh:
 			return nil, commitErr
@@ -663,7 +658,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 	p.SetReleaseManifest(SlotCurrent, releaseManifest)
 
-	ctx.Log.Infof("Added release %q to releases for platform.", releaseManifest.Name)
+	ctx.Log().Infof("Added release %q to releases for platform.", releaseManifest.Name)
 
 	releaseManifest.MarkDirty()
 	currentRelease.MarkDeleted()
@@ -677,11 +672,11 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 // and will write out any release manifests which have been loaded in this platform.
 func (p *Platform) Save(ctx BosunContext) error {
 
-	if ctx.GetParams().DryRun {
-		ctx.Log.Warn("Skipping platform save because dry run flag was set.")
+	if ctx.GetParameters().DryRun {
+		ctx.Log().Warn("Skipping platform save because dry run flag was set.")
 	}
 
-	ctx.Log.Info("Saving platform...")
+	ctx.Log().Info("Saving platform...")
 	sort.Sort(sort.Reverse(releaseMetadataSorting(p.ReleaseMetadata)))
 
 	manifests := p.releaseManifests
@@ -689,10 +684,10 @@ func (p *Platform) Save(ctx BosunContext) error {
 	// save the release manifests
 	for slot, manifest := range manifests {
 		if !manifest.dirty {
-			ctx.Log.Debugf("Skipping save of manifest slot %q because it wasn't dirty.", slot)
+			ctx.Log().Debugf("Skipping save of manifest slot %q because it wasn't dirty.", slot)
 			continue
 		}
-		ctx.Log.Infof("Saving manifest slot %q because it was dirty.", slot)
+		ctx.Log().Infof("Saving manifest slot %q because it was dirty.", slot)
 		manifest.Slot = slot
 		dir := p.GetManifestDirectoryPath(slot)
 		err := os.RemoveAll(dir)
@@ -746,7 +741,7 @@ func (p *Platform) Save(ctx BosunContext) error {
 		return err
 	}
 
-	ctx.Log.Info("Platform saved.")
+	ctx.Log().Info("Platform saved.")
 	return nil
 }
 
@@ -1000,7 +995,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 	b := ctx.Bosun
 
 	for name := range release.UpgradedApps {
-		log := ctx.Log.WithField("app", name)
+		log := ctx.Log().WithField("app", name)
 
 		appDeploy, err := release.GetAppManifest(name)
 		if err != nil {
@@ -1009,22 +1004,22 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 		app, err := b.GetAppFromProvider(name, WorkspaceProviderName)
 		if err != nil {
-			ctx.Log.WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+			ctx.Log().WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
 			continue
 		}
 
 		if !app.BranchForRelease {
-			ctx.Log.Warnf("App repo (%s) for app %s is not branched for release.", app.RepoName, app.Name)
+			ctx.Log().Warnf("App repo (%s) for app %s is not branched for release.", app.RepoName, app.Name)
 			continue
 		}
 
 		// if appDeploy.PinnedReleaseVersion == nil {
-		// 	ctx.Log.Warnf("App repo (%s) does not have a release branch pinned, probably not part of this release.", app.RepoName, release.Name, release.Version)
+		// 	ctx.Log().Warnf("App repo (%s) does not have a release branch pinned, probably not part of this release.", app.RepoName, release.Name, release.Version)
 		// 	continue
 		// }
 		//
 		// if *appDeploy.PinnedReleaseVersion != release.Version {
-		// 	ctx.Log.Warnf("App repo (%s) is not changed for this release.", app.RepoName)
+		// 	ctx.Log().Warnf("App repo (%s) is not changed for this release.", app.RepoName)
 		// 	continue
 		// }
 
@@ -1107,7 +1102,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 	for targetLabel, target := range mergeTargets {
 
-		log := ctx.Log.WithField("repo", target.name)
+		log := ctx.Log().WithField("repo", target.name)
 
 		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
 
@@ -1237,7 +1232,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) error {
 
-	log := ctx.WithLogField("branch", branch).GetLog()
+	log := ctx.WithLogField("branch", branch).Log()
 
 	g, _ := git.NewGitWrapper(p.FromPath)
 	err := g.CheckOutBranch(branch)

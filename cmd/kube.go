@@ -107,8 +107,8 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 })
 
 var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:          "list-definitions",
-	Aliases:      []string{"lsdf", "list-def", "list-defs"},
+	Use:          "list-clusters",
+	Aliases:      []string{"lsc", "list-cluster"},
 	Short:        "Lists all cluster definitions. ",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -124,9 +124,9 @@ var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
 })
 
 var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:          "configure-cluster {name} ",
+	Use:          "configure-cluster",
 	Args:         cobra.ExactArgs(1),
-	Short:        "Configures a cluster which is defined on the platform. ",
+	Short:        "Configures clusters for the current environment, or a specific cluster if given flags. ",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -136,20 +136,49 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 			return err
 		}
 
-		c, err := p.GetCluster(args[0])
-		if err != nil {
-			return err
+		var konfigs []*kube.ConfigDefinition
+		name := viper.GetString(ArgConfigureClusterName)
+		env := viper.GetString(ArgConfigureClusterEnv)
+		if env == "" {
+			env = b.GetCurrentEnvironment().Name
 		}
-		ctx := b.NewContext()
-		ktx := kube.KubeCommandContext{
-			Log: ctx.Log,
+		role := viper.GetString(ArgConfigureClusterRole)
+		if name != "" {
+			konfig, err := p.Clusters.GetKubeConfigDefinitionByName(name)
+			if err != nil {
+				return err
+			}
+			konfigs = append(konfigs, konfig)
+		} else {
+			found, err := p.Clusters.GetKubeConfigDefinitionsByAttributes(env, role)
+			if err != nil {
+				return err
+			}
+			konfigs = append(konfigs, found...)
 		}
 
-		err = c.Configure(ktx)
+		if len(konfigs) == 0 {
+			return errors.Errorf("could not find any kube configs")
+		}
+
+		ctx := b.NewContext()
+		for _, c := range konfigs {
+			ktx := kube.CommandContext{
+				Log: ctx.Log(),
+			}
+
+			err = c.ConfigureKubernetes(ktx)
+		}
 
 		return err
 	},
 })
+
+const (
+	ArgConfigureClusterName = "name"
+	ArgConfigureClusterEnv  = "env"
+	ArgConfigureClusterRole = "role"
+)
 
 var kubeAddNamespaceCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:          "add-namespace {name}",

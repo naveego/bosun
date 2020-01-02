@@ -16,7 +16,7 @@ func (c BosunContext) Services() Services {
 }
 
 func (s Services) Log() *logrus.Entry {
-	return s.ctx.GetLog()
+	return s.ctx.Log()
 }
 
 type Logger interface {

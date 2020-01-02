@@ -213,7 +213,7 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 	appConfig := app.AppConfig
 
 	if appConfig.BranchForRelease {
-		log := ctx.Log.WithField("app", appConfig.Name)
+		log := ctx.Log().WithField("app", appConfig.Name)
 		if !app.IsRepoCloned() {
 			return nil, errors.New("repo is not cloned but must be branched for release; what is going on?")
 		}
@@ -243,19 +243,6 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 			}
 		}
 
-		app.AddReleaseToHistory(r.Version.String())
-		err = app.Parent.Save()
-		if err != nil {
-			return nil, errors.Wrap(err, "saving after adding release to app history")
-		}
-
-		err = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.Parent.FromPath)
-		if err != nil &&
-			!strings.Contains(err.Error(), "no changes added to commit") &&
-			!strings.Contains(err.Error(), "nothing to commit") {
-			return nil, err
-		}
-
 		if bump != "none" {
 			if expectedVersion.LessThan(app.Version) {
 				log.Warnf("Skipping version bump %q because version on branch is already %s (source branch is version %s).", bump, app.Version, expectedVersion)
@@ -267,6 +254,19 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 					return nil, errors.Wrap(err, "bumping version")
 				}
 			}
+		}
+
+		app.AddReleaseToHistory(r.Version.String())
+		err = app.Parent.Save()
+		if err != nil {
+			return nil, errors.Wrap(err, "saving after adding release to app history")
+		}
+
+		err = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.Parent.FromPath)
+		if err != nil &&
+			!strings.Contains(err.Error(), "no changes added to commit") &&
+			!strings.Contains(err.Error(), "nothing to commit") {
+			return nil, err
 		}
 
 		err = localRepo.Push()
@@ -302,7 +302,7 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
 				err = r.RefreshApp(ctx, app.Name, app.AppConfig.Branching.Master)
 				if err != nil {
-					ctx.Log.WithError(err).Errorf("Unable to refresh %q", app.Name)
+					ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
 				}
 			}
 		}
@@ -315,7 +315,7 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
 				err = r.RefreshApp(ctx, app.Name, app.AppConfig.Branching.Develop)
 				if err != nil {
-					ctx.Log.WithError(err).Errorf("Unable to refresh %q", app.Name)
+					ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
 				}
 			}
 		}
@@ -332,7 +332,7 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 				if app.PinnedReleaseVersion != nil && *app.PinnedReleaseVersion == r.Version {
 					err = r.RefreshApp(ctx, app.Name, app.Branch)
 					if err != nil {
-						ctx.Log.WithError(err).Errorf("Unable to refresh %q", app.Name)
+						ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
 					}
 				}
 			}
@@ -354,16 +354,16 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 
 	currentAppManifest, err := r.GetAppManifest(name)
 	if err != nil {
-		ctx.GetLog().Warnf("Could not get previous manifest for %q from release %q: %s", r.String(), name, err)
+		ctx.Log().Warnf("Could not get previous manifest for %q from release %q: %s", r.String(), name, err)
 	}
 
-	if currentAppManifest != nil && !ctx.GetParams().Force {
+	if currentAppManifest != nil && !ctx.GetParameters().Force {
 		latestCommitHash, err := app.GetMostRecentCommitFromBranch(ctx, branch)
 		if err != nil {
 			return err
 		}
 		if strings.HasPrefix(latestCommitHash, currentAppManifest.Hashes.Commit) {
-			ctx.Log.Infof("No changes detected, keeping app at %s@%s (most recent commit to %s is %s), use --force to override.", currentAppManifest.Version, currentAppManifest.Hashes.Commit, branch, latestCommitHash)
+			ctx.Log().Infof("No changes detected, keeping app at %s@%s (most recent commit to %s is %s), use --force to override.", currentAppManifest.Version, currentAppManifest.Hashes.Commit, branch, latestCommitHash)
 			return nil
 		}
 	}
@@ -382,7 +382,7 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 	currentVersion := updatedAppManifest.Version.String()
 	currentCommit := updatedAppManifest.Hashes.Commit
 
-	ctx.Log.Infof("Changes detected, will update app in release manifest: %s@%s => %s@%s", previousVersion, previousCommit, currentVersion, currentCommit)
+	ctx.Log().Infof("Changes detected, will update app in release manifest: %s@%s => %s@%s", previousVersion, previousCommit, currentVersion, currentCommit)
 
 	err = r.AddApp(updatedAppManifest, false)
 

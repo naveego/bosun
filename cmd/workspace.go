@@ -272,7 +272,7 @@ var wsTidyPathsCmd = addCommand(workspaceCmd, &cobra.Command{
 		b.TidyWorkspace()
 
 		if viper.GetBool(ArgGlobalDryRun) {
-			b.NewContext().Log.Warn("Detected dry run flag, no changes will be saved.")
+			b.NewContext().Log().Warn("Detected dry run flag, no changes will be saved.")
 			return nil
 		}
 

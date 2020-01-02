@@ -56,10 +56,10 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 		}
 
 		for _, app := range apps {
-			ctx.Log.WithField("app", app.Name).Debug("Including in release.")
+			ctx.Log().WithField("app", app.Name).Debug("Including in release.")
 			deploySettings.Apps[app.Name] = app
 			if includeDeps {
-				ctx.Log.Debug("Including dependencies of all apps...")
+				ctx.Log().Debug("Including dependencies of all apps...")
 				deps, err := b.GetAppDependencies(app.Name)
 				if err != nil {
 					return errors.Wrapf(err, "getting deps for %q", app.Name)
@@ -80,7 +80,7 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 		fromRelease := viper.GetString(ArgAppFromRelease)
 
 		if fromRelease != "" {
-			ctx.Log.Warnf("Deploying app from %q rather than your local clone", fromRelease)
+			ctx.Log().Warnf("Deploying app from %q rather than your local clone", fromRelease)
 			var p *bosun.Platform
 			p, err = b.GetCurrentPlatform()
 			if err != nil {
@@ -111,7 +111,7 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 			return err
 		}
 
-		ctx.Log.Debugf("Created deploy")
+		ctx.Log().Debugf("Created deploy")
 
 		if viper.GetBool(argAppDeployPreview) {
 			for _, app := range r.AppDeploys {

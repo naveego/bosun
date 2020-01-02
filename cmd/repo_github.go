@@ -19,7 +19,7 @@ var _ = addCommand(
 
 			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
 
-				log := ctx.WithLogField("repo", repo.Name).GetLog()
+				log := ctx.WithLogField("repo", repo.Name).Log()
 				ref, err := repo.GetRef()
 				if err != nil {
 					return err

@@ -2,14 +2,15 @@ package test
 
 import (
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	. "github.com/onsi/gomega"
 )
 
 func NewTestInstance() *bosun.Bosun {
-	return NewTestInstanceParams(bosun.Parameters{})
+	return NewTestInstanceParams(cli.Parameters{})
 }
 
-func NewTestInstanceParams(params bosun.Parameters) *bosun.Bosun {
+func NewTestInstanceParams(params cli.Parameters) *bosun.Bosun {
 	ws, err := bosun.LoadWorkspace("./.bosun/bosun.yaml")
 	Expect(err).ToNot(HaveOccurred())
 

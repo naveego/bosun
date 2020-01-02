@@ -1,6 +1,8 @@
 package bosun
 
 import (
+	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/util"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -11,11 +13,11 @@ import (
 )
 
 type Command struct {
-	Command  []string            `yaml:"command,omitempty,flow" json:"command,omitempty,flow"`
-	Script   string              `yaml:"script,omitempty" json:"script,omitempty"`
-	OS       map[string]*Command `yaml:"os,omitempty" json:"os,omitempty"`
+	Command []string            `yaml:"command,omitempty,flow" json:"command,omitempty,flow"`
+	Script  string              `yaml:"script,omitempty" json:"script,omitempty"`
+	OS      map[string]*Command `yaml:"os,omitempty" json:"os,omitempty"`
 	// List of tools required for this command to succeed.
-	Tools []string `yaml:"tools,omitempty" json:"tools,omitempty"`
+	Tools    []string `yaml:"tools,omitempty" json:"tools,omitempty"`
 	resolved bool
 }
 
@@ -65,6 +67,14 @@ Convert:
 	return err
 }
 
+type ExecutionContext interface {
+	cli.ParametersGetter
+	cli.Pwder
+	cli.EnvironmentVariableGetter
+	util.Logger
+	util.Ctxer
+}
+
 func (d *Command) String() string {
 	if specific, ok := d.OS[runtime.GOOS]; ok {
 		return specific.String()
@@ -84,7 +94,7 @@ type CommandOpts struct {
 }
 
 // Execute executes the Command, and treats the Value field as a script.
-func (d *Command) Execute(ctx BosunContext, opts ...CommandOpts) (string, error) {
+func (d *Command) Execute(ctx ExecutionContext, opts ...CommandOpts) (string, error) {
 	var opt CommandOpts
 	if len(opts) == 0 {
 		opt = CommandOpts{}
@@ -94,7 +104,7 @@ func (d *Command) Execute(ctx BosunContext, opts ...CommandOpts) (string, error)
 	return d.executeCore(ctx, opt)
 }
 
-func (d *Command) executeCore(ctx BosunContext, opt CommandOpts) (string, error) {
+func (d *Command) executeCore(ctx ExecutionContext, opt CommandOpts) (string, error) {
 
 	if d == nil {
 		return "", errors.New("command was nil")
@@ -103,9 +113,9 @@ func (d *Command) executeCore(ctx BosunContext, opt CommandOpts) (string, error)
 	var err error
 	var value string
 
-	if ctx.GetParams().DryRun && !opt.IgnoreDryRun {
+	if ctx.GetParameters().DryRun && !opt.IgnoreDryRun {
 		// don't execute side-effect-only commands during dry run
-		ctx.Log.WithField("command", d.String()).Info("Skipping side-effecting command because this is a dry run.")
+		ctx.Log().WithField("command", d.String()).Info("Skipping side-effecting command because this is a dry run.")
 		return "", nil
 	}
 
@@ -115,7 +125,7 @@ func (d *Command) executeCore(ctx BosunContext, opt CommandOpts) (string, error)
 		if specific, ok := d.OS[runtime.GOOS]; ok {
 			value, err = specific.executeCore(ctx, opt)
 		} else if len(d.Command) != 0 {
-			cmd := pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Dir).IncludeEnv(ctx.GetValuesAsEnvVars()).WithContext(ctx.Ctx())
+			cmd := pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Pwd()).IncludeEnv(ctx.GetEnvironmentVariables()).WithContext(ctx.Ctx())
 			if opt.StreamOutput {
 				value, err = cmd.RunOutLog()
 			} else {
@@ -137,7 +147,7 @@ func (d *Command) executeCore(ctx BosunContext, opt CommandOpts) (string, error)
 	return value, err
 }
 
-func executeScript(script string, ctx BosunContext, opt CommandOpts) (string, error) {
+func executeScript(script string, ctx ExecutionContext, opt CommandOpts) (string, error) {
 	pattern := "bosun-script*"
 	if runtime.GOOS == "windows" {
 		pattern = "bosun-script*.bat"
@@ -151,19 +161,13 @@ func executeScript(script string, ctx BosunContext, opt CommandOpts) (string, er
 
 	defer os.Remove(tmp.Name())
 
-	var vars map[string]string
-	if ctx.Env != nil {
-		vars, err = ctx.Env.GetVariablesAsMap(ctx)
-		if err != nil {
-			return "", errors.Wrap(err, "resolve environment variables for script")
-		}
-	}
+	vars := ctx.GetEnvironmentVariables()
 
-	ctx.Log.Debugf("Running script:\n%s\n", script)
+	ctx.Log().Debugf("Running script:\n%s\n", script)
 
 	cmd := getCommandForScript(tmp.Name()).
-		WithDir(ctx.Dir).
-		IncludeEnv(ctx.GetValuesAsEnvVars()).
+		WithDir(ctx.Pwd()).
+		IncludeEnv(ctx.GetEnvironmentVariables()).
 		IncludeEnv(vars).
 		WithContext(ctx.Ctx())
 

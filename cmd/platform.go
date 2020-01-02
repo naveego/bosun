@@ -108,10 +108,10 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 		for _, app := range apps {
 			ctx = ctx.WithApp(app)
-			ctx.Log.Debug("Refreshing...")
+			ctx.Log().Debug("Refreshing...")
 
 			if !app.IsRepoCloned() {
-				ctx.Log.Warn("App is not cloned, refresh will be incomplete.")
+				ctx.Log().Warn("App is not cloned, refresh will be incomplete.")
 				continue
 			}
 
@@ -128,7 +128,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 			err = p.RefreshApp(ctx, app.Name, branch, slot)
 			if err != nil {
-				ctx.Log.WithError(err).Warn("Could not refresh.")
+				ctx.Log().WithError(err).Warn("Could not refresh.")
 			}
 		}
 
@@ -186,7 +186,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return err
 		}
 		ctx := b.NewContext()
-		log := ctx.GetLog()
+		log := ctx.Log()
 		ws := b.GetWorkspace()
 		path := ""
 		for _, gitRoot := range ws.GitRoots {

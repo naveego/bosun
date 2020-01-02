@@ -70,7 +70,7 @@ func (r *LocalRepo) Push() error {
 
 // SwitchToNewBranch pulls the current branch, then creates a new branch based on it and checks it out.
 func (r *LocalRepo) SwitchToNewBranch(ctx BosunContext, parent, child string) error {
-	ctx.Log.Infof("Creating branch %s...", child)
+	ctx.Log().Infof("Creating branch %s...", child)
 	g := r.git()
 	_, err := g.Exec("checkout", parent)
 	if err != nil {

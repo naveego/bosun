@@ -62,7 +62,7 @@ func (e *EnvironmentConfig) SetFromPath(path string) {
 // Ensure sets Value using the From CommandValue.
 func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
 	ctx = ctx.WithDir(e.FromPath)
-	log := ctx.Log.WithField("name", e.Name).WithField("fromPath", e.FromPath)
+	log := ctx.Log().WithField("name", e.Name).WithField("fromPath", e.FromPath)
 
 	if e.From == nil {
 		log.Warn("`from` was not set")
@@ -98,7 +98,7 @@ func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
 func (e *EnvironmentConfig) Ensure(ctx BosunContext) error {
 
 	if os.Getenv(EnvEnvironment) == e.Name {
-		ctx.Log.Debugf("Environment is already %q, based on value of %s", e.Name, EnvEnvironment)
+		ctx.Log().Debugf("Environment is already %q, based on value of %s", e.Name, EnvEnvironment)
 		return nil
 	}
 
@@ -171,7 +171,7 @@ func (e *EnvironmentConfig) Execute(ctx BosunContext) error {
 	ctx = ctx.WithDir(e.FromPath)
 
 	for _, cmd := range e.Commands {
-		log := ctx.Log.WithField("name", cmd.Name).WithField("fromPath", e.FromPath)
+		log := ctx.Log().WithField("name", cmd.Name).WithField("fromPath", e.FromPath)
 		if cmd.Exec == nil {
 			log.Warn("`exec` not set")
 			continue
