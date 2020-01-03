@@ -25,14 +25,14 @@ func (c MinikubeConfig) ConfigureKubernetes(ctx CommandContext) error {
 		c.Driver = "virtualbox"
 	}
 
-	err := pkg.NewCommand("minikube", "ip").RunE()
+	err := pkg.NewShellExe("minikube", "ip").RunE()
 	if err == nil {
 		pkg.Log.Info("Minikube is already running.")
 		return nil
 	}
 
 	pkg.Log.Info("Resetting virtualbox DHCP leases...")
-	_, _ = pkg.NewCommand("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
+	_, _ = pkg.NewShellExe("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
 
 	leasePath := os.ExpandEnv("$HOME/.config/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
 	err = os.RemoveAll(leasePath)
@@ -44,10 +44,10 @@ func (c MinikubeConfig) ConfigureKubernetes(ctx CommandContext) error {
 
 	ctx.Log.Info("minikube not running, starting minikube...")
 
-	pkg.NewCommand("minikube config set embed-certs true").MustRun()
+	pkg.NewShellExe("minikube config set embed-certs true").MustRun()
 
 	if c.Driver == "none" {
-		cmd := pkg.NewCommand("sudo",
+		cmd := pkg.NewShellExe("sudo",
 			"minikube",
 			"start",
 			"--kubernetes-version=v"+c.Version,
@@ -58,7 +58,7 @@ func (c MinikubeConfig) ConfigureKubernetes(ctx CommandContext) error {
 		err = cmd.RunE()
 	} else {
 		if runtime.GOOS == "windows" {
-			err = pkg.NewCommand("minikube",
+			err = pkg.NewShellExe("minikube",
 				"start",
 				"--memory=16000",
 				"--cpus=2",
@@ -69,7 +69,7 @@ func (c MinikubeConfig) ConfigureKubernetes(ctx CommandContext) error {
 				"--disk-size="+c.DiskSize,
 			).RunE()
 		} else {
-			err = pkg.NewCommand("minikube",
+			err = pkg.NewShellExe("minikube",
 				"start",
 				"--memory=16000",
 				"--cpus=2",
@@ -85,9 +85,9 @@ func (c MinikubeConfig) ConfigureKubernetes(ctx CommandContext) error {
 	if err != nil {
 		return err
 	}
-	pkg.NewCommand("minikube addons enable dashboard").MustRun()
-	pkg.NewCommand("minikube addons enable heapster").MustRun()
-	pkg.NewCommand("minikube addons enable kube-dns").MustRun()
+	pkg.NewShellExe("minikube addons enable dashboard").MustRun()
+	pkg.NewShellExe("minikube addons enable heapster").MustRun()
+	pkg.NewShellExe("minikube addons enable kube-dns").MustRun()
 
 	return nil
 }

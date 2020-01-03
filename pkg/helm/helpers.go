@@ -41,7 +41,7 @@ func PublishChart(qualifiedName, path string, force bool) error {
 	chartName := filepath.Base(path)
 	log := pkg.Log.WithField("chart", path).WithField("@chart", chartName)
 
-	chartText, err := new(pkg.Command).WithExe("helm").WithArgs("inspect", "chart", path).RunOut()
+	chartText, err := new(pkg.ShellExe).WithExe("helm").WithArgs("inspect", "chart", path).RunOut()
 	if err != nil {
 		return errors.Wrap(err, "Could not inspect chart")
 
@@ -54,7 +54,7 @@ func PublishChart(qualifiedName, path string, force bool) error {
 
 	log = log.WithField("@version", thisVersion)
 
-	repoContent, err := new(pkg.Command).WithExe("helm").WithEnvValue("AWS_DEFAULT_PROFILE", "black").WithArgs("search", qualifiedName, "--versions").RunOut()
+	repoContent, err := new(pkg.ShellExe).WithExe("helm").WithEnvValue("AWS_DEFAULT_PROFILE", "black").WithArgs("search", qualifiedName, "--versions").RunOut()
 	if err != nil {
 		return errors.Wrap(err, "could not search repo")
 	}
@@ -72,7 +72,7 @@ func PublishChart(qualifiedName, path string, force bool) error {
 		return errors.New("version already exists (use --force to overwrite)")
 	}
 
-	out, err := pkg.NewCommand("helm", "package", path).RunOut()
+	out, err := pkg.NewShellExe("helm", "package", path).RunOut()
 	if err != nil {
 		return errors.Wrap(err, "could not create package")
 	}
@@ -87,7 +87,7 @@ func PublishChart(qualifiedName, path string, force bool) error {
 		helmArgs = append(helmArgs, "--force")
 	}
 
-	err = pkg.NewCommand("helm", helmArgs...).WithEnvValue("AWS_DEFAULT_PROFILE", "black").RunE()
+	err = pkg.NewShellExe("helm", helmArgs...).WithEnvValue("AWS_DEFAULT_PROFILE", "black").RunE()
 
 	if err != nil {
 		return errors.Wrap(err, "could not publish chart")

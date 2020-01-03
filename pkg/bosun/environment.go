@@ -7,7 +7,6 @@ import (
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
-	"log"
 	"os"
 )
 
@@ -31,10 +30,11 @@ type EnvironmentConfig struct {
 }
 
 type EnvironmentVariable struct {
-	FromPath string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
-	Name     string                `yaml:"name" json:"name"`
-	From     *command.CommandValue `yaml:"from" json:"from"`
-	Value    string                `yaml:"-" json:"-"`
+	FromPath         string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
+	Name             string                `yaml:"name" json:"name"`
+	WorkspaceCommand string                `yaml:"workspaceCommand,omitempty"`
+	From             *command.CommandValue `yaml:"from" json:"from"`
+	Value            string                `yaml:"-" json:"-"`
 }
 
 type EnvironmentCommand struct {
@@ -64,6 +64,12 @@ func (e *EnvironmentConfig) SetFromPath(path string) {
 
 // Ensure sets Value using the From CommandValue.
 func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
+
+	if e.WorkspaceCommand != "" {
+		ws := ctx.Bosun.GetWorkspace()
+		e.From = ws.GetWorkspaceCommand(e.WorkspaceCommand)
+	}
+
 	ctx = ctx.WithDir(e.FromPath)
 	log := ctx.Log().WithField("name", e.Name).WithField("fromPath", e.FromPath)
 
@@ -72,27 +78,21 @@ func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
 		return nil
 	}
 
-	if e.Value != "" {
-		// set the value in the process environment
-		os.Setenv(e.Name, e.Value)
-		return nil
+	if e.Value == "" {
+		log.Debug("Resolving value...")
+
+		var err error
+		e.Value, err = e.From.Resolve(ctx)
+
+		if err != nil {
+			return errors.Errorf("error populating variable %q: %s", e.Name, err)
+		}
+
+		log.WithField("value", e.Value).Debug("Resolved value.")
 	}
-
-	log.Debug("Resolving value...")
-
-	var err error
-	e.Value, err = e.From.Resolve(ctx)
-
-	if err != nil {
-		return errors.Errorf("error populating variable %q: %s", e.Name, err)
-	}
-
-	log.WithField("value", e.Value).Debug("Resolved value.")
 
 	// set the value in the process environment
-	os.Setenv(e.Name, e.Value)
-
-	return nil
+	return os.Setenv(e.Name, e.Value)
 }
 
 // Ensure resolves and sets all environment variables, and
@@ -114,11 +114,13 @@ func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 
 	ctx = ctx.WithDir(e.FromPath)
 
+	log := ctx.Log()
+
 	os.Setenv(EnvDomain, e.Domain)
 	os.Setenv(EnvCluster, e.Cluster)
 	os.Setenv(EnvEnvironment, e.Name)
 
-	_, err := pkg.NewCommand("kubectl", "config", "use-context", e.Cluster).RunOut()
+	_, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster).RunOut()
 	if err != nil {
 		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
 		log.Println(color.YellowString(`try running "bosun kube add-eks %s"`, e.Cluster))
@@ -184,7 +186,7 @@ func (e *EnvironmentConfig) Execute(ctx BosunContext) error {
 		if err != nil {
 			return errors.Errorf("error running command %s: %s", cmd.Name, err)
 		}
-		log.Debug("Command complete.")
+		log.Debug("ShellExe complete.")
 
 	}
 

@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
-	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -121,7 +121,7 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 					return errors.Wrap(err, "get resolved values")
 				}
 				fmt.Printf("%s:\n", app.Name)
-				y := util.MustYaml(values)
+				y := yaml.MustYaml(values)
 				fmt.Println(y)
 				fmt.Println()
 			}

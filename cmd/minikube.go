@@ -87,7 +87,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 
 		err = r.Run(func() error {
 			pkg.Log.Info("Initializing helm...")
-			_, err = pkg.NewCommand("helm", "init").RunOut()
+			_, err = pkg.NewShellExe("helm", "init").RunOut()
 			if err != nil {
 				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
 			}
@@ -103,7 +103,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 		r = retrier.New(retrier.ConstantBackoff(10, 6*time.Second), nil)
 		err = r.Run(func() error {
 			pkg.Log.Info("Checking tiller...")
-			status, err := pkg.NewCommand("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o", `jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
+			status, err := pkg.NewShellExe("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o", `jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
 			if err != nil {
 				pkg.Log.WithError(err).Error("Getting tiller status failed, may retry.")
 				return err

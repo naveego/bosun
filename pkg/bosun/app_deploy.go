@@ -16,8 +16,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -173,7 +173,7 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 	// creating using `app toggle` and is routed to localhost.
 	if ctx.Env.IsLocal && a.AppConfig.Minikube != nil {
 		for _, routableService := range a.AppConfig.Minikube.RoutableServices {
-			svcYaml, err := pkg.NewCommand("kubectl", "get", "svc", "--namespace", a.AppConfig.Namespace, routableService.Name, "-o", "yaml").RunOut()
+			svcYaml, err := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.AppConfig.Namespace, routableService.Name, "-o", "yaml").RunOut()
 			if err != nil {
 				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
 				continue
@@ -231,7 +231,7 @@ func (a *AppDeploy) GetHelmRelease(name string) (*HelmRelease, error) {
 func (a *AppDeploy) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
-	data, err := pkg.NewCommand("helm", args...).RunOut()
+	data, err := pkg.NewShellExe("helm", args...).RunOut()
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +635,7 @@ func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
 
-	msg, err := pkg.NewCommand("helm", "diff", "upgrade", a.Name, a.Chart(ctx)).
+	msg, err := pkg.NewShellExe("helm", "diff", "upgrade", a.Name, a.Chart(ctx)).
 		WithArgs(args...).
 		RunOut()
 
@@ -659,7 +659,7 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 	}
 	args = append(args, a.Name)
 
-	out, err := pkg.NewCommand("helm", args...).RunOut()
+	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "delete using args %v", args)
 }
@@ -670,14 +670,14 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 	// args = append(args, a.getHelmNamespaceArgs(ctx)...)
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
-	out, err := pkg.NewCommand("helm", args...).RunOut()
+	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "rollback using args %v", args)
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
 	args := append([]string{"install", "--name", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
-	out, err := pkg.NewCommand("helm", args...).RunOut()
+	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "install using args %v", args)
 }
@@ -687,7 +687,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}
-	out, err := pkg.NewCommand("helm", args...).RunOut()
+	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "upgrade using args %v", args)
 }
@@ -865,7 +865,7 @@ func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
 func (a *AppDeploy) Recycle(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
 	ctx.Log().Info("Deleting pods...")
-	err := pkg.NewCommand("kubectl", "delete", "--namespace", a.AppConfig.GetNamespace(), "pods", "--selector=release="+a.AppConfig.Name).RunE()
+	err := pkg.NewShellExe("kubectl", "delete", "--namespace", a.AppConfig.GetNamespace(), "pods", "--selector=release="+a.AppConfig.Name).RunE()
 	if err != nil {
 		return err
 	}
@@ -873,7 +873,7 @@ func (a *AppDeploy) Recycle(ctx BosunContext) error {
 
 	for {
 		podsReady := true
-		out, err := pkg.NewCommand("kubectl", "get", "pods", "--namespace", a.AppConfig.GetNamespace(), "--selector=release="+a.AppConfig.Name,
+		out, err := pkg.NewShellExe("kubectl", "get", "pods", "--namespace", a.AppConfig.GetNamespace(), "--selector=release="+a.AppConfig.Name,
 			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
 		if err != nil {
 			return err

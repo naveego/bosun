@@ -149,7 +149,8 @@ const (
 )
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "include [appNames...]",
+	Use:   "include {name} --cluster-roles {cluster-role, ...} --namespace-roles {namespace-role, ...)",
+	Args:  cobra.ExactArgs(1),
 	Short: "Adds an app from the workspace to the platform.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -158,18 +159,45 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return err
 		}
 		ctx := b.NewContext()
-		apps := mustGetKnownApps(b, args)
-		for _, app := range apps {
-			err = p.IncludeApp(ctx, app.Name)
-			if err != nil {
-				return err
-			}
+		app := mustGetApp(b, []string{args[0]})
+
+		repoRef, err := issues.ParseRepoRef(app.RepoName)
+		if err != nil {
+			return err
+		}
+
+		clusterRoles := viper.GetStringSlice(argPlatformAddClusterRoles)
+		if len(clusterRoles) == 0 {
+			return errors.Errorf("at least one cluster role must be specified using --%s", argPlatformAddClusterRoles)
+		}
+		namespaceRoles := viper.GetStringSlice(argPlatformAddNamespaceRoles)
+		if len(namespaceRoles) == 0 {
+			return errors.Errorf("at least one namespace role must be specified using --%s", argPlatformAddNamespaceRoles)
+		}
+
+		err = p.IncludeApp(ctx, &bosun.PlatformAppConfig{
+			Name:           app.Name,
+			RepoRef:        repoRef,
+			ClusterRoles:   clusterRoles,
+			NamespaceRoles: namespaceRoles,
+		})
+		if err != nil {
+			return err
 		}
 
 		err = p.Save(ctx)
 		return err
 	},
-}, withFilteringFlags)
+}, withFilteringFlags,
+	func(cmd *cobra.Command) {
+		cmd.Flags().StringSlice(argPlatformAddClusterRoles, []string{}, "The cluster roles this app should be deployed to.")
+		cmd.Flags().StringSlice(argPlatformAddNamespaceRoles, []string{}, "The namespace roles this app should be deployed to.")
+	})
+
+const (
+	argPlatformAddClusterRoles   = "cluster-roles"
+	argPlatformAddNamespaceRoles = "namespace-roles"
+)
 
 var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "add-repo {org/repo...}",
@@ -211,7 +239,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			path = filepath.Join(dir, repoRef.String())
 		}
 
-		//bosunFilePath := filepath.Join(path, "bosun.yaml")
+		// bosunFilePath := filepath.Join(path, "bosun.yaml")
 
 		err = p.Save(ctx)
 		return err

@@ -252,7 +252,7 @@ func (s ScriptStep) Execute(ctx ScriptContext, index int) error {
 
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
+	err = pkg.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err

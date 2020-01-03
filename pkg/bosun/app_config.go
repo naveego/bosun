@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/script"
@@ -15,8 +16,7 @@ import (
 )
 
 type AppConfig struct {
-	Name                    string                   `yaml:"name" json:"name" json:"name" json:"name"`
-	FromPath                string                   `yaml:"-" json:"-"`
+	core.ConfigShared       `yaml:",inline"`
 	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty" json:"projectManagementPlugin,omitempty"`
 	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty" json:"branchForRelease,omitempty"`
 	Branching               git.BranchSpec           `yaml:"branching" json:"branching"`
@@ -40,7 +40,11 @@ type AppConfig struct {
 	Scripts        []*script.Script     `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	Actions        []*actions.AppAction `yaml:"actions,omitempty" json:"actions,omitempty"`
 	ReleaseHistory AppReleaseHistory    `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
-	Parent         *File                `yaml:"-" json:"-"`
+
+	// Glob paths (relative to the file containing the app config)
+	// to files and folders  which should be included when the app is packaged for a release or a deployment.
+	// In particular, the path to the chart should be included.
+	Files []string `yaml:"files"`
 	// If true, this app repo is only a ref, not a real cloned repo.
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.
@@ -159,9 +163,8 @@ func (d Dependencies) Len() int           { return len(d) }
 func (d Dependencies) Less(i, j int) bool { return strings.Compare(d[i].Name, d[j].Name) < 0 }
 func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
-func (a *AppConfig) SetParent(fragment *File) {
-	a.FromPath = fragment.FromPath
-	a.Parent = fragment
+func (a *AppConfig) SetFromPath(fromPath string) {
+	a.FromPath = fromPath
 	for i := range a.Scripts {
 		a.Scripts[i].FromPath = a.FromPath
 	}

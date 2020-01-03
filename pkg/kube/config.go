@@ -4,6 +4,9 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	v1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
 )
 
@@ -65,12 +68,17 @@ type KubernetesConfigurer interface {
 }
 
 type ConfigDefinition struct {
-	Name         string               `yaml:"name"`
-	Roles        []string             `yaml:"roles"`
-	Environments []string             `yaml:"environments"`
-	Oracle       *OracleClusterConfig `yaml:"oracle,omitempty"`
-	Minikube     *MinikubeConfig      `yaml:"minikube,omitempty"`
-	Amazon       *AmazonClusterConfig `yaml:"amazon,omitempty"`
+	Name         string                     `yaml:"name"`
+	Roles        []string                   `yaml:"roles,flow"`
+	Environments []string                   `yaml:"environments,flow"`
+	Oracle       *OracleClusterConfig       `yaml:"oracle,omitempty"`
+	Minikube     *MinikubeConfig            `yaml:"minikube,omitempty"`
+	Amazon       *AmazonClusterConfig       `yaml:"amazon,omitempty"`
+	Namespaces   map[string]NamespaceConfig `yaml:"namespaces"`
+}
+
+type NamespaceConfig struct {
+	Name string `yaml:"name"`
 }
 
 func (k ConfigDefinition) ConfigureKubernetes(ctx CommandContext) error {
@@ -79,29 +87,55 @@ func (k ConfigDefinition) ConfigureKubernetes(ctx CommandContext) error {
 	if k.Oracle != nil {
 		ctx.Log.Infof("Configuring Oracle cluster %q...", k.Name)
 
-		err := k.Oracle.ConfigureKubernetes(ctx)
-		return err
-	}
-
-	if k.Minikube != nil {
+		if err := k.Oracle.ConfigureKubernetes(ctx); err != nil {
+			return err
+		}
+	} else if k.Minikube != nil {
 		ctx.Log.Infof("Configuring minikube cluster %q...", k.Name)
 
-		err := k.Minikube.ConfigureKubernetes(ctx)
-		return err
-	}
-
-	if k.Amazon != nil {
+		if err := k.Minikube.ConfigureKubernetes(ctx); err != nil {
+			return err
+		}
+	} else if k.Amazon != nil {
 		ctx.Log.Infof("Configuring Amazon cluster %q...", k.Name)
 
-		err := k.Amazon.ConfigureKubernetes(ctx)
+		if err := k.Amazon.ConfigureKubernetes(ctx); err != nil {
+			return err
+		}
+	} else {
+		return errors.Errorf("no recognized kube vendor found on %q", k.Name)
+	}
+
+	client, err := GetKubeClientWithContext(k.Name)
+	if err != nil {
 		return err
 	}
 
-	return errors.Errorf("no recognized kube vendor found on %q", k.Name)
+	for role, ns := range k.Namespaces {
+		ctx.Log.Infof("Creating namespace %q with role %q.", ns.Name, role)
+		namespace := &v1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: ns.Name,
+				Labels: map[string]string{
+					LabelNamespaceRole: role,
+				},
+			},
+		}
+		_, err = client.CoreV1().Namespaces().Create(namespace)
+		if kerrors.IsAlreadyExists(err) {
+			ctx.Log.Infof("Namespace already exists, updating...")
+			_, err = client.CoreV1().Namespaces().Update(namespace)
+		}
+		if err != nil {
+			return errors.Wrapf(err, "create or update namespace %q with role %q", ns.Name, role)
+		}
+	}
+
+	return nil
 }
 
 func contextIsDefined(name string) bool {
-	out, err := pkg.NewCommand("kubectl",
+	out, err := pkg.NewShellExe("kubectl",
 		"config",
 		"get-contexts",
 		name,

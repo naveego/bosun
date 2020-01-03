@@ -3,8 +3,8 @@ package values
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"strings"

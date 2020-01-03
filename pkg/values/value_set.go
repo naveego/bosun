@@ -4,8 +4,8 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"strings"
 )
 

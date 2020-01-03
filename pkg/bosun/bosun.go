@@ -14,10 +14,10 @@ import (
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -974,7 +974,7 @@ func (b *Bosun) GetZenhubToken() (string, error) {
 		fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
 		fmt.Println(`Better example: cat $HOME/.tokens/zenhub.token"`)
 		fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-		script := pkg.RequestStringFromUser("Command")
+		script := pkg.RequestStringFromUser("ShellExe")
 
 		ws.ZenhubToken = &command.CommandValue{
 			Command: command.Command{
@@ -1024,7 +1024,7 @@ func (b *Bosun) GetGithubToken() (string, error) {
 			fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
 			fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
 			fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-			script := pkg.RequestStringFromUser("Command")
+			script := pkg.RequestStringFromUser("ShellExe")
 
 			ws.GithubToken = &command.CommandValue{
 				Command: command.Command{

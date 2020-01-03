@@ -163,7 +163,7 @@ var envGetOrCreateCert = addCommand(envCmd, &cobra.Command{
 
 		mkcertArgs := append([]string{"-cert-file", certPath, "-key-file", keyPath}, hosts...)
 
-		out, err := pkg.NewCommand("mkcert", mkcertArgs...).RunOut()
+		out, err := pkg.NewShellExe("mkcert", mkcertArgs...).RunOut()
 		fmt.Fprintf(os.Stderr, "mkcert output:\n%s\n---- end output\n", out)
 
 		if err != nil {

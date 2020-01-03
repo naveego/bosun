@@ -478,7 +478,7 @@ func getMarketingRelease() (string, error) {
 	var err error
 	marketingRelease := viper.GetString(ArgHelmsmanMarketingRelease)
 	if marketingRelease == "" {
-		marketingRelease, err = pkg.NewCommand("git", "rev-parse", "--abbrev-ref", "HEAD").RunOut()
+		marketingRelease, err = pkg.NewShellExe("git", "rev-parse", "--abbrev-ref", "HEAD").RunOut()
 		if err != nil {
 			return "", errors.WithMessage(err, "could not get current branch")
 		}

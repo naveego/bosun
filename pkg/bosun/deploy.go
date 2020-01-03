@@ -208,7 +208,7 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
 	var errs []error
 
-	out, err := pkg.NewCommand("helm", "search", a.Chart(ctx), "-v", a.Version.String()).RunOut()
+	out, err := pkg.NewShellExe("helm", "search", a.Chart(ctx), "-v", a.Version.String()).RunOut()
 	if err != nil {
 		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.AppConfig.Chart, a.Version, err))
 	}

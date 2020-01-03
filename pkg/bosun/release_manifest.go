@@ -8,8 +8,8 @@ import (
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
@@ -259,12 +259,12 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 		}
 
 		app.AddReleaseToHistory(r.Version.String())
-		err = app.Parent.Save()
+		err = app.FileSaver.Save()
 		if err != nil {
 			return nil, errors.Wrap(err, "saving after adding release to app history")
 		}
 
-		err = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.Parent.FromPath)
+		err = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.FromPath)
 		if err != nil &&
 			!strings.Contains(err.Error(), "no changes added to commit") &&
 			!strings.Contains(err.Error(), "nothing to commit") {
@@ -370,7 +370,7 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 		}
 	}
 
-	updatedAppManifest, err := app.GetManifestFromBranch(ctx, branch)
+	updatedAppManifest, err := app.GetManifestFromBranch(ctx, branch, true)
 	if err != nil {
 		return errors.Wrapf(err, "get manifest for %q from branch %q", name, branch)
 	}
@@ -479,19 +479,19 @@ func (r *ReleaseManifest) PrepareAppManifest(ctx BosunContext, app *App, bump se
 		if branch == "" {
 			branch = app.Branching.Master
 		}
-		return app.GetManifestFromBranch(ctx, branch)
+		return app.GetManifestFromBranch(ctx, branch, true)
 	case SlotUnstable:
 		if branch == "" {
 			branch = app.Branching.Develop
 		}
-		return app.GetManifestFromBranch(ctx, app.Branching.Develop)
+		return app.GetManifestFromBranch(ctx, app.Branching.Develop, true)
 	case SlotCurrent:
 		if branch == "" {
 			branch = app.Branching.Develop
 		}
 		if app.BranchForRelease {
 
-			developAppManifest, err := app.GetManifestFromBranch(ctx, branch)
+			developAppManifest, err := app.GetManifestFromBranch(ctx, branch, false)
 			if err != nil {
 				return nil, errors.Wrapf(err, "get manifest for %q from %q", app.Name, app.Branching.Develop)
 			}
@@ -505,13 +505,13 @@ func (r *ReleaseManifest) PrepareAppManifest(ctx BosunContext, app *App, bump se
 			if err != nil {
 				return nil, errors.Wrapf(err, "upgrading app %s", app.Name)
 			}
-			appManifest, err := bumpedApp.GetManifestFromBranch(ctx, releaseBranch)
+			appManifest, err := bumpedApp.GetManifestFromBranch(ctx, releaseBranch, true)
 			if err != nil {
 				return nil, errors.Wrapf(err, "get latest version of manifest from app")
 			}
 			return appManifest, err
 		} else {
-			return app.GetManifestFromBranch(ctx, branch)
+			return app.GetManifestFromBranch(ctx, branch, true)
 		}
 	default:
 		return nil, errors.Errorf("invalid slot %q", r.Slot)

@@ -5,9 +5,9 @@ import (
 	"github.com/naveego/bosun/pkg"
 	. "github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v2"
 	"path/filepath"
 )
 

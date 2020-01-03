@@ -74,12 +74,12 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 })
 
 //
-// var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.Command{
+// var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.ShellExe{
 // 	Use:          "add {name}",
 // 	Args:         cobra.ExactArgs(1),
 // 	Short:        "Adds an app to the release plan.",
 // 	SilenceUsage: true,
-// 	RunE: func(cmd *cobra.Command, args []string) error {
+// 	RunE: func(cmd *cobra.ShellExe, args []string) error {
 // 		b, p := getReleaseCmdDeps()
 //
 // 		if p.Plan == nil {

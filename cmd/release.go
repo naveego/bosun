@@ -351,14 +351,14 @@ const (
 )
 
 //
-// var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
+// var releaseExcludeCmd = addCommand(releaseCmd, &cobra.ShellExe{
 // 	Use:   "exclude [names...]",
 // 	Short: "Excludes and removes one or more apps from a release.",
 // 	Long: "Provide app names or use labels. The matched apps will be removed " +
 // 		"from the release and will not be re-added even if apps which depend on " +
 // 		"them are added or synced. If the app is explicitly added it will be " +
 // 		"removed from the exclude list.",
-// 	RunE: func(cmd *cobra.Command, args []string) error {
+// 	RunE: func(cmd *cobra.ShellExe, args []string) error {
 // 		viper.BindPFlags(cmd.Flags())
 // 		b := MustGetBosun()
 // 		release := mustGetCurrentRelease(b)
@@ -439,7 +439,7 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 
 	// ctx.GetMinikubeDockerEnv()
 
-	err := pkg.NewCommand("helm", "repo", "update").RunE()
+	err := pkg.NewShellExe("helm", "repo", "update").RunE()
 	if err != nil {
 		return errors.Wrap(err, "update repo indexes")
 	}

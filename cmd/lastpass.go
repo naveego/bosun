@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
 func init() {
 
 	lpassCmd.AddCommand(lpassPasswordCmd)
@@ -30,24 +29,23 @@ func init() {
 
 // lpassCmd represents the lpass command
 var lpassCmd = &cobra.Command{
-	Use:   "lpass",
-	Aliases:[]string{"lastpass"},
-	Args:  cobra.ExactArgs(1),
-	Short: "Root command for LastPass commands.",
+	Use:     "lpass",
+	Aliases: []string{"lastpass"},
+	Args:    cobra.ExactArgs(1),
+	Short:   "Root command for LastPass commands.",
 }
-
 
 var lpassPasswordCmd = &cobra.Command{
 	Use:   "password {folder/name} {username} {url}",
 	Short: "Gets (or generates if not found) a password in LastPass.",
-	Args:cobra.ExactArgs(3),
+	Args:  cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		name := args[0]
-		username:=args[1]
-		url:=args[2]
+		username := args[1]
+		url := args[2]
 
-		password, err := pkg.NewCommand("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
+		password, err := pkg.NewShellExe("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
 		if err == nil {
 			fmt.Println(password)
 			return nil
@@ -55,7 +53,7 @@ var lpassPasswordCmd = &cobra.Command{
 
 		pkg.Log.Debug("Password %q does not yet exist; it will be generated.", name)
 
-		password, err = pkg.NewCommand("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
+		password, err = pkg.NewShellExe("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
 		if err == nil {
 			fmt.Println(password)
 		}

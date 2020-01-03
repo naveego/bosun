@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"regexp"
 )
@@ -58,23 +59,15 @@ func (f *File) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-type ParentSetter interface {
-	SetParent(*File)
-}
-
-type FromPathSetter interface {
-	SetFromPath(string)
-}
-
 func (f *File) SetFromPath(path string) {
 
 	f.FromPath = path
 
-	mirror.ApplyFuncRecursively(f, func(x ParentSetter) {
-		x.SetParent(f)
+	mirror.ApplyFuncRecursively(f, func(x core.FileSaverSetter) {
+		x.SetFileSaver(f)
 	})
 
-	mirror.ApplyFuncRecursively(f, func(x FromPathSetter) {
+	mirror.ApplyFuncRecursively(f, func(x core.FromPathSetter) {
 		x.SetFromPath(f.FromPath)
 	})
 }

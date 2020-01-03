@@ -7,16 +7,11 @@ import (
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
 	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
 )
-
-func BindCommand(cmd *cobra.Command) {
-
-}
 
 type Command struct {
 	Command []string            `yaml:"command,omitempty,flow" json:"command,omitempty,flow"`
@@ -100,7 +95,7 @@ type CommandOpts struct {
 	IgnoreDryRun bool
 }
 
-// Execute executes the Command, and treats the Value field as a script.
+// Execute executes the ShellExe, and treats the Value field as a script.
 func (d *Command) Execute(ctx ExecutionContext, opts ...CommandOpts) (string, error) {
 	var opt CommandOpts
 	if len(opts) == 0 {
@@ -132,7 +127,7 @@ func (d *Command) executeCore(ctx ExecutionContext, opt CommandOpts) (string, er
 		if specific, ok := d.OS[runtime.GOOS]; ok {
 			value, err = specific.executeCore(ctx, opt)
 		} else if len(d.Command) != 0 {
-			cmd := pkg.NewCommand(d.Command[0], d.Command[1:]...).WithDir(ctx.Pwd()).IncludeEnv(ctx.GetEnvironmentVariables()).WithContext(ctx.Ctx())
+			cmd := pkg.NewShellExe(d.Command[0], d.Command[1:]...).WithDir(ctx.Pwd()).IncludeEnv(ctx.GetEnvironmentVariables()).WithContext(ctx.Ctx())
 			if opt.StreamOutput {
 				value, err = cmd.RunOutLog()
 			} else {

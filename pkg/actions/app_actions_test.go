@@ -2,9 +2,9 @@ package actions_test
 
 import (
 	. "github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v2"
 )
 
 var _ = Describe("AppActions", func() {

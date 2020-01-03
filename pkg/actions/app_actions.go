@@ -12,8 +12,8 @@ import (
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/mongo"
 	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -296,7 +296,7 @@ func (a BosunAction) Execute(ctx ActionContext) error {
 	log := ctx.WithLogField("args", stepArgs).Log()
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
+	err = pkg.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err

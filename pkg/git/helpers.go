@@ -44,7 +44,7 @@ func GetRepoPath(path string) (string, error) {
 		path = filepath.Dir(path)
 	}
 
-	repoPath, err := pkg.NewCommand("git", "-C", path, "rev-parse", "--show-toplevel").RunOut()
+	repoPath, err := pkg.NewShellExe("git", "-C", path, "rev-parse", "--show-toplevel").RunOut()
 	if err != nil {
 		return "", errors.Errorf("could not get repo for path %q (based on path %q): %s", path, original, err)
 	}

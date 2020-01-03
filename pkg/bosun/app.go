@@ -5,16 +5,17 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	actions2 "github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/stevenle/topsort"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -76,8 +77,10 @@ func NewApp(appConfig *AppConfig) *App {
 func NewAppFromDependency(dep *Dependency) *App {
 	return &App{
 		AppConfig: &AppConfig{
-			FromPath: dep.FromPath,
-			Name:     dep.Name,
+			ConfigShared: core.ConfigShared{
+				FromPath: dep.FromPath,
+				Name:     dep.Name,
+			},
 			Version:  dep.Version,
 			RepoName: dep.Repo,
 			IsRef:    true,
@@ -319,7 +322,7 @@ func (a *App) BuildImages(ctx BosunContext) error {
 		}
 
 		ctx.Log().Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
-		_, err := pkg.NewCommand(buildCommand[0], buildCommand[1:]...).
+		_, err := pkg.NewShellExe(buildCommand[0], buildCommand[1:]...).
 			WithEnvValue("VERSION_NUMBER", a.Version.String()).
 			WithEnvValue("COMMIT", a.GetCommit()).
 			WithEnvValue("BUILD_NUMBER", os.Getenv("BUILD_NUMBER")).
@@ -376,11 +379,11 @@ func (a *App) PublishImages(ctx BosunContext) error {
 		for _, taggedName := range a.GetTaggedImageNames(tag) {
 			ctx.Log().Infof("Tagging and pushing %q", taggedName)
 			untaggedName := strings.Split(taggedName, ":")[0]
-			_, err := pkg.NewCommand("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err := pkg.NewShellExe("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
-			_, err = pkg.NewCommand("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err = pkg.NewShellExe("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
@@ -578,7 +581,7 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 	// packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
 	// if _, err = os.Stat(packageJSONPath); err == nil {
 	// 	log.Info("package.json detected, its version will be updated.")
-	// 	err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
+	// 	err = pkg.NewShellExe("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
 	// 		WithDir(filepath.Dir(a.FromPath)).
 	// 		RunE()
 	// 	if err != nil {
@@ -602,7 +605,7 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 		}
 	}
 
-	err = a.Parent.Save()
+	err = a.FileSaver.Save()
 	if err != nil {
 		return errors.Wrap(err, "save parent file")
 	}
@@ -698,7 +701,7 @@ func (a *App) ExportValues(ctx BosunContext) (values.ValueSetMap, error) {
 
 	if a.HasChart() {
 		chartRef := a.getAbsoluteChartPathOrChart(ctx)
-		valuesYaml, err := pkg.NewCommand(
+		valuesYaml, err := pkg.NewShellExe(
 			"helm", "inspect", "values",
 			chartRef,
 			"--version", a.Version.String(),
@@ -830,7 +833,7 @@ func (a *App) GetMostRecentCommitFromBranch(ctx BosunContext, branch string) (st
 
 }
 
-func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManifest, error) {
+func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortable bool) (*AppManifest, error) {
 
 	wsApp, err := ctx.Bosun.GetAppFromWorkspace(a.Name)
 	if err != nil {
@@ -905,6 +908,13 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 
 	// set branch to requested branch, not the temp branch
 	manifest.Branch = branch
+
+	if makePortable {
+		err = manifest.MakePortable()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return manifest, nil
 }

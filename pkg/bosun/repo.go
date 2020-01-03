@@ -53,7 +53,7 @@ func (r *Repo) Clone(ctx BosunContext, toDir string) error {
 
 	dir, _ := filepath.Abs(filepath.Join(toDir, r.Name))
 
-	err := pkg.NewCommand("git", "clone",
+	err := pkg.NewShellExe("git", "clone",
 		"--depth", "1",
 		"--no-single-branch",
 		fmt.Sprintf("git@github.com:%s.git", r.Name),

@@ -27,7 +27,7 @@ func (oc OracleClusterConfig) ConfigureKubernetes(ctx CommandContext) error {
 		kubeConfigPath = ctx.KubeConfigPath
 	}
 
-	err := pkg.NewCommand("oci", "ce", "cluster", "create-kubeconfig",
+	err := pkg.NewShellExe("oci", "ce", "cluster", "create-kubeconfig",
 		"--token-version", "2.0.0",
 		"--cluster-id", oc.OCID,
 		"--file", kubeConfigPath,
@@ -40,7 +40,7 @@ func (oc OracleClusterConfig) ConfigureKubernetes(ctx CommandContext) error {
 
 	opaqueName := oc.OCID[len(oc.OCID)-11:]
 
-	err = pkg.NewCommand("kubectl", "config",
+	err = pkg.NewShellExe("kubectl", "config",
 		"rename-context",
 		"context-"+opaqueName,
 		ctx.Name,

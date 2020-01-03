@@ -40,6 +40,6 @@ func CloneRepo(ref issues.RepoRef, protocol string, dir string) error {
 		return errors.Errorf("invalid protocol %q", protocol)
 	}
 
-	err := pkg.NewCommand("git", "clone", remote).WithDir(dir).RunE()
+	err := pkg.NewShellExe("git", "clone", remote).WithDir(dir).RunE()
 	return err
 }

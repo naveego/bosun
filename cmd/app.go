@@ -196,9 +196,9 @@ func appBump(b *bosun.Bosun, app *bosun.App, bump string) error {
 		return err
 	}
 
-	err = app.Parent.Save()
+	err = app.FileSaver.Save()
 	if err == nil {
-		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Parent.FromPath)
+		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.FromPath)
 	}
 	return err
 }
@@ -215,7 +215,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 		b := MustGetBosun()
 		apps := mustGetAppsIncludeCurrent(b, args)
 		env := b.GetCurrentEnvironment()
-		ip := pkg.NewCommand("minikube", "ip").MustOut()
+		ip := pkg.NewShellExe("minikube", "ip").MustOut()
 
 		toAdd := map[string]hostLine{}
 		for _, app := range apps {
@@ -654,7 +654,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 				ctx.Log().Info("Pulling latest version of image(s) on minikube...")
 				for _, image := range appRelease.AppConfig.GetImages() {
 					imageName := image.GetFullNameWithTag("latest")
-					err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
+					err := pkg.NewShellExe("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
 					if err != nil {
 						return err
 					}

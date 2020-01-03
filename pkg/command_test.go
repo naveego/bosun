@@ -11,21 +11,21 @@ import (
 	"time"
 )
 
-var _ = Describe("Command", func() {
+var _ = Describe("ShellExe", func() {
 
-	It("should execute in director", func(){
-		sut := pkg.NewCommand("pwd").WithDir("/tmp")
+	It("should execute in director", func() {
+		sut := pkg.NewShellExe("pwd").WithDir("/tmp")
 		Expect(sut.RunOut()).To(Equal("/tmp"))
 	})
 
-	It("should respect context cancel", func(){
+	It("should respect context cancel", func() {
 		ctx, cancel := context.WithCancel(context.Background())
-		sut := pkg.NewCommand("sleep", "1000").WithContext(ctx)
+		sut := pkg.NewShellExe("sleep", "1000").WithContext(ctx)
 		errCh := make(chan error)
-		go func(){
+		go func() {
 			errCh <- sut.RunE()
 		}()
-		<-time.After(10*time.Millisecond)
+		<-time.After(10 * time.Millisecond)
 		cancel()
 		var expected error
 		Eventually(errCh, 1000*time.Millisecond).Should(Receive(&expected))

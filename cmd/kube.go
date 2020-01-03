@@ -62,12 +62,12 @@ var dashboardTokenCmd = &cobra.Command{
 	Long:  `You must have the cluster set in kubectl.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		secretName, err := pkg.NewCommand("kubectl get serviceaccount kubernetes-dashboard-user -n kube-system -o jsonpath={.secrets[0].name}").RunOut()
+		secretName, err := pkg.NewShellExe("kubectl get serviceaccount kubernetes-dashboard-user -n kube-system -o jsonpath={.secrets[0].name}").RunOut()
 		if err != nil {
 			return err
 		}
 
-		b64, err := pkg.NewCommand(fmt.Sprintf("kubectl get secret %s -n kube-system -o jsonpath={.data.token}", secretName)).RunOut()
+		b64, err := pkg.NewShellExe(fmt.Sprintf("kubectl get secret %s -n kube-system -o jsonpath={.data.token}", secretName)).RunOut()
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 		}
 		name := args[0]
 
-		err := pkg.NewCommand("aws", "eks", "--region", region, "update-kubeconfig", "--name", name, "--alias", name).RunE()
+		err := pkg.NewShellExe("aws", "eks", "--region", region, "update-kubeconfig", "--name", name, "--alias", name).RunE()
 		if err != nil {
 			return err
 		}
@@ -124,10 +124,8 @@ var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
 })
 
 var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:          "configure-cluster",
-	Args:         cobra.ExactArgs(1),
-	Short:        "Configures clusters for the current environment, or a specific cluster if given flags. ",
-	SilenceUsage: true,
+	Use:   "configure-cluster",
+	Short: "Configures clusters for the current environment, or a specific cluster if given flags. ",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosun()
@@ -172,6 +170,10 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 
 		return err
 	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(ArgConfigureClusterName, "", "Name of cluster to configure.")
+	cmd.Flags().String(ArgConfigureClusterEnv, "", "Environment of cluster to configure (defaults to current environment if not set).")
+	cmd.Flags().String(ArgConfigureClusterRole, "", "Role of cluster to configure.")
 })
 
 const (
@@ -189,7 +191,7 @@ var kubeAddNamespaceCmd = addCommand(kubeCmd, &cobra.Command{
 
 		name := args[0]
 
-		_, err := pkg.NewCommand("kubectl", "create", "namespace", name).RunOut()
+		_, err := pkg.NewShellExe("kubectl", "create", "namespace", name).RunOut()
 		if err != nil {
 			if strings.Contains(err.Error(), "AlreadyExists") {
 				color.Yellow("Namespace %q already exists.", name)
@@ -252,14 +254,14 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 
 		force := viper.GetBool("force")
 		if !force {
-			out, err := pkg.NewCommand(fmt.Sprintf("kubectl get secret %s -n %s", name, namespace)).RunOut()
+			out, err := pkg.NewShellExe(fmt.Sprintf("kubectl get secret %s -n %s", name, namespace)).RunOut()
 			fmt.Println(out)
 			if err == nil {
 				color.Yellow("Pull secret already exists (run with --force parameter to overwrite).")
 				return nil
 			}
 		} else {
-			_ = pkg.NewCommand(fmt.Sprintf("kubectl delete secret %s -n %s", name, namespace)).RunE()
+			_ = pkg.NewShellExe(fmt.Sprintf("kubectl delete secret %s -n %s", name, namespace)).RunE()
 
 		}
 
@@ -311,7 +313,7 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 			} else if viper.GetString(ArgKubePullSecretPasswordLpassPath) != "" {
 				path := viper.GetString(ArgKubePullSecretPasswordLpassPath)
 				pkg.Log.WithField("path", path).Info("Trying to get password from LastPass.")
-				password, err = pkg.NewCommand("lpass", "show", "--password", path).RunOut()
+				password, err = pkg.NewShellExe("lpass", "show", "--password", path).RunOut()
 				if err != nil {
 					return err
 				}
@@ -320,7 +322,7 @@ var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 			}
 		}
 
-		err = pkg.NewCommand("kubectl",
+		err = pkg.NewShellExe("kubectl",
 			"create", "secret", "docker-registry",
 			name,
 			"-n", namespace,

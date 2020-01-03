@@ -1,16 +1,16 @@
 package values_test
 
 import (
-	"github.com/naveego/bosun/pkg/util"
 	. "github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
+	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v2"
 )
 
 var _ = Describe("ValueSetMap", func() {
 
-	input := util.Yamlize(
+	input := yaml2.Yamlize(
 		// language=yaml
 		`
   green:

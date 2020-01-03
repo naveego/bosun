@@ -12,9 +12,9 @@ import (
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,8 +30,8 @@ type BosunContext struct {
 	log    *logrus.Entry
 	Values *values.PersistableValues
 	// Release         *Deploy
-	AppRepo         *App
-	AppRelease      *AppDeploy
+	appRepo         *App
+	appRelease      *AppDeploy
 	valuesAsEnvVars map[string]string
 	ctx             context.Context
 	contextValues   map[string]interface{}
@@ -103,10 +103,10 @@ func (c BosunContext) GetValue(key string, defaultValue ...interface{}) interfac
 // }
 
 func (c BosunContext) WithApp(a *App) BosunContext {
-	if c.AppRepo == a {
+	if c.appRepo == a {
 		return c
 	}
-	c.AppRepo = a
+	c.appRepo = a
 	c.log = c.Log().WithField("app", a.Name)
 	c.Log().Debug("")
 	c.LogLine(1, "[Context] Changed App.")
@@ -114,10 +114,10 @@ func (c BosunContext) WithApp(a *App) BosunContext {
 }
 
 func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
-	if c.AppRelease == a {
+	if c.appRelease == a {
 		return c
 	}
-	c.AppRelease = a
+	c.appRelease = a
 	c.log = c.Log().WithField("appDeploy", a.Name)
 	c.LogLine(1, "[Context] Changed AppDeploy.")
 	return c.WithDir(a.AppConfig.FromPath)
@@ -264,12 +264,12 @@ func (c BosunContext) GetMinikubeDockerEnv() []string {
 		}()
 		log := c.Log()
 		log.Info("Attempting to use docker agent in minikube...")
-		if err := pkg.NewCommand("minikube", "ip").RunE(); err != nil {
+		if err := pkg.NewShellExe("minikube", "ip").RunE(); err != nil {
 			log.Warnf("Could not use minikube as a docker proxy: %s", err)
 			return
 		}
 
-		envblob, err := pkg.NewCommand("minikube", "docker-env").RunOut()
+		envblob, err := pkg.NewShellExe("minikube", "docker-env").RunOut()
 		if err != nil {
 			log.WithError(err).Error("Could not get docker-env.")
 			return

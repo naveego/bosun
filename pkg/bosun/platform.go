@@ -10,15 +10,19 @@ import (
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/util/worker"
+	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
+	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const (
@@ -44,9 +48,10 @@ type Platform struct {
 	ReleaseBranchFormat_OBSOLETE string                      `yaml:"releaseBranchFormat,omitempty"`
 	MasterBranch_OBSOLETE        string                      `yaml:"masterBranch,omitempty"`
 	ReleaseDirectory             string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
+	EnvironmentsDirectory        string                      `yaml:"environmentsDirectory" json:"environmentsDirectory"`
 	ReleaseMetadata              []*ReleaseMetadata          `yaml:"releases" json:"releases"`
 	Repos                        []*Repo                     `yaml:"repos" json:"repos"`
-	Apps                         []*AppMetadata              `yaml:"apps"`
+	Apps                         PlatformAppConfigs          `yaml:"apps"`
 	ZenHubConfig                 *zenhub.Config              `yaml:"zenHubConfig"`
 	NextReleaseName              string                      `yaml:"nextReleaseName,omitempty"`
 	Clusters                     kube.ConfigDefinitions      `yaml:"clusters"`
@@ -74,6 +79,14 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if err == nil {
 		*p = Platform(px)
+	}
+
+	if p.ReleaseDirectory == "" {
+		p.ReleaseDirectory = "releases"
+	}
+
+	if p.EnvironmentsDirectory == "" {
+		p.EnvironmentsDirectory = "environments"
 	}
 
 	p.Branching.Master = util.DefaultString(p.Branching.Master, p.MasterBranch_OBSOLETE, "master")
@@ -410,7 +423,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 				diffProviderPlan := appPlan.Providers[diffSlot]
 				log.Info("Computing change log...")
 
-				developVersion, changeLogErr := localVersion.GetManifestFromBranch(ctx, diffVersion.AppManifest.Branch)
+				developVersion, changeLogErr := localVersion.GetManifestFromBranch(ctx, diffVersion.AppManifest.Branch, false)
 				if changeLogErr != nil {
 					return changeLogErr
 				}
@@ -722,21 +735,20 @@ func (p *Platform) Save(ctx BosunContext) error {
 			return err
 		}
 
-		for _, appRelease := range appManifests {
-			path := filepath.Join(dir, appRelease.Name+".yaml")
-			err = writeYaml(path, appRelease)
+		for _, appManifest := range appManifests {
+			err = appManifest.Save(dir)
 			if err != nil {
-				return errors.Wrapf(err, "write app %q", appRelease.Name)
+				return errors.Wrapf(err, "write app %q", appManifest.Name)
 			}
 		}
 
 		for _, toDelete := range manifest.toDelete {
-			path := filepath.Join(dir, toDelete+".yaml")
-			_ = os.Remove(path)
+			_ = os.Remove(filepath.Join(dir, toDelete+".yaml"))
+			_ = os.RemoveAll(filepath.Join(dir, toDelete))
 		}
 	}
 
-	err := p.File.Save()
+	err := p.FileSaver.Save()
 
 	if err != nil {
 		return err
@@ -754,6 +766,128 @@ func writeYaml(path string, value interface{}) error {
 
 	err = ioutil.WriteFile(path, y, 0600)
 	return err
+}
+
+type CreateDeploymentPlanRequest struct {
+	Path                  string
+	ManifestDirPath       string
+	ProviderName          string
+	Apps                  []string
+	IgnoreDependencies    bool
+	AutomaticDependencies bool
+}
+
+func (p *Platform) CreateDeploymentPlan(ctx BosunContext, req CreateDeploymentPlanRequest) error {
+
+	if req.Path == "" {
+		req.Path = filepath.Join(filepath.Dir(p.FromPath), "deployments/default/plan.yaml")
+	}
+	dir := filepath.Dir(req.Path)
+	_ = os.RemoveAll(dir)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+
+	if req.ManifestDirPath == "" {
+		req.ManifestDirPath = dir
+	}
+	plan := DeploymentPlan{
+		Provider: req.ProviderName,
+	}
+	apps := map[string]*App{}
+	dependencies := map[string][]string{}
+	err := p.buildAppsAndDepsRec(ctx.Bosun, req, req.Apps, apps, dependencies)
+	if err != nil {
+		return err
+	}
+
+	topology, err := GetDependenciesInTopologicalOrder(dependencies, req.Apps...)
+
+	if err != nil {
+		return errors.Wrapf(err, "apps could not be sorted in dependency order (apps: %#v)", req.Apps)
+	}
+
+	for _, dep := range topology {
+		app, ok := apps[dep]
+		if !ok {
+			if req.IgnoreDependencies {
+				continue
+			}
+
+			return errors.Errorf("an app specifies a dependency that could not be found: %q (topological order: %v)", dep, topology)
+		}
+
+		appPlan := &AppDeploymentPlan{
+			Name:           app.Name,
+			ValueOverrides: values.ValueSet{},
+		}
+
+		if app.IsFromManifest {
+			appPlan.ManifestPath = app.FromPath
+		} else {
+			manifest, err := app.GetManifest(ctx)
+			if err != nil {
+				return errors.Wrapf(err, "getting manifest for app %q from provider %q", app.Name, req.ProviderName)
+			}
+
+			err = manifest.MakePortable()
+			if err != nil {
+				return errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderName)
+			}
+
+			err = manifest.Save(req.ManifestDirPath)
+			if err != nil {
+				return errors.Wrapf(err, "saving portable manifest for app %q from provider %q", app.Name, req.ProviderName)
+			}
+
+			appPlan.ManifestPath = req.ManifestDirPath + app.Name
+		}
+
+		appPlan.ManifestPath, err = filepath.Rel(filepath.Dir(req.Path), appPlan.ManifestPath)
+		if err != nil {
+			return err
+		}
+
+		plan.Apps = append(plan.Apps, appPlan)
+	}
+
+	err = yaml.SaveYaml(req.Path, plan)
+
+	return err
+}
+
+func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest, appNames []string, apps map[string]*App, deps map[string][]string) error {
+	for len(appNames) > 0 {
+		appName := appNames[0]
+		appNames = appNames[1:]
+
+		if _, added := apps[appName]; added {
+			continue
+		}
+
+		platformApp, err := p.getPlatformApp(appName)
+		if err != nil {
+			return err
+		}
+		app, err := b.GetAppFromProvider(appName, req.ProviderName)
+		if err != nil {
+			return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderName)
+		}
+		apps[appName] = app
+		appDeps := deps[app.Name]
+
+		for _, dep := range app.AppConfig.DependsOn {
+			appDeps = stringsn.AppendIfNotPresent(appDeps, dep.Name)
+		}
+		for _, dep := range platformApp.Dependencies {
+			appDeps = stringsn.AppendIfNotPresent(appDeps, dep)
+		}
+		deps[app.Name] = appDeps
+		if req.AutomaticDependencies {
+			err = p.buildAppsAndDepsRec(b, req, appDeps, apps, deps)
+		}
+	}
+	return nil
 }
 
 func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
@@ -854,9 +988,9 @@ func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, erro
 	return manifest, err
 }
 
-func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
+func (p *Platform) IncludeApp(ctx BosunContext, config *PlatformAppConfig) error {
 
-	app, err := ctx.Bosun.GetApp(name)
+	app, err := ctx.Bosun.GetApp(config.Name)
 	if err != nil {
 		return err
 	}
@@ -867,14 +1001,15 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 	}
 
 	var found bool
-	for _, knownApp := range p.Apps {
-		if knownApp.Name == name {
+	for i, knownApp := range p.Apps {
+		if knownApp.Name == config.Name {
 			found = true
+			p.Apps[i] = config
 			break
 		}
 	}
 	if !found {
-		p.Apps = append(p.Apps, appManifest.AppMetadata)
+		p.Apps = append(p.Apps, config)
 	}
 
 	manifest, err := p.GetUnstableRelease()
@@ -957,10 +1092,10 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 	progress := map[string]bool{}
 	progressFileName := filepath.Join(os.TempDir(), fmt.Sprintf("bosun-release-commit-%s.yaml", release.Version))
-	_ = util.LoadYaml(progressFileName, &progress)
+	_ = yaml2.LoadYaml(progressFileName, &progress)
 
 	defer func() {
-		_ = util.SaveYaml(progressFileName, progress)
+		_ = yaml2.SaveYaml(progressFileName, progress)
 	}()
 
 	mergeTargets := map[string]*mergeTarget{
@@ -1276,7 +1411,7 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 
 	message := fmt.Sprintf("Committing release %s to %s.", current.Version, branch)
 	err = g.AddAndCommit(message, ".")
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "nothing to commit, working tree clean") {
 		return err
 	}
 
@@ -1286,6 +1421,15 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 	}
 
 	return nil
+}
+
+func (p *Platform) getPlatformApp(appName string) (*PlatformAppConfig, error) {
+	for _, a := range p.Apps {
+		if a.Name == appName {
+			return a, nil
+		}
+	}
+	return nil, errors.Errorf("no platform app config with name %q", appName)
 }
 
 type mergeTarget struct {
