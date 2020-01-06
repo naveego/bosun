@@ -46,16 +46,16 @@ func (a *App) ProviderName() string {
 func (a *App) GetLabels() filter.Labels {
 	if a.labels == nil {
 		a.labels = filter.LabelsFromMap(map[string]string{
-			LabelName:    a.Name,
-			LabelPath:    a.FromPath,
-			LabelVersion: a.Version.String(),
+			core.LabelName:    a.Name,
+			core.LabelPath:    a.FromPath,
+			core.LabelVersion: a.Version.String(),
 		})
 
-		a.labels[LabelBranch] = filter.LabelFunc(func() string { return a.GetBranchName().String() })
-		a.labels[LabelCommit] = filter.LabelFunc(a.GetCommit)
+		a.labels[core.LabelBranch] = filter.LabelFunc(func() string { return a.GetBranchName().String() })
+		a.labels[core.LabelCommit] = filter.LabelFunc(a.GetCommit)
 
 		if a.HasChart() {
-			a.labels[LabelDeployable] = filter.LabelString("true")
+			a.labels[core.LabelDeployable] = filter.LabelString("true")
 		}
 
 		for k, v := range a.Labels {
@@ -105,14 +105,14 @@ func (a AppsSortedByName) Swap(i, j int) {
 
 func (a *App) CheckRepoCloned() error {
 	if !a.IsRepoCloned() {
-		return ErrNotCloned
+		return core.ErrNotCloned
 	}
 	return nil
 }
 
-func (a *App) CheckOutBranch(name string) error {
+func (a *App) CheckOutBranch(name git.BranchName) error {
 	if !a.IsRepoCloned() {
-		return ErrNotCloned
+		return core.ErrNotCloned
 	}
 	local := a.Repo.LocalRepo
 	if local.GetCurrentBranch() == name {

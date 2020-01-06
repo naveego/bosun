@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/kube"
@@ -105,7 +106,7 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 		"version":        manifest.Version.String(),
 		"releaseVersion": "Transient",
 		"tag":            settings.GetImageTag(manifest.AppMetadata),
-		"environment":    ctx.Env.Name,
+		"environment":    ctx.Environment().Name,
 	}
 	if manifest.PinnedReleaseVersion != nil {
 		bosunAppTemplateValues["releaseVersion"] = manifest.PinnedReleaseVersion.String()
@@ -128,10 +129,10 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 func (a *AppDeploy) GetLabels() filter.Labels {
 	if a.labels == nil {
 		a.labels = filter.LabelsFromMap(map[string]string{
-			LabelName:    a.Name,
-			LabelVersion: a.Version.String(),
-			LabelBranch:  a.Branch,
-			LabelCommit:  a.Hashes.Commit,
+			core.LabelName:    a.Name,
+			core.LabelVersion: a.Version.String(),
+			core.LabelBranch:  a.Branch,
+			core.LabelCommit:  a.Hashes.Commit,
 		})
 	}
 	return a.labels
@@ -172,7 +173,7 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 
 	// check if the app has a service with an ExternalName; if it does, it must have been
 	// creating using `app toggle` and is routed to localhost.
-	if ctx.Env.IsLocal && a.AppConfig.Minikube != nil {
+	if ctx.Environment().IsLocal && a.AppConfig.Minikube != nil {
 		for _, routableService := range a.AppConfig.Minikube.RoutableServices {
 			svcYaml, err := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.AppConfig.Namespace, routableService.Name, "-o", "yaml").RunOut()
 			if err != nil {
@@ -374,17 +375,17 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 	}
 
 	// Make environment values available
-	if err := r.Values.AddEnvAsPath(EnvPrefix, EnvAppVersion, a.Version); err != nil {
+	if err := r.Values.AddEnvAsPath(core.EnvPrefix, core.EnvAppVersion, a.Version); err != nil {
 		return nil, err
 	}
-	if err := r.Values.AddEnvAsPath(EnvPrefix, EnvAppBranch, a.Branch); err != nil {
+	if err := r.Values.AddEnvAsPath(core.EnvPrefix, core.EnvAppBranch, a.Branch); err != nil {
 		return nil, err
 	}
-	if err := r.Values.AddEnvAsPath(EnvPrefix, EnvAppCommit, a.Hashes.Commit); err != nil {
+	if err := r.Values.AddEnvAsPath(core.EnvPrefix, core.EnvAppCommit, a.Hashes.Commit); err != nil {
 		return nil, err
 	}
 
-	importedValues := a.AppConfig.Values.ExtractValueSetByNames(ctx.Env.ValueSets...)
+	importedValues := a.AppConfig.Values.ExtractValueSetByNames(ctx.Environment().ValueSetNames...)
 
 	appValues := append([]values.ValueSet{importedValues}, a.AppDeploySettings.ValueSets...)
 
@@ -451,7 +452,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	}
 
 	params := ctx.GetParameters()
-	env := ctx.Env
+	env := ctx.Environment()
 
 	reportDeploy := !params.DryRun &&
 		!params.NoReport &&
@@ -523,7 +524,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err error) {
 
 	log := ctx.Log()
-	env := ctx.Env
+	env := ctx.Environment()
 
 	log.Info("Deploy progress will be reported to github.")
 

@@ -1,4 +1,4 @@
-package bosun
+package environment
 
 import (
 	"github.com/fatih/color"
@@ -11,45 +11,31 @@ import (
 	"os"
 )
 
-type EnvironmentConfig struct {
+type Config struct {
 	FromPath       string                 `yaml:"-" json:"-"`
 	Name           string                 `yaml:"name" json:"name"`
 	Roles          []core.EnvironmentRole `yaml:"roles" json:"roles"`
 	DefaultCluster string                 `yaml:"defaultCluster" json:"defaultCluster"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
-	Protected bool                   `yaml:"protected" json:"protected"`
-	IsLocal   bool                   `yaml:"isLocal" json:"isLocal"`
-	Commands  []*EnvironmentCommand  `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Variables []*EnvironmentVariable `yaml:"variables,omitempty" json:"variables,omitempty"`
-	Scripts   []*script.Script       `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Protected bool             `yaml:"protected" json:"protected"`
+	IsLocal   bool             `yaml:"isLocal" json:"isLocal"`
+	Commands  []*Command       `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Variables []*Variable      `yaml:"variables,omitempty" json:"variables,omitempty"`
+	Scripts   []*script.Script `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues *values.ValueSet `yaml:"appValues" json:"appValues"`
-	ValueSets []string         `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	AppValues     *values.ValueSet `yaml:"appValues" json:"appValues"`
+	ValueSetNames []string         `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 }
 
-type EnvironmentVariable struct {
-	FromPath         string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
-	Name             string                `yaml:"name" json:"name"`
-	WorkspaceCommand string                `yaml:"workspaceCommand,omitempty"`
-	From             *command.CommandValue `yaml:"from" json:"from"`
-	Value            string                `yaml:"-" json:"-"`
-}
-
-type EnvironmentCommand struct {
+type Command struct {
 	FromPath string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
 	Name     string                `yaml:"name" json:"name"`
 	Exec     *command.CommandValue `yaml:"exec,omitempty" json:"exec,omitempty"`
 }
 
-type HelmRepo struct {
-	Name        string            `yaml:"name" json:"name"`
-	URL         string            `yaml:"url" json:"url"`
-	Environment map[string]string `yaml:"environment" json:"environment"`
-}
-
-func (e *EnvironmentConfig) SetFromPath(path string) {
+func (e *Config) SetFromPath(path string) {
 	e.FromPath = path
 	for i := range e.Scripts {
 		e.Scripts[i].SetFromPath(path)
@@ -62,46 +48,13 @@ func (e *EnvironmentConfig) SetFromPath(path string) {
 	}
 }
 
-// Ensure sets Value using the From CommandValue.
-func (e *EnvironmentVariable) Ensure(ctx BosunContext) error {
-
-	if e.WorkspaceCommand != "" {
-		ws := ctx.Bosun.GetWorkspace()
-		e.From = ws.GetWorkspaceCommand(e.WorkspaceCommand)
-	}
-
-	ctx = ctx.WithDir(e.FromPath)
-	log := ctx.Log().WithField("name", e.Name).WithField("fromPath", e.FromPath)
-
-	if e.From == nil {
-		log.Warn("`from` was not set")
-		return nil
-	}
-
-	if e.Value == "" {
-		log.Debug("Resolving value...")
-
-		var err error
-		e.Value, err = e.From.Resolve(ctx)
-
-		if err != nil {
-			return errors.Errorf("error populating variable %q: %s", e.Name, err)
-		}
-
-		log.WithField("value", e.Value).Debug("Resolved value.")
-	}
-
-	// set the value in the process environment
-	return os.Setenv(e.Name, e.Value)
-}
-
 // Ensure resolves and sets all environment variables, and
 // sets the cluster, but only if the environment has not already
 // been set.
-func (e *EnvironmentConfig) Ensure(ctx BosunContext) error {
+func (e *Environment) Ensure(ctx EnsureContext) error {
 
-	if os.Getenv(EnvEnvironment) == e.Name {
-		ctx.Log().Debugf("Environment is already %q, based on value of %s", e.Name, EnvEnvironment)
+	if os.Getenv(core.EnvEnvironment) == e.Name {
+		ctx.Log().Debugf("Environment is already %q, based on value of %s", e.Name, core.EnvEnvironment)
 		return nil
 	}
 
@@ -110,13 +63,13 @@ func (e *EnvironmentConfig) Ensure(ctx BosunContext) error {
 
 // ForceEnsure resolves and sets all environment variables,
 // even if the environment already appears to have been configured.
-func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
+func (e *Environment) ForceEnsure(ctx EnsureContext) error {
 
-	ctx = ctx.WithDir(e.FromPath)
+	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)
 
 	log := ctx.Log()
 
-	os.Setenv(EnvEnvironment, e.Name)
+	os.Setenv(core.EnvEnvironment, e.Name)
 
 	_, err := pkg.NewShellExe("kubectl", "config", "use-context", ctx.WorkspaceContext().CurrentCluster).RunOut()
 	if err != nil {
@@ -133,7 +86,7 @@ func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 	return nil
 }
 
-func (e *EnvironmentConfig) GetVariablesAsMap(ctx BosunContext) (map[string]string, error) {
+func (e *Environment) GetVariablesAsMap(ctx EnsureContext) (map[string]string, error) {
 
 	err := e.Ensure(ctx)
 	if err != nil {
@@ -141,7 +94,7 @@ func (e *EnvironmentConfig) GetVariablesAsMap(ctx BosunContext) (map[string]stri
 	}
 
 	vars := map[string]string{
-		EnvEnvironment: e.Name,
+		core.EnvEnvironment: e.Name,
 	}
 	for _, v := range e.Variables {
 		vars[v.Name] = v.Value
@@ -150,7 +103,7 @@ func (e *EnvironmentConfig) GetVariablesAsMap(ctx BosunContext) (map[string]stri
 	return vars, nil
 }
 
-func (e *EnvironmentConfig) Render(ctx BosunContext) (string, error) {
+func (e *Environment) Render(ctx EnsureContext) (string, error) {
 
 	err := e.Ensure(ctx)
 	if err != nil {
@@ -167,9 +120,9 @@ func (e *EnvironmentConfig) Render(ctx BosunContext) (string, error) {
 	return s, nil
 }
 
-func (e *EnvironmentConfig) Execute(ctx BosunContext) error {
+func (e *Environment) Execute(ctx EnsureContext) error {
 
-	ctx = ctx.WithDir(e.FromPath)
+	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)
 
 	for _, cmd := range e.Commands {
 		log := ctx.Log().WithField("name", cmd.Name).WithField("fromPath", e.FromPath)
@@ -189,10 +142,7 @@ func (e *EnvironmentConfig) Execute(ctx BosunContext) error {
 	return nil
 }
 
-func (e *EnvironmentConfig) Merge(other *EnvironmentConfig) {
-
-	e.Cluster = firstNonemptyString(e.Cluster, other.Cluster)
-	e.Domain = firstNonemptyString(e.Domain, other.Domain)
+func (e *Config) Merge(other *Config) {
 
 	e.Commands = append(e.Commands, other.Commands...)
 	e.Variables = append(e.Variables, other.Variables...)

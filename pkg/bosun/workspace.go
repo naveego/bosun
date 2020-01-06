@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 )
 
-const logConfigs = false
+const logConfigs = true
 
 type Workspace struct {
 	Path                string `yaml:"-" json:"-"`
@@ -226,9 +226,9 @@ func (w *Workspace) importFileFromPath(path string) error {
 		return errors.Errorf("yaml error loading %q: %s", path, err)
 	}
 
-	SetFromPath(path)
+	c.SetFromPath(path)
 
-	err = Merge(c)
+	err = w.MergedBosunFile.Merge(c)
 
 	if err != nil {
 		return errors.Errorf("merge error loading %q: %s", path, err)
@@ -239,7 +239,7 @@ func (w *Workspace) importFileFromPath(path string) error {
 	}
 	w.ImportedBosunFiles[path] = c
 
-	err = w.importFromPaths(FromPath, Imports)
+	err = w.importFromPaths(w.Path, w.Imports)
 
 	return err
 }

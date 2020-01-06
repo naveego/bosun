@@ -7,7 +7,9 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/ioc"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
@@ -26,7 +28,7 @@ import (
 
 type BosunContext struct {
 	Bosun  *Bosun
-	Env    *EnvironmentConfig
+	env    *environment.Environment
 	Dir    string
 	log    *logrus.Entry
 	Values *values.PersistableValues
@@ -50,7 +52,7 @@ func NewTestBosunContext() BosunContext {
 	return BosunContext{
 		ctx:   context.Background(),
 		Dir:   dir,
-		Env:   &EnvironmentConfig{},
+		env:   &environment.Environment{},
 		Bosun: testBosun,
 		log:   logrus.WithField("TEST", "INSTANCE"),
 	}
@@ -152,10 +154,10 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 		if c.Values != nil {
 			c.valuesAsEnvVars = c.Values.Values.ToEnv("BOSUN_")
 		} else {
-			if c.Env != nil {
+			if c.env != nil {
 
 				c.valuesAsEnvVars = map[string]string{
-					EnvCluster: c.Bosun.GetWorkspace().CurrentCluster,
+					core.EnvCluster: c.Bosun.GetWorkspace().CurrentCluster,
 				}
 			}
 		}
@@ -198,7 +200,7 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 	path = os.Expand(path, func(name string) string {
 		switch name {
 		case "ENVIRONMENT", "BOSUN_ENVIRONMENT":
-			return c.Env.Name
+			return c.env.Name
 		default:
 			if v, ok := expMap[name]; ok {
 				return v
@@ -247,8 +249,8 @@ func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
 	}, nil
 }
 
-func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
-	c.Env = env
+func (c BosunContext) WithEnv(env environment.Environment) BosunContext {
+	c.env = &env
 	c.log = c.Log().WithField("env", env.Name)
 	return c
 }
@@ -329,10 +331,10 @@ func (c BosunContext) IsVerbose() bool {
 }
 
 func (c BosunContext) GetCluster() string {
-	if c.Env != nil {
+	if c.env == nil {
 		return c.WorkspaceContext().CurrentCluster
 	}
-	return ""
+	return c.env.Cluster
 }
 
 // Log gets a logger safely.
@@ -366,7 +368,7 @@ func (c BosunContext) WithStringValue(key string, value string) core.StringKeyVa
 func (c BosunContext) GetStringValue(key string, defaultValue ...string) string {
 	switch key {
 	case core.KeyEnv:
-		return c.Env.Name
+		return c.env.Name
 	case core.KeyCluster:
 		return c.GetCluster()
 	}
@@ -394,9 +396,17 @@ func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
 }
 
 func (c BosunContext) EnsureEnvironment() error {
-	return c.Env.Ensure(c)
+	return c.env.Ensure(c)
+}
+
+func (c BosunContext) Environment() *environment.Environment {
+	return c.env
 }
 
 func (c BosunContext) GetReleaseValues() *values.PersistableValues {
 	return c.Values
+}
+
+func (c BosunContext) GetWorkspaceCommand(name string) *command.CommandValue {
+	return c.Bosun.ws.GetWorkspaceCommand(name)
 }

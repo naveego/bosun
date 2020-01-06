@@ -21,6 +21,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -195,7 +196,7 @@ var _ = addCommand(envCmd, &cobra.Command{
 	Short:   "Shows the current environment with its valueSets.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
-		var env *bosun.EnvironmentConfig
+		var env *environment.Config
 		var err error
 		if len(args) == 1 {
 			env, err = b.GetEnvironment(args[0])
@@ -203,7 +204,8 @@ var _ = addCommand(envCmd, &cobra.Command{
 				return err
 			}
 		} else {
-			env = b.GetCurrentEnvironment()
+			e := b.GetCurrentEnvironment()
+			env = &e.Config
 		}
 
 		y, err := yaml.Marshal(env)

@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
@@ -250,7 +251,7 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 		var apps []*bosun.App
 		fp := getFilterParams(b, args)
 		if !fp.IsEmpty() {
-			apps, _ = fp.GetAppsChain(fp.Chain().Including(filter.MustParse(bosun.LabelDeployable)))
+			apps, _ = fp.GetAppsChain(fp.Chain().Including(filter.MustParse(core.LabelDeployable)))
 		}
 
 		appPlans := map[string]*bosun.AppPlan{}

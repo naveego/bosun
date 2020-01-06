@@ -5,6 +5,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
@@ -17,7 +18,7 @@ import (
 // File represents a loaded bosun.yaml file.
 type File struct {
 	Imports      []string               `yaml:"imports,omitempty" json:"imports"`
-	Environments []*EnvironmentConfig   `yaml:"environments,omitempty" json:"environments"`
+	Environments []*environment.Config  `yaml:"environments,omitempty" json:"environments"`
 	AppRefs      map[string]*Dependency `yaml:"appRefs,omitempty" json:"appRefs"`
 	Apps         []*AppConfig           `yaml:"apps,omitempty" json:"apps"`
 	Repos        []*RepoConfig          `yaml:"repos,omitempty" json:"repos"`
@@ -26,7 +27,7 @@ type File struct {
 	Tools        []*ToolDef             `yaml:"tools,omitempty" json:"tools"`
 	TestSuites   []*E2ESuiteConfig      `yaml:"testSuites,omitempty" json:"testSuites,omitempty"`
 	Scripts      []*script.Script       `yaml:"scripts,omitempty" json:"scripts,omitempty"`
-	ValueSets    []*values.ValueSet     `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	ValueSets    []values.ValueSet      `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 	Platforms    []*Platform            `yaml:"platforms,omitempty" json:"platforms,omitempty"`
 
 	// merged indicates that this File has had File instances merged into it and cannot be saved.
@@ -139,7 +140,7 @@ func (f *File) mergeApp(incoming *AppConfig) error {
 	return nil
 }
 
-func (f *File) mergeEnvironment(env *EnvironmentConfig) error {
+func (f *File) mergeEnvironment(env *environment.Config) error {
 
 	if env.Name == "all" {
 		for _, e := range f.Environments {
@@ -160,7 +161,7 @@ func (f *File) mergeEnvironment(env *EnvironmentConfig) error {
 	return nil
 }
 
-func (f *File) GetEnvironmentConfig(name string) *EnvironmentConfig {
+func (f *File) GetEnvironmentConfig(name string) *environment.Config {
 	for _, e := range f.Environments {
 		if e.Name == name {
 			return e

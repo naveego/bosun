@@ -57,6 +57,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 		b := MustGetBosun()
 		ctx := b.NewContext()
 		ws := b.GetWorkspace()
+
 		konfig := ws.Minikube
 		if konfig == nil {
 			p, err := b.GetCurrentPlatform()
@@ -73,12 +74,17 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 			return errors.New("no kube config named minikube found in workspace or platform")
 		}
 
-		ktx := kube.CommandContext{
-			Log: ctx.Log(),
+		konfigs := kube.ConfigDefinitions{
+			&kube.ConfigDefinition{
+				Minikube: konfig,
+				Name:     "minikube",
+			},
 		}
 
-		err := konfig.configureKubernetes(ktx)
-
+		err := konfigs.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+			Name: "minikube",
+			Log:  ctx.Log(),
+		})
 		if err != nil {
 			return err
 		}

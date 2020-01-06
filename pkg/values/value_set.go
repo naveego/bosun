@@ -15,7 +15,7 @@ const ValueSetAll = "all"
 
 type ValueSet struct {
 	core.ConfigShared `yaml:",inline"`
-	Roles             []string                         `yaml:"roles"`
+	Roles             []core.EnvironmentRole           `yaml:"roles"`
 	Dynamic           map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
 	Files             []string                         `yaml:"files,omitempty" json:"files,omitempty"`
 	Static            Values                           `yaml:"static,omitempty" json:"static,omitempty"`
@@ -166,7 +166,9 @@ func (v *ValueSetCollection) UnmarshalYAML(unmarshal func(interface{}) error) er
 
 		for k, v := range m {
 			keys := strings.Split(k, ",")
-			v.Roles = keys
+			for _, key := range keys {
+				v.Roles = append(v.Roles, core.EnvironmentRole(key))
+			}
 			out = append(out, v)
 		}
 
@@ -207,8 +209,21 @@ func (v ValueSetCollection) ExtractValueSetByName(name string) ValueSet {
 	out := ValueSet{}
 
 	for _, v := range v.ValueSets {
-		for _, role := range v.Roles {
-			if role == name {
+		if v.Name == name {
+			return v
+		}
+	}
+
+	return out
+}
+
+func (v ValueSetCollection) ExtractValueSetByRole(role core.EnvironmentRole) ValueSet {
+
+	out := ValueSet{}
+
+	for _, v := range v.ValueSets {
+		for _, r := range v.Roles {
+			if r == role {
 				out = out.WithValues(v)
 			}
 		}
@@ -217,7 +232,7 @@ func (v ValueSetCollection) ExtractValueSetByName(name string) ValueSet {
 	return out
 }
 
-func (v ValueSetCollection) FindValueSetForRole(role string) (ValueSet, error) {
+func (v ValueSetCollection) FindValueSetForRole(role core.EnvironmentRole) (ValueSet, error) {
 
 	var out []ValueSet
 	for _, vs := range v.ValueSets {
@@ -248,10 +263,22 @@ func (v ValueSetCollection) FindValueSetForRole(role string) (ValueSet, error) {
 // ValueSets with each name are merged in the order the names were provided.
 func (v ValueSetCollection) ExtractValueSetByNames(names ...string) ValueSet {
 
-	out := v.ExtractValueSetByName(ValueSetAll)
+	out := v.DefaultValues.Clone()
 
 	for _, name := range names {
 		vs := v.ExtractValueSetByName(name)
+		out = out.WithValues(vs)
+	}
+
+	return out
+}
+
+func (v ValueSetCollection) ExtractValueSetByRoles(roles ...core.EnvironmentRole) ValueSet {
+
+	out := v.DefaultValues.Clone()
+
+	for _, role := range roles {
+		vs := v.ExtractValueSetByRole(role)
 		out = out.WithValues(vs)
 	}
 
@@ -274,18 +301,18 @@ func (v ValueSetCollection) CanonicalizedCopy() ValueSetCollection {
 
 	for _, v := range v.ValueSets {
 		for _, role := range v.Roles {
-			order = stringsn.AppendIfNotPresent(order, role)
+			order = stringsn.AppendIfNotPresent(order, string(role))
 			var c ValueSet
 			var ok bool
-			if c, ok = canonical[role]; !ok {
+			if c, ok = canonical[string(role)]; !ok {
 				c = ValueSet{
-					Roles:   []string{role},
+					Roles:   []core.EnvironmentRole{role},
 					Static:  Values{},
 					Dynamic: map[string]*command.CommandValue{},
 				}
 			}
 			c = c.WithValues(v)
-			canonical[role] = c
+			canonical[string(role)] = c
 		}
 	}
 

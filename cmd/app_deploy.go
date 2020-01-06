@@ -49,7 +49,7 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 		}
 		includeDeps := viper.GetBool(ArgAppDeployDeps)
 		deploySettings := bosun.DeploySettings{
-			Environment:        ctx.Env,
+			Environment:        ctx.Environment(),
 			ValueSets:          valueSets,
 			UseLocalContent:    true,
 			IgnoreDependencies: !includeDeps,

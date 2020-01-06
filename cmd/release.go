@@ -6,9 +6,12 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -396,7 +399,7 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		ctx := b.NewContext()
 
 		deploySettings := bosun.DeploySettings{
-			Environment: ctx.Env,
+			Environment: ctx.Environment(),
 			ValueSets:   valueSets,
 			Manifest:    release,
 		}
@@ -560,7 +563,7 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		deploySettings := bosun.DeploySettings{
-			Environment:     ctx.Env,
+			Environment:     ctx.Environment(),
 			ValueSets:       valueSets,
 			Manifest:        release,
 			Recycle:         viper.GetBool(ArgReleaseRecycle),
@@ -750,23 +753,29 @@ diff go-between 2.4.2/blue green
 					return "", errors.Errorf("invalid scenario %q", scenario)
 				}
 
-				env, err := b.GetEnvironment(envName)
+				environmentConfig, err := b.GetEnvironment(envName)
 				if err != nil {
 					return "", errors.Wrap(err, "environment")
 				}
+
+				env, err := environment.New(*environmentConfig, environment.Options{
+					ValueSets: values.ValueSetCollection{
+						ValueSets: b.GetValueSets(),
+					}})
+				if err != nil {
+					return "", err
+				}
+
 				ctx := b.NewContext().WithEnv(env)
 
 				var ok bool
 				if releaseName != "" {
 					releaseManifest, err := p.GetReleaseManifestBySlot(releaseName)
 
-					valueSets, err := getValueSetSlice(b, env)
-					if err != nil {
-						return "", err
-					}
+					valueSets := []values.ValueSet{env.ValueSet}
 
 					deploySettings := bosun.DeploySettings{
-						Environment: ctx.Env,
+						Environment: ctx.Environment(),
 						ValueSets:   valueSets,
 						Manifest:    releaseManifest,
 					}
@@ -782,13 +791,10 @@ diff go-between 2.4.2/blue green
 					}
 
 				} else {
-					valueSets, err := getValueSetSlice(b, env)
-					if err != nil {
-						return "", err
-					}
+					valueSets := []values.ValueSet{env.ValueSet}
 
 					deploySettings := bosun.DeploySettings{
-						Environment: ctx.Env,
+						Environment: ctx.Environment(),
 						ValueSets:   valueSets,
 						Apps: map[string]*bosun.App{
 							app.Name: app,
@@ -863,7 +869,7 @@ func renderDiff(diff difflib.DiffRecord) string {
 
 func getDeployableApps(b *bosun.Bosun, args []string) ([]*bosun.App, error) {
 	fp := getFilterParams(b, args)
-	apps, err := fp.GetAppsChain(fp.Chain().Including(filter.MustParse(bosun.LabelDeployable)))
+	apps, err := fp.GetAppsChain(fp.Chain().Including(filter.MustParse(core.LabelDeployable)))
 	if err != nil {
 		return nil, err
 	}

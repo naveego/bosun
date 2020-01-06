@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/workspace"
@@ -61,7 +62,7 @@ type Deploy struct {
 }
 
 type DeploySettings struct {
-	Environment        *EnvironmentConfig
+	Environment        *environment.Environment
 	ValueSets          []values.ValueSet
 	Manifest           *ReleaseManifest
 	Apps               map[string]*App
@@ -98,7 +99,7 @@ func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 }
 
 type AppDeploySettings struct {
-	Environment     *EnvironmentConfig
+	Environment     *environment.Environment
 	ValueSets       []values.ValueSet
 	UseLocalContent bool // if true, the app will be deployed using the local chart
 }

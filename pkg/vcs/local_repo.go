@@ -64,13 +64,13 @@ func (r *LocalRepo) Push() error {
 	if r.HasUpstream() {
 		_, err = g.Exec("push")
 	} else {
-		_, err = g.Exec("push", "-u", "origin", r.GetCurrentBranch())
+		_, err = g.Exec("push", "-u", "origin", string(r.GetCurrentBranch()))
 	}
 	return err
 }
 
-func (r *LocalRepo) CheckOut(name string) error {
-	_, err := r.git().Exec("checkout", name)
+func (r *LocalRepo) CheckOut(name git.BranchName) error {
+	_, err := r.git().Exec("checkout", string(name))
 	return err
 }
 
@@ -142,8 +142,8 @@ func (r *LocalRepo) git() git.GitWrapper {
 	return g
 }
 
-func (r *LocalRepo) GetCurrentBranch() string {
-	return r.git().Branch()
+func (r *LocalRepo) GetCurrentBranch() git.BranchName {
+	return git.BranchName(r.git().Branch())
 }
 
 func (r *LocalRepo) DoesBranchExist(ctx util.Logger, name string) (bool, error) {

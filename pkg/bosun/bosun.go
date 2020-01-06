@@ -9,6 +9,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/kube"
@@ -36,7 +37,7 @@ type Bosun struct {
 	ws                   *Workspace
 	file                 *File
 	vaultClient          *vault.Client
-	env                  *EnvironmentConfig
+	env                  *environment.Environment
 	clusterAvailable     *bool
 	log                  *logrus.Entry
 	environmentConfirmed *bool
@@ -271,12 +272,29 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 	return app, err
 }
 
-func (b *Bosun) useEnvironment(env *EnvironmentConfig) error {
+func (b *Bosun) useEnvironment(config *environment.Config) error {
 
-	b.ws.CurrentEnvironment = env.Name
+	b.ws.CurrentEnvironment = config.Name
+
+	env := &environment.Environment{
+		Config:   *config,
+		Cluster:  b.ws.CurrentCluster,
+		ValueSet: values.ValueSet{},
+	}
+
+	valueSets, err := b.GetValueSetsForEnv(config)
+
+	if err != nil {
+		return err
+	}
+
+	for _, vs := range valueSets {
+		env.ValueSet = env.ValueSet.WithValues(vs)
+	}
+
 	b.env = env
 
-	err := b.env.ForceEnsure(b.NewContext())
+	err = b.env.ForceEnsure(b.NewContext())
 	if err != nil {
 		return errors.Errorf("ensure environment %q: %s", b.env.Name, err)
 	}
@@ -312,7 +330,7 @@ func (b *Bosun) UseCluster(name string) error {
 	return nil
 }
 
-func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
+func (b *Bosun) GetCurrentEnvironment() *environment.Environment {
 	if b.env == nil {
 		err := b.configureCurrentEnv()
 		if err != nil {
@@ -472,7 +490,7 @@ func (b *Bosun) IsClusterAvailable() bool {
 	return *b.clusterAvailable
 }
 
-func (b *Bosun) GetEnvironment(name string) (*EnvironmentConfig, error) {
+func (b *Bosun) GetEnvironment(name string) (*environment.Config, error) {
 	for _, env := range b.file.Environments {
 		if env.Name == name {
 			return env, nil
@@ -481,17 +499,17 @@ func (b *Bosun) GetEnvironment(name string) (*EnvironmentConfig, error) {
 	return nil, errors.Errorf("no environment named %q", name)
 }
 
-func (b *Bosun) GetEnvironments() []*EnvironmentConfig {
+func (b *Bosun) GetEnvironments() []*environment.Config {
 	return b.file.Environments
 }
 
-func (b *Bosun) GetValueSet(name string) (*values.ValueSet, error) {
+func (b *Bosun) GetValueSet(name string) (values.ValueSet, error) {
 	for _, vs := range b.file.ValueSets {
 		if vs.Name == name {
 			return vs, nil
 		}
 	}
-	return nil, errors.Errorf("no valueSet named %q", name)
+	return values.ValueSet{}, errors.Errorf("no valueSet named %q", name)
 }
 
 func (b *Bosun) GetValueSetSlice(names []string) ([]values.ValueSet, error) {
@@ -503,7 +521,7 @@ func (b *Bosun) GetValueSetSlice(names []string) ([]values.ValueSet, error) {
 
 	for _, vs := range b.file.ValueSets {
 		if _, wanted := want[vs.Name]; wanted {
-			out = append(out, *vs)
+			out = append(out, vs)
 			want[vs.Name] = true
 		}
 	}
@@ -517,14 +535,14 @@ func (b *Bosun) GetValueSetSlice(names []string) ([]values.ValueSet, error) {
 	return out, nil
 }
 
-func (b *Bosun) GetValueSetsForEnv(env *EnvironmentConfig) ([]*values.ValueSet, error) {
-	vss := map[string]*values.ValueSet{}
+func (b *Bosun) GetValueSetsForEnv(env *environment.Config) ([]values.ValueSet, error) {
+	vss := map[string]values.ValueSet{}
 	for _, vs := range b.file.ValueSets {
 		vss[vs.Name] = vs
 	}
 
-	var out []*values.ValueSet
-	for _, name := range env.ValueSets {
+	var out []values.ValueSet
+	for _, name := range env.ValueSetNames {
 		vs, ok := vss[name]
 		if !ok {
 			return nil, errors.Errorf("no valueSet with name %q", name)
@@ -532,15 +550,11 @@ func (b *Bosun) GetValueSetsForEnv(env *EnvironmentConfig) ([]*values.ValueSet, 
 		out = append(out, vs)
 	}
 
-	mirror.Sort(out, func(a, b *values.ValueSet) bool {
-		return a.Name < b.Name
-	})
-
 	return out, nil
 }
 
-func (b *Bosun) GetValueSets() []*values.ValueSet {
-	out := make([]*values.ValueSet, len(b.file.ValueSets))
+func (b *Bosun) GetValueSets() values.ValueSets {
+	out := make([]values.ValueSet, len(b.file.ValueSets))
 	copy(out, b.file.ValueSets)
 
 	mirror.Sort(out, func(a, b *values.ValueSet) bool {
@@ -556,7 +570,7 @@ func (b *Bosun) NewContext() BosunContext {
 
 	return BosunContext{
 		Bosun: b,
-		Env:   b.GetCurrentEnvironment(),
+		env:   b.GetCurrentEnvironment(),
 		log:   b.log,
 	}.WithDir(dir).WithContext(context.Background())
 
@@ -755,7 +769,7 @@ func (b *Bosun) configureCurrentEnv() error {
 		switch len(b.file.Environments) {
 		case 0:
 			b.log.Warn("No environments found, using a dummy environment.")
-			return b.useEnvironment(&EnvironmentConfig{
+			return b.useEnvironment(&environment.Config{
 				Name:     "",
 				FromPath: b.ws.Path,
 			})
@@ -783,10 +797,6 @@ func (b *Bosun) configureCurrentEnv() error {
 		if err != nil {
 			return err
 		}
-	}
-
-	if b.ws.CurrentCluster != "" {
-		b.ws.CurrentCluster = b.env.DefaultCluster
 	}
 
 	return errors.New("no current environment set in workspace")

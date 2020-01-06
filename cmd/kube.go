@@ -135,13 +135,21 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 			return err
 		}
 
-		var konfigs []*kube.ConfigDefinition
 		name := viper.GetString(ArgConfigureClusterName)
 		env := viper.GetString(ArgConfigureClusterEnv)
 		if env == "" {
 			env = b.GetCurrentEnvironment().Name
 		}
 		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
+		ctx := b.NewContext()
+
+		err = p.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+			Log:         ctx.Log(),
+			Environment: env,
+			Name:        name,
+			Force:       ctx.GetParameters().Force,
+			Role:        role,
+		})
 
 		return err
 	},

@@ -6,3 +6,7 @@ type Context struct {
 	CurrentRelease     string `yaml:"currentRelease" json:"currentRelease"`
 	CurrentCluster     string `yaml:"currentCluster" json:"currentCluster"`
 }
+
+type Contexter interface {
+	WorkspaceContext() Context
+}

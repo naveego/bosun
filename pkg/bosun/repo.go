@@ -80,11 +80,7 @@ func (r Repo) GetLocalBranchName() git.BranchName {
 		return ""
 	}
 
-	if r.LocalRepo.branch == "" {
-		g, _ := git.NewGitWrapper(r.LocalRepo.Path)
-		r.LocalRepo.branch = git.BranchName(g.Branch())
-	}
-	return r.LocalRepo.branch
+	return r.LocalRepo.GetCurrentBranch()
 }
 
 func (r *Repo) Pull(ctx BosunContext, rebase bool) error {

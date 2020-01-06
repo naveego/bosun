@@ -9,6 +9,8 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
@@ -38,12 +40,12 @@ func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 		log.Fatal(err)
 	}
 
-	envFromEnv := os.Getenv(bosun.EnvEnvironment)
+	envFromEnv := os.Getenv(core.EnvEnvironment)
 	envFromConfig := b.GetCurrentEnvironment().Name
 	if envFromConfig != envFromEnv {
 		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)",
 			envFromConfig,
-			bosun.EnvEnvironment,
+			core.EnvEnvironment,
 			envFromEnv)
 	}
 
@@ -157,7 +159,7 @@ func getAppDeploysFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppDepl
 		}
 		ctx := b.NewContext()
 		ctx.Log().Debug("Creating transient release...")
-		valueSetNames := util.ConcatStrings(ctx.Env.ValueSets, viper.GetStringSlice(ArgAppValueSet))
+		valueSetNames := util.ConcatStrings(b.GetCurrentEnvironment().ValueSetNames, viper.GetStringSlice(ArgAppValueSet))
 		valueSets, err := b.GetValueSetSlice(valueSetNames)
 		if err != nil {
 			return nil, err
@@ -165,7 +167,7 @@ func getAppDeploysFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppDepl
 
 		includeDeps := viper.GetBool(ArgAppDeployDeps)
 		deploySettings := bosun.DeploySettings{
-			Environment:        ctx.Env,
+			Environment:        ctx.Environment(),
 			ValueSets:          valueSets,
 			UseLocalContent:    true,
 			IgnoreDependencies: !includeDeps,
@@ -240,7 +242,7 @@ func (f FilterParams) Chain() filter.Chain {
 		include = append(include, filter.FilterMatchAll())
 	} else if len(f.Names) > 0 {
 		for _, name := range f.Names {
-			include = append(include, filter.MustParse(bosun.LabelName, "==", name))
+			include = append(include, filter.MustParse(core.LabelName, "==", name))
 		}
 	} else {
 		labels := append(viper.GetStringSlice(ArgFilteringLabels), viper.GetStringSlice(ArgFilteringInclude)...)
@@ -658,13 +660,13 @@ func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppMani
 
 	ctx := b.NewContext()
 
-	valueSets, err := getValueSetSlice(b, ctx.Env)
+	valueSets, err := getValueSetSlice(b, ctx.Environment())
 	if err != nil {
 		return nil, err
 	}
 
 	appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{
-		Environment: ctx.Env,
+		Environment: ctx.Environment(),
 		ValueSets:   valueSets,
 	}, appManifest)
 	if err != nil {
@@ -682,8 +684,8 @@ func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppMani
 // getValueSetSlice gets the value sets for the provided environment
 // and for any additional value sets specified using --value-sets,
 // and creates an additional valueSet from any --set parameters.
-func getValueSetSlice(b *bosun.Bosun, env *bosun.EnvironmentConfig) ([]values.ValueSet, error) {
-	valueSetNames := util.ConcatStrings(env.ValueSets, viper.GetStringSlice(ArgAppValueSet))
+func getValueSetSlice(b *bosun.Bosun, env *environment.Environment) ([]values.ValueSet, error) {
+	valueSetNames := util.ConcatStrings(env.ValueSetNames, viper.GetStringSlice(ArgAppValueSet))
 	valueSets, err := b.GetValueSetSlice(valueSetNames)
 	if err != nil {
 		return nil, err

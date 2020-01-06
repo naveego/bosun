@@ -31,9 +31,7 @@ import (
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"io/ioutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -213,64 +211,66 @@ The current domain and the minikube IP are used to populate the output. To updat
 	Example: "bosun apps add-hosts --all | sudo tee /etc/hosts",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-		apps := mustGetAppsIncludeCurrent(b, args)
-		env := b.GetCurrentEnvironment()
-		ip := pkg.NewShellExe("minikube", "ip").MustOut()
+		return errors.New("not implemented, needs rewrite to render domains correctly based on value sets in current environment")
 
-		toAdd := map[string]hostLine{}
-		for _, app := range apps {
-			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
-			toAdd[host] = hostLine{
-				IP:      ip,
-				Host:    host,
-				Comment: fmt.Sprintf("bosun"),
-			}
-		}
-
-		hosts, err := ioutil.ReadFile("/etc/hosts")
-		if err != nil {
-			return err
-		}
-
-		var lines []hostLine
-		for _, line := range strings.Split(string(hosts), "\n") {
-			segs := hostLineRE.FindStringSubmatch(line)
-			hostLine := hostLine{}
-			if len(segs) == 0 {
-				hostLine.Comment = strings.TrimPrefix(line, "#")
-			}
-			if len(segs) >= 3 {
-				hostLine.IP = segs[1]
-				hostLine.Host = segs[2]
-			}
-			if len(segs) >= 4 {
-				hostLine.Comment = segs[3]
-			}
-
-			delete(toAdd, hostLine.Host)
-
-			lines = append(lines, hostLine)
-		}
-
-		for _, line := range toAdd {
-			lines = append(lines, line)
-		}
-
-		for _, h := range lines {
-			if h.IP != "" && h.Host != "" {
-				fmt.Fprintf(os.Stdout, "%s\t%s    ", h.IP, h.Host)
-			}
-			if h.Comment != "" {
-				fmt.Fprintf(os.Stdout, "# %s", strings.TrimSpace(h.Comment))
-				if h.IP == "" && h.Host == "" {
-					fmt.Fprint(os.Stdout, "\t\t")
-				}
-			}
-			fmt.Fprintln(os.Stdout)
-		}
-
-		return err
+		// b := MustGetBosun()
+		// apps := mustGetAppsIncludeCurrent(b, args)
+		// env := b.GetCurrentEnvironment()
+		// ip := pkg.NewShellExe("minikube", "ip").MustOut()
+		//
+		// toAdd := map[string]hostLine{}
+		// for _, app := range apps {
+		// 	host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
+		// 	toAdd[host] = hostLine{
+		// 		IP:      ip,
+		// 		Host:    host,
+		// 		Comment: fmt.Sprintf("bosun"),
+		// 	}
+		// }
+		//
+		// hosts, err := ioutil.ReadFile("/etc/hosts")
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// var lines []hostLine
+		// for _, line := range strings.Split(string(hosts), "\n") {
+		// 	segs := hostLineRE.FindStringSubmatch(line)
+		// 	hostLine := hostLine{}
+		// 	if len(segs) == 0 {
+		// 		hostLine.Comment = strings.TrimPrefix(line, "#")
+		// 	}
+		// 	if len(segs) >= 3 {
+		// 		hostLine.IP = segs[1]
+		// 		hostLine.Host = segs[2]
+		// 	}
+		// 	if len(segs) >= 4 {
+		// 		hostLine.Comment = segs[3]
+		// 	}
+		//
+		// 	delete(toAdd, hostLine.Host)
+		//
+		// 	lines = append(lines, hostLine)
+		// }
+		//
+		// for _, line := range toAdd {
+		// 	lines = append(lines, line)
+		// }
+		//
+		// for _, h := range lines {
+		// 	if h.IP != "" && h.Host != "" {
+		// 		fmt.Fprintf(os.Stdout, "%s\t%s    ", h.IP, h.Host)
+		// 	}
+		// 	if h.Comment != "" {
+		// 		fmt.Fprintf(os.Stdout, "# %s", strings.TrimSpace(h.Comment))
+		// 		if h.IP == "" && h.Host == "" {
+		// 			fmt.Fprint(os.Stdout, "\t\t")
+		// 		}
+		// 	}
+		// 	fmt.Fprintln(os.Stdout)
+		// }
+		//
+		// return err
 	},
 })
 
@@ -279,53 +279,55 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 	Short: "Removes apps with the current domain from the hosts file.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-		apps := mustGetAppsIncludeCurrent(b, args)
-		env := b.GetCurrentEnvironment()
+		return errors.New("not implemented, needs rewrite to render domains correctly based on value sets in current environment")
 
-		toRemove := map[string]bool{}
-		for _, app := range apps {
-			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
-			toRemove[host] = true
-		}
-
-		hosts, err := ioutil.ReadFile("/etc/hosts")
-		if err != nil {
-			return err
-		}
-
-		var lines []hostLine
-		for _, line := range strings.Split(string(hosts), "\n") {
-			segs := hostLineRE.FindStringSubmatch(line)
-			hostLine := hostLine{}
-			if len(segs) == 0 {
-				hostLine.Comment = strings.TrimPrefix(line, "#")
-			}
-			if len(segs) >= 3 {
-				hostLine.IP = segs[1]
-				hostLine.Host = segs[2]
-			}
-			if len(segs) >= 4 {
-				hostLine.Comment = segs[3]
-			}
-			lines = append(lines, hostLine)
-		}
-
-		out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		for _, line := range lines {
-			if !toRemove[line.Host] {
-				_, err = fmt.Fprintf(out, "%s\n", line.String())
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		return err
+		// b := MustGetBosun()
+		// apps := mustGetAppsIncludeCurrent(b, args)
+		// env := b.GetCurrentEnvironment()
+		//
+		// toRemove := map[string]bool{}
+		// for _, app := range apps {
+		// 	host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
+		// 	toRemove[host] = true
+		// }
+		//
+		// hosts, err := ioutil.ReadFile("/etc/hosts")
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// var lines []hostLine
+		// for _, line := range strings.Split(string(hosts), "\n") {
+		// 	segs := hostLineRE.FindStringSubmatch(line)
+		// 	hostLine := hostLine{}
+		// 	if len(segs) == 0 {
+		// 		hostLine.Comment = strings.TrimPrefix(line, "#")
+		// 	}
+		// 	if len(segs) >= 3 {
+		// 		hostLine.IP = segs[1]
+		// 		hostLine.Host = segs[2]
+		// 	}
+		// 	if len(segs) >= 4 {
+		// 		hostLine.Comment = segs[3]
+		// 	}
+		// 	lines = append(lines, hostLine)
+		// }
+		//
+		// out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
+		// if err != nil {
+		// 	return err
+		// }
+		// defer out.Close()
+		// for _, line := range lines {
+		// 	if !toRemove[line.Host] {
+		// 		_, err = fmt.Fprintf(out, "%s\n", line.String())
+		// 		if err != nil {
+		// 			return err
+		// 		}
+		// 	}
+		// }
+		//
+		// return err
 	},
 })
 
@@ -366,7 +368,7 @@ var appAcceptActualCmd = &cobra.Command{
 		ctx := b.NewContext()
 
 		deploySettings := bosun.DeploySettings{
-			Environment: ctx.Env,
+			Environment: ctx.Environment(),
 		}
 		for _, app := range apps {
 			if !app.HasChart() {
