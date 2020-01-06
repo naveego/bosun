@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"io"
@@ -140,33 +141,7 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 		if env == "" {
 			env = b.GetCurrentEnvironment().Name
 		}
-		role := viper.GetString(ArgConfigureClusterRole)
-		if name != "" {
-			konfig, err := p.Clusters.GetKubeConfigDefinitionByName(name)
-			if err != nil {
-				return err
-			}
-			konfigs = append(konfigs, konfig)
-		} else {
-			found, err := p.Clusters.GetKubeConfigDefinitionsByAttributes(env, role)
-			if err != nil {
-				return err
-			}
-			konfigs = append(konfigs, found...)
-		}
-
-		if len(konfigs) == 0 {
-			return errors.Errorf("could not find any kube configs")
-		}
-
-		ctx := b.NewContext()
-		for _, c := range konfigs {
-			ktx := kube.CommandContext{
-				Log: ctx.Log(),
-			}
-
-			err = c.ConfigureKubernetes(ktx)
-		}
+		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
 
 		return err
 	},

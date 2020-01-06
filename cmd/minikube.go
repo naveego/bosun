@@ -77,7 +77,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 			Log: ctx.Log(),
 		}
 
-		err := konfig.ConfigureKubernetes(ktx)
+		err := konfig.configureKubernetes(ktx)
 
 		if err != nil {
 			return err

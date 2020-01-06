@@ -3,7 +3,6 @@ package core
 const (
 	KeyEnv     = "env"
 	KeyCluster = "cluster"
-	KeyDomain  = "domain"
 )
 
 type StringKeyValuer interface {

@@ -12,6 +12,7 @@ import (
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -30,12 +31,13 @@ type BosunContext struct {
 	log    *logrus.Entry
 	Values *values.PersistableValues
 	// Release         *Deploy
-	appRepo         *App
-	appRelease      *AppDeploy
-	valuesAsEnvVars map[string]string
-	ctx             context.Context
-	contextValues   map[string]interface{}
-	provider        ioc.Provider
+	appRepo          *App
+	appRelease       *AppDeploy
+	valuesAsEnvVars  map[string]string
+	ctx              context.Context
+	contextValues    map[string]interface{}
+	provider         ioc.Provider
+	workspaceContext *workspace.Context
 }
 
 // NewTestBosunContext creates a new BosunContext for testing purposes.
@@ -94,6 +96,18 @@ func (c BosunContext) GetValue(key string, defaultValue ...interface{}) interfac
 	panic(fmt.Sprintf("no value with key %q", key))
 }
 
+func (c BosunContext) WorkspaceContext() workspace.Context {
+	if c.workspaceContext != nil {
+		return *c.workspaceContext
+	}
+	return c.Bosun.ws.Context
+}
+
+func (c BosunContext) WithWorkspaceContext(ctx workspace.Context) BosunContext {
+	c.workspaceContext = &ctx
+	return c
+}
+
 //
 // func (c BosunContext) WithRelease(r *Deploy) BosunContext {
 // 	c.Release = r
@@ -141,8 +155,7 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 			if c.Env != nil {
 
 				c.valuesAsEnvVars = map[string]string{
-					EnvCluster: c.Env.Cluster,
-					EnvDomain:  c.Env.Domain,
+					EnvCluster: c.Bosun.GetWorkspace().CurrentCluster,
 				}
 			}
 		}
@@ -186,8 +199,6 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 		switch name {
 		case "ENVIRONMENT", "BOSUN_ENVIRONMENT":
 			return c.Env.Name
-		case "DOMAIN", "BOSUN_DOMAIN":
-			return c.Env.Domain
 		default:
 			if v, ok := expMap[name]; ok {
 				return v
@@ -211,13 +222,11 @@ func (c BosunContext) GetParameters() cli.Parameters {
 
 func (c BosunContext) TemplateValues() templating.TemplateValues {
 	tv := templating.TemplateValues{
-		Cluster: c.Env.Cluster,
-		Domain:  c.Env.Domain,
+		Cluster: c.WorkspaceContext().CurrentCluster,
 	}
 	if c.Values != nil {
 		values := c.Values.Values
-		values.MustSetAtPath("cluster", c.Env.Cluster)
-		values.MustSetAtPath("domain", c.Env.Domain)
+		values.MustSetAtPath("cluster", c.WorkspaceContext().CurrentCluster)
 		tv.Values = values
 	} else {
 		tv.Values = values.Values{}
@@ -319,16 +328,9 @@ func (c BosunContext) IsVerbose() bool {
 	return c.GetParameters().Verbose
 }
 
-func (c BosunContext) GetDomain() string {
-	if c.Env != nil {
-		return c.Env.Domain
-	}
-	return ""
-}
-
 func (c BosunContext) GetCluster() string {
 	if c.Env != nil {
-		return c.Env.Cluster
+		return c.WorkspaceContext().CurrentCluster
 	}
 	return ""
 }
@@ -367,8 +369,6 @@ func (c BosunContext) GetStringValue(key string, defaultValue ...string) string 
 		return c.Env.Name
 	case core.KeyCluster:
 		return c.GetCluster()
-	case core.KeyDomain:
-		return c.GetDomain()
 	}
 
 	if out, ok := c.contextValues[key].(string); ok {

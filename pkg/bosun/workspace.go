@@ -6,6 +6,8 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/vcs"
+	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"io/ioutil"
@@ -16,23 +18,21 @@ import (
 const logConfigs = false
 
 type Workspace struct {
-	Path                string                           `yaml:"-" json:"-"`
-	CurrentEnvironment  string                           `yaml:"currentEnvironment" json:"currentEnvironment"`
-	CurrentPlatform     string                           `yaml:"currentPlatform" json:"currentPlatform"`
-	CurrentRelease      string                           `yaml:"currentRelease" json:"currentRelease"`
+	Path                string `yaml:"-" json:"-"`
+	workspace.Context   `yaml:",inline"`
 	Imports             []string                         `yaml:"imports,omitempty" json:"imports"`
 	GitRoots            []string                         `yaml:"gitRoots" json:"gitRoots"`
 	GithubToken         *command.CommandValue            `yaml:"githubToken" json:"githubToken"`
 	ScratchDir          string                           `yaml:"scratchDir" json:"scratchDir"`
 	WorkspaceCommands   map[string]*command.CommandValue `yaml:"workspaceCommands"`
 	HostIPInMinikube    string                           `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
-	AppStates           AppStatesByEnvironment           `yaml:"appStates" json:"appStates"`
+	AppStates           workspace.AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
 	ClonePaths          map[string]string                `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
 	MergedBosunFile     *File                            `yaml:"-" json:"merged"`
 	ImportedBosunFiles  map[string]*File                 `yaml:"-" json:"imported"`
 	ZenhubToken         *command.CommandValue            `yaml:"zenhubToken" json:"zenhubToken"`
 	Minikube            *kube.MinikubeConfig             `yaml:"minikube,omitempty" json:"minikube,omitempty"`
-	LocalRepos          map[string]*LocalRepo            `yaml:"localRepos" json:"localRepos"`
+	LocalRepos          map[string]*vcs.LocalRepo        `yaml:"localRepos" json:"localRepos"`
 	GithubCloneProtocol string                           `yaml:"githubCloneProtocol"`
 }
 
@@ -56,7 +56,7 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*w = Workspace(proxy)
 
 	if w.LocalRepos == nil {
-		w.LocalRepos = map[string]*LocalRepo{}
+		w.LocalRepos = map[string]*vcs.LocalRepo{}
 	}
 
 	if w.Minikube != nil {
@@ -86,7 +86,7 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type State struct {
-	Microservices map[string]AppState
+	Microservices map[string]workspace.AppState
 }
 
 func LoadWorkspaceNoImports(path string) (*Workspace, error) {
@@ -116,7 +116,7 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 
 	c := &Workspace{
 		Path:               path,
-		AppStates:          AppStatesByEnvironment{},
+		AppStates:          workspace.AppStatesByEnvironment{},
 		ImportedBosunFiles: map[string]*File{},
 		MergedBosunFile:    new(File),
 	}
@@ -144,21 +144,21 @@ func LoadWorkspace(path string) (*Workspace, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "loading imports")
 	}
+	//
+	// var syntheticPaths []string
+	// for _, app := range bosun.AppRefs {
+	// 	if bosun.Repo != "" {
+	// 		for _, root := range c.GitRoots {
+	// 			dir := filepath.Join(root, bosun.Repo)
+	// 			bosunFile := filepath.Join(dir, "bosun.yaml")
+	// 			if _, err := os.Stat(bosunFile); err == nil {
+	// 				syntheticPaths = append(syntheticPaths, bosunFile)
+	// 			}
+	// 		}
+	// 	}
+	// }
 
-	var syntheticPaths []string
-	for _, app := range c.MergedBosunFile.AppRefs {
-		if app.Repo != "" {
-			for _, root := range c.GitRoots {
-				dir := filepath.Join(root, app.Repo)
-				bosunFile := filepath.Join(dir, "bosun.yaml")
-				if _, err := os.Stat(bosunFile); err == nil {
-					syntheticPaths = append(syntheticPaths, bosunFile)
-				}
-			}
-		}
-	}
-
-	err = c.importFromPaths(path, syntheticPaths)
+	// err = c.importFromPaths(path, syntheticPaths)
 	if err != nil {
 		return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
 	}
@@ -226,9 +226,9 @@ func (w *Workspace) importFileFromPath(path string) error {
 		return errors.Errorf("yaml error loading %q: %s", path, err)
 	}
 
-	c.SetFromPath(path)
+	SetFromPath(path)
 
-	err = w.MergedBosunFile.Merge(c)
+	err = Merge(c)
 
 	if err != nil {
 		return errors.Errorf("merge error loading %q: %s", path, err)
@@ -239,7 +239,7 @@ func (w *Workspace) importFileFromPath(path string) error {
 	}
 	w.ImportedBosunFiles[path] = c
 
-	err = w.importFromPaths(c.FromPath, c.Imports)
+	err = w.importFromPaths(FromPath, Imports)
 
 	return err
 }

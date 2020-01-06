@@ -11,7 +11,10 @@ import (
 
 // Yamlize ensures that a string is valid YAML.
 func Yamlize(y string) string {
-	return strings.Replace(y, "\t", "  ", -1)
+	if strings.Contains(y, "\t") {
+		panic("make sure there are no tab characters in the yaml")
+	}
+	return y
 }
 
 func MustYaml(value interface{}) string {

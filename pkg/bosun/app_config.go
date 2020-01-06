@@ -28,18 +28,18 @@ type AppConfig struct {
 	HarborProject    string         `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
 	Version          semver.Version `yaml:"version,omitempty" json:"version,omitempty"`
 	// The location of a standard go version file for this app.
-	GoVersionFile  string               `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
-	Chart          string               `yaml:"chart,omitempty" json:"chart,omitempty"`
-	ChartPath      string               `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
-	RunCommand     []string             `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
-	DependsOn      []Dependency         `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
-	Labels         filter.Labels        `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Minikube       *AppMinikubeConfig   `yaml:"minikube,omitempty" json:"minikube,omitempty"`
-	Images         []AppImageConfig     `yaml:"images" json:"images"`
-	Values         values.ValueSetMap   `yaml:"values,omitempty" json:"values,omitempty"`
-	Scripts        []*script.Script     `yaml:"scripts,omitempty" json:"scripts,omitempty"`
-	Actions        []*actions.AppAction `yaml:"actions,omitempty" json:"actions,omitempty"`
-	ReleaseHistory AppReleaseHistory    `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
+	GoVersionFile  string                    `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
+	Chart          string                    `yaml:"chart,omitempty" json:"chart,omitempty"`
+	ChartPath      string                    `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
+	RunCommand     []string                  `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
+	DependsOn      []Dependency              `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	Labels         filter.Labels             `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Minikube       *AppMinikubeConfig        `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	Images         []AppImageConfig          `yaml:"images" json:"images"`
+	Values         values.ValueSetCollection `yaml:"values,omitempty" json:"values,omitempty"`
+	Scripts        []*script.Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Actions        []*actions.AppAction      `yaml:"actions,omitempty" json:"actions,omitempty"`
+	ReleaseHistory AppReleaseHistory         `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
 
 	// Glob paths (relative to the file containing the app config)
 	// to files and folders  which should be included when the app is packaged for a release or a deployment.
@@ -183,42 +183,3 @@ func (a *AppConfig) GetNamespace() string {
 	}
 	return "default"
 }
-
-type AppStatesByEnvironment map[string]AppStateMap
-
-type AppStateMap map[string]AppState
-
-type AppState struct {
-	Branch      string `yaml:"branch,omitempty" json:"branch,omitempty"`
-	Status      string `yaml:"deployment,omitempty" json:"deployment,omitempty"`
-	Routing     string `yaml:"routing,omitempty" json:"routing,omitempty"`
-	Version     string `yaml:"version,omitempty" json:"version,omitempty"`
-	Diff        string `yaml:"-" json:"-"`
-	Error       error  `yaml:"-" json:"-"`
-	Force       bool   `yaml:"-" json:"-"`
-	Unavailable bool   `yaml:"-" json:"-"`
-}
-
-func (a AppState) String() string {
-	hasDiff := a.Diff != ""
-	return fmt.Sprintf("status:%s routing:%s version:%s hasDiff:%t, force:%t",
-		a.Status,
-		a.Routing,
-		a.Version,
-		hasDiff,
-		a.Force)
-}
-
-const (
-	RoutingLocalhost     = "localhost"
-	RoutingCluster       = "cluster"
-	RoutingNA            = "n/a"
-	StatusDeployed       = "DEPLOYED"
-	StatusNotFound       = "NOTFOUND"
-	StatusDeleted        = "DELETED"
-	StatusFailed         = "FAILED"
-	StatusPendingUpgrade = "PENDING_UPGRADE"
-	StatusUnchanged      = "UNCHANGED"
-)
-
-type Routing string

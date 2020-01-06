@@ -26,6 +26,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/kube"
 	script2 "github.com/naveego/bosun/pkg/script"
+	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
@@ -467,11 +468,11 @@ var appStatusCmd = &cobra.Command{
 			}
 
 			if desired.Status == "" {
-				desired.Status = bosun.StatusNotFound
+				desired.Status = workspace.StatusNotFound
 			}
 
 			if desired.Routing == "" {
-				desired.Routing = bosun.RoutingNA
+				desired.Routing = workspace.RoutingNA
 			}
 
 			routing := "n/a"
@@ -546,21 +547,21 @@ var appToggleCmd = &cobra.Command{
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
 			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
 			if wantsLocalhost {
-				app.DesiredState.Routing = bosun.RoutingLocalhost
+				app.DesiredState.Routing = workspace.RoutingLocalhost
 			} else if wantsMinikube {
-				app.DesiredState.Routing = bosun.RoutingCluster
+				app.DesiredState.Routing = workspace.RoutingCluster
 			} else {
 				switch app.DesiredState.Routing {
-				case bosun.RoutingCluster:
-					app.DesiredState.Routing = bosun.RoutingLocalhost
-				case bosun.RoutingLocalhost:
-					app.DesiredState.Routing = bosun.RoutingCluster
+				case workspace.RoutingCluster:
+					app.DesiredState.Routing = workspace.RoutingLocalhost
+				case workspace.RoutingLocalhost:
+					app.DesiredState.Routing = workspace.RoutingCluster
 				default:
-					app.DesiredState.Routing = bosun.RoutingCluster
+					app.DesiredState.Routing = workspace.RoutingCluster
 				}
 			}
 
-			if app.DesiredState.Routing == bosun.RoutingLocalhost {
+			if app.DesiredState.Routing == workspace.RoutingLocalhost {
 				err = app.RouteToLocalhost(ctx)
 				if err != nil {
 					return err
@@ -570,14 +571,14 @@ var appToggleCmd = &cobra.Command{
 			} else {
 				// force upgrade the app to restore it to its normal state.
 				ctx.Log().Info("Deleting app.")
-				app.DesiredState.Status = bosun.StatusNotFound
+				app.DesiredState.Status = workspace.StatusNotFound
 				err = app.Reconcile(ctx)
 				if err != nil {
 					return err
 				}
 
 				ctx.Log().Info("Re-deploying app.")
-				app.DesiredState.Status = bosun.StatusDeployed
+				app.DesiredState.Status = workspace.StatusDeployed
 
 				err = app.Reconcile(ctx)
 
@@ -696,14 +697,14 @@ var appDeleteCmd = &cobra.Command{
 
 		for _, app := range appReleases {
 			if viper.GetBool(ArgAppDeletePurge) {
-				app.DesiredState.Status = bosun.StatusNotFound
+				app.DesiredState.Status = workspace.StatusNotFound
 			} else {
-				app.DesiredState.Status = bosun.StatusDeleted
+				app.DesiredState.Status = workspace.StatusDeleted
 			}
 
 			b.SetDesiredState(app.Name, app.DesiredState)
 
-			app.DesiredState.Routing = bosun.RoutingNA
+			app.DesiredState.Routing = workspace.RoutingNA
 			err := app.Reconcile(ctx)
 			if err != nil {
 				return errors.Errorf("error deleting %q: %s", app.Name, err)

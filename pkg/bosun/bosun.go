@@ -11,9 +11,12 @@ import (
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/vcs"
+	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
@@ -151,7 +154,7 @@ func (b *Bosun) GetApps() map[string]*App {
 	return apps
 }
 
-func (b *Bosun) GetAppDesiredStates() map[string]AppState {
+func (b *Bosun) GetAppDesiredStates() map[string]workspace.AppState {
 	return b.ws.AppStates[b.env.Name]
 }
 
@@ -291,6 +294,24 @@ func (b *Bosun) UseEnvironment(name string) error {
 	return b.useEnvironment(env)
 }
 
+func (b *Bosun) UseCluster(name string) error {
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return err
+	}
+
+	err = p.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+		Name: name,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 	if b.env == nil {
 		err := b.configureCurrentEnv()
@@ -302,14 +323,14 @@ func (b *Bosun) GetCurrentEnvironment() *EnvironmentConfig {
 	return b.env
 }
 
-func (b *Bosun) SetDesiredState(app string, state AppState) {
+func (b *Bosun) SetDesiredState(app string, state workspace.AppState) {
 	env := b.env
 	if b.ws.AppStates == nil {
-		b.ws.AppStates = AppStatesByEnvironment{}
+		b.ws.AppStates = workspace.AppStatesByEnvironment{}
 	}
 	m, ok := b.ws.AppStates[env.Name]
 	if !ok {
-		m = AppStateMap{}
+		m = workspace.AppStateMap{}
 		b.ws.AppStates[env.Name] = m
 	}
 	m[app] = state
@@ -422,9 +443,8 @@ func (b *Bosun) ClearImports() {
 }
 
 func (b *Bosun) IsClusterAvailable() bool {
-	env := b.GetCurrentEnvironment()
 	if b.clusterAvailable == nil {
-		b.log.Debugf("Checking if cluster %q is available...", env.Cluster)
+		b.log.Debugf("Checking if cluster is available...")
 		resultCh := make(chan bool)
 		cmd := exec.Command("kubectl", "cluster-info")
 		go func() {
@@ -658,7 +678,7 @@ func (b *Bosun) TidyWorkspace() {
 					}
 				} else {
 					log.Infof("Found cloned repo %s at %s, will add to known local repos.", repo.Name, bosunFilePath)
-					localRepo := &LocalRepo{
+					localRepo := &vcs.LocalRepo{
 						Name: repo.Name,
 						Path: clonedFolder,
 					}
@@ -681,7 +701,7 @@ func (b *Bosun) TidyWorkspace() {
 				if err != nil {
 					log.WithError(err).Errorf("Error getting local repo path for %s.", app.Name)
 				}
-				b.AddLocalRepo(&LocalRepo{
+				b.AddLocalRepo(&vcs.LocalRepo{
 					Name: app.RepoName,
 					Path: path,
 				})
@@ -752,7 +772,6 @@ func (b *Bosun) configureCurrentEnv() error {
 	}
 
 	if b.ws.CurrentEnvironment != "" {
-
 		env, err := b.GetEnvironment(b.ws.CurrentEnvironment)
 		if err != nil {
 			return errors.Errorf("get environment %q: %s", b.ws.CurrentEnvironment, err)
@@ -760,7 +779,14 @@ func (b *Bosun) configureCurrentEnv() error {
 
 		// set the current environment.
 		// this will also set environment vars based on it.
-		return b.useEnvironment(env)
+		err = b.useEnvironment(env)
+		if err != nil {
+			return err
+		}
+	}
+
+	if b.ws.CurrentCluster != "" {
+		b.ws.CurrentCluster = b.env.DefaultCluster
 	}
 
 	return errors.New("no current environment set in workspace")
@@ -913,9 +939,9 @@ func (b *Bosun) GetRepos() []*Repo {
 	return out
 }
 
-func (b *Bosun) AddLocalRepo(localRepo *LocalRepo) {
+func (b *Bosun) AddLocalRepo(localRepo *vcs.LocalRepo) {
 	if b.ws.LocalRepos == nil {
-		b.ws.LocalRepos = map[string]*LocalRepo{}
+		b.ws.LocalRepos = map[string]*vcs.LocalRepo{}
 	}
 	b.ws.LocalRepos[localRepo.Name] = localRepo
 

@@ -13,6 +13,7 @@ import (
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/util/worker"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/yaml"
 	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	"github.com/naveego/bosun/pkg/zenhub"
@@ -190,7 +191,7 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 	if err != nil {
 		return err
 	}
-	localRepo := &LocalRepo{Path: platformRepoPath}
+	localRepo := &vcs.LocalRepo{Path: platformRepoPath}
 	if localRepo.IsDirty() {
 		return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
 	}
@@ -1225,7 +1226,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 	// validate that merge will work
 	for _, target := range mergeTargets {
 
-		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
+		localRepo := &vcs.LocalRepo{Name: target.name, Path: target.dir}
 
 		if localRepo.IsDirty() {
 			errs.Collect(errors.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path))
@@ -1240,7 +1241,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 		log := ctx.Log().WithField("repo", target.name)
 
-		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
+		localRepo := &vcs.LocalRepo{Name: target.name, Path: target.dir}
 
 		if localRepo.IsDirty() {
 			return errors.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)

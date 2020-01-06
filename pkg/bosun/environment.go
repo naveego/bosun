@@ -4,6 +4,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
@@ -11,10 +12,10 @@ import (
 )
 
 type EnvironmentConfig struct {
-	FromPath string `yaml:"-" json:"-"`
-	Name     string `yaml:"name" json:"name"`
-	Cluster  string `yaml:"cluster" json:"cluster"`
-	Domain   string `yaml:"domain" json:"domain"`
+	FromPath       string                 `yaml:"-" json:"-"`
+	Name           string                 `yaml:"name" json:"name"`
+	Roles          []core.EnvironmentRole `yaml:"roles" json:"roles"`
+	DefaultCluster string                 `yaml:"defaultCluster" json:"defaultCluster"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool                   `yaml:"protected" json:"protected"`
@@ -25,7 +26,6 @@ type EnvironmentConfig struct {
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
 	AppValues *values.ValueSet `yaml:"appValues" json:"appValues"`
-	HelmRepos []HelmRepo       `yaml:"helmRepos,omitempty" json:"helmRepos,omitempty"`
 	ValueSets []string         `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 }
 
@@ -116,14 +116,12 @@ func (e *EnvironmentConfig) ForceEnsure(ctx BosunContext) error {
 
 	log := ctx.Log()
 
-	os.Setenv(EnvDomain, e.Domain)
-	os.Setenv(EnvCluster, e.Cluster)
 	os.Setenv(EnvEnvironment, e.Name)
 
-	_, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster).RunOut()
+	_, err := pkg.NewShellExe("kubectl", "config", "use-context", ctx.WorkspaceContext().CurrentCluster).RunOut()
 	if err != nil {
 		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
-		log.Println(color.YellowString(`try running "bosun kube add-eks %s"`, e.Cluster))
+		log.Println(color.YellowString(`try running "bosun kube configure-cluster %s"`, ctx.WorkspaceContext().CurrentCluster))
 	}
 
 	for _, v := range e.Variables {
@@ -143,8 +141,6 @@ func (e *EnvironmentConfig) GetVariablesAsMap(ctx BosunContext) (map[string]stri
 	}
 
 	vars := map[string]string{
-		EnvDomain:      e.Domain,
-		EnvCluster:     e.Cluster,
 		EnvEnvironment: e.Name,
 	}
 	for _, v := range e.Variables {

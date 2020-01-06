@@ -8,12 +8,8 @@ type AmazonClusterConfig struct {
 	Region string `yaml:"region"`
 }
 
-func (c AmazonClusterConfig) ConfigureKubernetes(ctx CommandContext) error {
+func (c AmazonClusterConfig) configureKubernetes(ctx CommandContext) error {
 
-	if contextIsDefined(ctx.Name) && !ctx.Force {
-		ctx.Log.Infof("Kubernetes context %q already exists (use --force to configure anyway).", ctx.Name)
-		return nil
-	}
 	if c.Region == "" {
 		c.Region = "us-east-1"
 	}

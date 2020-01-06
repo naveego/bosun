@@ -6,6 +6,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
 	"io"
 	"os/exec"
@@ -373,8 +374,8 @@ func (r *Deploy) Deploy(ctx BosunContext) error {
 			return errors.Errorf("an app specifies a dependency that could not be found: %q (filtered: %#v)", dep, r.Filtered)
 		}
 
-		if app.DesiredState.Status == StatusUnchanged {
-			ctx.WithAppDeploy(app).Log().Infof("Skipping deploy because desired state was %q.", StatusUnchanged)
+		if app.DesiredState.Status == workspace.StatusUnchanged {
+			ctx.WithAppDeploy(app).Log().Infof("Skipping deploy because desired state was %q.", workspace.StatusUnchanged)
 			continue
 		}
 
@@ -383,9 +384,9 @@ func (r *Deploy) Deploy(ctx BosunContext) error {
 
 	for _, app := range toDeploy {
 
-		app.DesiredState.Status = StatusDeployed
+		app.DesiredState.Status = workspace.StatusDeployed
 		if app.DesiredState.Routing == "" {
-			app.DesiredState.Routing = RoutingCluster
+			app.DesiredState.Routing = workspace.RoutingCluster
 		}
 
 		ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)

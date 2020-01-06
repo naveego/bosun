@@ -7,6 +7,7 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/pkg/errors"
 	"path/filepath"
 )
@@ -19,7 +20,7 @@ type RepoConfig struct {
 
 type Repo struct {
 	RepoConfig
-	LocalRepo *LocalRepo
+	LocalRepo *vcs.LocalRepo
 	Apps      map[string]*AppConfig
 }
 
@@ -64,7 +65,7 @@ func (r *Repo) Clone(ctx BosunContext, toDir string) error {
 		return err
 	}
 
-	r.LocalRepo = &LocalRepo{
+	r.LocalRepo = &vcs.LocalRepo{
 		Name: r.Name,
 		Path: dir,
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/workspace"
 	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,9 +54,9 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 // 	DependsOn        []string       `yaml:"dependsOn" json:"dependsOn"`
 // 	Actions          []*AppAction   `yaml:"actions" json:"actions"`
 // 	// Values copied from app repo.
-// 	Values ValueSetMap `yaml:"values" json:"values"`
+// 	Values ValueSetCollection `yaml:"values" json:"values"`
 // 	// Values manually added to this release.
-// 	ValueOverrides ValueSetMap `yaml:"valueOverrides" json:"valueOverrides"`
+// 	ValueOverrides ValueSetCollection `yaml:"valueOverrides" json:"valueOverrides"`
 // 	ParentConfig   *ReleaseConfig         `yaml:"-" json:"-"`
 // }
 
@@ -64,8 +65,8 @@ type AppDeploy struct {
 	*AppManifest `yaml:"-" json:"-"`
 	// App          *App `yaml:"-" json:"-"`
 	Excluded          bool `yaml:"-" json:"-"`
-	ActualState       AppState
-	DesiredState      AppState
+	ActualState       workspace.AppState
+	DesiredState      workspace.AppState
 	helmRelease       *HelmRelease
 	labels            filter.Labels
 	AppDeploySettings AppDeploySettings
@@ -139,7 +140,7 @@ func (a *AppDeploy) GetLabels() filter.Labels {
 func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 	ctx = ctx.WithAppDeploy(a)
 
-	a.ActualState = AppState{}
+	a.ActualState = workspace.AppState{}
 
 	log := ctx.Log()
 
@@ -157,8 +158,8 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 
 	if err != nil || release == nil {
 		if release == nil || strings.Contains(err.Error(), "not found") {
-			a.ActualState.Status = StatusNotFound
-			a.ActualState.Routing = RoutingNA
+			a.ActualState.Status = workspace.StatusNotFound
+			a.ActualState.Routing = workspace.RoutingNA
 			a.ActualState.Version = ""
 		} else {
 			a.ActualState.Error = err
@@ -167,7 +168,7 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 	}
 
 	a.ActualState.Status = release.Status
-	a.ActualState.Routing = RoutingCluster
+	a.ActualState.Routing = workspace.RoutingCluster
 
 	// check if the app has a service with an ExternalName; if it does, it must have been
 	// creating using `app toggle` and is routed to localhost.
@@ -179,14 +180,14 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 				continue
 			}
 			if strings.Contains(svcYaml, "ExternalName") {
-				a.ActualState.Routing = RoutingLocalhost
+				a.ActualState.Routing = workspace.RoutingLocalhost
 				break
 			}
 		}
 	}
 
 	if diff {
-		if a.ActualState.Status == StatusDeployed {
+		if a.ActualState.Status == workspace.StatusDeployed {
 			a.ActualState.Diff, err = a.diff(ctx)
 			if err != nil {
 				return errors.Wrap(err, "diff")
@@ -278,22 +279,22 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 		needsUpgrade  bool
 	)
 
-	if desired.Status == StatusNotFound || desired.Status == StatusDeleted {
-		needsDelete = actual.Status != StatusDeleted && actual.Status != StatusNotFound
+	if desired.Status == workspace.StatusNotFound || desired.Status == workspace.StatusDeleted {
+		needsDelete = actual.Status != workspace.StatusDeleted && actual.Status != workspace.StatusNotFound
 	} else {
-		needsDelete = actual.Status == StatusFailed
-		needsDelete = needsDelete || actual.Status == StatusPendingUpgrade
+		needsDelete = actual.Status == workspace.StatusFailed
+		needsDelete = needsDelete || actual.Status == workspace.StatusPendingUpgrade
 	}
 
-	if desired.Status == StatusDeployed {
+	if desired.Status == workspace.StatusDeployed {
 		switch actual.Status {
-		case StatusNotFound:
+		case workspace.StatusNotFound:
 			needsInstall = true
-		case StatusDeleted:
+		case workspace.StatusDeleted:
 			needsRollback = true
 			needsUpgrade = true
 		default:
-			needsUpgrade = actual.Status != StatusDeployed
+			needsUpgrade = actual.Status != workspace.StatusDeployed
 			needsUpgrade = needsUpgrade || actual.Routing != desired.Routing
 			needsUpgrade = needsUpgrade || actual.Version != desired.Version
 			needsUpgrade = needsUpgrade || actual.Diff != ""
@@ -309,7 +310,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 		})
 	}
 
-	if desired.Status == StatusDeployed {
+	if desired.Status == workspace.StatusDeployed {
 		for i := range a.AppConfig.Actions {
 			action := a.AppConfig.Actions[i]
 			if strings.Contains(string(action.When), actions.ActionBeforeDeploy) {
@@ -348,7 +349,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 		})
 	}
 
-	if desired.Status == StatusDeployed {
+	if desired.Status == workspace.StatusDeployed {
 		for i := range a.AppConfig.Actions {
 			action := a.AppConfig.Actions[i]
 			if strings.Contains(string(action.When), actions.ActionAfterDeploy) {
@@ -420,8 +421,8 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
 	log := ctx.Log()
 
-	if a.DesiredState.Status == StatusUnchanged {
-		log.Infof("Desired state is %q, nothing to do here.", StatusUnchanged)
+	if a.DesiredState.Status == workspace.StatusUnchanged {
+		log.Infof("Desired state is %q, nothing to do here.", workspace.StatusUnchanged)
 		return nil
 	}
 
@@ -455,7 +456,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	reportDeploy := !params.DryRun &&
 		!params.NoReport &&
 		!a.AppDeploySettings.Environment.IsLocal &&
-		a.DesiredState.Status == StatusDeployed &&
+		a.DesiredState.Status == workspace.StatusDeployed &&
 		!env.IsLocal &&
 		a.AppConfig.ReportDeployment
 
@@ -654,7 +655,7 @@ func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
 func (a *AppDeploy) Delete(ctx BosunContext) error {
 	args := []string{"delete"}
-	if a.DesiredState.Status == StatusNotFound {
+	if a.DesiredState.Status == workspace.StatusNotFound {
 		args = append(args, "--purge")
 	}
 	args = append(args, a.Name)
@@ -830,9 +831,6 @@ func (a *AppDeploy) makeHelmArgs(ctx BosunContext) []string {
 	if !a.AppDeploySettings.UseLocalContent {
 		args = append(args, "--version", a.Version.String())
 	}
-
-	args = append(args,
-		"--set", fmt.Sprintf("domain=%s", ctx.Env.Domain))
 
 	args = append(args, a.getHelmNamespaceArgs(ctx)...)
 

@@ -15,7 +15,7 @@ type ConfigureOracleClusterCommand struct {
 	KubeCommandContext   CommandContext
 }
 
-func (oc OracleClusterConfig) ConfigureKubernetes(ctx CommandContext) error {
+func (oc OracleClusterConfig) configureKubernetes(ctx CommandContext) error {
 
 	if contextIsDefined(ctx.Name) && !ctx.Force {
 		ctx.Log.Infof("Kubernetes context %q already exists (use --force to configure anyway).", ctx.Name)

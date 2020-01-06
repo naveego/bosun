@@ -49,18 +49,18 @@ func (p releaseMetadataSorting) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 // not updated directly.
 type ReleaseManifest struct {
 	*ReleaseMetadata           `yaml:"metadata"`
-	DefaultDeployApps_OBSOLETE map[string]bool         `yaml:"defaultDeployApps,omitempty"`
-	UpgradedApps               map[string]bool         `yaml:"upgradedApps,omitempty"`
-	AppMetadata                map[string]*AppMetadata `yaml:"apps"`
-	ValueSets                  values.ValueSetMap      `yaml:"valueSets,omitempty"`
-	Platform                   *Platform               `yaml:"-"`
-	plan                       *ReleasePlan            `yaml:"-"`
-	toDelete                   []string                `yaml:"-"`
-	dirty                      bool                    `yaml:"-"`
-	dir                        string                  `yaml:"-"`
-	appManifests               map[string]*AppManifest `yaml:"-" json:"-"`
-	deleted                    bool                    `yaml:"-"`
-	Slot                       string                  `yaml:"-"`
+	DefaultDeployApps_OBSOLETE map[string]bool            `yaml:"defaultDeployApps,omitempty"`
+	UpgradedApps               map[string]bool            `yaml:"upgradedApps,omitempty"`
+	AppMetadata                map[string]*AppMetadata    `yaml:"apps"`
+	ValueSets                  *values.ValueSetCollection `yaml:"valueSets,omitempty"`
+	Platform                   *Platform                  `yaml:"-"`
+	plan                       *ReleasePlan               `yaml:"-"`
+	toDelete                   []string                   `yaml:"-"`
+	dirty                      bool                       `yaml:"-"`
+	dir                        string                     `yaml:"-"`
+	appManifests               map[string]*AppManifest    `yaml:"-" json:"-"`
+	deleted                    bool                       `yaml:"-"`
+	Slot                       string                     `yaml:"-"`
 }
 
 func (r *ReleaseManifest) MarshalYAML() (interface{}, error) {
@@ -144,18 +144,11 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 
 		allAppMetadata := r.GetAllAppMetadata()
 		for appName, appMetadata := range allAppMetadata {
-			appReleasePath := filepath.Join(r.dir, appName+".yaml")
-			b, err := ioutil.ReadFile(appReleasePath)
+			appManifest, err := LoadAppManifestFromPathAndName(r.dir, appName)
 			if err != nil {
-				return nil, errors.Wrapf(err, "load appRelease for app  %q", appName)
-			}
-			var appManifest *AppManifest
-			err = yaml.Unmarshal(b, &appManifest)
-			if err != nil {
-				return nil, errors.Wrapf(err, "unmarshal appRelease for app  %q", appName)
+				return nil, errors.Wrapf(err, "load app manifest for app  %q", appName)
 			}
 
-			appManifest.AppConfig.FromPath = appReleasePath
 			appManifest.AppMetadata = appMetadata
 
 			appManifests[appName] = appManifest

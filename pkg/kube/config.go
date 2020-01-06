@@ -2,6 +2,7 @@ package kube
 
 import (
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -28,7 +29,58 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ConfigDe
 	return nil, errors.Errorf("no definition with name %q", name)
 }
 
-func (k ConfigDefinitions) GetKubeConfigDefinitionsByAttributes(env string, role string) ([]*ConfigDefinition, error) {
+type ConfigureKubeContextRequest struct {
+	Name           string
+	Environment    string
+	Role           core.ClusterRole
+	KubeConfigPath string
+	Force          bool
+	Log            *logrus.Entry
+}
+
+func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeContextRequest) error {
+	if req.Log == nil {
+		req.Log = logrus.NewEntry(logrus.StandardLogger())
+	}
+
+	var konfigs ConfigDefinitions
+
+	if req.Name != "" {
+		konfig, err := k.GetKubeConfigDefinitionByName(req.Name)
+		if err != nil {
+			return err
+		}
+		konfigs = append(konfigs, konfig)
+	} else {
+		found, err := k.GetKubeConfigDefinitionsByAttributes(req.Environment, req.Role)
+		if err != nil {
+			return err
+		}
+		konfigs = append(konfigs, found...)
+	}
+
+	if len(konfigs) == 0 {
+		return errors.Errorf("could not find any kube configs")
+	}
+
+	for _, c := range konfigs {
+		ktx := CommandContext{
+			Name:           c.Name,
+			Force:          req.Force,
+			KubeConfigPath: req.KubeConfigPath,
+			Log:            req.Log,
+		}
+
+		err := c.configureKubernetes(ktx)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (k ConfigDefinitions) GetKubeConfigDefinitionsByAttributes(env string, role core.ClusterRole) ([]*ConfigDefinition, error) {
 	var out []*ConfigDefinition
 	for _, c := range k {
 		matched := env == ""
@@ -63,43 +115,44 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionsByAttributes(env string, role
 	return out, nil
 }
 
-type KubernetesConfigurer interface {
-	ConfigureKubernetes(ctx CommandContext) error
-}
-
 type ConfigDefinition struct {
-	Name         string                     `yaml:"name"`
-	Roles        []string                   `yaml:"roles,flow"`
-	Environments []string                   `yaml:"environments,flow"`
-	Oracle       *OracleClusterConfig       `yaml:"oracle,omitempty"`
-	Minikube     *MinikubeConfig            `yaml:"minikube,omitempty"`
-	Amazon       *AmazonClusterConfig       `yaml:"amazon,omitempty"`
-	Namespaces   map[string]NamespaceConfig `yaml:"namespaces"`
+	Name         string                                 `yaml:"name"`
+	Roles        []core.ClusterRole                     `yaml:"roles,flow"`
+	Environments []string                               `yaml:"environments,flow"`
+	Oracle       *OracleClusterConfig                   `yaml:"oracle,omitempty"`
+	Minikube     *MinikubeConfig                        `yaml:"minikube,omitempty"`
+	Amazon       *AmazonClusterConfig                   `yaml:"amazon,omitempty"`
+	Namespaces   map[core.NamespaceRole]NamespaceConfig `yaml:"namespaces"`
 }
 
 type NamespaceConfig struct {
 	Name string `yaml:"name"`
 }
 
-func (k ConfigDefinition) ConfigureKubernetes(ctx CommandContext) error {
+func (k ConfigDefinition) configureKubernetes(ctx CommandContext) error {
 	ctx.Name = k.Name
+
+	if contextIsDefined(ctx.Name) && !ctx.Force {
+		ctx.Log.Debugf("Kubernetes context %q already exists (use --force to configure anyway).", ctx.Name)
+		return nil
+	}
 
 	if k.Oracle != nil {
 		ctx.Log.Infof("Configuring Oracle cluster %q...", k.Name)
 
-		if err := k.Oracle.ConfigureKubernetes(ctx); err != nil {
+		if err := k.Oracle.configureKubernetes(ctx); err != nil {
 			return err
 		}
 	} else if k.Minikube != nil {
 		ctx.Log.Infof("Configuring minikube cluster %q...", k.Name)
 
-		if err := k.Minikube.ConfigureKubernetes(ctx); err != nil {
+		if err := k.Minikube.configureKubernetes(ctx); err != nil {
 			return err
 		}
 	} else if k.Amazon != nil {
 		ctx.Log.Infof("Configuring Amazon cluster %q...", k.Name)
 
-		if err := k.Amazon.ConfigureKubernetes(ctx); err != nil {
+		if err := k.Amazon.configureKubernetes(ctx); err != nil {
 			return err
 		}
 	} else {
@@ -117,7 +170,7 @@ func (k ConfigDefinition) ConfigureKubernetes(ctx CommandContext) error {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ns.Name,
 				Labels: map[string]string{
-					LabelNamespaceRole: role,
+					LabelNamespaceRole: string(role),
 				},
 			},
 		}

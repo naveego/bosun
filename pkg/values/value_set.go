@@ -4,8 +4,10 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
+	"go4.org/sort"
 	"strings"
 )
 
@@ -13,9 +15,34 @@ const ValueSetAll = "all"
 
 type ValueSet struct {
 	core.ConfigShared `yaml:",inline"`
+	Roles             []string                         `yaml:"roles"`
 	Dynamic           map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
 	Files             []string                         `yaml:"files,omitempty" json:"files,omitempty"`
 	Static            Values                           `yaml:"static,omitempty" json:"static,omitempty"`
+}
+
+type ValueSets []ValueSet
+
+func (v ValueSets) Len() int {
+	return len(v)
+}
+
+func (v ValueSets) Less(i, j int) bool {
+	li := len(v[i].Roles)
+	lj := len(v[j].Roles)
+	// secondary sort by role names
+	if li == lj && li > 0 {
+		ri := v[i].Roles[0]
+		rj := v[j].Roles[0]
+		return ri < rj
+	}
+
+	// sets with more roles go before sets with fewer roles
+	return lj < li
+}
+
+func (v ValueSets) Swap(i, j int) {
+	v[i], v[j] = v[j], v[i]
 }
 
 func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -67,9 +94,16 @@ type appValuesConfigV1 struct {
 	Static  Values                           `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
-// Combine returns a new ValueSet with the values from
+func (a ValueSet) Clone() ValueSet {
+	s, _ := yaml.Marshal(a)
+	var out ValueSet
+	_ = yaml.Unmarshal(s, &out)
+	return out
+}
+
+// WithValues returns a new ValueSet with the values from
 // other added after (and/or overwriting) the values from this instance)
-func (a ValueSet) Combine(other ValueSet) ValueSet {
+func (a ValueSet) WithValues(other ValueSet) ValueSet {
 
 	// clone the valueSet to ensure we don't mutate `a`
 	y, _ := yaml.Marshal(a)
@@ -98,12 +132,69 @@ func (a ValueSet) Combine(other ValueSet) ValueSet {
 	return out
 }
 
-// ValueSetMap is a map of (possibly multiple) names
+// ValueSetCollection is a map of (possibly multiple) names
 // to ValueSets. The the keys can be single names (like "red")
 // or multiple, comma-delimited names (like "red,green").
 // Use ExtractValueSetByName to get a merged ValueSet
 // comprising the ValueSets under each key which contains that name.
-type ValueSetMap map[string]ValueSet
+type ValueSetCollection struct {
+	DefaultValues ValueSet  `yaml:"defaults"`
+	ValueSets     ValueSets `yaml:"custom"`
+}
+
+func (v ValueSetCollection) MarshalYAML() (interface{}, error) {
+
+	m := append([]ValueSet{v.DefaultValues}, v.ValueSets...)
+	return m, nil
+}
+
+func (v *ValueSetCollection) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var raw interface{}
+	err := unmarshal(&raw)
+	if err != nil {
+		return err
+	}
+	switch raw.(type) {
+	case map[interface{}]interface{}, map[string]interface{}:
+		var m map[string]ValueSet
+		err = unmarshal(&m)
+		if err != nil {
+			return errors.Wrap(err, "interpreting as map of ValueSet")
+		}
+
+		var out ValueSets
+
+		for k, v := range m {
+			keys := strings.Split(k, ",")
+			v.Roles = keys
+			out = append(out, v)
+		}
+
+		sort.Sort(out)
+
+		*v = ValueSetCollection{
+			ValueSets: out,
+		}
+		return nil
+	case []interface{}:
+		var s []ValueSet
+		err = unmarshal(&s)
+		if err != nil {
+			return errors.Wrap(err, "interpreting as slice of ValueSetWithRoles")
+		}
+		*v = ValueSetCollection{}
+		for _, vs := range s {
+			if vs.Name == "default" {
+				v.DefaultValues = vs
+			} else {
+				v.ValueSets = append(v.ValueSets, vs)
+			}
+		}
+		return nil
+	default:
+		return errors.Errorf("unrecognized type %T", raw)
+	}
+}
 
 // ExtractValueSetByName returns a merged ValueSet
 // comprising the ValueSets under each key which contains the provided names.
@@ -111,31 +202,41 @@ type ValueSetMap map[string]ValueSet
 // to most specific, so values under the key "red" will overwrite values under "red,green",
 // which will overwrite values under "red,green,blue", and so on. Then the
 // ValueSets with each name are merged in the order the names were provided.
-func (a ValueSetMap) ExtractValueSetByName(name string) ValueSet {
+func (v ValueSetCollection) ExtractValueSetByName(name string) ValueSet {
 
 	out := ValueSet{}
 
-	// More precise values should override less precise values
-	// We assume no ValueSetMap will ever have more than 10
-	// named keys in it.
-	priorities := make([][]ValueSet, 10, 10)
-
-	for k, v := range a {
-		keys := strings.Split(k, ",")
-		for _, k2 := range keys {
-			if k2 == name {
-				priorities[len(keys)] = append(priorities[len(keys)], v)
+	for _, v := range v.ValueSets {
+		for _, role := range v.Roles {
+			if role == name {
+				out = out.WithValues(v)
 			}
 		}
 	}
 
-	for i := len(priorities) - 1; i >= 0; i-- {
-		for _, v := range priorities[i] {
-			out = out.Combine(v)
+	return out
+}
+
+func (v ValueSetCollection) FindValueSetForRole(role string) (ValueSet, error) {
+
+	var out []ValueSet
+	for _, vs := range v.ValueSets {
+		for _, r := range vs.Roles {
+			if r == role {
+				out = append(out, vs)
+			}
 		}
 	}
 
-	return out
+	switch len(out) {
+	case 0:
+		return ValueSet{}, errors.Errorf("no value set with role %q", role)
+	case 1:
+		return out[0], nil
+	default:
+		return ValueSet{}, errors.Errorf("found %d value sets with role %q (has this container be canonicalized?)", len(out), role)
+	}
+
 }
 
 // ExtractValueSetByName returns a merged ValueSet
@@ -145,41 +246,52 @@ func (a ValueSetMap) ExtractValueSetByName(name string) ValueSet {
 // to most specific, so values under the key "red" will overwrite values under "red,green",
 // which will overwrite values under "red,green,blue", and so on. Then the
 // ValueSets with each name are merged in the order the names were provided.
-func (a ValueSetMap) ExtractValueSetByNames(names ...string) ValueSet {
+func (v ValueSetCollection) ExtractValueSetByNames(names ...string) ValueSet {
 
-	out := a.ExtractValueSetByName(ValueSetAll)
+	out := v.ExtractValueSetByName(ValueSetAll)
 
 	for _, name := range names {
-		vs := a.ExtractValueSetByName(name)
-		out = out.Combine(vs)
+		vs := v.ExtractValueSetByName(name)
+		out = out.WithValues(vs)
 	}
 
 	return out
 }
 
-// CanonicalizedCopy returns a copy of this ValueSetMap with
-// only single-name keys, by de-normalizing any multi-name keys.
+// CanonicalizedCopy returns a copy of this ValueSetCollection with
+// only single-role entries, by de-normalizing any multi-role entries.
 // Each ValueSet will have its name set to the value of the name it's under.
-func (a ValueSetMap) CanonicalizedCopy() ValueSetMap {
+func (v ValueSetCollection) CanonicalizedCopy() ValueSetCollection {
 
-	out := ValueSetMap{
-		ValueSetAll: ValueSet{},
+	out := ValueSetCollection{
+		DefaultValues: v.DefaultValues.Clone(),
+		ValueSets:     ValueSets{},
 	}
 
-	for k := range a {
-		names := strings.Split(k, ",")
-		for _, name := range names {
-			out[name] = ValueSet{}
+	canonical := map[string]ValueSet{}
+
+	var order []string
+
+	for _, v := range v.ValueSets {
+		for _, role := range v.Roles {
+			order = stringsn.AppendIfNotPresent(order, role)
+			var c ValueSet
+			var ok bool
+			if c, ok = canonical[role]; !ok {
+				c = ValueSet{
+					Roles:   []string{role},
+					Static:  Values{},
+					Dynamic: map[string]*command.CommandValue{},
+				}
+			}
+			c = c.WithValues(v)
+			canonical[role] = c
 		}
 	}
 
-	for name := range out {
-		vs := a.ExtractValueSetByName(name)
-		vs.Name = name
-		out[name] = vs
+	for _, role := range order {
+		out.ValueSets = append(out.ValueSets, canonical[role])
 	}
-	// don't write out the "all" value set, it's integrated into the others
-	delete(out, ValueSetAll)
 
 	return out
 }

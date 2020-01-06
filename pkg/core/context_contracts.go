@@ -13,3 +13,9 @@ type Ctxer interface {
 type PathResolver interface {
 	ResolvePath(path string, expansions ...string) string
 }
+
+type WorkspaceContext struct {
+	EnvironmentName string
+	ClusterName     string
+	ReleaseSlot     string
+}

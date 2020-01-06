@@ -122,7 +122,7 @@ func (a *App) CheckOutBranch(name string) error {
 		return errors.Errorf("current branch %q is dirty", local.GetCurrentBranch())
 	}
 
-	_, err := local.git().Exec("checkout", name)
+	err := local.CheckOut(name)
 	return err
 }
 
@@ -675,28 +675,11 @@ func omitStrings(from []string, toOmit ...string) []string {
 	return out
 }
 
-// ExportValues creates an ValueSetMap instance with all the values
+// ExportValues creates an ValueSetCollection instance with all the values
 // for releasing this app, reified into their environments, including values from
 // files and from the default values.yaml file for the chart.
-func (a *App) ExportValues(ctx BosunContext) (values.ValueSetMap, error) {
+func (a *App) ExportValues(ctx BosunContext) (values.ValueSetCollection, error) {
 	ctx = ctx.WithApp(a)
-	var err error
-	envs := map[string]*EnvironmentConfig{}
-	for envNames := range a.Values {
-		for _, envName := range strings.Split(envNames, ",") {
-			if envName == values.ValueSetAll {
-				continue
-			}
-			if _, ok := envs[envName]; !ok {
-				env, err := ctx.Bosun.GetEnvironment(envName)
-				if err != nil {
-					ctx.Log().Warnf("App values include key for environment %q, but no such environment has been defined.", envName)
-					continue
-				}
-				envs[envName] = env
-			}
-		}
-	}
 	var defaultValues values.Values
 
 	if a.HasChart() {
@@ -707,37 +690,21 @@ func (a *App) ExportValues(ctx BosunContext) (values.ValueSetMap, error) {
 			"--version", a.Version.String(),
 		).RunOut()
 		if err != nil {
-			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
+			return values.ValueSetCollection{}, errors.Errorf("load default values from %q: %s", chartRef, err)
 		}
 		defaultValues, err = values.ReadValues([]byte(valuesYaml))
 		if err != nil {
-			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
+			return values.ValueSetCollection{}, errors.Errorf("parse default values from %q: %s", chartRef, err)
 		}
 	} else {
 		defaultValues = values.Values{}
 	}
 
-	valueCopy := a.Values.CanonicalizedCopy()
+	out := a.Values.CanonicalizedCopy()
 
-	for name, values := range valueCopy {
+	out.DefaultValues = values.ValueSet{Static: defaultValues}.WithValues(out.DefaultValues)
 
-		if env, ok := envs[name]; ok {
-			ctx = ctx.WithEnv(env)
-		}
-
-		values, err = values.WithFilesLoaded(ctx)
-		if err != nil {
-			return nil, errors.Wrapf(err, "loading files for value set %q", name)
-		}
-		// make sure values from bosun app overwrite defaults from helm chart
-		static := defaultValues.Clone()
-		static.Merge(values.Static)
-		values.Static = static
-		values.Files = nil
-		valueCopy[name] = values
-	}
-
-	return valueCopy, nil
+	return out, nil
 }
 
 func (a *App) ExportActions(ctx BosunContext) ([]*actions2.AppAction, error) {

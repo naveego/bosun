@@ -3,8 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/vcs"
+
 	// "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	// "os"
@@ -34,7 +35,7 @@ var gitMoveMergeCmd = addCommand(gitCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		repo := &bosun.LocalRepo{Path: repoDir}
+		repo := &vcs.LocalRepo{Path: repoDir}
 		check(g.Pull())
 
 		mapFilePath := args[0]
