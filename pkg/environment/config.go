@@ -69,12 +69,12 @@ func (e *Environment) ForceEnsure(ctx EnsureContext) error {
 
 	log := ctx.Log()
 
-	os.Setenv(core.EnvEnvironment, e.Name)
+	_ = os.Setenv(core.EnvEnvironment, e.Name)
 
-	_, err := pkg.NewShellExe("kubectl", "config", "use-context", ctx.WorkspaceContext().CurrentCluster).RunOut()
+	_, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster).RunOut()
 	if err != nil {
 		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
-		log.Println(color.YellowString(`try running "bosun kube configure-cluster %s"`, ctx.WorkspaceContext().CurrentCluster))
+		log.Println(color.YellowString(`try running "bosun kube configure-cluster %s"`, e.Cluster))
 	}
 
 	for _, v := range e.Variables {

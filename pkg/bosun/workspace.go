@@ -144,19 +144,19 @@ func LoadWorkspace(path string) (*Workspace, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "loading imports")
 	}
-	//
-	// var syntheticPaths []string
-	// for _, app := range bosun.AppRefs {
-	// 	if bosun.Repo != "" {
-	// 		for _, root := range c.GitRoots {
-	// 			dir := filepath.Join(root, bosun.Repo)
-	// 			bosunFile := filepath.Join(dir, "bosun.yaml")
-	// 			if _, err := os.Stat(bosunFile); err == nil {
-	// 				syntheticPaths = append(syntheticPaths, bosunFile)
-	// 			}
-	// 		}
-	// 	}
-	// }
+
+	var syntheticPaths []string
+	for _, app := range c.MergedBosunFile.AppRefs {
+		if app.Repo != "" {
+			for _, root := range c.GitRoots {
+				dir := filepath.Join(root, app.Repo)
+				bosunFile := filepath.Join(dir, "bosun.yaml")
+				if _, err := os.Stat(bosunFile); err == nil {
+					syntheticPaths = append(syntheticPaths, bosunFile)
+				}
+			}
+		}
+	}
 
 	// err = c.importFromPaths(path, syntheticPaths)
 	if err != nil {
@@ -205,14 +205,14 @@ func (w *Workspace) importFromPaths(relativeTo string, paths []string) error {
 
 func (w *Workspace) importFileFromPath(path string) error {
 	log := pkg.Log.WithField("import_path", path)
-	if logConfigs {
-		log.Debug("Importing mergedFragments...")
-	}
+	// if logConfigs {
+	// 	log.Debug("Importing mergedFragments...")
+	// }
 
 	if w.ImportedBosunFiles[path] != nil {
-		if logConfigs {
-			log.Debugf("Already imported.")
-		}
+		// if logConfigs {
+		// 	log.Debugf("Already imported.")
+		// }
 		return nil
 	}
 
@@ -239,7 +239,7 @@ func (w *Workspace) importFileFromPath(path string) error {
 	}
 	w.ImportedBosunFiles[path] = c
 
-	err = w.importFromPaths(w.Path, w.Imports)
+	err = w.importFromPaths(c.FromPath, c.Imports)
 
 	return err
 }

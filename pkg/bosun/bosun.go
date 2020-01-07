@@ -83,7 +83,7 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 	// 	}
 	// }
 
-	if !params.NoCurrentEnv {
+	if !params.NoEnvironment {
 		err := b.configureCurrentEnv()
 		if err != nil {
 			return nil, err
@@ -276,9 +276,14 @@ func (b *Bosun) useEnvironment(config *environment.Config) error {
 
 	b.ws.CurrentEnvironment = config.Name
 
+	cluster, err := b.GetCurrentClusterName()
+	if err != nil {
+		return err
+	}
+
 	env := &environment.Environment{
 		Config:   *config,
-		Cluster:  b.ws.CurrentCluster,
+		Cluster:  cluster,
 		ValueSet: values.ValueSet{},
 	}
 
@@ -611,6 +616,28 @@ func (b *Bosun) GetCurrentPlatform() (*Platform, error) {
 	}
 }
 
+func (b *Bosun) GetCurrentClusterName() (string, error) {
+	if b.ws.CurrentCluster != "" {
+		return b.ws.CurrentCluster, nil
+	}
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return "", err
+	}
+
+	clusters, err := p.Clusters.GetKubeConfigDefinitionsByAttributes(b.ws.CurrentEnvironment, "")
+	if err != nil {
+		return "", err
+	}
+
+	for _, c := range clusters {
+		return c.Name, nil
+	}
+
+	return "", errors.Errorf("no current cluster defined (try `bosun env {env} --cluster {name}`) and no default found in environment %q", b.ws.CurrentEnvironment)
+}
+
 func (b *Bosun) GetPlatform(name string) (*Platform, error) {
 	for _, p := range b.file.Platforms {
 		if p.Name == name {
@@ -794,9 +821,8 @@ func (b *Bosun) configureCurrentEnv() error {
 		// set the current environment.
 		// this will also set environment vars based on it.
 		err = b.useEnvironment(env)
-		if err != nil {
-			return err
-		}
+
+		return err
 	}
 
 	return errors.New("no current environment set in workspace")

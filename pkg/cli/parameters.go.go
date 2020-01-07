@@ -1,14 +1,17 @@
 package cli
 
 type Parameters struct {
-	Verbose          bool
-	DryRun           bool
-	Force            bool
-	NoReport         bool
-	ForceTests       bool
-	ValueOverrides   map[string]string
-	FileOverrides    []string
-	NoCurrentEnv     bool
+	Verbose        bool
+	DryRun         bool
+	Force          bool
+	NoReport       bool
+	ForceTests     bool
+	ValueOverrides map[string]string
+	FileOverrides  []string
+	// Indicates no environment needs to be loaded in this run.
+	NoEnvironment bool
+	// Indicates no cluster is needed in this run.
+	NoCluster        bool
 	ConfirmedEnv     string
 	ProviderPriority []string
 	Sudo             bool

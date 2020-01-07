@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+const DefaultRole core.ClusterRole = "default"
+
 type CommandContext struct {
 	KubeConfigPath string
 	Force          bool
@@ -26,7 +28,7 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ConfigDe
 			return c, nil
 		}
 	}
-	return nil, errors.Errorf("no definition with name %q", name)
+	return nil, errors.Errorf("no cluster definition with name %q", name)
 }
 
 type ConfigureKubeContextRequest struct {
@@ -41,6 +43,10 @@ type ConfigureKubeContextRequest struct {
 func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeContextRequest) error {
 	if req.Log == nil {
 		req.Log = logrus.NewEntry(logrus.StandardLogger())
+	}
+
+	if req.Role == "" {
+		req.Role = DefaultRole
 	}
 
 	var konfigs ConfigDefinitions
@@ -81,6 +87,10 @@ func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeCo
 }
 
 func (k ConfigDefinitions) GetKubeConfigDefinitionsByAttributes(env string, role core.ClusterRole) ([]*ConfigDefinition, error) {
+
+	if role == "" {
+		role = DefaultRole
+	}
 	var out []*ConfigDefinition
 	for _, c := range k {
 		matched := env == ""
@@ -110,7 +120,7 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionsByAttributes(env string, role
 		out = append(out, c)
 	}
 	if len(out) == 0 {
-		return nil, errors.Errorf("no definition had environment %q and role %q", env, role)
+		return nil, errors.Errorf("no cluster definition had environment %q and role %q", env, role)
 	}
 	return out, nil
 }

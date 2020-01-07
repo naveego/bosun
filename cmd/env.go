@@ -49,7 +49,7 @@ var envCmd = addCommand(rootCmd, &cobra.Command{
 	Example: "$(bosun env {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b, err := getBosun(cli.Parameters{NoCurrentEnv: true})
+		b, err := getBosun(cli.Parameters{NoEnvironment: true})
 		if err != nil {
 			return err
 		}
