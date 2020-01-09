@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
-	actions2 "github.com/naveego/bosun/pkg/actions"
+	actions "github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
@@ -707,22 +707,22 @@ func (a *App) ExportValues(ctx BosunContext) (values.ValueSetCollection, error) 
 	return out, nil
 }
 
-func (a *App) ExportActions(ctx BosunContext) ([]*actions2.AppAction, error) {
+func (a *App) ExportActions(ctx BosunContext) ([]*actions.AppAction, error) {
 	var err error
-	var actions []*actions2.AppAction
+	var actionList []*actions.AppAction
 	for _, action := range a.Actions {
-		if action.When == actions2.ActionManual {
+		if len(action.When) == 1 && action.When[0] == actions.ActionManual {
 			ctx.Log().Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
 		} else {
 			err = action.MakeSelfContained(ctx)
 			if err != nil {
 				return nil, errors.Errorf("prepare action %q for release: %s", action.Name, err)
 			}
-			actions = append(actions, action)
+			actionList = append(actionList, action)
 		}
 	}
 
-	return actions, nil
+	return actionList, nil
 }
 
 func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
@@ -738,17 +738,6 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 	err := util.TryCatch(a.Name, func() error {
 
 		appConfig := a.AppConfig
-		var err error
-
-		appConfig.Values, err = a.ExportValues(ctx)
-		if err != nil {
-			return errors.Errorf("export values for manifest: %s", err)
-		}
-
-		appConfig.Actions, err = a.ExportActions(ctx)
-		if err != nil {
-			return errors.Errorf("export actions for manifest: %s", err)
-		}
 
 		hashes := AppHashes{}
 
@@ -756,7 +745,11 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 			hashes.Commit = a.Repo.LocalRepo.GetCurrentCommit()
 		}
 
+		var err error
 		hashes.AppConfig, err = util.HashToStringViaYaml(appConfig)
+		if err != nil {
+			return err
+		}
 
 		appManifest = &AppManifest{
 			AppConfig: appConfig,

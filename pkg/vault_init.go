@@ -92,7 +92,7 @@ func (v VaultInitializer) Unseal(path string) error {
 		if err != nil {
 			return err
 		}
-		m := secret["data"].(map[interface{}]interface{})
+		m := secret["data"].(map[string]interface{})
 		for _, v := range m {
 			shard, _ := base64.StdEncoding.DecodeString(v.(string))
 			keys = append(keys, string(shard))

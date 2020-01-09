@@ -1,5 +1,7 @@
 package core
 
+import "path/filepath"
+
 type ConfigShared struct {
 	FromPath    string    `yaml:"-" json:"fromPath"`
 	Name        string    `yaml:"name,omitempty" json:"name"`
@@ -13,6 +15,13 @@ func (c *ConfigShared) SetFromPath(fp string) {
 
 func (c *ConfigShared) SetFileSaver(p FileSaver) {
 	c.FileSaver = p
+}
+
+func (c *ConfigShared) ResolveRelative(path string) string {
+	if c.FromPath == "" {
+		panic("FromPath was not set (SetFromPath should have been called after loading)")
+	}
+	return filepath.Join(filepath.Dir(c.FromPath), path)
 }
 
 type FileSaverSetter interface {

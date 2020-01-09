@@ -9,7 +9,6 @@ import (
 	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
-	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/workspace"
@@ -65,9 +64,10 @@ type AppDeploy struct {
 	FromPath     string
 	*AppManifest `yaml:"-" json:"-"`
 	// App          *App `yaml:"-" json:"-"`
-	Excluded          bool `yaml:"-" json:"-"`
-	ActualState       workspace.AppState
-	DesiredState      workspace.AppState
+	Excluded     bool `yaml:"-" json:"-"`
+	ActualState  workspace.AppState
+	DesiredState workspace.AppState
+
 	helmRelease       *HelmRelease
 	labels            filter.Labels
 	AppDeploySettings AppDeploySettings
@@ -76,20 +76,20 @@ type AppDeploy struct {
 // Chart gets the path to the chart, or the full name of the chart.
 func (a *AppDeploy) Chart(ctx BosunContext) string {
 
-	var chartHandle helm.ChartHandle
-
-	if a.AppConfig.IsFromManifest || a.AppConfig.ChartPath == "" {
-		chartHandle = helm.ChartHandle(a.AppConfig.Chart)
-		if !chartHandle.HasRepo() {
-			p, err := ctx.Bosun.GetCurrentPlatform()
-			if err == nil {
-				defaultChartRepo := p.DefaultChartRepo
-				chartHandle = chartHandle.WithRepo(defaultChartRepo)
-			}
-		}
-		return chartHandle.String()
-
-	}
+	// var chartHandle helm.ChartHandle
+	//
+	// if a.AppConfig.IsFromManifest || a.AppConfig.ChartPath == "" {
+	// 	chartHandle = helm.ChartHandle(a.AppConfig.Chart)
+	// 	if !chartHandle.HasRepo() {
+	// 		p, err := ctx.Bosun.GetCurrentPlatform()
+	// 		if err == nil {
+	// 			defaultChartRepo := p.DefaultChartRepo
+	// 			chartHandle = chartHandle.WithRepo(defaultChartRepo)
+	// 		}
+	// 	}
+	// 	return chartHandle.String()
+	//
+	// }
 
 	return filepath.Join(filepath.Dir(a.AppConfig.FromPath), a.AppConfig.ChartPath)
 
@@ -157,14 +157,14 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 
 	release, err := a.GetHelmRelease(a.Name)
 
-	if err != nil || release == nil {
-		if release == nil || strings.Contains(err.Error(), "not found") {
-			a.ActualState.Status = workspace.StatusNotFound
-			a.ActualState.Routing = workspace.RoutingNA
-			a.ActualState.Version = ""
-		} else {
-			a.ActualState.Error = err
-		}
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return err
+	}
+
+	if release == nil {
+		a.ActualState.Status = workspace.StatusNotFound
+		a.ActualState.Routing = workspace.RoutingNA
+		a.ActualState.Version = ""
 		return nil
 	}
 
@@ -199,17 +199,15 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 	return nil
 }
 
-type HelmReleaseResult struct {
-	Releases []*HelmRelease `yaml:"Releases" json:"Releases"`
-}
+type HelmReleaseResult []*HelmRelease
 type HelmRelease struct {
-	Name       string `yaml:"Name" json:"Name"`
-	Revision   string `yaml:"Revision" json:"Revision"`
-	Updated    string `yaml:"Updated" json:"Updated"`
-	Status     string `yaml:"Status" json:"Status"`
-	Chart      string `yaml:"Chart" json:"Chart"`
-	AppVersion string `yaml:"AppVersion" json:"AppVersion"`
-	Namespace  string `yaml:"Namespace" json:"Namespace"`
+	Name       string `yaml:"name" json:"Name"`
+	Revision   string `yaml:"revision" json:"Revision"`
+	Updated    string `yaml:"updated" json:"Updated"`
+	Status     string `yaml:"status" json:"Status"`
+	Chart      string `yaml:"chart" json:"Chart"`
+	AppVersion string `yaml:"app_version" json:"AppVersion"`
+	Namespace  string `yaml:"namespace" json:"Namespace"`
 }
 
 func (a *AppDeploy) GetHelmRelease(name string) (*HelmRelease, error) {
@@ -230,9 +228,12 @@ func (a *AppDeploy) GetHelmRelease(name string) (*HelmRelease, error) {
 	return a.helmRelease, nil
 }
 
-func (a *AppDeploy) GetHelmList(filter ...string) ([]*HelmRelease, error) {
+func (a *AppDeploy) GetHelmList(filter string) ([]*HelmRelease, error) {
 
-	args := append([]string{"list", "--all", "--output", "yaml"}, filter...)
+	if filter == "" {
+		filter = ".*"
+	}
+	args := []string{"list", "--all", "--all-namespaces", "--output", "yaml", "--filter", filter}
 	data, err := pkg.NewShellExe("helm", args...).RunOut()
 	if err != nil {
 		return nil, err
@@ -245,7 +246,7 @@ func (a *AppDeploy) GetHelmList(filter ...string) ([]*HelmRelease, error) {
 
 	err = yaml.Unmarshal([]byte(data), &result)
 
-	return result.Releases, err
+	return result, errors.Wrapf(err, "helm list result:\n%s", data)
 }
 
 type Plan []PlanStep
@@ -314,7 +315,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	if desired.Status == workspace.StatusDeployed {
 		for i := range a.AppConfig.Actions {
 			action := a.AppConfig.Actions[i]
-			if strings.Contains(string(action.When), actions.ActionBeforeDeploy) {
+			if action.When.Contains(actions.ActionBeforeDeploy) && ctx.Environment().Matches(action) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
 					Description: action.Description,
@@ -353,7 +354,7 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	if desired.Status == workspace.StatusDeployed {
 		for i := range a.AppConfig.Actions {
 			action := a.AppConfig.Actions[i]
-			if strings.Contains(string(action.When), actions.ActionAfterDeploy) {
+			if action.When.Contains(actions.ActionAfterDeploy) && ctx.Environment().Matches(action) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
 					Description: action.Description,
@@ -369,6 +370,9 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 }
 
+// GetResolvedValues handles loading and merging all values needed for the
+// deployment of the app, including reading the default helm chart values,
+// loading any values files, and resolving any dynamic values.
 func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValues, error) {
 	r := &values.PersistableValues{
 		Values: values.Values{},
@@ -385,7 +389,36 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 		return nil, err
 	}
 
-	importedValues := a.AppConfig.Values.ExtractValueSetByNames(ctx.Environment().ValueSetNames...)
+	var defaultStaticValues values.Values
+
+	if a.AppConfig.ChartPath != "" {
+		chartRef := a.AppConfig.ResolveRelative(a.AppConfig.ChartPath)
+		valuesYaml, err := pkg.NewShellExe(
+			"helm", "inspect", "values",
+			chartRef,
+			"--version", a.Version.String(),
+		).RunOut()
+		if err != nil {
+			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
+		}
+		defaultStaticValues, err = values.ReadValues([]byte(valuesYaml))
+		if err != nil {
+			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
+		}
+	} else {
+		defaultStaticValues = values.Values{}
+	}
+
+	importedValues := a.AppConfig.Values.ExtractValueSetByRoles(ctx.Environment().Role)
+
+	importedValues, err := importedValues.WithFilesLoaded(ctx)
+	if err != nil {
+		return nil, errors.Wrapf(err, "load files")
+	}
+
+	importedValues.Static.Include(defaultStaticValues)
+
+	importedValues.Static.Include(ctx.Environment().ValueSet.Static)
 
 	appValues := append([]values.ValueSet{importedValues}, a.AppDeploySettings.ValueSets...)
 
@@ -406,13 +439,20 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 		}
 	}
 
-	// Finally, apply any overrides from parameters passed to this invocation of bosun.
+	// Apply any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParameters().ValueOverrides {
 		err := r.Values.SetAtPath(k, v)
 		if err != nil {
 			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
 		}
 
+	}
+
+	// Finally apply any value mappings
+
+	err = a.AppConfig.ValueMappings.Apply(r.Values)
+	if err != nil {
+		return nil, err
 	}
 
 	return r, nil
@@ -678,7 +718,7 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
-	args := append([]string{"install", "--name", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"install", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "install using args %v", args)

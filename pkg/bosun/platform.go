@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
-	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/util/worker"
-	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/yaml"
 	yaml2 "github.com/naveego/bosun/pkg/yaml"
@@ -44,19 +43,20 @@ var (
 // The platform contains a history of all releases created for the platform.
 type Platform struct {
 	core.ConfigShared            `yaml:",inline"`
-	DefaultChartRepo             string                      `yaml:"defaultChartRepo"`
-	Branching                    git.BranchSpec              `yaml:"branching"`
-	ReleaseBranchFormat_OBSOLETE string                      `yaml:"releaseBranchFormat,omitempty"`
-	MasterBranch_OBSOLETE        string                      `yaml:"masterBranch,omitempty"`
-	ReleaseDirectory             string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
-	EnvironmentsDirectory        string                      `yaml:"environmentsDirectory" json:"environmentsDirectory"`
-	ReleaseMetadata              []*ReleaseMetadata          `yaml:"releases" json:"releases"`
-	Repos                        []*Repo                     `yaml:"repos" json:"repos"`
-	Apps                         PlatformAppConfigs          `yaml:"apps"`
-	ZenHubConfig                 *zenhub.Config              `yaml:"zenHubConfig"`
-	NextReleaseName              string                      `yaml:"nextReleaseName,omitempty"`
-	Clusters                     kube.ConfigDefinitions      `yaml:"clusters"`
-	releaseManifests             map[string]*ReleaseManifest `yaml:"-"`
+	DefaultChartRepo             string                           `yaml:"defaultChartRepo"`
+	Branching                    git.BranchSpec                   `yaml:"branching"`
+	ReleaseBranchFormat_OBSOLETE string                           `yaml:"releaseBranchFormat,omitempty"`
+	MasterBranch_OBSOLETE        string                           `yaml:"masterBranch,omitempty"`
+	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
+	EnvironmentPaths             []string                         `yaml:"environmentPaths" json:"environmentPaths"`
+	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
+	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
+	NamespaceRoles               []core.NamespaceRoleDefinition   `yaml:"namespaceRoles"`
+	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
+	Apps                         PlatformAppConfigs               `yaml:"apps"`
+	ZenHubConfig                 *zenhub.Config                   `yaml:"zenHubConfig"`
+	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
+	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -84,10 +84,6 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if p.ReleaseDirectory == "" {
 		p.ReleaseDirectory = "releases"
-	}
-
-	if p.EnvironmentsDirectory == "" {
-		p.EnvironmentsDirectory = "environments"
 	}
 
 	p.Branching.Master = util.DefaultString(p.Branching.Master, p.MasterBranch_OBSOLETE, "master")
@@ -119,8 +115,21 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-func (p *Platform) GetCluster(name string) (*kube.ConfigDefinition, error) {
-	return p.Clusters.GetKubeConfigDefinitionByName(name)
+func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
+	if p.environmentConfigs == nil {
+	}
+	for _, path := range p.EnvironmentPaths {
+
+		path = p.ResolveRelative(path)
+		var config *environment.Config
+		err := yaml.LoadYaml(path, &config)
+		if err != nil {
+			return nil, err
+		}
+		config.SetFromPath(path)
+		p.environmentConfigs = append(p.environmentConfigs, config)
+	}
+	return p.environmentConfigs, nil
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
@@ -285,7 +294,6 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	ctx.Log().Infof("Created new release plan %s.", manifest)
 
 	manifest.plan = plan
-	p.NextReleaseName = settings.Name
 
 	p.SetReleaseManifest(SlotCurrent, manifest)
 
@@ -502,10 +510,6 @@ type AppValidationResult struct {
 }
 
 func (p *Platform) GetPlan(ctx BosunContext) (*ReleasePlan, error) {
-	if p.NextReleaseName == "" {
-		return nil, errors.New("no release being planned")
-	}
-
 	release, err := p.GetCurrentRelease()
 	if err != nil {
 		return nil, err
@@ -678,8 +682,6 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	releaseManifest.MarkDirty()
 	currentRelease.MarkDeleted()
 
-	p.NextReleaseName = ""
-
 	return releaseManifest, nil
 }
 
@@ -766,94 +768,6 @@ func writeYaml(path string, value interface{}) error {
 	}
 
 	err = ioutil.WriteFile(path, y, 0600)
-	return err
-}
-
-type CreateDeploymentPlanRequest struct {
-	Path                  string
-	ManifestDirPath       string
-	ProviderName          string
-	Apps                  []string
-	IgnoreDependencies    bool
-	AutomaticDependencies bool
-}
-
-func (p *Platform) CreateDeploymentPlan(ctx BosunContext, req CreateDeploymentPlanRequest) error {
-
-	if req.Path == "" {
-		req.Path = filepath.Join(filepath.Dir(p.FromPath), "deployments/default/plan.yaml")
-	}
-	dir := filepath.Dir(req.Path)
-	_ = os.RemoveAll(dir)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-
-	if req.ManifestDirPath == "" {
-		req.ManifestDirPath = dir
-	}
-	plan := DeploymentPlan{
-		Provider: req.ProviderName,
-	}
-	apps := map[string]*App{}
-	dependencies := map[string][]string{}
-	err := p.buildAppsAndDepsRec(ctx.Bosun, req, req.Apps, apps, dependencies)
-	if err != nil {
-		return err
-	}
-
-	topology, err := GetDependenciesInTopologicalOrder(dependencies, req.Apps...)
-
-	if err != nil {
-		return errors.Wrapf(err, "apps could not be sorted in dependency order (apps: %#v)", req.Apps)
-	}
-
-	for _, dep := range topology {
-		app, ok := apps[dep]
-		if !ok {
-			if req.IgnoreDependencies {
-				continue
-			}
-
-			return errors.Errorf("an app specifies a dependency that could not be found: %q (topological order: %v)", dep, topology)
-		}
-
-		appPlan := &AppDeploymentPlan{
-			Name:           app.Name,
-			ValueOverrides: values.ValueSet{},
-		}
-
-		if app.IsFromManifest {
-			appPlan.ManifestPath = app.FromPath
-		} else {
-			manifest, err := app.GetManifest(ctx)
-			if err != nil {
-				return errors.Wrapf(err, "getting manifest for app %q from provider %q", app.Name, req.ProviderName)
-			}
-
-			err = manifest.MakePortable()
-			if err != nil {
-				return errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderName)
-			}
-
-			err = manifest.Save(req.ManifestDirPath)
-			if err != nil {
-				return errors.Wrapf(err, "saving portable manifest for app %q from provider %q", app.Name, req.ProviderName)
-			}
-
-			appPlan.ManifestPath = req.ManifestDirPath + app.Name
-		}
-
-		appPlan.ManifestPath, err = filepath.Rel(filepath.Dir(req.Path), appPlan.ManifestPath)
-		if err != nil {
-			return err
-		}
-
-		plan.Apps = append(plan.Apps, appPlan)
-	}
-
-	err = yaml.SaveYaml(req.Path, plan)
-
 	return err
 }
 

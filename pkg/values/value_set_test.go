@@ -2,6 +2,7 @@ package values_test
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/core"
 	. "github.com/naveego/bosun/pkg/values"
 	yaml "github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
@@ -15,6 +16,7 @@ var _ = Describe("ValueSetCollection", func() {
 		// language=yaml
 		`
   green:
+    name: green
     static:
       green1: d
       redgreen1: c
@@ -23,6 +25,7 @@ var _ = Describe("ValueSetCollection", func() {
         d: greenD
         e: redgreenE
   red,green: 
+    name: redgreen
     static:
       redgreen1: a
       redgreen2: f
@@ -31,6 +34,7 @@ var _ = Describe("ValueSetCollection", func() {
         b: redgreenB
         f: redgreenF
   red: 
+    name: red
     static:
       red1: b
       redgreenmap: 
@@ -38,6 +42,7 @@ var _ = Describe("ValueSetCollection", func() {
         c: redC
         e: redgreenE
   blue:
+    name: blue
     static:
       blue1: e
 `)
@@ -50,7 +55,10 @@ var _ = Describe("ValueSetCollection", func() {
 		expected := ValueSetCollection{
 			ValueSets: ValueSets{
 				{
-					Roles: []string{"red", "green"},
+					ConfigShared: core.ConfigShared{
+						Name: "redgreen",
+					},
+					Roles: []core.EnvironmentRole{"red", "green"},
 					Static: Values{
 						"redgreen1": "a",
 						"redgreen2": "f",
@@ -62,13 +70,19 @@ var _ = Describe("ValueSetCollection", func() {
 					},
 				},
 				{
-					Roles: []string{"blue"},
+					ConfigShared: core.ConfigShared{
+						Name: "blue",
+					}, Roles: []core.EnvironmentRole{"blue"},
 					Static: Values{
 						"blue1": "e",
 					},
 				},
 				{
-					Roles: []string{"green"},
+
+					ConfigShared: core.ConfigShared{
+						Name: "green",
+					},
+					Roles: []core.EnvironmentRole{"green"},
 					Static: Values{
 						"green1":    "d",
 						"redgreen1": "c",
@@ -80,7 +94,10 @@ var _ = Describe("ValueSetCollection", func() {
 					},
 				},
 				{
-					Roles: []string{"red"},
+					ConfigShared: core.ConfigShared{
+						Name: "red",
+					},
+					Roles: []core.EnvironmentRole{"red"},
 					Static: Values{
 						"red1": "b",
 						"redgreenmap": Values{
@@ -114,7 +131,7 @@ var _ = Describe("ValueSetCollection", func() {
 
 		var sut *ValueSetCollection
 		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
-		redValues := sut.ExtractValueSetByName("green")
+		redValues := sut.ExtractValueSetByRole("green")
 		Expect(redValues.Static).To(HaveKeyWithValue("green1", "d"), "it is in the green set")
 		Expect(redValues.Static).To(HaveKeyWithValue("redgreen1", "c"), "the green key has a higher priority than the red,green key")
 		Expect(redValues.Static).To(HaveKeyWithValue("redgreen2", "f"), "the red,green key should be integrated")
@@ -123,7 +140,7 @@ var _ = Describe("ValueSetCollection", func() {
 	It("should extract multiple values by name", func() {
 		var sut ValueSetCollection
 		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
-		redValues := sut.ExtractValueSetByNames("green", "red")
+		redValues := sut.ExtractValueSetByRoles("green", "red")
 		Expect(redValues.Static).To(HaveKeyWithValue("green1", "d"), "it is in the green set")
 		Expect(redValues.Static).To(HaveKeyWithValue("redgreen1", "a"), "the green key has a higher priority than the red,green key")
 		Expect(redValues.Static).To(HaveKeyWithValue("redgreen2", "f"), "the red,green key should be integrated")

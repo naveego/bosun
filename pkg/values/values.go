@@ -258,6 +258,27 @@ func (v Values) Merge(src Values) {
 	}
 }
 
+// Include takes any properties in src which are not in this instance and adds them to this instance.
+func (v Values) Include(src Values) {
+	for key, srcVal := range src {
+		destVal, found := v[key]
+
+		srcType := fmt.Sprintf("%T", srcVal)
+		destType := fmt.Sprintf("%T", destVal)
+		match := srcType == destType
+		validSrc := istable(srcVal)
+		validDest := istable(destVal)
+
+		if found && match && validSrc && validDest {
+			destMap := destVal.(Values)
+			srcMap := srcVal.(Values)
+			destMap.Include(srcMap)
+		} else if !found {
+			v[key] = srcVal
+		}
+	}
+}
+
 // Distill returns what is common between this instance and the other instance.
 // Anything that is not common is returned in the residue parameter.
 func Distill(left Values, right Values) (common Values, leftResidue Values, rightResidue Values) {

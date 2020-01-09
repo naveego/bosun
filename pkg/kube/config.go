@@ -20,9 +20,9 @@ type CommandContext struct {
 	Log            *logrus.Entry
 }
 
-type ConfigDefinitions []*ConfigDefinition
+type ConfigDefinitions []*ClusterConfig
 
-func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ConfigDefinition, error) {
+func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ClusterConfig, error) {
 	for _, c := range k {
 		if c.Name == name {
 			return c, nil
@@ -33,12 +33,14 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ConfigDe
 
 type ConfigureKubeContextRequest struct {
 	Name           string
-	Environment    string
 	Role           core.ClusterRole
 	KubeConfigPath string
 	Force          bool
 	Log            *logrus.Entry
 }
+
+// cache of clusters configured this run, no need to configure theme again
+var configuredClusters = map[string]bool{}
 
 func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeContextRequest) error {
 	if req.Log == nil {
@@ -49,97 +51,95 @@ func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeCo
 		req.Role = DefaultRole
 	}
 
-	var konfigs ConfigDefinitions
+	var err error
+	var konfig *ClusterConfig
 
 	if req.Name != "" {
-		konfig, err := k.GetKubeConfigDefinitionByName(req.Name)
+		konfig, err = k.GetKubeConfigDefinitionByName(req.Name)
 		if err != nil {
 			return err
 		}
-		konfigs = append(konfigs, konfig)
 	} else {
-		found, err := k.GetKubeConfigDefinitionsByAttributes(req.Environment, req.Role)
+		konfig, err = k.GetKubeConfigDefinitionByRole(req.Role)
 		if err != nil {
 			return err
 		}
-		konfigs = append(konfigs, found...)
 	}
 
-	if len(konfigs) == 0 {
+	if konfig == nil {
 		return errors.Errorf("could not find any kube configs")
 	}
 
-	for _, c := range konfigs {
-		ktx := CommandContext{
-			Name:           c.Name,
-			Force:          req.Force,
-			KubeConfigPath: req.KubeConfigPath,
-			Log:            req.Log,
-		}
-
-		err := c.configureKubernetes(ktx)
-		if err != nil {
-			return err
-		}
+	if configuredClusters[konfig.Name] {
+		req.Log.Debugf("Already configured kubernetes cluster %q.", konfig.Name)
+		return nil
 	}
+
+	ktx := CommandContext{
+		Name:           konfig.Name,
+		Force:          req.Force,
+		KubeConfigPath: req.KubeConfigPath,
+		Log:            req.Log,
+	}
+
+	err = konfig.configureKubernetes(ktx)
+	if err != nil {
+		return err
+	}
+
+	configuredClusters[konfig.Name] = true
 
 	return nil
 }
 
-func (k ConfigDefinitions) GetKubeConfigDefinitionsByAttributes(env string, role core.ClusterRole) ([]*ConfigDefinition, error) {
+func (k ConfigDefinitions) GetKubeConfigDefinitionByRole(role core.ClusterRole) (*ClusterConfig, error) {
 
 	if role == "" {
 		role = DefaultRole
 	}
-	var out []*ConfigDefinition
 	for _, c := range k {
-		matched := env == ""
-		if !matched {
-			for _, e := range c.Environments {
-				if e == env {
-					matched = true
-					break
-				}
+		for _, r := range c.Roles {
+			if r == role {
+				return c, nil
 			}
 		}
-		if !matched {
-			continue
-		}
-		matched = role == ""
-		if !matched {
-			for _, r := range c.Roles {
-				if r == role {
-					matched = true
-					break
-				}
-			}
-		}
-		if !matched {
-			continue
-		}
-		out = append(out, c)
 	}
-	if len(out) == 0 {
-		return nil, errors.Errorf("no cluster definition had environment %q and role %q", env, role)
-	}
-	return out, nil
+
+	return nil, errors.Errorf("no cluster definition had role %q", role)
 }
 
-type ConfigDefinition struct {
-	Name         string                                 `yaml:"name"`
-	Roles        []core.ClusterRole                     `yaml:"roles,flow"`
-	Environments []string                               `yaml:"environments,flow"`
-	Oracle       *OracleClusterConfig                   `yaml:"oracle,omitempty"`
-	Minikube     *MinikubeConfig                        `yaml:"minikube,omitempty"`
-	Amazon       *AmazonClusterConfig                   `yaml:"amazon,omitempty"`
-	Namespaces   map[core.NamespaceRole]NamespaceConfig `yaml:"namespaces"`
+type ClusterConfig struct {
+	Name         string               `yaml:"name"`
+	Roles        core.ClusterRoles    `yaml:"roles,flow"`
+	Environments []string             `yaml:"environments,flow"`
+	Oracle       *OracleClusterConfig `yaml:"oracle,omitempty"`
+	Minikube     *MinikubeConfig      `yaml:"minikube,omitempty"`
+	Amazon       *AmazonClusterConfig `yaml:"amazon,omitempty"`
+	Namespaces   NamespaceConfigs     `yaml:"namespaces"`
+}
+
+type NamespaceConfigs map[core.NamespaceRole]NamespaceConfig
+
+func (n NamespaceConfigs) ToStringMap() map[string]NamespaceConfig {
+	out := map[string]NamespaceConfig{}
+	for k, v := range n {
+		out[string(k)] = v
+	}
+	return out
 }
 
 type NamespaceConfig struct {
 	Name string `yaml:"name"`
 }
 
-func (k ConfigDefinition) configureKubernetes(ctx CommandContext) error {
+func (k ClusterConfig) GetNamespace(role core.NamespaceRole) (NamespaceConfig, error) {
+	if ns, ok := k.Namespaces[role]; ok {
+		return ns, nil
+	}
+	return NamespaceConfig{}, errors.Errorf("kubernetes cluster config %q does not have a namespace for the role %q", k.Namespaces, role)
+}
+
+func (k ClusterConfig) configureKubernetes(ctx CommandContext) error {
 	ctx.Name = k.Name
 
 	if contextIsDefined(ctx.Name) && !ctx.Force {

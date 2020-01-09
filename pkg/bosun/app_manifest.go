@@ -56,9 +56,10 @@ func (a AppMetadata) String() string {
 // as part of a Platform. Instances should be manipulated using methods
 // on Platform, not updated directly.
 type AppManifest struct {
-	*AppMetadata `yaml:"metadata"`
-	AppConfig    *AppConfig        `yaml:"appConfig" json:"appConfig"`
-	Files        map[string][]byte `yaml:"-" json:"-"`
+	*AppMetadata      `yaml:"metadata"`
+	AppConfig         *AppConfig         `yaml:"appConfig" json:"appConfig"`
+	Files             map[string][]byte  `yaml:"-" json:"-"`
+	PlatformAppConfig *PlatformAppConfig `yaml:"-"`
 }
 
 func (a *AppManifest) MarshalYAML() (interface{}, error) {
@@ -101,6 +102,7 @@ func LoadAppManifestFromPathAndName(path string, name string) (*AppManifest, err
 
 	paths := []string{
 		path,
+		filepath.Join(path, "bosun.yaml"),
 		filepath.Join(path, name+".yaml"),
 		filepath.Join(path, name, name+".yaml"),
 		filepath.Join(path, name, "bosun.yaml"),
@@ -111,6 +113,16 @@ func LoadAppManifestFromPathAndName(path string, name string) (*AppManifest, err
 		stat, err := os.Stat(path)
 		if err == nil && !stat.IsDir() {
 			err = yaml.LoadYaml(path, &out)
+			if err != nil {
+				return nil, err
+			}
+			if out.AppMetadata == nil {
+				return nil, errors.Errorf("trying to load app manifest for %q from %q, but content was empty", name, path)
+			}
+			if out.Name != name {
+				return nil, errors.Errorf("trying to load app manifest for %q from %q, but file contains manifest for %q", name, path, out.Name)
+			}
+			out.AppConfig.SetFromPath(path)
 			return out, err
 		}
 	}
@@ -128,11 +140,6 @@ func (a *AppManifest) Save(dir string) error {
 		}
 	}
 
-	outPath := filepath.Join(dir, a.Name+".yaml")
-	if err := yaml.SaveYaml(outPath, a); err != nil {
-		return err
-	}
-
 	if hasFiles {
 		for path, bytes := range a.Files {
 			path = filepath.Join(dir, path)
@@ -142,6 +149,15 @@ func (a *AppManifest) Save(dir string) error {
 			if err := ioutil.WriteFile(path, bytes, 0600); err != nil {
 				return err
 			}
+		}
+		outPath := filepath.Join(dir, "bosun.yaml")
+		if err := yaml.SaveYaml(outPath, a); err != nil {
+			return err
+		}
+	} else {
+		outPath := filepath.Join(dir, a.Name+".yaml")
+		if err := yaml.SaveYaml(outPath, a); err != nil {
+			return err
 		}
 	}
 

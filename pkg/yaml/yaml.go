@@ -3,6 +3,8 @@ package yaml
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
@@ -66,6 +68,9 @@ func Marshal(value interface{}) ([]byte, error) {
 	return out, err
 }
 
+func UnmarshalString(s string, out interface{}) error {
+	return Unmarshal([]byte(s), out)
+}
 func Unmarshal(b []byte, out interface{}) error {
 	return yaml.Unmarshal(b, out)
 }
@@ -73,9 +78,21 @@ func Unmarshal(b []byte, out interface{}) error {
 func LoadYaml(path string, out interface{}) error {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "read expected to populate %T", out)
 	}
 
 	err = yaml.Unmarshal(b, out)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, "load into %T", out)
+	}
+
+	mirror.ApplyFuncRecursively(out, func(x core.FromPathSetter) {
+		x.SetFromPath(path)
+	})
+
+	return nil
+}
+
+type FromPathSetter interface {
+	SetFromPath(fp string)
 }

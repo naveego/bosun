@@ -5,6 +5,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
@@ -14,8 +15,9 @@ import (
 type Config struct {
 	FromPath       string                 `yaml:"-" json:"-"`
 	Name           string                 `yaml:"name" json:"name"`
-	Roles          []core.EnvironmentRole `yaml:"roles" json:"roles"`
+	Role           core.EnvironmentRole   `yaml:"role" json:"role"`
 	DefaultCluster string                 `yaml:"defaultCluster" json:"defaultCluster"`
+	Clusters       kube.ConfigDefinitions `yaml:"clusters"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool             `yaml:"protected" json:"protected"`
@@ -67,14 +69,18 @@ func (e *Environment) ForceEnsure(ctx EnsureContext) error {
 
 	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)
 
+	if e.ClusterName == "" {
+		e.ClusterName = e.DefaultCluster
+	}
+
 	log := ctx.Log()
 
 	_ = os.Setenv(core.EnvEnvironment, e.Name)
 
-	_, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster).RunOut()
+	_, err := pkg.NewShellExe("kubectl", "config", "use-context", e.ClusterName).RunOut()
 	if err != nil {
 		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
-		log.Println(color.YellowString(`try running "bosun kube configure-cluster %s"`, e.Cluster))
+		log.Println(color.YellowString(`try running "bosun kube configure-cluster %s"`, e.ClusterName))
 	}
 
 	for _, v := range e.Variables {

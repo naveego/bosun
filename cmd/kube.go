@@ -115,12 +115,20 @@ var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosun()
-		p, err := b.GetCurrentPlatform()
+
+		envs, err := b.GetEnvironments()
+
 		if err != nil {
 			return err
 		}
+		var clusters []*kube.ClusterConfig
+		for _, env := range envs {
+			for _, cluster := range env.Clusters {
+				clusters = append(clusters, cluster)
+			}
+		}
 
-		return renderOutput(p.Clusters)
+		return renderOutput(clusters)
 	},
 })
 
@@ -130,38 +138,29 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosun()
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
 
 		name := viper.GetString(ArgConfigureClusterName)
-		env := viper.GetString(ArgConfigureClusterEnv)
-		if env == "" {
-			env = b.GetCurrentEnvironment().Name
-		}
+		env := b.GetCurrentEnvironment()
+
 		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
 		ctx := b.NewContext()
 
-		err = p.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
-			Log:         ctx.Log(),
-			Environment: env,
-			Name:        name,
-			Force:       ctx.GetParameters().Force,
-			Role:        role,
+		err := env.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+			Log:   ctx.Log(),
+			Name:  name,
+			Force: ctx.GetParameters().Force,
+			Role:  role,
 		})
 
 		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(ArgConfigureClusterName, "", "Name of cluster to configure.")
-	cmd.Flags().String(ArgConfigureClusterEnv, "", "Environment of cluster to configure (defaults to current environment if not set).")
 	cmd.Flags().String(ArgConfigureClusterRole, "", "Role of cluster to configure.")
 })
 
 const (
 	ArgConfigureClusterName = "name"
-	ArgConfigureClusterEnv  = "env"
 	ArgConfigureClusterRole = "role"
 )
 

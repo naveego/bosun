@@ -25,16 +25,6 @@ var releasePlanCmd = addCommand(releaseCmd, &cobra.Command{
 	Short:   "Contains sub-commands for release planning.",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
-
-		_, p := getReleaseCmdDeps()
-
-		fmt.Println()
-		if p.NextReleaseName == "" {
-			color.Red("There is no current plan.\n")
-		} else {
-			color.Blue("Currently planning %s.\n", p.NextReleaseName)
-		}
-
 	},
 })
 
@@ -159,7 +149,6 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 		}
 		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
 			plan.MarkDeleted()
-			p.NextReleaseName = ""
 			err = p.Save(b.NewContext())
 			return err
 		}

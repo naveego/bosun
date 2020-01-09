@@ -1,6 +1,9 @@
 package bosun
 
-import "github.com/naveego/bosun/pkg/issues"
+import (
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/issues"
+)
 
 // PlatformAppConfig is the config unit for referencing
 // an app from a platform and specifying the deployment
@@ -9,10 +12,10 @@ type PlatformAppConfig struct {
 	Name    string         `yaml:"name"`
 	RepoRef issues.RepoRef `yaml:"repo"`
 	// The cluster roles this app should be deployed to.
-	ClusterRoles []string `yaml:"clusterRoles,flow"`
+	ClusterRoles core.ClusterRoles `yaml:"clusterRoles,flow"`
 	// The namespace roles this app should be deployed to.
-	NamespaceRoles []string `yaml:"namespaceRoles,flow"`
-	Dependencies   []string `yaml:"dependencies,omitempty"`
+	NamespaceRoles core.NamespaceRoles `yaml:"namespaceRoles,flow"`
+	Dependencies   []string            `yaml:"dependencies,omitempty"`
 }
 
 type PlatformAppConfigs []*PlatformAppConfig

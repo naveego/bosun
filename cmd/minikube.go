@@ -60,22 +60,19 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 
 		konfig := ws.Minikube
 		if konfig == nil {
-			p, err := b.GetCurrentPlatform()
-			if err != nil {
-				return err
-			}
-			for _, c := range p.Clusters {
+			env := b.GetCurrentEnvironment()
+			for _, c := range env.Clusters {
 				if c.Name == "minikube" || c.Minikube != nil {
 					konfig = c.Minikube
 				}
 			}
 		}
 		if konfig == nil {
-			return errors.New("no kube config named minikube found in workspace or platform")
+			return errors.New("no kube config named minikube found in workspace or current environment")
 		}
 
 		konfigs := kube.ConfigDefinitions{
-			&kube.ConfigDefinition{
+			&kube.ClusterConfig{
 				Minikube: konfig,
 				Name:     "minikube",
 			},

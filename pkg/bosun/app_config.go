@@ -19,7 +19,7 @@ type AppConfig struct {
 	core.ConfigShared       `yaml:",inline"`
 	ProjectManagementPlugin *ProjectManagementPlugin `yaml:"projectManagementPlugin,omitempty" json:"projectManagementPlugin,omitempty"`
 	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty" json:"branchForRelease,omitempty"`
-	Branching               git.BranchSpec           `yaml:"branching" json:"branching"`
+	Branching               git.BranchSpec           `yaml:"branching,omitempty" json:"branching"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool           `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
 	ReportDeployment bool           `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
@@ -36,6 +36,7 @@ type AppConfig struct {
 	Labels         filter.Labels             `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Minikube       *AppMinikubeConfig        `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	Images         []AppImageConfig          `yaml:"images" json:"images"`
+	ValueMappings  values.ValueMappings      `yaml:"valueMappings,omitempty"`
 	Values         values.ValueSetCollection `yaml:"values,omitempty" json:"values,omitempty"`
 	Scripts        []*script.Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	Actions        []*actions.AppAction      `yaml:"actions,omitempty" json:"actions,omitempty"`
@@ -103,17 +104,21 @@ func (a *AppConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if a.Branching.Master == "" {
 		a.Branching.Master = "master"
+		a.Branching.IsDefaulted = true
 	}
 	if a.Branching.Develop == "" {
 		// default behavior is trunk based development
 		a.Branching.Develop = "master"
+		a.Branching.IsDefaulted = true
 	}
 	if a.Branching.Release == "" && p.BranchForRelease {
 		// migrate BranchForRelease to p.Branching.Release pattern.
 		a.Branching.Release = "release/{{.Version}}"
+		a.Branching.IsDefaulted = true
 	}
 	if a.Branching.Feature == "" {
 		a.Branching.Feature = "issue/{{.Number}}/{{.Slug}}"
+		a.Branching.IsDefaulted = true
 	}
 
 	return err
@@ -166,13 +171,13 @@ func (d Dependencies) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 func (a *AppConfig) SetFromPath(fromPath string) {
 	a.FromPath = fromPath
 	for i := range a.Scripts {
-		a.Scripts[i].FromPath = a.FromPath
+		a.Scripts[i].SetFromPath(a.FromPath)
 	}
 	for i := range a.DependsOn {
 		a.DependsOn[i].FromPath = a.FromPath
 	}
 	for i := range a.Actions {
-		a.Actions[i].FromPath = a.FromPath
+		a.Actions[i].SetFromPath(a.FromPath)
 	}
 }
 

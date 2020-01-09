@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
@@ -178,8 +179,8 @@ var _ = addCommand(platformCmd, &cobra.Command{
 		err = p.IncludeApp(ctx, &bosun.PlatformAppConfig{
 			Name:           app.Name,
 			RepoRef:        repoRef,
-			ClusterRoles:   clusterRoles,
-			NamespaceRoles: namespaceRoles,
+			ClusterRoles:   core.ClusterRolesFromStrings(clusterRoles),
+			NamespaceRoles: core.NamespaceRolesFromStrings(namespaceRoles),
 		})
 		if err != nil {
 			return err

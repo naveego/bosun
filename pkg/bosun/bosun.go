@@ -272,19 +272,19 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 	return app, err
 }
 
-func (b *Bosun) useEnvironment(config *environment.Config) error {
+func (b *Bosun) useEnvironment(config *environment.Config, clusterName string) error {
 
-	b.ws.CurrentEnvironment = config.Name
-
-	cluster, err := b.GetCurrentClusterName()
-	if err != nil {
-		return err
+	if clusterName == "" {
+		clusterName = config.DefaultCluster
 	}
 
+	b.ws.CurrentEnvironment = config.Name
+	b.ws.CurrentCluster = clusterName
+
 	env := &environment.Environment{
-		Config:   *config,
-		Cluster:  cluster,
-		ValueSet: values.ValueSet{},
+		Config:      *config,
+		ClusterName: clusterName,
+		ValueSet:    values.ValueSet{},
 	}
 
 	valueSets, err := b.GetValueSetsForEnv(config)
@@ -307,24 +307,23 @@ func (b *Bosun) useEnvironment(config *environment.Config) error {
 	return nil
 }
 
-func (b *Bosun) UseEnvironment(name string) error {
+func (b *Bosun) UseEnvironment(name string, clusterName string) error {
 
 	env, err := b.GetEnvironment(name)
 	if err != nil {
 		return err
 	}
 
-	return b.useEnvironment(env)
+	return b.useEnvironment(env, clusterName)
 }
 
 func (b *Bosun) UseCluster(name string) error {
 
-	p, err := b.GetCurrentPlatform()
-	if err != nil {
-		return err
-	}
+	env := b.GetCurrentEnvironment()
 
-	err = p.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+	env.ClusterName = name
+
+	err := env.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
 		Name: name,
 	})
 
@@ -496,7 +495,11 @@ func (b *Bosun) IsClusterAvailable() bool {
 }
 
 func (b *Bosun) GetEnvironment(name string) (*environment.Config, error) {
-	for _, env := range b.file.Environments {
+	envs, err := b.GetEnvironments()
+	if err != nil {
+		return nil, err
+	}
+	for _, env := range envs {
 		if env.Name == name {
 			return env, nil
 		}
@@ -504,8 +507,20 @@ func (b *Bosun) GetEnvironment(name string) (*environment.Config, error) {
 	return nil, errors.Errorf("no environment named %q", name)
 }
 
-func (b *Bosun) GetEnvironments() []*environment.Config {
-	return b.file.Environments
+func (b *Bosun) GetEnvironments() ([]*environment.Config, error) {
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return nil, err
+	}
+	out, err := p.GetEnvironmentConfigs()
+	if err != nil {
+		return nil, err
+	}
+
+	out = append(out, b.file.Environments...)
+
+	return out, nil
 }
 
 func (b *Bosun) GetValueSet(name string) (values.ValueSet, error) {
@@ -621,21 +636,14 @@ func (b *Bosun) GetCurrentClusterName() (string, error) {
 		return b.ws.CurrentCluster, nil
 	}
 
-	p, err := b.GetCurrentPlatform()
+	env := b.GetCurrentEnvironment()
+
+	cluster, err := env.Clusters.GetKubeConfigDefinitionByRole(kube.DefaultRole)
 	if err != nil {
 		return "", err
 	}
 
-	clusters, err := p.Clusters.GetKubeConfigDefinitionsByAttributes(b.ws.CurrentEnvironment, "")
-	if err != nil {
-		return "", err
-	}
-
-	for _, c := range clusters {
-		return c.Name, nil
-	}
-
-	return "", errors.Errorf("no current cluster defined (try `bosun env {env} --cluster {name}`) and no default found in environment %q", b.ws.CurrentEnvironment)
+	return cluster.Name, nil
 }
 
 func (b *Bosun) GetPlatform(name string) (*Platform, error) {
@@ -793,19 +801,23 @@ func (b *Bosun) TidyWorkspace() {
 
 func (b *Bosun) configureCurrentEnv() error {
 	if b.ws.CurrentEnvironment == "" {
-		switch len(b.file.Environments) {
+		envs, err := b.GetEnvironments()
+		if err != nil {
+			return err
+		}
+		switch len(envs) {
 		case 0:
 			b.log.Warn("No environments found, using a dummy environment.")
 			return b.useEnvironment(&environment.Config{
 				Name:     "",
 				FromPath: b.ws.Path,
-			})
+			}, "")
 		case 1:
 			// if only one environment exists, it's the current one
-			b.ws.CurrentEnvironment = b.file.Environments[0].Name
+			b.ws.CurrentEnvironment = envs[0].Name
 		default:
 			var envNames []string
-			for _, env := range b.file.Environments {
+			for _, env := range envs {
 				envNames = append(envNames, env.Name)
 			}
 			return errors.Errorf("no environment set (available: %v)", envNames)
@@ -820,7 +832,7 @@ func (b *Bosun) configureCurrentEnv() error {
 
 		// set the current environment.
 		// this will also set environment vars based on it.
-		err = b.useEnvironment(env)
+		err = b.useEnvironment(env, "")
 
 		return err
 	}

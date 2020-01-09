@@ -528,6 +528,7 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 			ctx = ctx.WithAppDeploy(appRelease)
 			for _, action := range appRelease.AppConfig.Actions {
 				if action.Test != nil {
+
 					err := action.Execute(ctx)
 					if err != nil {
 						ctx.Log().WithError(err).Error("Test failed.")

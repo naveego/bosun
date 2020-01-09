@@ -11,6 +11,7 @@ import (
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/ioc"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
@@ -35,7 +36,6 @@ type BosunContext struct {
 	// Release         *Deploy
 	appRepo          *App
 	appRelease       *AppDeploy
-	valuesAsEnvVars  map[string]string
 	ctx              context.Context
 	contextValues    map[string]interface{}
 	provider         ioc.Provider
@@ -141,7 +141,6 @@ func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 
 func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interface{} {
 	c.Values = v
-	c.valuesAsEnvVars = nil
 
 	yml, _ := yaml.Marshal(v.Values)
 	c.LogLine(1, "[Context] Set release values:\n%s\n", string(yml))
@@ -150,19 +149,20 @@ func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interfa
 }
 
 func (c BosunContext) GetEnvironmentVariables() map[string]string {
-	if c.valuesAsEnvVars == nil {
-		if c.Values != nil {
-			c.valuesAsEnvVars = c.Values.Values.ToEnv("BOSUN_")
-		} else {
-			if c.env != nil {
 
-				c.valuesAsEnvVars = map[string]string{
-					core.EnvCluster: c.Bosun.GetWorkspace().CurrentCluster,
-				}
-			}
-		}
+	out := map[string]string{
+		core.EnvCluster:         c.env.ClusterName,
+		core.EnvEnvironment:     c.env.Name,
+		core.EnvEnvironmentRole: string(c.env.Role),
 	}
-	return c.valuesAsEnvVars
+
+	envValues := c.env.ValueSet.Static.ToEnv("BOSUN_")
+
+	for k, v := range envValues {
+		out[k] = v
+	}
+
+	return out
 }
 
 func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
@@ -199,8 +199,10 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 	expMap := util.StringSliceToMap(expansions...)
 	path = os.Expand(path, func(name string) string {
 		switch name {
-		case "ENVIRONMENT", "BOSUN_ENVIRONMENT":
+		case "ENVIRONMENT", core.EnvEnvironment:
 			return c.env.Name
+		case core.EnvEnvironmentRole:
+			return string(c.env.Role)
 		default:
 			if v, ok := expMap[name]; ok {
 				return v
@@ -334,7 +336,7 @@ func (c BosunContext) GetCluster() string {
 	if c.env == nil {
 		return c.WorkspaceContext().CurrentCluster
 	}
-	return c.env.Cluster
+	return c.env.ClusterName
 }
 
 // Log gets a logger safely.
@@ -388,6 +390,8 @@ func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
 	if c.provider == nil {
 		var container = ioc.NewContainer()
 		container.BindFactory(c.GetVaultClient)
+
+		container.BindFactory(kube.GetKubeClient)
 
 		c.provider = container
 	}

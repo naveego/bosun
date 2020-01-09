@@ -11,6 +11,5 @@ type ActionContext interface {
 	core.StringKeyValuer
 	core.InterfaceKeyValuer
 	ioc.Provider
-
 	command.ExecutionContext
 }

@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
@@ -66,6 +68,7 @@ type DeploySettings struct {
 	ValueSets          []values.ValueSet
 	Manifest           *ReleaseManifest
 	Apps               map[string]*App
+	AppManifests       map[string]*AppManifest
 	AppDeploySettings  map[string]AppDeploySettings
 	UseLocalContent    bool
 	Filter             *filter.Chain // If set, only apps which match the filter will be deployed.
@@ -171,8 +174,16 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			}
 			deploy.AppDeploys[appDeploy.Name] = appDeploy
 		}
+	} else if len(settings.AppManifests) > 0 {
+		for _, appManifest := range settings.AppManifests {
+			appDeploy, err := NewAppDeploy(ctx, settings, appManifest)
+			if err != nil {
+				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", appManifest.Name)
+			}
+			deploy.AppDeploys[appDeploy.Name] = appDeploy
+		}
 	} else {
-		return nil, errors.New("either settings.Manifest or settings.Apps must be populated")
+		return nil, errors.New("either settings.Manifest, settings.Apps, or settings.AppManifests must be populated")
 	}
 
 	if settings.Filter != nil {
@@ -262,7 +273,7 @@ func checkImageExists(ctx BosunContext, name string) error {
 	cmd := exec.Command("docker", "pull", name)
 	stdout, err := cmd.StdoutPipe()
 	stderr, err := cmd.StderrPipe()
-	//cmd.Env = ctx.GetMinikubeDockerEnv()
+	// cmd.Env = ctx.GetMinikubeDockerEnv()
 	if err != nil {
 		return err
 	}
@@ -383,28 +394,97 @@ func (r *Deploy) Deploy(ctx BosunContext) error {
 		toDeploy = append(toDeploy, app)
 	}
 
+	env := ctx.Environment()
+
 	for _, app := range toDeploy {
 
-		app.DesiredState.Status = workspace.StatusDeployed
-		if app.DesiredState.Routing == "" {
-			app.DesiredState.Routing = workspace.RoutingCluster
+		log := ctx.WithLogField("app", app.Name).Log()
+
+		clusterRoles := core.ClusterRoles{core.ClusterRoleDefault}
+		namespaceRoles := core.NamespaceRoles{core.NamespaceRoleDefault}
+		if app.PlatformAppConfig != nil {
+			clusterRoles = app.PlatformAppConfig.ClusterRoles
+			namespaceRoles = app.PlatformAppConfig.NamespaceRoles
 		}
 
-		ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)
+		deployedToClusterForRole := map[string]core.ClusterRole{}
+		deployedToNamespaceForRole := map[string]core.NamespaceRole{}
 
-		app.DesiredState.Force = ctx.GetParameters().Force
+		originalAppDeploySettingsValueSets := append(values.ValueSets{}, app.AppDeploySettings.ValueSets...)
 
-		err = app.Reconcile(ctx)
+		for _, clusterRole := range clusterRoles {
+			cluster, err := env.GetClusterForRole(clusterRole)
 
-		if err != nil {
-			return err
-		}
-		if r.Recycle {
-			err = app.Recycle(ctx)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "find cluster to deploy %q with role %q", app.Name, clusterRole)
+			}
+
+			err = env.SwitchToCluster(cluster)
+			if err != nil {
+				return errors.Wrapf(err, "switch to cluster %q to deploy %q with role %q", cluster.Name, app.Name, clusterRole)
+			}
+
+			log = log.WithField("cluster", cluster.Name)
+
+			if deployedForClusterRole, ok := deployedToClusterForRole[cluster.Name]; ok {
+				log.Infof("Already deployed to cluster for role %q, skipping additional deploys.", deployedForClusterRole)
+				continue
+			}
+
+			// store deployment to cluster to prevent re-deploy if one cluster has two roles
+			deployedToClusterForRole[cluster.Name] = clusterRole
+
+			// add the namespace mappings for the cluster to the values which will be resolved
+			app.AppDeploySettings.ValueSets = append(originalAppDeploySettingsValueSets, values.ValueSet{
+				Static: values.Values{
+					"bosun": values.Values{
+						"namespaces": cluster.Namespaces.ToStringMap(),
+					},
+				},
+			})
+
+			for _, namespaceRole := range namespaceRoles {
+
+				var namespace kube.NamespaceConfig
+				namespace, err = env.Cluster.GetNamespace(namespaceRole)
+				if err != nil {
+					return errors.Wrapf(err, "mapping namespace for %q", app.Name)
+				}
+
+				log = log.WithField("namespace", namespace.Name)
+
+				if deployedForNamespaceRole, ok := deployedToNamespaceForRole[namespace.Name]; ok {
+					log.Infof("Already deployed to namespace for role %q, skipping additional deploys.", deployedForNamespaceRole)
+					continue
+				}
+
+				deployedToClusterForRole[cluster.Name] = clusterRole
+
+				app.AppConfig.Namespace = namespace.Name
+
+				app.DesiredState.Status = workspace.StatusDeployed
+				if app.DesiredState.Routing == "" {
+					app.DesiredState.Routing = workspace.RoutingCluster
+				}
+
+				ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)
+
+				app.DesiredState.Force = ctx.GetParameters().Force
+
+				err = app.Reconcile(ctx)
+
+				if err != nil {
+					return err
+				}
+				if r.Recycle {
+					err = app.Recycle(ctx)
+					if err != nil {
+						return err
+					}
+				}
 			}
 		}
+
 	}
 
 	err = ctx.Bosun.Save()

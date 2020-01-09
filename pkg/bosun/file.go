@@ -109,14 +109,14 @@ func (f *File) Save() error {
 
 	b, err := yaml.Marshal(f)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	b = stripFromPath.ReplaceAll(b, []byte{})
 
 	err = ioutil.WriteFile(f.FromPath, b, 0600)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil

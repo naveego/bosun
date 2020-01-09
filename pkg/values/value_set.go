@@ -15,7 +15,7 @@ const ValueSetAll = "all"
 
 type ValueSet struct {
 	core.ConfigShared `yaml:",inline"`
-	Roles             []core.EnvironmentRole           `yaml:"roles"`
+	Roles             []core.EnvironmentRole           `yaml:"roles,flow,omitempty"`
 	Dynamic           map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
 	Files             []string                         `yaml:"files,omitempty" json:"files,omitempty"`
 	Static            Values                           `yaml:"static,omitempty" json:"static,omitempty"`
@@ -144,6 +144,7 @@ type ValueSetCollection struct {
 
 func (v ValueSetCollection) MarshalYAML() (interface{}, error) {
 
+	v.DefaultValues.Name = "default"
 	m := append([]ValueSet{v.DefaultValues}, v.ValueSets...)
 	return m, nil
 }

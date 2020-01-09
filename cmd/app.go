@@ -478,7 +478,7 @@ var appStatusCmd = &cobra.Command{
 			}
 
 			routing := "n/a"
-			if env.Cluster == "minikube" {
+			if env.ClusterName == "minikube" {
 				routing = fmtDesiredActual(desired.Routing, actual.Routing)
 			}
 
