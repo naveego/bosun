@@ -205,7 +205,7 @@ var appListActionsCmd = addCommand(appListCmd, &cobra.Command{
 		for _, app := range apps {
 
 			for _, action := range app.Actions {
-				t.AddLine(app.Name, action.Name, action.When, action.Where, action.Description)
+				t.AddLine(app.Name, action.Name, action.When, action.WhereFilter, action.Description)
 			}
 		}
 

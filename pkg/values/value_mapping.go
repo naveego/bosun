@@ -5,11 +5,11 @@ import (
 )
 
 // ValueMappings is a map of dotted value path to dotted value path.
-// When Apply is called, it takes the values found at the key path
+// When ApplyToValues is called, it takes the values found at the key path
 // and writes them to the value path.
 type ValueMappings map[string]string
 
-func (v ValueMappings) Apply(target Values) error {
+func (v ValueMappings) ApplyToValues(target Values) error {
 
 	for from, to := range v {
 		fromValue, err := target.GetAtPath(from)

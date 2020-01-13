@@ -39,4 +39,13 @@ const (
 	StatusUnchanged      = "UNCHANGED"
 )
 
+var KnownHelmChartStatuses = map[string]bool{
+	StatusDeployed:       true,
+	StatusNotFound:       true,
+	StatusDeleted:        true,
+	StatusFailed:         true,
+	StatusPendingUpgrade: true,
+	StatusUnchanged:      true,
+}
+
 type Routing string

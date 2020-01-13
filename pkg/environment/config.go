@@ -1,10 +1,10 @@
 package environment
 
 import (
-	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environmentvariables"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
@@ -20,15 +20,16 @@ type Config struct {
 	Clusters       kube.ConfigDefinitions `yaml:"clusters"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
-	Protected bool             `yaml:"protected" json:"protected"`
-	IsLocal   bool             `yaml:"isLocal" json:"isLocal"`
-	Commands  []*Command       `yaml:"commands,omitempty" json:"commands,omitempty"`
-	Variables []*Variable      `yaml:"variables,omitempty" json:"variables,omitempty"`
-	Scripts   []*script.Script `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Protected bool                             `yaml:"protected" json:"protected"`
+	IsLocal   bool                             `yaml:"isLocal" json:"isLocal"`
+	Commands  []*Command                       `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Variables []*environmentvariables.Variable `yaml:"variables,omitempty" json:"variables,omitempty"`
+	Scripts   []*script.Script                 `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues     *values.ValueSet `yaml:"appValues" json:"appValues"`
-	ValueSetNames []string         `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	AppValues      *values.ValueSet           `yaml:"appValues" json:"appValues"`
+	ValueSetNames  []string                   `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	ValueOverrides *values.ValueSetCollection `yaml:"valueOverrides,omitempty"`
 }
 
 type Command struct {
@@ -48,16 +49,20 @@ func (e *Config) SetFromPath(path string) {
 	for i := range e.Commands {
 		e.Variables[i].FromPath = path
 	}
+	for i := range e.Clusters {
+		e.Clusters[i].FromPath = path
+	}
 }
 
 // Ensure resolves and sets all environment variables, and
 // sets the cluster, but only if the environment has not already
 // been set.
-func (e *Environment) Ensure(ctx EnsureContext) error {
+func (e *Environment) Ensure(ctx environmentvariables.EnsureContext) error {
 
 	if os.Getenv(core.EnvEnvironment) == e.Name {
 		ctx.Log().Debugf("Environment is already %q, based on value of %s", e.Name, core.EnvEnvironment)
-		return nil
+
+		return e.EnsureCluster(ctx)
 	}
 
 	return e.ForceEnsure(ctx)
@@ -65,23 +70,9 @@ func (e *Environment) Ensure(ctx EnsureContext) error {
 
 // ForceEnsure resolves and sets all environment variables,
 // even if the environment already appears to have been configured.
-func (e *Environment) ForceEnsure(ctx EnsureContext) error {
+func (e *Environment) ForceEnsure(ctx environmentvariables.EnsureContext) error {
 
-	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)
-
-	if e.ClusterName == "" {
-		e.ClusterName = e.DefaultCluster
-	}
-
-	log := ctx.Log()
-
-	_ = os.Setenv(core.EnvEnvironment, e.Name)
-
-	_, err := pkg.NewShellExe("kubectl", "config", "use-context", e.ClusterName).RunOut()
-	if err != nil {
-		log.Println(color.RedString("Error setting kubernetes context: %s\n", err))
-		log.Println(color.YellowString(`try running "bosun kube configure-cluster %s"`, e.ClusterName))
-	}
+	ctx = ctx.WithPwd(e.FromPath).(environmentvariables.EnsureContext)
 
 	for _, v := range e.Variables {
 		if err := v.Ensure(ctx); err != nil {
@@ -89,10 +80,57 @@ func (e *Environment) ForceEnsure(ctx EnsureContext) error {
 		}
 	}
 
-	return nil
+	return e.EnsureCluster(ctx)
 }
 
-func (e *Environment) GetVariablesAsMap(ctx EnsureContext) (map[string]string, error) {
+// Ensure resolves and sets all environment variables, and
+// sets the cluster, but only if the environment has not already
+// been set.
+func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) error {
+	if e.ClusterName == "" {
+		e.ClusterName = os.Getenv(core.EnvCluster)
+	}
+
+	if e.ClusterName == "" {
+		e.ClusterName = e.DefaultCluster
+	}
+
+	var err error
+	e.Cluster, err = e.GetClusterByName(e.ClusterName)
+	if err != nil {
+		return err
+	}
+
+	previouslySetCluster := os.Getenv(core.EnvCluster)
+	if previouslySetCluster == e.Cluster.Name {
+		return nil
+	}
+
+	_ = os.Setenv(core.EnvCluster, e.Cluster.Name)
+
+	for _, v := range e.Cluster.Variables {
+		if err = v.Ensure(ctx); err != nil {
+			return err
+		}
+	}
+
+	err = e.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+		Name:  e.Cluster.Name,
+		Log:   pkg.Log,
+		Force: ctx.GetParameters().Force,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
+	_, err = pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
+
+	return err
+}
+
+func (e *Environment) GetVariablesAsMap(ctx environmentvariables.EnsureContext) (map[string]string, error) {
 
 	err := e.Ensure(ctx)
 	if err != nil {
@@ -106,10 +144,16 @@ func (e *Environment) GetVariablesAsMap(ctx EnsureContext) (map[string]string, e
 		vars[v.Name] = v.Value
 	}
 
+	if e.Cluster != nil {
+		for _, v := range e.Cluster.Variables {
+			vars[v.Name] = v.Value
+		}
+	}
+
 	return vars, nil
 }
 
-func (e *Environment) Render(ctx EnsureContext) (string, error) {
+func (e *Environment) Render(ctx environmentvariables.EnsureContext) (string, error) {
 
 	err := e.Ensure(ctx)
 	if err != nil {
@@ -126,9 +170,9 @@ func (e *Environment) Render(ctx EnsureContext) (string, error) {
 	return s, nil
 }
 
-func (e *Environment) Execute(ctx EnsureContext) error {
+func (e *Environment) Execute(ctx environmentvariables.EnsureContext) error {
 
-	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)
+	ctx = ctx.WithPwd(e.FromPath).(environmentvariables.EnsureContext)
 
 	for _, cmd := range e.Commands {
 		log := ctx.Log().WithField("name", cmd.Name).WithField("fromPath", e.FromPath)

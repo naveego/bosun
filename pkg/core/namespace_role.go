@@ -79,6 +79,14 @@ func (e NamespaceRoles) String() string {
 	return fmt.Sprintf("%#v", e)
 }
 
+func (e NamespaceRoles) Strings() []string {
+	var out []string
+	for _, x := range e {
+		out = append(out, string(x))
+	}
+	return out
+}
+
 type NamespaceRoler interface {
 	NamespaceRole() NamespaceRole
 }

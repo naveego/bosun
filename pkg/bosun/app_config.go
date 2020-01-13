@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
@@ -23,7 +24,6 @@ type AppConfig struct {
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool           `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
 	ReportDeployment bool           `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
-	Namespace        string         `yaml:"namespace,omitempty" json:"namespace,omitempty"`
 	RepoName         string         `yaml:"repo,omitempty" json:"repo,omitempty"`
 	HarborProject    string         `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
 	Version          semver.Version `yaml:"version,omitempty" json:"version,omitempty"`
@@ -50,6 +50,10 @@ type AppConfig struct {
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.
 	manifest       *AppManifest `yaml:"-" json:"-"` // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
+}
+
+func (p *AppConfig) GetValueSetCollection() values.ValueSetCollection {
+	return p.Values
 }
 
 type AppReleaseHistory []AppReleaseHistoryEntry
@@ -181,10 +185,30 @@ func (a *AppConfig) SetFromPath(fromPath string) {
 	}
 }
 
-// GetNamespace returns the app's namespace, or "default" if it isn't set
-func (a *AppConfig) GetNamespace() string {
-	if a.Namespace != "" {
-		return a.Namespace
+func (a *AppConfig) LoadChartValues() (values.ValueSet, error) {
+
+	if a.ChartPath != "" {
+		chartRef := a.ResolveRelative(a.ChartPath)
+		valuesYaml, err := pkg.NewShellExe(
+			"helm", "inspect", "values",
+			chartRef,
+			"--version", a.Version.String(),
+		).RunOut()
+		if err != nil {
+			return values.ValueSet{}, errors.Errorf("load default values from %q: %s", chartRef, err)
+		}
+		var chartValues values.Values
+		chartValues, err = values.ReadValues([]byte(valuesYaml))
+		if err != nil {
+			return values.ValueSet{}, errors.Errorf("parse default values from %q: %s", chartRef, err)
+		}
+		return values.ValueSet{
+			Source: fmt.Sprintf("%s chart at %s", a.Name, chartRef),
+			Static: chartValues,
+		}, nil
+	} else {
+		return values.ValueSet{
+			Source: fmt.Sprintf("%s chart not found", a.Name),
+		}, nil
 	}
-	return "default"
 }

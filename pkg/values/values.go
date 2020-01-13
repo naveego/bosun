@@ -258,6 +258,53 @@ func (v Values) Merge(src Values) {
 	}
 }
 
+// Merge takes the properties in src and merges them into Values. Maps
+// are merged (keys are overwritten) while values and arrays are replaced.
+func (v Values) MergeWithAttribution(src Values, attribution string, debug Values) {
+	for key, srcVal := range src {
+		destVal, found := v[key]
+
+		srcType := fmt.Sprintf("%T", srcVal)
+		destType := fmt.Sprintf("%T", destVal)
+		match := srcType == destType
+		validSrc := istable(srcVal)
+		validDest := istable(destVal)
+
+		if found && match && validSrc && validDest {
+			destMap := destVal.(Values)
+			srcMap := srcVal.(Values)
+
+			childDebug, hasChildDebug := debug[key].(Values)
+			if !hasChildDebug {
+				childDebug = Values{}
+				debug[key] = childDebug
+			}
+
+			destMap.MergeWithAttribution(srcMap, attribution, childDebug)
+		} else {
+			v[key] = srcVal
+			debug[key] = attribution
+		}
+	}
+}
+
+func (v Values) MakeAttributionValues(attribution string) Values {
+	out := Values{}
+	for key, srcVal := range v {
+
+		validSrc := istable(srcVal)
+
+		if validSrc {
+			srcMap := srcVal.(Values)
+
+			out[key] = srcMap.MakeAttributionValues(attribution)
+		} else {
+			out[key] = attribution
+		}
+	}
+	return out
+}
+
 // Include takes any properties in src which are not in this instance and adds them to this instance.
 func (v Values) Include(src Values) {
 	for key, srcVal := range src {

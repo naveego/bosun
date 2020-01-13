@@ -58,8 +58,8 @@ const (
 )
 
 func init() {
-	appCmd.PersistentFlags().BoolP(ArgFilteringAll, "a", false, "Apply to all known microservices.")
-	appCmd.PersistentFlags().StringSliceP(ArgFilteringLabels, "i", []string{}, "Apply to microservices with the provided labels.")
+	appCmd.PersistentFlags().BoolP(ArgFilteringAll, "a", false, "ApplyToValues to all known microservices.")
+	appCmd.PersistentFlags().StringSliceP(ArgFilteringLabels, "i", []string{}, "ApplyToValues to microservices with the provided labels.")
 	appCmd.PersistentFlags().StringSlice(ArgFilteringInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
 	appCmd.PersistentFlags().StringSlice(ArgFilteringExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 
@@ -432,7 +432,6 @@ var appStatusCmd = &cobra.Command{
 		}
 
 		// check first to avoid concurrency issues
-		_ = b.IsClusterAvailable()
 
 		if !skipActual {
 			wg := new(sync.WaitGroup)
@@ -564,7 +563,7 @@ var appToggleCmd = &cobra.Command{
 			}
 
 			if app.DesiredState.Routing == workspace.RoutingLocalhost {
-				err = app.RouteToLocalhost(ctx)
+				err = app.RouteToLocalhost(ctx, "default")
 				if err != nil {
 					return err
 				}

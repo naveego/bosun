@@ -582,9 +582,8 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		color.Yellow("About to deploy the following apps:")
-		for _, name := range util.SortedKeys(deploy.AppDeploys) {
-			app := deploy.AppDeploys[name]
-			fmt.Printf("- %s: %s (tag %s)\n", name, app.Version, deploySettings.GetImageTag(app.AppMetadata))
+		for _, app := range deploy.AppDeploys {
+			fmt.Printf("- %s: %s (tag %s) => %s.%s \n", app, app.AppConfig.Version, deploySettings.GetImageTag(app.AppManifest.AppMetadata), app.Cluster, app.Namespace)
 		}
 
 		if !confirm("Is this what you expected") {
@@ -759,10 +758,7 @@ diff go-between 2.4.2/blue green
 					return "", errors.Wrap(err, "environment")
 				}
 
-				env, err := environment.New(*environmentConfig, environment.Options{
-					ValueSets: values.ValueSetCollection{
-						ValueSets: b.GetValueSets(),
-					}})
+				env, err := environment.New(*environmentConfig, environment.Options{})
 				if err != nil {
 					return "", err
 				}
@@ -773,7 +769,7 @@ diff go-between 2.4.2/blue green
 				if releaseName != "" {
 					releaseManifest, err := p.GetReleaseManifestBySlot(releaseName)
 
-					valueSets := []values.ValueSet{env.ValueSet}
+					valueSets := []values.ValueSet{}
 
 					deploySettings := bosun.DeploySettings{
 						Environment: ctx.Environment(),
@@ -786,13 +782,19 @@ diff go-between 2.4.2/blue green
 						return "", err
 					}
 
-					appDeploy, ok = deploy.AppDeploys[app.Name]
+					for _, candidate := range deploy.AppDeploys {
+						if candidate.Name == app.Name {
+							appDeploy = candidate
+							ok = true
+						}
+					}
+
 					if !ok {
 						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
 					}
 
 				} else {
-					valueSets := []values.ValueSet{env.ValueSet}
+					valueSets := []values.ValueSet{}
 
 					deploySettings := bosun.DeploySettings{
 						Environment: ctx.Environment(),
@@ -807,7 +809,12 @@ diff go-between 2.4.2/blue green
 						return "", err
 					}
 
-					appDeploy, ok = deploy.AppDeploys[app.Name]
+					for _, candidate := range deploy.AppDeploys {
+						if candidate.Name == app.Name {
+							appDeploy = candidate
+							ok = true
+						}
+					}
 					if !ok {
 						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
 					}

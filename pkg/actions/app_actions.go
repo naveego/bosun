@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/mongo"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -32,24 +33,21 @@ const (
 type AppAction struct {
 	core.ConfigShared `yaml:",inline"`
 
-	When               ActionSchedules       `yaml:"when,flow,omitempty" json:"when,omitempty"`
-	Where              core.EnvironmentRoles `yaml:"where,flow,omitempty" json:"where,omitempty"`
-	MaxAttempts        int                   `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
-	Timeout            time.Duration         `yaml:"timeout,omitempty" json:"timeout,omitempty"`
-	Interval           time.Duration         `yaml:"interval,omitempty" json:"interval,omitempty"`
-	Vault              *VaultAction          `yaml:"vault,omitempty" json:"vault,omitempty"`
-	Script             *ScriptAction         `yaml:"script,omitempty" json:"script,omitempty"`
-	Bosun              *BosunAction          `yaml:"bosun,omitempty" json:"bosun,omitempty"`
-	Test               *TestAction           `yaml:"test,omitempty" json:"test,omitempty"`
-	DNSTest            *DNSTestAction        `yaml:"dnsTest,omitempty"`
-	Mongo              *MongoAction          `yaml:"mongo,omitempty" json:"mongo,omitempty"`
-	MongoAssert        *MongoAssertAction    `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
-	HTTP               *HTTPAction           `yaml:"http,omitempty" json:"http,omitempty"`
-	ExcludeFromRelease bool                  `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
-}
-
-func (a *AppAction) GetEnvironmentRoles() (core.EnvironmentRoles, bool) {
-	return a.Where, true
+	When               ActionSchedules         `yaml:"when,flow,omitempty" json:"when,omitempty"`
+	Where              core.EnvironmentRoles   `yaml:"where,omitempty"`
+	WhereFilter        filter.ExactMatchConfig `yaml:"whereFilter,omitempty" json:"where,omitempty"`
+	MaxAttempts        int                     `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
+	Timeout            time.Duration           `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Interval           time.Duration           `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Vault              *VaultAction            `yaml:"vault,omitempty" json:"vault,omitempty"`
+	Script             *ScriptAction           `yaml:"script,omitempty" json:"script,omitempty"`
+	Bosun              *BosunAction            `yaml:"bosun,omitempty" json:"bosun,omitempty"`
+	Test               *TestAction             `yaml:"test,omitempty" json:"test,omitempty"`
+	DNSTest            *DNSTestAction          `yaml:"dnsTest,omitempty"`
+	Mongo              *MongoAction            `yaml:"mongo,omitempty" json:"mongo,omitempty"`
+	MongoAssert        *MongoAssertAction      `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
+	HTTP               *HTTPAction             `yaml:"http,omitempty" json:"http,omitempty"`
+	ExcludeFromRelease bool                    `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
 }
 
 func (a *AppAction) GetEnvironmentName() (string, bool) {

@@ -1,4 +1,4 @@
-package environment
+package environmentvariables
 
 import (
 	"github.com/naveego/bosun/pkg/command"

@@ -10,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/ioc"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/templating"
@@ -40,6 +41,7 @@ type BosunContext struct {
 	contextValues    map[string]interface{}
 	provider         ioc.Provider
 	workspaceContext *workspace.Context
+	exactMatchArgs   filter.ExactMatchArgs
 }
 
 // NewTestBosunContext creates a new BosunContext for testing purposes.
@@ -134,9 +136,9 @@ func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 		return c
 	}
 	c.appRelease = a
-	c.log = c.Log().WithField("appDeploy", a.Name)
+	c.log = c.Log().WithField("appDeploy", a.AppManifest.Name)
 	c.LogLine(1, "[Context] Changed AppDeploy.")
-	return c.WithDir(a.AppConfig.FromPath)
+	return c.WithDir(a.FromPath)
 }
 
 func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interface{} {
@@ -154,12 +156,6 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 		core.EnvCluster:         c.env.ClusterName,
 		core.EnvEnvironment:     c.env.Name,
 		core.EnvEnvironmentRole: string(c.env.Role),
-	}
-
-	envValues := c.env.ValueSet.Static.ToEnv("BOSUN_")
-
-	for k, v := range envValues {
-		out[k] = v
 	}
 
 	return out
@@ -332,7 +328,7 @@ func (c BosunContext) IsVerbose() bool {
 	return c.GetParameters().Verbose
 }
 
-func (c BosunContext) GetCluster() string {
+func (c BosunContext) GetClusterName() string {
 	if c.env == nil {
 		return c.WorkspaceContext().CurrentCluster
 	}
@@ -369,10 +365,10 @@ func (c BosunContext) WithStringValue(key string, value string) core.StringKeyVa
 
 func (c BosunContext) GetStringValue(key string, defaultValue ...string) string {
 	switch key {
-	case core.KeyEnv:
+	case core.KeyEnvironment:
 		return c.env.Name
 	case core.KeyCluster:
-		return c.GetCluster()
+		return c.GetClusterName()
 	}
 
 	if out, ok := c.contextValues[key].(string); ok {
@@ -413,4 +409,39 @@ func (c BosunContext) GetReleaseValues() *values.PersistableValues {
 
 func (c BosunContext) GetWorkspaceCommand(name string) *command.CommandValue {
 	return c.Bosun.ws.GetWorkspaceCommand(name)
+}
+
+func (c BosunContext) GetExactMatchArgs() filter.ExactMatchArgs {
+	if c.exactMatchArgs == nil {
+		c.exactMatchArgs = map[string]string{}
+		if c.Environment() != nil {
+			c.exactMatchArgs[core.KeyEnvironment] = c.Environment().Name
+			c.exactMatchArgs[core.KeyEnvironmentRole] = string(c.Environment().Role)
+		}
+		if c.GetClusterName() != "" {
+			c.exactMatchArgs[core.KeyCluster] = c.GetClusterName()
+		}
+
+	}
+	return c.exactMatchArgs
+}
+
+func (c BosunContext) WithExactMatchArgs(args filter.ExactMatchArgs) interface{} {
+	e := filter.ExactMatchArgs{}
+	for k, v := range c.GetExactMatchArgs() {
+		e[k] = v
+	}
+	for k, v := range args {
+		e[k] = v
+	}
+	c.exactMatchArgs = e
+	return c
+}
+
+func (c BosunContext) GetPlatform() *Platform {
+	p, err := c.Bosun.GetCurrentPlatform()
+	if err != nil {
+		panic(fmt.Sprintf("no current platform: %s", err))
+	}
+	return p
 }

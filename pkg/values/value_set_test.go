@@ -1,13 +1,11 @@
 package values_test
 
 import (
-	"fmt"
 	"github.com/naveego/bosun/pkg/core"
 	. "github.com/naveego/bosun/pkg/values"
-	yaml "github.com/naveego/bosun/pkg/yaml"
+	"github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 var _ = Describe("ValueSetCollection", func() {
@@ -41,6 +39,13 @@ var _ = Describe("ValueSetCollection", func() {
         a: redA
         c: redC
         e: redgreenE
+  red,redfiltered: 
+    name: redfiltered
+    exactMatchFilters: 
+      multi: [a,b]
+      single: [c]
+    static:
+      filtered: not-present-without-filter
   blue:
     name: blue
     static:
@@ -67,6 +72,18 @@ var _ = Describe("ValueSetCollection", func() {
 							"b": "redgreenB",
 							"f": "redgreenF",
 						},
+					},
+				}, {
+					ConfigShared: core.ConfigShared{
+						Name: "redfiltered",
+					},
+					Roles: []core.EnvironmentRole{"red", "redfiltered"},
+					ExactMatchFilters: map[string][]string{
+						"multi":  []string{"a", "b"},
+						"single": []string{"c"},
+					},
+					Static: Values{
+						"filtered": "not-present-without-filter",
 					},
 				},
 				{
@@ -113,16 +130,16 @@ var _ = Describe("ValueSetCollection", func() {
 		actualYaml, _ := yaml.MarshalString(actual)
 		expectedYaml, _ := yaml.MarshalString(expected)
 
-		fmt.Println("\nactual")
-		fmt.Println(actualYaml)
-		fmt.Println("\nexpected")
-		fmt.Println(expectedYaml)
-		fmt.Println("\ndiff")
+		// fmt.Println("\nactual")
+		// fmt.Println(actualYaml)
+		// fmt.Println("\nexpected")
+		// fmt.Println(expectedYaml)
+		// fmt.Println("\ndiff")
 
-		diff := diffmatchpatch.New().DiffMain(actualYaml, expectedYaml, true)
-		p := diffmatchpatch.New().DiffPrettyText(diff)
+		// diff := diffmatchpatch.New().DiffMain(actualYaml, expectedYaml, true)
+		// p := diffmatchpatch.New().DiffPrettyText(diff)
 
-		fmt.Println(p)
+		// fmt.Println(p)
 
 		Expect(actualYaml).To(Equal(expectedYaml))
 	})
@@ -142,7 +159,7 @@ var _ = Describe("ValueSetCollection", func() {
 		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
 		redValues := sut.ExtractValueSetByRoles("green", "red")
 		Expect(redValues.Static).To(HaveKeyWithValue("green1", "d"), "it is in the green set")
-		Expect(redValues.Static).To(HaveKeyWithValue("redgreen1", "a"), "the green key has a higher priority than the red,green key")
+		Expect(redValues.Static).To(HaveKeyWithValue("redgreen1", "c"), "the green key has a higher priority than the red,green key")
 		Expect(redValues.Static).To(HaveKeyWithValue("redgreen2", "f"), "the red,green key should be integrated")
 		Expect(redValues.Static).To(HaveKeyWithValue("red1", "b"), "the red,green key should be integrated")
 	})
@@ -177,4 +194,18 @@ var _ = Describe("ValueSetCollection", func() {
 
 	})
 
+	It("should match with exact match labels", func() {
+		var sut ValueSetCollection
+		Expect(yaml.Unmarshal([]byte(input), &sut)).To(Succeed())
+		redValues := sut.ExtractValueSet(ExtractValueSetArgs{
+			Roles: []core.EnvironmentRole{"red"},
+			ExactMatch: map[string]string{
+				"multi":  "b",
+				"single": "c",
+			},
+		})
+		Expect(redValues.Static).To(HaveKeyWithValue("filtered", "not-present-without-filter"), "it is in the redfiltered set")
+		Expect(redValues.Static).To(HaveKeyWithValue("red1", "b"), "it is in the red set")
+
+	})
 })

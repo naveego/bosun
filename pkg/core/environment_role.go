@@ -7,6 +7,10 @@ import (
 
 type EnvironmentRole string
 
+func (e EnvironmentRole) String() string {
+	return string(e)
+}
+
 type EnvironmentRoles []EnvironmentRole
 
 func (e EnvironmentRoles) MarshalYAML() (interface{}, error) {
@@ -63,6 +67,14 @@ func (e EnvironmentRoles) Contains(role EnvironmentRole) bool {
 		}
 	}
 	return false
+}
+
+func (e EnvironmentRoles) Strings() []string {
+	var out []string
+	for _, x := range e {
+		out = append(out, string(x))
+	}
+	return out
 }
 
 func (e EnvironmentRoles) String() string {

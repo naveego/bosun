@@ -26,6 +26,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func init() {
@@ -199,6 +200,39 @@ const (
 	argPlatformAddClusterRoles   = "cluster-roles"
 	argPlatformAddNamespaceRoles = "namespace-roles"
 )
+
+var _ = addCommand(platformCmd, &cobra.Command{
+	Use:   "add-value-overrides {appName} {override-name} {cluster|clusterRole|environment={value,...} ...}",
+	Args:  cobra.MinimumNArgs(2),
+	Short: "Adds default values for an app to a cluster.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		matches := map[string][]string{}
+		pairs := args[2:]
+		for _, pair := range pairs {
+			keyValues := strings.Split(pair, "=")
+			if len(keyValues) != 2 {
+				return errors.New("invalid match values")
+			}
+			key := keyValues[0]
+			values := strings.Split(keyValues[1], ",")
+			matches[key] = values
+		}
+
+		err = p.AddAppValuesForCluster(args[0], args[1], matches)
+
+		if err != nil {
+			return err
+		}
+
+		return p.Save(b.NewContext())
+	},
+})
 
 var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "add-repo {org/repo...}",

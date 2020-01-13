@@ -21,7 +21,7 @@ var _ = Describe("ValueMapping", func() {
 		}
 
 		actual := target.Clone()
-		Expect(mappings.Apply(actual)).To(Succeed())
+		Expect(mappings.ApplyToValues(actual)).To(Succeed())
 
 		y, err := yaml.MarshalString(actual)
 		Expect(err).ToNot(HaveOccurred())

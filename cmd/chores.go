@@ -19,6 +19,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
@@ -226,7 +227,15 @@ func migrateAppToRolePatterns(app *bosun.AppConfig) {
 	}
 
 	for i, a := range app.Actions {
-		a.Where = mapRoles(a.Where)
+		where := mapRoles(a.Where)
+		if a.WhereFilter == nil {
+			a.WhereFilter = filter.ExactMatchConfig{}
+		}
+		a.WhereFilter[core.KeyEnvironmentRole] = nil
+		for _, r := range where {
+			a.WhereFilter[core.KeyEnvironmentRole] = append(a.WhereFilter[core.KeyEnvironmentRole], string(r))
+		}
+		a.Where = nil
 		app.Actions[i] = a
 	}
 

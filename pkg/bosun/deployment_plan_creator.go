@@ -88,7 +88,9 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 				return nil, errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderName)
 			}
 
-			appPlan.ManifestPath = filepath.Join(req.ManifestDirPath, appPlan.Name)
+			manifestPath := filepath.Join(req.ManifestDirPath, appPlan.Name)
+
+			appPlan.ManifestPath, _ = filepath.Rel(req.ManifestDirPath, manifestPath)
 		}
 
 		plan.Apps = append(plan.Apps, appPlan)

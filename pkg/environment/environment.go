@@ -1,8 +1,9 @@
 package environment
 
 import (
-	"github.com/naveego/bosun/pkg"
+	"errors"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environmentvariables"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/values"
 )
@@ -12,13 +13,17 @@ type Environment struct {
 
 	ClusterName string
 	Cluster     *kube.ClusterConfig
+}
 
-	ValueSet values.ValueSet
+func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
+	if e.ValueOverrides == nil {
+		return values.NewValueSetCollection()
+	}
+	return *e.ValueOverrides
 }
 
 type Options struct {
-	Cluster   string
-	ValueSets values.ValueSetCollection
+	Cluster string
 }
 
 func New(config Config, options Options) (Environment, error) {
@@ -26,21 +31,9 @@ func New(config Config, options Options) (Environment, error) {
 	env := Environment{
 		Config:      config,
 		ClusterName: options.Cluster,
-		ValueSet:    values.ValueSet{},
 	}
 
-	env = env.WithValuesFrom(options.ValueSets)
-
 	return env, nil
-}
-
-func (e Environment) WithValuesFrom(source values.ValueSetCollection) Environment {
-
-	valueSetFromNames := source.ExtractValueSetByNames(e.Config.ValueSetNames...)
-	valueSetFromRoles := source.ExtractValueSetByRoles(e.Config.Role)
-
-	e.ValueSet = valueSetFromNames.WithValues(valueSetFromRoles)
-	return e
 }
 
 func (e Environment) Matches(candidate EnvironmentFilterable) bool {
@@ -61,35 +54,38 @@ func (e Environment) Matches(candidate EnvironmentFilterable) bool {
 	return true
 }
 
-func (e *Environment) SwitchToCluster(cluster *kube.ClusterConfig) error {
+func (e *Environment) SwitchToCluster(ctx environmentvariables.EnsureContext, cluster *kube.ClusterConfig) error {
+
+	if cluster == nil {
+		return errors.New("cluster parameter was nil")
+	}
 
 	if e.Cluster != nil && e.Cluster.Name == cluster.Name {
 		return nil
 	}
 
-	var err error
+	e.setCurrentCluster(cluster)
 
+	e.ClusterName = cluster.Name
 	e.Cluster = cluster
 
-	err = e.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
-		Name: e.Cluster.Name,
-		Log:  pkg.Log,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
-	err = pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunE()
-
-	return err
+	return e.EnsureCluster(ctx)
 }
 
 func (e *Environment) GetClusterForRole(role core.ClusterRole) (*kube.ClusterConfig, error) {
 
 	cluster, err := e.Clusters.GetKubeConfigDefinitionByRole(role)
 	return cluster, err
+}
+
+func (e *Environment) GetClusterByName(name string) (*kube.ClusterConfig, error) {
+	cluster, err := e.Clusters.GetKubeConfigDefinitionByName(name)
+	return cluster, err
+}
+
+func (e *Environment) setCurrentCluster(cluster *kube.ClusterConfig) {
+	e.Cluster = cluster
+	e.ClusterName = cluster.Name
 }
 
 type EnvironmentFilterable interface {

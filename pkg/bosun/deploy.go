@@ -59,7 +59,7 @@ type BundleFile struct {
 
 type Deploy struct {
 	*DeploySettings
-	AppDeploys map[string]*AppDeploy
+	AppDeploys []*AppDeploy
 	Filtered   map[string]bool // contains any app deploys which were part of the release but which were filtered out
 }
 
@@ -70,6 +70,7 @@ type DeploySettings struct {
 	Apps               map[string]*App
 	AppManifests       map[string]*AppManifest
 	AppDeploySettings  map[string]AppDeploySettings
+	AppOrder           []string
 	UseLocalContent    bool
 	Filter             *filter.Chain // If set, only apps which match the filter will be deployed.
 	IgnoreDependencies bool
@@ -102,9 +103,10 @@ func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 }
 
 type AppDeploySettings struct {
-	Environment     *environment.Environment
-	ValueSets       []values.ValueSet
-	UseLocalContent bool // if true, the app will be deployed using the local chart
+	Environment       *environment.Environment
+	ValueSets         []values.ValueSet
+	UseLocalContent   bool // if true, the app will be deployed using the local chart
+	PlatformAppConfig *PlatformAppConfig
 }
 
 func (d DeploySettings) GetAppDeploySettings(name string) AppDeploySettings {
@@ -137,9 +139,10 @@ func (d DeploySettings) GetAppDeploySettings(name string) AppDeploySettings {
 func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 	deploy := &Deploy{
 		DeploySettings: &settings,
-		AppDeploys:     AppDeployMap{},
 		Filtered:       map[string]bool{},
 	}
+
+	appDeployMap := AppDeployMap{}
 
 	if settings.Manifest != nil {
 		appManifests, err := settings.Manifest.GetAppManifests()
@@ -159,7 +162,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", manifest.Name)
 			}
-			deploy.AppDeploys[appDeploy.Name] = appDeploy
+			appDeployMap[appDeploy.Name] = appDeploy
 		}
 	} else if len(settings.Apps) > 0 {
 
@@ -172,7 +175,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", appManifest.Name)
 			}
-			deploy.AppDeploys[appDeploy.Name] = appDeploy
+			appDeployMap[appDeploy.Name] = appDeploy
 		}
 	} else if len(settings.AppManifests) > 0 {
 		for _, appManifest := range settings.AppManifests {
@@ -180,25 +183,192 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", appManifest.Name)
 			}
-			deploy.AppDeploys[appDeploy.Name] = appDeploy
+			appDeployMap[appDeploy.Name] = appDeploy
 		}
 	} else {
 		return nil, errors.New("either settings.Manifest, settings.Apps, or settings.AppManifests must be populated")
 	}
 
 	if settings.Filter != nil {
-		appDeploys := deploy.AppDeploys
-		filtered, err := settings.Filter.FromErr(appDeploys)
+		unfilteredAppDeployMap := appDeployMap
+		filtered, err := settings.Filter.FromErr(unfilteredAppDeployMap)
 		if err != nil {
 			return nil, errors.Wrap(err, "all apps were filtered out")
 		}
-		deploy.AppDeploys = filtered.(map[string]*AppDeploy)
-		for name := range appDeploys {
-			if _, ok := deploy.AppDeploys[name]; !ok {
+		appDeployMap = filtered.(map[string]*AppDeploy)
+		for name := range unfilteredAppDeployMap {
+			if _, ok := appDeployMap[name]; !ok {
 				ctx.Log().Warnf("App %q was filtered out of the release.", name)
 				deploy.Filtered[name] = true
 			}
 		}
+	}
+
+	if len(deploy.AppOrder) == 0 {
+		var requestedAppNames []string
+		dependencies := map[string][]string{}
+		for _, app := range appDeployMap {
+			requestedAppNames = append(requestedAppNames, app.Name)
+			for _, dep := range app.AppConfig.DependsOn {
+				dependencies[app.Name] = append(dependencies[app.Name], dep.Name)
+			}
+		}
+
+		topology, err := GetDependenciesInTopologicalOrder(dependencies, requestedAppNames...)
+
+		if err != nil {
+			return nil, errors.Errorf("repos could not be sorted in dependency order: %s", err)
+		}
+
+		for _, dep := range topology {
+			app, ok := appDeployMap[dep]
+			if !ok {
+				if deploy.IgnoreDependencies {
+					continue
+				}
+				if filtered := deploy.Filtered[dep]; filtered {
+					continue
+				}
+
+				return nil, errors.Errorf("an app specifies a dependency that could not be found: %q (filtered: %#v)", dep, deploy.Filtered)
+			}
+
+			if app.DesiredState.Status == workspace.StatusUnchanged {
+				ctx.WithAppDeploy(app).Log().Infof("Skipping deploy because desired state was %q.", workspace.StatusUnchanged)
+				continue
+			}
+
+			deploy.AppOrder = append(deploy.AppOrder, app.Name)
+		}
+	}
+
+	env := ctx.Environment()
+
+	for _, appName := range deploy.AppOrder {
+
+		appCtx := ctx.WithExactMatchArgs(filter.ExactMatchArgs{core.KeyAppName: appName}).(BosunContext)
+
+		app := appDeployMap[appName]
+
+		log := appCtx.WithLogField("app", appName).Log()
+
+		clusterRoles := core.ClusterRoles{core.ClusterRoleDefault}
+		namespaceRoles := core.NamespaceRoles{core.NamespaceRoleDefault}
+		if app.AppDeploySettings.PlatformAppConfig != nil {
+			clusterRoles = app.AppDeploySettings.PlatformAppConfig.ClusterRoles
+			namespaceRoles = app.AppDeploySettings.PlatformAppConfig.NamespaceRoles
+		}
+
+		deployedToClusterForRole := map[string]core.ClusterRole{}
+
+		for _, clusterRole := range clusterRoles {
+
+			cluster, err := env.GetClusterForRole(clusterRole)
+
+			if err != nil {
+				return nil, errors.Wrapf(err, "find cluster to deploy %q with role %q", app.Name, clusterRole)
+			}
+
+			log = log.WithField("cluster", cluster.Name)
+
+			if deployedForClusterRole, ok := deployedToClusterForRole[cluster.Name]; ok {
+				log.Infof("Already prepared deploy to cluster %q for role %q, skipping additional deploys.", cluster.Name, deployedForClusterRole)
+				continue
+			}
+
+			appCtx = appCtx.WithExactMatchArgs(filter.ExactMatchArgs{
+				core.KeyCluster:     cluster.Name,
+				core.KeyClusterRole: string(clusterRole),
+			}).(BosunContext)
+
+			// store deployment to cluster to prevent re-deploy if one cluster has two roles
+			deployedToClusterForRole[cluster.Name] = clusterRole
+
+			app = app.Clone()
+
+			app.Cluster = cluster.Name
+
+			// add the namespace mappings for the cluster to the values which will be resolved
+			app = app.WithValueSet(values.ValueSet{
+				Static: values.Values{
+					"bosun": values.Values{
+						"namespaces": cluster.Namespaces.ToStringMap(),
+					},
+				},
+			})
+
+			deployedToNamespaceForRole := map[string]core.NamespaceRole{}
+			for _, namespaceRole := range namespaceRoles {
+
+				var namespace kube.NamespaceConfig
+				namespace, err = cluster.GetNamespace(namespaceRole)
+				if err != nil {
+					return nil, errors.Wrapf(err, "mapping namespace for %q", app.Name)
+				}
+
+				log = log.WithField("namespace", namespace.Name)
+
+				if deployedForNamespaceRole, ok := deployedToNamespaceForRole[namespace.Name]; ok {
+					log.Infof("Already prepared deploy to namespace %q for role %q, skipping additional deploys.", namespace.Name, deployedForNamespaceRole)
+					continue
+				}
+
+				log.Infof("Deploying to namespace %q...", namespace.Name)
+
+				deployedToNamespaceForRole[namespace.Name] = namespaceRole
+
+				app = app.Clone()
+
+				matchArgs := filter.ExactMatchArgs{
+					core.KeyEnvironment:     env.Name,
+					core.KeyEnvironmentRole: env.Role.String(),
+					core.KeyNamespace:       namespace.Name,
+					core.KeyNamespaceRole:   string(namespaceRole),
+					core.KeyCluster:         cluster.Name,
+					core.KeyClusterRole:     string(clusterRole),
+					core.KeyClusterProvider: cluster.Provider,
+				}
+
+				app.MatchArgs = matchArgs
+
+				appCtx = appCtx.WithExactMatchArgs(matchArgs).(BosunContext)
+
+				app.Namespace = namespace.Name
+				app = app.WithValueSet(values.ValueSet{
+					Static: values.Values{
+						"bosun": values.Values{
+							core.KeyEnvironment:     env.Name,
+							core.KeyEnvironmentRole: env.Role.String(),
+							core.KeyNamespace:       namespace.Name,
+							core.KeyNamespaceRole:   namespaceRole,
+							core.KeyNamespaceRoles:  namespaceRoles.Strings(),
+							core.KeyCluster:         cluster.Name,
+							core.KeyClusterRole:     clusterRole,
+							core.KeyClusterRoles:    cluster.Roles.Strings(),
+							core.KeyClusterProvider: cluster.Provider,
+						},
+					},
+				})
+
+				if app.AppDeploySettings.PlatformAppConfig != nil && app.AppDeploySettings.PlatformAppConfig.ValueOverrides != nil {
+					appPlatformOverrides := app.AppDeploySettings.PlatformAppConfig.ValueOverrides.ExtractValueSet(values.ExtractValueSetArgs{
+						ExactMatch: appCtx.GetExactMatchArgs(),
+					})
+
+					app = app.WithValueSet(appPlatformOverrides)
+				}
+
+				if env.ValueOverrides != nil {
+					envOverrides := env.ValueOverrides.ExtractValueSet(values.ExtractValueSetArgs{
+						ExactMatch: appCtx.GetExactMatchArgs(),
+					})
+					app = app.WithValueSet(envOverrides)
+				}
+
+				deploy.AppDeploys = append(deploy.AppDeploys, app)
+			}
+		}
+
 	}
 
 	return deploy, nil
@@ -221,12 +391,12 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
 	var errs []error
 
-	out, err := pkg.NewShellExe("helm", "search", a.Chart(ctx), "-v", a.Version.String()).RunOut()
+	out, err := pkg.NewShellExe("helm", "search", a.Chart(ctx), "-v", a.AppConfig.Version.String()).RunOut()
 	if err != nil {
-		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.AppConfig.Chart, a.Version, err))
+		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.AppConfig.Chart, a.AppConfig.Version, err))
 	}
 	if !strings.Contains(out, a.AppConfig.Chart) {
-		errs = append(errs, errors.Errorf("chart %s@%s not found", a.AppConfig.Chart, a.Version))
+		errs = append(errs, errors.Errorf("chart %s@%s not found", a.AppConfig.Chart, a.AppConfig.Version))
 	}
 
 	if !a.AppConfig.BranchForRelease {
@@ -242,7 +412,7 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
 		tag, ok := values.Values["tag"].(string)
 		if !ok {
-			tag = a.Version.String()
+			tag = a.AppConfig.Version.String()
 		}
 
 		imageName := imageConfig.GetFullNameWithTag(tag)
@@ -354,141 +524,51 @@ func checkImageExists(ctx BosunContext, name string) error {
 // 	return nil
 // }
 
-func (r *Deploy) Deploy(ctx BosunContext) error {
-
-	var requestedAppNames []string
-	dependencies := map[string][]string{}
-	for _, app := range r.AppDeploys {
-		requestedAppNames = append(requestedAppNames, app.Name)
-		for _, dep := range app.AppConfig.DependsOn {
-			dependencies[app.Name] = append(dependencies[app.Name], dep.Name)
-		}
-	}
-
-	topology, err := GetDependenciesInTopologicalOrder(dependencies, requestedAppNames...)
-
-	if err != nil {
-		return errors.Errorf("repos could not be sorted in dependency order: %s", err)
-	}
-
-	var toDeploy []*AppDeploy
-
-	for _, dep := range topology {
-		app, ok := r.AppDeploys[dep]
-		if !ok {
-			if r.IgnoreDependencies {
-				continue
-			}
-			if filtered := r.Filtered[dep]; filtered {
-				continue
-			}
-
-			return errors.Errorf("an app specifies a dependency that could not be found: %q (filtered: %#v)", dep, r.Filtered)
-		}
-
-		if app.DesiredState.Status == workspace.StatusUnchanged {
-			ctx.WithAppDeploy(app).Log().Infof("Skipping deploy because desired state was %q.", workspace.StatusUnchanged)
-			continue
-		}
-
-		toDeploy = append(toDeploy, app)
-	}
+func (d *Deploy) Deploy(ctx BosunContext) error {
 
 	env := ctx.Environment()
 
-	for _, app := range toDeploy {
+	for _, app := range d.AppDeploys {
 
-		log := ctx.WithLogField("app", app.Name).Log()
+		appCtx := ctx.WithAppDeploy(app).WithExactMatchArgs(app.MatchArgs).(BosunContext)
 
-		clusterRoles := core.ClusterRoles{core.ClusterRoleDefault}
-		namespaceRoles := core.NamespaceRoles{core.NamespaceRoleDefault}
-		if app.PlatformAppConfig != nil {
-			clusterRoles = app.PlatformAppConfig.ClusterRoles
-			namespaceRoles = app.PlatformAppConfig.NamespaceRoles
+		if app.Cluster == "" {
+			return errors.Errorf("cluster was empty on app %q", app.Name)
 		}
 
-		deployedToClusterForRole := map[string]core.ClusterRole{}
-		deployedToNamespaceForRole := map[string]core.NamespaceRole{}
+		cluster, err := env.GetClusterByName(app.Cluster)
+		if err != nil {
+			return err
+		}
+		err = env.SwitchToCluster(ctx, cluster)
+		if err != nil {
+			return errors.Wrapf(err, "switch to cluster %q to deploy %q", app.Cluster, app.Name)
+		}
 
-		originalAppDeploySettingsValueSets := append(values.ValueSets{}, app.AppDeploySettings.ValueSets...)
+		appCtx = appCtx.WithLogField("cluster", app.Cluster).(BosunContext)
 
-		for _, clusterRole := range clusterRoles {
-			cluster, err := env.GetClusterForRole(clusterRole)
+		app.DesiredState.Status = workspace.StatusDeployed
+		if app.DesiredState.Routing == "" {
+			app.DesiredState.Routing = workspace.RoutingCluster
+		}
 
+		app.DesiredState.Force = appCtx.GetParameters().Force
+
+		err = app.Reconcile(appCtx)
+
+		if err != nil {
+			return err
+		}
+		if d.Recycle {
+			err = app.Recycle(ctx)
 			if err != nil {
-				return errors.Wrapf(err, "find cluster to deploy %q with role %q", app.Name, clusterRole)
-			}
-
-			err = env.SwitchToCluster(cluster)
-			if err != nil {
-				return errors.Wrapf(err, "switch to cluster %q to deploy %q with role %q", cluster.Name, app.Name, clusterRole)
-			}
-
-			log = log.WithField("cluster", cluster.Name)
-
-			if deployedForClusterRole, ok := deployedToClusterForRole[cluster.Name]; ok {
-				log.Infof("Already deployed to cluster for role %q, skipping additional deploys.", deployedForClusterRole)
-				continue
-			}
-
-			// store deployment to cluster to prevent re-deploy if one cluster has two roles
-			deployedToClusterForRole[cluster.Name] = clusterRole
-
-			// add the namespace mappings for the cluster to the values which will be resolved
-			app.AppDeploySettings.ValueSets = append(originalAppDeploySettingsValueSets, values.ValueSet{
-				Static: values.Values{
-					"bosun": values.Values{
-						"namespaces": cluster.Namespaces.ToStringMap(),
-					},
-				},
-			})
-
-			for _, namespaceRole := range namespaceRoles {
-
-				var namespace kube.NamespaceConfig
-				namespace, err = env.Cluster.GetNamespace(namespaceRole)
-				if err != nil {
-					return errors.Wrapf(err, "mapping namespace for %q", app.Name)
-				}
-
-				log = log.WithField("namespace", namespace.Name)
-
-				if deployedForNamespaceRole, ok := deployedToNamespaceForRole[namespace.Name]; ok {
-					log.Infof("Already deployed to namespace for role %q, skipping additional deploys.", deployedForNamespaceRole)
-					continue
-				}
-
-				deployedToClusterForRole[cluster.Name] = clusterRole
-
-				app.AppConfig.Namespace = namespace.Name
-
-				app.DesiredState.Status = workspace.StatusDeployed
-				if app.DesiredState.Routing == "" {
-					app.DesiredState.Routing = workspace.RoutingCluster
-				}
-
-				ctx.Bosun.SetDesiredState(app.Name, app.DesiredState)
-
-				app.DesiredState.Force = ctx.GetParameters().Force
-
-				err = app.Reconcile(ctx)
-
-				if err != nil {
-					return err
-				}
-				if r.Recycle {
-					err = app.Recycle(ctx)
-					if err != nil {
-						return err
-					}
-				}
+				return err
 			}
 		}
 
 	}
 
-	err = ctx.Bosun.Save()
-	return err
+	return nil
 }
 
 //

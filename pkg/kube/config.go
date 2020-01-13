@@ -3,6 +3,8 @@ package kube
 import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environmentvariables"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -109,13 +111,68 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByRole(role core.ClusterRole) 
 }
 
 type ClusterConfig struct {
-	Name         string               `yaml:"name"`
-	Roles        core.ClusterRoles    `yaml:"roles,flow"`
-	Environments []string             `yaml:"environments,flow"`
-	Oracle       *OracleClusterConfig `yaml:"oracle,omitempty"`
-	Minikube     *MinikubeConfig      `yaml:"minikube,omitempty"`
-	Amazon       *AmazonClusterConfig `yaml:"amazon,omitempty"`
-	Namespaces   NamespaceConfigs     `yaml:"namespaces"`
+	core.ConfigShared `yaml:",inline"`
+	Provider          string                           `yaml:"-"`
+	Roles             core.ClusterRoles                `yaml:"roles,flow"`
+	Variables         []*environmentvariables.Variable `yaml:"variables,omitempty"`
+	ValueOverrides    *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
+	Oracle            *OracleClusterConfig             `yaml:"oracle,omitempty"`
+	Minikube          *MinikubeConfig                  `yaml:"minikube,omitempty"`
+	Amazon            *AmazonClusterConfig             `yaml:"amazon,omitempty"`
+	Namespaces        NamespaceConfigs                 `yaml:"namespaces"`
+}
+
+func (c *ClusterConfig) SetFromPath(fp string) {
+	c.FromPath = fp
+	for i, v := range c.Variables {
+		v.FromPath = fp
+		c.Variables[i] = v
+	}
+	if c.ValueOverrides != nil {
+		c.ValueOverrides.SetFromPath(fp)
+	}
+}
+
+func (f *ClusterConfig) MarshalYAML() (interface{}, error) {
+	if f == nil {
+		return nil, nil
+	}
+	type proxy ClusterConfig
+	p := proxy(*f)
+
+	return &p, nil
+}
+
+func (f *ClusterConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxy ClusterConfig
+	var p proxy
+	if f != nil {
+		p = proxy(*f)
+	}
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		*f = ClusterConfig(p)
+		if f.Oracle != nil {
+			f.Provider = "oracle"
+		}
+		if f.Minikube != nil {
+			f.Provider = "minikube"
+		}
+		if f.Amazon != nil {
+			f.Provider = "amazon"
+		}
+	}
+
+	return err
+}
+
+func (e *ClusterConfig) GetValueSetCollection() values.ValueSetCollection {
+	if e.ValueOverrides == nil {
+		return values.NewValueSetCollection()
+	}
+	return *e.ValueOverrides
 }
 
 type NamespaceConfigs map[core.NamespaceRole]NamespaceConfig

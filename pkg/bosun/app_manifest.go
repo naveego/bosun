@@ -56,10 +56,9 @@ func (a AppMetadata) String() string {
 // as part of a Platform. Instances should be manipulated using methods
 // on Platform, not updated directly.
 type AppManifest struct {
-	*AppMetadata      `yaml:"metadata"`
-	AppConfig         *AppConfig         `yaml:"appConfig" json:"appConfig"`
-	Files             map[string][]byte  `yaml:"-" json:"-"`
-	PlatformAppConfig *PlatformAppConfig `yaml:"-"`
+	*AppMetadata `yaml:"metadata"`
+	AppConfig    *AppConfig        `yaml:"appConfig" json:"appConfig"`
+	Files        map[string][]byte `yaml:"-" json:"-"`
 }
 
 func (a *AppManifest) MarshalYAML() (interface{}, error) {

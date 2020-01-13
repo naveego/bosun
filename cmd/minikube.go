@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"gopkg.in/eapache/go-resiliency.v1/retrier"
@@ -73,8 +74,8 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 
 		konfigs := kube.ConfigDefinitions{
 			&kube.ClusterConfig{
-				Minikube: konfig,
-				Name:     "minikube",
+				Minikube:     konfig,
+				ConfigShared: core.ConfigShared{Name: "minikube"},
 			},
 		}
 

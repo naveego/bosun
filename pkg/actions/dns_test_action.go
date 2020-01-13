@@ -71,7 +71,6 @@ Please configure the DNS record before proceeding.
 		for _, ip := range ips {
 			if ip.String() == expectedIP {
 				matchedIP = true
-				break
 			}
 			foundIPs = append(foundIPs, ip.String())
 		}
@@ -95,7 +94,7 @@ Please configure the DNS record before proceeding.
 `, a.DomainName, expectedIP, foundIPs, expectedIP, hostname)
 		}
 
-		log.Infof("Resolved domain %s to addresses: %#v", a.DomainName, ips)
+		log.Infof("Resolved domain %s to addresses: %+v", a.DomainName, foundIPs)
 	}
 
 	return nil

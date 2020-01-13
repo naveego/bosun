@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/google/go-github/v20/github"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
@@ -24,11 +23,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 )
 
 type Bosun struct {
@@ -38,7 +35,6 @@ type Bosun struct {
 	file                 *File
 	vaultClient          *vault.Client
 	env                  *environment.Environment
-	clusterAvailable     *bool
 	log                  *logrus.Entry
 	environmentConfirmed *bool
 	repos                map[string]*Repo
@@ -67,8 +63,11 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 		b.log.Info("DRY RUN")
 	}
 
-	b.initializeAppProviders()
+	err := b.initializeAppProviders()
 
+	if err != nil {
+		return nil, err
+	}
 	//
 	// for _, dep := range b.file.AppRefs {
 	// 	b.apps[dep.Name] = NewAppFromDependency(dep)
@@ -93,7 +92,7 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 	return b, nil
 }
 
-func (b *Bosun) initializeAppProviders() {
+func (b *Bosun) initializeAppProviders() error {
 
 	b.workspaceAppProvider = NewAppConfigAppProvider(b.ws)
 
@@ -102,17 +101,20 @@ func (b *Bosun) initializeAppProviders() {
 	}
 
 	p, err := b.GetCurrentPlatform()
-	if err == nil {
-		for _, slot := range []string{SlotUnstable, SlotCurrent, SlotStable} {
-			if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
-				b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
-			}
+	if err != nil {
+		return err
+	}
+	for _, slot := range []string{SlotUnstable, SlotCurrent, SlotStable} {
+		if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
+			b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 		}
 	}
 
 	b.appProviders = append(b.appProviders, NewFilePathAppProvider(b.log))
 
 	b.appProvider = NewChainAppProvider(b.appProviders...)
+
+	return nil
 }
 
 func (b *Bosun) GetAppsSortedByName() []*App {
@@ -284,22 +286,11 @@ func (b *Bosun) useEnvironment(config *environment.Config, clusterName string) e
 	env := &environment.Environment{
 		Config:      *config,
 		ClusterName: clusterName,
-		ValueSet:    values.ValueSet{},
-	}
-
-	valueSets, err := b.GetValueSetsForEnv(config)
-
-	if err != nil {
-		return err
-	}
-
-	for _, vs := range valueSets {
-		env.ValueSet = env.ValueSet.WithValues(vs)
 	}
 
 	b.env = env
 
-	err = b.env.ForceEnsure(b.NewContext())
+	err := b.env.ForceEnsure(b.NewContext())
 	if err != nil {
 		return errors.Errorf("ensure environment %q: %s", b.env.Name, err)
 	}
@@ -464,36 +455,6 @@ func (b *Bosun) ClearImports() {
 	b.ws.Imports = []string{}
 }
 
-func (b *Bosun) IsClusterAvailable() bool {
-	if b.clusterAvailable == nil {
-		b.log.Debugf("Checking if cluster is available...")
-		resultCh := make(chan bool)
-		cmd := exec.Command("kubectl", "cluster-info")
-		go func() {
-			err := cmd.Run()
-			if err != nil {
-				resultCh <- false
-			} else {
-				resultCh <- true
-			}
-		}()
-
-		select {
-		case result := <-resultCh:
-			b.clusterAvailable = &result
-			b.log.Debugf("Cluster is available: %t", result)
-		case <-time.After(5 * time.Second):
-			b.log.Warn("Cluster did not respond quickly, I will assume it is unavailable.")
-			if cmd.Process != nil {
-				cmd.Process.Kill()
-			}
-			b.clusterAvailable = github.Bool(false)
-		}
-	}
-
-	return *b.clusterAvailable
-}
-
 func (b *Bosun) GetEnvironment(name string) (*environment.Config, error) {
 	envs, err := b.GetEnvironments()
 	if err != nil {
@@ -615,20 +576,28 @@ func (b *Bosun) GetCurrentPlatform() (*Platform, error) {
 	case 0:
 		return nil, errors.New("no platforms found")
 	case 1:
-		b.platform = b.file.Platforms[0]
-		return b.platform, nil
+		return b.setCurrentPlatform(b.file.Platforms[0])
 	default:
 		if b.ws.CurrentPlatform == "" {
 			return nil, errors.New("no current platform selected; use `bosun platform use-platform` to set it")
 		}
 		for _, p := range b.file.Platforms {
 			if p.Name == b.ws.CurrentPlatform {
-				b.platform = p
-				return b.platform, nil
+				return b.setCurrentPlatform(p)
 			}
 		}
 		return nil, errors.Errorf("current platform %q is not found", b.ws.CurrentPlatform)
 	}
+}
+
+func (b *Bosun) setCurrentPlatform(platform *Platform) (*Platform, error) {
+	b.platform = platform
+	platform.bosun = b
+	err := b.platform.LoadChildren()
+	if err != nil {
+		return nil, err
+	}
+	return platform, nil
 }
 
 func (b *Bosun) GetCurrentClusterName() (string, error) {
@@ -649,7 +618,8 @@ func (b *Bosun) GetCurrentClusterName() (string, error) {
 func (b *Bosun) GetPlatform(name string) (*Platform, error) {
 	for _, p := range b.file.Platforms {
 		if p.Name == name {
-			b.platform = p
+			return b.setCurrentPlatform(p)
+
 			return b.platform, nil
 		}
 	}

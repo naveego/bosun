@@ -104,11 +104,11 @@ func Execute() {
 		case handledError:
 			fmt.Println(e.Error())
 		default:
-			if viper.GetBool(ArgGlobalVerbose) {
-				colorError.Fprintf(os.Stderr, "%+v\n", err)
+			if viper.GetBool(ArgGlobalVerbose) || viper.GetBool(ArgGlobalVerboseErrors) {
+				_, _ = colorError.Fprintf(os.Stderr, "%+v\n", err)
 
 			} else {
-				colorError.Fprintln(os.Stderr, err)
+				_, _ = colorError.Fprintln(os.Stderr, err)
 			}
 		}
 
@@ -117,18 +117,19 @@ func Execute() {
 }
 
 const (
-	ArgGlobalSudo         = "sudo"
-	ArgGlobalVerbose      = "verbose"
-	ArgGlobalDryRun       = "dry-run"
-	ArgGlobalCluster      = "cluster"
-	ArgGlobalDomain       = "domain"
-	ArgGlobalValues       = "values"
-	ArgBosunConfigFile    = "config-file"
-	ArgGlobalConfirmedEnv = "confirm-env"
-	ArgGlobalForce        = "force"
-	ArgGlobalNoReport     = "no-report"
-	ArgGlobalOutput       = "output"
-	ArgGlobalProfile      = "profile"
+	ArgGlobalSudo          = "sudo"
+	ArgGlobalVerbose       = "verbose"
+	ArgGlobalVerboseErrors = "verbose-errors"
+	ArgGlobalDryRun        = "dry-run"
+	ArgGlobalCluster       = "cluster"
+	ArgGlobalDomain        = "domain"
+	ArgGlobalValues        = "values"
+	ArgBosunConfigFile     = "config-file"
+	ArgGlobalConfirmedEnv  = "confirm-env"
+	ArgGlobalForce         = "force"
+	ArgGlobalNoReport      = "no-report"
+	ArgGlobalOutput        = "output"
+	ArgGlobalProfile       = "profile"
 )
 
 func init() {
@@ -139,6 +140,7 @@ func init() {
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
 	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "yaml", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
+	rootCmd.PersistentFlags().BoolP(ArgGlobalVerboseErrors, "V", false, "Enable verbose errors with stack traces.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")

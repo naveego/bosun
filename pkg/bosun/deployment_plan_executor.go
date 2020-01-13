@@ -41,6 +41,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 
 	deploySettings := DeploySettings{
 		AppManifests:       map[string]*AppManifest{},
+		AppDeploySettings:  map[string]AppDeploySettings{},
 		Environment:        d.Bosun.GetCurrentEnvironment(),
 		ValueSets:          []values.ValueSet{deploymentPlan.ValueOverrides},
 		IgnoreDependencies: deploymentPlan.IgnoreDependencies,
@@ -51,13 +52,16 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 		appManifest := appPlan.Manifest
 		appManifest.AppConfig.IsFromManifest = true
 
+		appDeploySettings := AppDeploySettings{}
+
 		for _, platformAppConfig := range d.Platform.Apps {
 			if platformAppConfig.Name == appPlan.Name {
-				appManifest.PlatformAppConfig = platformAppConfig
+				appDeploySettings.PlatformAppConfig = platformAppConfig
 			}
 		}
 
 		deploySettings.AppManifests[appPlan.Name] = appManifest
+		deploySettings.AppDeploySettings[appPlan.Name] = appDeploySettings
 	}
 
 	ctx := d.Bosun.NewContext()

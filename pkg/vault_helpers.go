@@ -133,7 +133,7 @@ func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[str
 	return m
 }
 
-// Apply applies the vault layout to vault, first checking if
+// ApplyToValues applies the vault layout to vault, first checking if
 // it has changed since the last time it was applied based on the
 // hashKey. If hashKey is empty, or force is true, the change detection
 // step is skipped.

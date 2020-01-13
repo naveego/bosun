@@ -7,11 +7,13 @@ import (
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/util/worker"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/yaml"
 	yaml2 "github.com/naveego/bosun/pkg/yaml"
@@ -48,15 +50,18 @@ type Platform struct {
 	ReleaseBranchFormat_OBSOLETE string                           `yaml:"releaseBranchFormat,omitempty"`
 	MasterBranch_OBSOLETE        string                           `yaml:"masterBranch,omitempty"`
 	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
+	AppConfigDirectory           string                           `yaml:"appConfigDirectory,omitempty"`
 	EnvironmentPaths             []string                         `yaml:"environmentPaths" json:"environmentPaths"`
 	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
 	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
 	NamespaceRoles               []core.NamespaceRoleDefinition   `yaml:"namespaceRoles"`
+	ValueOverrides               *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
 	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
 	Apps                         PlatformAppConfigs               `yaml:"apps"`
 	ZenHubConfig                 *zenhub.Config                   `yaml:"zenHubConfig"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
+	bosun                        *Bosun                           `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -84,6 +89,10 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if p.ReleaseDirectory == "" {
 		p.ReleaseDirectory = "releases"
+	}
+
+	if p.AppConfigDirectory == "" {
+		p.AppConfigDirectory = "apps"
 	}
 
 	p.Branching.Master = util.DefaultString(p.Branching.Master, p.MasterBranch_OBSOLETE, "master")
@@ -130,6 +139,21 @@ func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 		p.environmentConfigs = append(p.environmentConfigs, config)
 	}
 	return p.environmentConfigs, nil
+}
+
+func (p *Platform) GetClusterByName(name string) (*kube.ClusterConfig, error) {
+	envs, err := p.GetEnvironmentConfigs()
+	if err != nil {
+		return nil, err
+	}
+	for _, env := range envs {
+		for _, cluster := range env.Clusters {
+			if cluster.Name == name {
+				return cluster, nil
+			}
+		}
+	}
+	return nil, errors.Errorf("no cluster in any environment with name %q", name)
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
@@ -751,7 +775,20 @@ func (p *Platform) Save(ctx BosunContext) error {
 		}
 	}
 
+	appConfigDir := p.ResolveRelative(p.AppConfigDirectory)
+	_ = os.MkdirAll(appConfigDir, 0700)
+
+	for _, app := range p.Apps {
+		appPath := filepath.Join(appConfigDir, app.Name+".yaml")
+		if err := yaml.SaveYaml(appPath, app); err != nil {
+			return errors.Wrapf(err, "save app %q to %q", app.Name, appPath)
+		}
+	}
+
+	apps := p.Apps
+	p.Apps = nil
 	err := p.FileSaver.Save()
+	p.Apps = apps
 
 	if err != nil {
 		return err
@@ -934,6 +971,55 @@ func (p *Platform) IncludeApp(ctx BosunContext, config *PlatformAppConfig) error
 	err = manifest.AddApp(appManifest, false)
 
 	return err
+}
+
+func (p *Platform) AddAppValuesForCluster(appName string, overridesName string, matchRules map[string][]string) error {
+
+	appConfig, err := p.getPlatformApp(appName)
+	if err != nil {
+		return err
+	}
+
+	app, err := p.bosun.GetApp(appName)
+	if err != nil {
+		return err
+	}
+
+	if appConfig.ValueOverrides == nil {
+		appConfig.ValueOverrides = &values.ValueSetCollection{}
+	}
+
+	var valueSet values.ValueSet
+	index := -1
+	for i, vs := range appConfig.ValueOverrides.ValueSets {
+		if vs.Name == overridesName {
+			valueSet = vs
+			index = i
+		}
+	}
+	if index < 0 {
+		index = len(appConfig.ValueOverrides.ValueSets)
+		appConfig.ValueOverrides.ValueSets = append(appConfig.ValueOverrides.ValueSets, valueSet)
+	}
+
+	appConfig.ValueOverrides.ValueSets = append(appConfig.ValueOverrides.ValueSets)
+
+	valueSet = valueSet.WithValues(app.Values.DefaultValues)
+	valueSet.Files = nil
+	valueSet.Roles = nil
+	valueSet.Name = overridesName
+	valueSet.ExactMatchFilters = matchRules
+
+	appConfig.ValueOverrides.ValueSets[index] = valueSet
+
+	return nil
+}
+
+func (p *Platform) GetValueSetCollection() values.ValueSetCollection {
+	if p.ValueOverrides == nil {
+		return values.NewValueSetCollection()
+	}
+	return *p.ValueOverrides
 }
 
 // RefreshApp checks updates the specified slot with the specified branch of the named app.
@@ -1345,6 +1431,26 @@ func (p *Platform) getPlatformApp(appName string) (*PlatformAppConfig, error) {
 		}
 	}
 	return nil, errors.Errorf("no platform app config with name %q", appName)
+}
+
+func (p *Platform) LoadChildren() error {
+	appPathDir := p.ResolveRelative(p.AppConfigDirectory)
+	appPaths, err := ioutil.ReadDir(appPathDir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range appPaths {
+		var app PlatformAppConfig
+		appPath := filepath.Join(appPathDir, file.Name())
+		err = yaml.LoadYaml(appPath, &app)
+		if err != nil {
+			return errors.Wrapf(err, "load platform app config from %s", file)
+		}
+		p.Apps = append(p.Apps, &app)
+	}
+
+	return nil
 }
 
 type mergeTarget struct {

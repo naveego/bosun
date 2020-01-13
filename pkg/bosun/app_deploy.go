@@ -32,7 +32,7 @@ func (a AppReleasesSortedByName) Len() int {
 }
 
 func (a AppReleasesSortedByName) Less(i, j int) bool {
-	return strings.Compare(a[i].Name, a[j].Name) < 0
+	return strings.Compare(a[i].AppManifest.Name, a[j].AppManifest.Name) < 0
 }
 
 func (a AppReleasesSortedByName) Swap(i, j int) {
@@ -61,16 +61,40 @@ func (a AppReleasesSortedByName) Swap(i, j int) {
 // }
 
 type AppDeploy struct {
-	FromPath     string
-	*AppManifest `yaml:"-" json:"-"`
-	// App          *App `yaml:"-" json:"-"`
-	Excluded     bool `yaml:"-" json:"-"`
-	ActualState  workspace.AppState
-	DesiredState workspace.AppState
+	Name        string       `yaml:"name,omitempty"`
+	AppManifest *AppManifest `yaml:"appManifest,omitempty"`
+	AppConfig   *AppConfig   `yaml:"appConfig,omitempty"`
 
-	helmRelease       *HelmRelease
-	labels            filter.Labels
-	AppDeploySettings AppDeploySettings
+	FromPath          string             `yaml:"fromPath,omitempty"`
+	Excluded          bool               `yaml:"excluded,omitempty"`
+	ActualState       workspace.AppState `yaml:"actualState,omitempty"`
+	DesiredState      workspace.AppState `yaml:"desiredState,omitempty"`
+	Cluster           string             `yaml:"cluster,omitempty"`
+	Namespace         string             `yaml:"namespace,omitempty"`
+	AppDeploySettings AppDeploySettings  `yaml:"appDeploySettings,omitempty"`
+
+	MatchArgs filter.ExactMatchArgs `yaml:"matchArgs,omitempty"`
+
+	helmRelease *HelmRelease  `yaml:"-"`
+	labels      filter.Labels `yaml:"-"`
+}
+
+func (a *AppDeploy) Clone() *AppDeploy {
+
+	out := AppDeploy{
+		Name:              a.Name,
+		AppManifest:       a.AppManifest,
+		AppConfig:         a.AppConfig,
+		FromPath:          a.FromPath,
+		ActualState:       a.ActualState,
+		DesiredState:      a.DesiredState,
+		Cluster:           a.Cluster,
+		Namespace:         a.Namespace,
+		AppDeploySettings: a.AppDeploySettings,
+		helmRelease:       a.helmRelease,
+		labels:            a.labels,
+	}
+	return &out
 }
 
 // Chart gets the path to the chart, or the full name of the chart.
@@ -78,8 +102,8 @@ func (a *AppDeploy) Chart(ctx BosunContext) string {
 
 	// var chartHandle helm.ChartHandle
 	//
-	// if a.AppConfig.IsFromManifest || a.AppConfig.ChartPath == "" {
-	// 	chartHandle = helm.ChartHandle(a.AppConfig.Chart)
+	// if a.AppManifest.AppConfig.IsFromManifest || a.AppManifest.AppConfig.ChartPath == "" {
+	// 	chartHandle = helm.ChartHandle(a.AppManifest.AppConfig.Chart)
 	// 	if !chartHandle.HasRepo() {
 	// 		p, err := ctx.Bosun.GetCurrentPlatform()
 	// 		if err == nil {
@@ -91,7 +115,7 @@ func (a *AppDeploy) Chart(ctx BosunContext) string {
 	//
 	// }
 
-	return filepath.Join(filepath.Dir(a.AppConfig.FromPath), a.AppConfig.ChartPath)
+	return filepath.Join(filepath.Dir(a.AppManifest.AppConfig.FromPath), a.AppManifest.AppConfig.ChartPath)
 
 }
 
@@ -119,7 +143,10 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 		},
 	}}, appDeploySettings.ValueSets...)
 	appDeploy := &AppDeploy{
+		Name:              manifest.Name,
+		FromPath:          manifest.AppConfig.FromPath,
 		AppManifest:       manifest,
+		AppConfig:         manifest.AppConfig,
 		AppDeploySettings: appDeploySettings,
 	}
 
@@ -129,13 +156,22 @@ func NewAppDeploy(ctx BosunContext, settings DeploySettings, manifest *AppManife
 func (a *AppDeploy) GetLabels() filter.Labels {
 	if a.labels == nil {
 		a.labels = filter.LabelsFromMap(map[string]string{
-			core.LabelName:    a.Name,
-			core.LabelVersion: a.Version.String(),
-			core.LabelBranch:  a.Branch,
-			core.LabelCommit:  a.Hashes.Commit,
+			core.LabelName:    a.AppManifest.Name,
+			core.LabelVersion: a.AppManifest.Version.String(),
+			core.LabelBranch:  a.AppManifest.Branch,
+			core.LabelCommit:  a.AppManifest.Hashes.Commit,
 		})
 	}
 	return a.labels
+}
+
+func (a *AppDeploy) WithValueSet(v values.ValueSet) *AppDeploy {
+
+	shallowCopy := *a
+
+	shallowCopy.AppDeploySettings.ValueSets = append(a.AppDeploySettings.ValueSets, v)
+
+	return &shallowCopy
 }
 
 func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
@@ -145,17 +181,9 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 
 	log := ctx.Log()
 
-	if !ctx.Bosun.IsClusterAvailable() {
-		log.Debug("Cluster not available.")
-
-		a.ActualState.Unavailable = true
-
-		return nil
-	}
-
 	log.Debug("Getting actual state...")
 
-	release, err := a.GetHelmRelease(a.Name)
+	release, err := a.GetHelmRelease(a.AppManifest.Name)
 
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return err
@@ -168,14 +196,18 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 		return nil
 	}
 
-	a.ActualState.Status = release.Status
+	a.ActualState.Status = strings.ToUpper(release.Status)
+
+	if !workspace.KnownHelmChartStatuses[a.ActualState.Status] {
+		return errors.Errorf("current status %q is not understood", a.ActualState.Status)
+	}
 	a.ActualState.Routing = workspace.RoutingCluster
 
 	// check if the app has a service with an ExternalName; if it does, it must have been
 	// creating using `app toggle` and is routed to localhost.
-	if ctx.Environment().IsLocal && a.AppConfig.Minikube != nil {
-		for _, routableService := range a.AppConfig.Minikube.RoutableServices {
-			svcYaml, err := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.AppConfig.Namespace, routableService.Name, "-o", "yaml").RunOut()
+	if ctx.Environment().IsLocal && a.AppManifest.AppConfig.Minikube != nil {
+		for _, routableService := range a.AppManifest.AppConfig.Minikube.RoutableServices {
+			svcYaml, err := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.Namespace, routableService.Name, "-o", "yaml").RunOut()
 			if err != nil {
 				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
 				continue
@@ -261,15 +293,11 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 
 	ctx = ctx.WithAppDeploy(a)
 
-	if !ctx.Bosun.IsClusterAvailable() {
-		return nil, errors.New("cluster not available")
-	}
-
 	var steps []PlanStep
 
 	actual, desired := a.ActualState, a.DesiredState
 
-	log := ctx.Log().WithField("name", a.Name)
+	log := ctx.Log().WithField("name", a.AppManifest.Name)
 
 	log.WithField("state", desired.String()).Debug("Desired state.")
 	log.WithField("state", actual.String()).Debug("Actual state.")
@@ -313,9 +341,9 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	}
 
 	if desired.Status == workspace.StatusDeployed {
-		for i := range a.AppConfig.Actions {
-			action := a.AppConfig.Actions[i]
-			if action.When.Contains(actions.ActionBeforeDeploy) && ctx.Environment().Matches(action) {
+		for i := range a.AppManifest.AppConfig.Actions {
+			action := a.AppManifest.AppConfig.Actions[i]
+			if action.When.Contains(actions.ActionBeforeDeploy) && action.WhereFilter.Matches(ctx.GetExactMatchArgs()) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
 					Description: action.Description,
@@ -352,9 +380,9 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	}
 
 	if desired.Status == workspace.StatusDeployed {
-		for i := range a.AppConfig.Actions {
-			action := a.AppConfig.Actions[i]
-			if action.When.Contains(actions.ActionAfterDeploy) && ctx.Environment().Matches(action) {
+		for i := range a.AppManifest.AppConfig.Actions {
+			action := a.AppManifest.AppConfig.Actions[i]
+			if action.When.Contains(actions.ActionAfterDeploy) && action.WhereFilter.Matches(ctx.GetExactMatchArgs()) {
 				steps = append(steps, PlanStep{
 					Name:        action.Name,
 					Description: action.Description,
@@ -374,86 +402,89 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 // deployment of the app, including reading the default helm chart values,
 // loading any values files, and resolving any dynamic values.
 func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValues, error) {
-	r := &values.PersistableValues{
-		Values: values.Values{},
+
+	matchArgs := ctx.GetExactMatchArgs()
+	bosunValues := values.Values{}
+	for k, v := range matchArgs {
+		bosunValues[k] = v
 	}
+
+	resolvedValues := values.NewValueSet().WithValues(
+		values.ValueSet{
+			Source: "bosun context",
+			Static: bosunValues,
+		})
 
 	// Make environment values available
-	if err := r.Values.AddEnvAsPath(core.EnvPrefix, core.EnvAppVersion, a.Version); err != nil {
+	if err := resolvedValues.Static.AddEnvAsPath(core.EnvPrefix, core.EnvAppVersion, a.AppManifest.Version); err != nil {
 		return nil, err
 	}
-	if err := r.Values.AddEnvAsPath(core.EnvPrefix, core.EnvAppBranch, a.Branch); err != nil {
+	if err := resolvedValues.Static.AddEnvAsPath(core.EnvPrefix, core.EnvAppBranch, a.AppManifest.Branch); err != nil {
 		return nil, err
 	}
-	if err := r.Values.AddEnvAsPath(core.EnvPrefix, core.EnvAppCommit, a.Hashes.Commit); err != nil {
+	if err := resolvedValues.Static.AddEnvAsPath(core.EnvPrefix, core.EnvAppCommit, a.AppManifest.Hashes.Commit); err != nil {
 		return nil, err
 	}
 
-	var defaultStaticValues values.Values
-
-	if a.AppConfig.ChartPath != "" {
-		chartRef := a.AppConfig.ResolveRelative(a.AppConfig.ChartPath)
-		valuesYaml, err := pkg.NewShellExe(
-			"helm", "inspect", "values",
-			chartRef,
-			"--version", a.Version.String(),
-		).RunOut()
-		if err != nil {
-			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
-		}
-		defaultStaticValues, err = values.ReadValues([]byte(valuesYaml))
-		if err != nil {
-			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
-		}
+	if chartValues, err := a.AppManifest.AppConfig.LoadChartValues(); err != nil {
+		return nil, errors.Wrapf(err, "load chart values")
 	} else {
-		defaultStaticValues = values.Values{}
+		resolvedValues = resolvedValues.WithValues(chartValues)
 	}
 
-	importedValues := a.AppConfig.Values.ExtractValueSetByRoles(ctx.Environment().Role)
-
-	importedValues, err := importedValues.WithFilesLoaded(ctx)
-	if err != nil {
-		return nil, errors.Wrapf(err, "load files")
+	if platformValues, err := ResolveValues(ctx.GetPlatform(), ctx); err != nil {
+		return nil, errors.Wrapf(err, "resolve platform values")
+	} else {
+		resolvedValues = resolvedValues.WithValues(platformValues.WithSource("platform overrides"))
 	}
 
-	importedValues.Static.Include(defaultStaticValues)
-
-	importedValues.Static.Include(ctx.Environment().ValueSet.Static)
-
-	appValues := append([]values.ValueSet{importedValues}, a.AppDeploySettings.ValueSets...)
-
-	for _, v := range appValues {
-
-		r.Values.Merge(v.Static)
-
-		// Get the values defined using the `dynamic` element:
-		for k, v := range v.Dynamic {
-			value, err := v.Resolve(ctx)
-			if err != nil {
-				return nil, errors.Errorf("resolving dynamic values for app %q for key %q: %s", a.Name, k, err)
-			}
-			err = r.Values.SetAtPath(k, value)
-			if err != nil {
-				return nil, errors.Errorf("merging dynamic values for app %q for key %q: %s", a.Name, k, err)
-			}
-		}
+	env := ctx.Environment()
+	if environmentValues, err := ResolveValues(env, ctx); err != nil {
+		return nil, errors.Wrapf(err, "resolve environment values")
+	} else {
+		resolvedValues = resolvedValues.WithValues(environmentValues.WithDefaultSource(fmt.Sprintf("%s environment", env.Name)))
 	}
 
-	// Apply any overrides from parameters passed to this invocation of bosun.
+	cluster := env.Cluster
+	if clusterValues, err := ResolveValues(cluster, ctx); err != nil {
+		return nil, errors.Wrapf(err, "resolve cluster values")
+	} else {
+		resolvedValues = resolvedValues.WithValues(clusterValues.WithDefaultSource(fmt.Sprintf("%s cluster", cluster.Name)))
+	}
+
+	if appConfigValues, err := ResolveValues(a.AppConfig, ctx); err != nil {
+		return nil, errors.Wrapf(err, "load value set from app config")
+	} else {
+		resolvedValues = resolvedValues.WithValues(appConfigValues.WithDefaultSource("app config"))
+	}
+
+	for _, v := range a.AppDeploySettings.ValueSets {
+		resolvedValues = resolvedValues.WithValues(v.WithDefaultSource("app deploy settings"))
+	}
+
+	// ApplyToValues any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParameters().ValueOverrides {
-		err := r.Values.SetAtPath(k, v)
+		var err error
+		resolvedValues, err = resolvedValues.WithValueSetAtPath(k, v, "command line parameter")
 		if err != nil {
 			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
 		}
-
 	}
 
 	// Finally apply any value mappings
-
-	err = a.AppConfig.ValueMappings.Apply(r.Values)
+	err := a.AppManifest.AppConfig.ValueMappings.ApplyToValues(resolvedValues.Static)
 	if err != nil {
 		return nil, err
 	}
+	r := &values.PersistableValues{
+		Values: resolvedValues.Static,
+	}
+
+	resolvedDump, _ := yaml.MarshalString(resolvedValues)
+
+	fmt.Println("Resolved values:")
+	fmt.Println(resolvedDump)
+	fmt.Println()
 
 	return r, nil
 }
@@ -467,28 +498,28 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		return nil
 	}
 
-	values, err := a.GetResolvedValues(ctx)
+	resolvedValues, err := a.GetResolvedValues(ctx)
 	if err != nil {
-		return errors.Errorf("create values map for app %q: %s", a.Name, err)
+		return errors.Errorf("create values map for app %q: %s", a.AppManifest.Name, err)
 	}
 
-	valuesYaml, _ := values.Values.YAML()
+	valuesYaml, _ := yaml.MarshalString(resolvedValues)
 	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
-	_, err = values.PersistValues()
+	_, err = resolvedValues.PersistValues()
 	if err != nil {
-		return errors.Errorf("persist values for app %q: %s", a.Name, err)
+		return errors.Errorf("persist values for app %q: %s", a.AppManifest.Name, err)
 	}
-	defer values.Cleanup()
+	defer resolvedValues.Cleanup()
 
-	ctx = ctx.WithPersistableValues(values).(BosunContext)
+	ctx = ctx.WithPersistableValues(resolvedValues).(BosunContext)
 
 	// clear helm release cache after work is done
 	defer func() { a.helmRelease = nil }()
 
 	err = a.LoadActualState(ctx, true)
 	if err != nil {
-		return errors.Errorf("error checking actual state for %q: %s", a.Name, err)
+		return errors.Errorf("error checking actual state for %q: %s", a.AppManifest.Name, err)
 	}
 
 	params := ctx.GetParameters()
@@ -499,7 +530,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		!a.AppDeploySettings.Environment.IsLocal &&
 		a.DesiredState.Status == workspace.StatusDeployed &&
 		!env.IsLocal &&
-		a.AppConfig.ReportDeployment
+		a.AppManifest.AppConfig.ReportDeployment
 
 	log.Info("Planning reconciliation...")
 
@@ -568,13 +599,13 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 
 	log.Info("Deploy progress will be reported to github.")
 
-	deployer, err := ctx.Bosun.GetDeployer(a.RepoRef())
+	deployer, err := ctx.Bosun.GetDeployer(a.AppManifest.RepoRef())
 	if err != nil {
 		return nil, err
 	}
 
 	// create the deployment
-	deployID, err := deployer.CreateDeploy(a.Branch, env.Name)
+	deployID, err := deployer.CreateDeploy(a.AppManifest.Branch, env.Name)
 	if err != nil {
 		return nil, errors.Wrap(err, "create deploy")
 	}
@@ -586,7 +617,7 @@ func (a *AppDeploy) ReportDeployment(ctx BosunContext) (cleanup func(error), err
 		} else {
 
 			// log.Info("Move ready to go stories to UAT")
-			// repoPath, err := git.GetRepoPath(a.AppConfig.FromPath)
+			// repoPath, err := git.GetRepoPath(a.AppManifest.AppConfig.FromPath)
 			// if err != nil {
 			// 	err = errors.Wrap(err, "get repo path")
 			// }
@@ -677,7 +708,7 @@ func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
 
-	msg, err := pkg.NewShellExe("helm", "diff", "upgrade", a.Name, a.Chart(ctx)).
+	msg, err := pkg.NewShellExe("helm", "diff", "upgrade", a.AppManifest.Name, a.Chart(ctx)).
 		WithArgs(args...).
 		RunOut()
 
@@ -699,7 +730,7 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 	if a.DesiredState.Status == workspace.StatusNotFound {
 		args = append(args, "--purge")
 	}
-	args = append(args, a.Name)
+	args = append(args, a.AppManifest.Name)
 
 	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
@@ -708,8 +739,8 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 
 func (a *AppDeploy) Rollback(ctx BosunContext) error {
 	args := []string{"rollback"}
-	args = append(args, a.Name, a.helmRelease.Revision)
-	// args = append(args, a.getHelmNamespaceArgs(ctx)...)
+	args = append(args, a.AppManifest.Name, a.helmRelease.Revision)
+	// args = append(args, a.getNamespaceFlag(ctx)...)
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
 	out, err := pkg.NewShellExe("helm", args...).RunOut()
@@ -718,14 +749,14 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
-	args := append([]string{"install", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"install", a.AppManifest.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "install using args %v", args)
 }
 
 func (a *AppDeploy) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"upgrade", a.AppManifest.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}
@@ -735,7 +766,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) GetStatus() (string, error) {
-	release, err := a.GetHelmRelease(a.Name)
+	release, err := a.GetHelmRelease(a.AppManifest.Name)
 	if err != nil {
 		return "", err
 	}
@@ -746,13 +777,13 @@ func (a *AppDeploy) GetStatus() (string, error) {
 	return release.Status, nil
 }
 
-func (a *AppDeploy) RouteToLocalhost(ctx BosunContext) error {
+func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 
 	ctx = ctx.WithAppDeploy(a)
 
 	ctx.Log().Info("Configuring app to route traffic to localhost.")
 
-	if a.AppConfig.Minikube == nil || len(a.AppConfig.Minikube.RoutableServices) == 0 {
+	if a.AppManifest.AppConfig.Minikube == nil || len(a.AppManifest.AppConfig.Minikube.RoutableServices) == 0 {
 		return errors.New(`to route to localhost, app must have a minikube entry like this:
   minikube:
     routableServices:
@@ -772,15 +803,10 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext) error {
 		return errors.Wrap(err, "get kube client for tweaking service")
 	}
 
-	for _, routableService := range a.AppConfig.Minikube.RoutableServices {
+	for _, routableService := range a.AppManifest.AppConfig.Minikube.RoutableServices {
 		log := ctx.Log().WithField("routable_service", routableService.Name)
 
 		log.Info("Updating service and endpoint...")
-
-		namespace := a.AppConfig.Namespace
-		if namespace == "" {
-			namespace = "default"
-		}
 
 		svcClient := client.CoreV1().Services(namespace)
 		svc, err := svcClient.Get(routableService.Name, metav1.GetOptions{})
@@ -870,10 +896,10 @@ func (a *AppDeploy) makeHelmArgs(ctx BosunContext) []string {
 	var args []string
 
 	if !a.AppDeploySettings.UseLocalContent {
-		args = append(args, "--version", a.Version.String())
+		args = append(args, "--version", a.AppManifest.Version.String())
 	}
 
-	args = append(args, a.getHelmNamespaceArgs(ctx)...)
+	args = append(args, a.getNamespaceFlag(ctx)...)
 
 	args = append(args, "-f", ctx.Values.FilePath)
 
@@ -882,13 +908,17 @@ func (a *AppDeploy) makeHelmArgs(ctx BosunContext) []string {
 	return args
 }
 
-func (a *AppDeploy) getHelmNamespaceArgs(ctx BosunContext) []string {
-	namespace := "default"
-	if a.AppConfig.Namespace != "" {
-		namespace = a.AppConfig.Namespace
-	}
+func (a *AppDeploy) getNamespaceFlag(ctx BosunContext) []string {
+	namespace := a.getNamespaceName()
 
 	return []string{"--namespace", namespace}
+}
+
+func (a *AppDeploy) getNamespaceName() string {
+	if a.Namespace == "" {
+		return "default"
+	}
+	return a.Namespace
 }
 
 func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
@@ -904,7 +934,7 @@ func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
 func (a *AppDeploy) Recycle(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
 	ctx.Log().Info("Deleting pods...")
-	err := pkg.NewShellExe("kubectl", "delete", "--namespace", a.AppConfig.GetNamespace(), "pods", "--selector=release="+a.AppConfig.Name).RunE()
+	err := pkg.NewShellExe("kubectl", "delete", "--namespace", a.getNamespaceName(), "pods", "--selector=release="+a.AppManifest.AppConfig.Name).RunE()
 	if err != nil {
 		return err
 	}
@@ -912,7 +942,7 @@ func (a *AppDeploy) Recycle(ctx BosunContext) error {
 
 	for {
 		podsReady := true
-		out, err := pkg.NewShellExe("kubectl", "get", "pods", "--namespace", a.AppConfig.GetNamespace(), "--selector=release="+a.AppConfig.Name,
+		out, err := pkg.NewShellExe("kubectl", "get", "pods", "--namespace", a.getNamespaceName(), "--selector=release="+a.AppManifest.AppConfig.Name,
 			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
 		if err != nil {
 			return err

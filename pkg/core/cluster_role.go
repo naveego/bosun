@@ -79,6 +79,14 @@ func (e ClusterRoles) String() string {
 	return fmt.Sprintf("%#v", e)
 }
 
+func (e ClusterRoles) Strings() []string {
+	var out []string
+	for _, x := range e {
+		out = append(out, string(x))
+	}
+	return out
+}
+
 type ClusterRoler interface {
 	ClusterRole() ClusterRole
 }
