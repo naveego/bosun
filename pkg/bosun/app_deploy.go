@@ -183,7 +183,7 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 
 	log.Debug("Getting actual state...")
 
-	release, err := a.GetHelmRelease(a.AppManifest.Name)
+	release, err := a.GetHelmRelease(a.AppManifest.Name, a.Namespace)
 
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return err
@@ -242,10 +242,10 @@ type HelmRelease struct {
 	Namespace  string `yaml:"namespace" json:"Namespace"`
 }
 
-func (a *AppDeploy) GetHelmRelease(name string) (*HelmRelease, error) {
+func (a *AppDeploy) GetHelmRelease(name string, namespace string) (*HelmRelease, error) {
 
 	if a.helmRelease == nil {
-		releases, err := a.GetHelmList(fmt.Sprintf(`^%s$`, name))
+		releases, err := a.GetHelmList(fmt.Sprintf(`^%s$`, name), namespace)
 		if err != nil {
 			return nil, err
 		}
@@ -260,12 +260,12 @@ func (a *AppDeploy) GetHelmRelease(name string) (*HelmRelease, error) {
 	return a.helmRelease, nil
 }
 
-func (a *AppDeploy) GetHelmList(filter string) ([]*HelmRelease, error) {
+func (a *AppDeploy) GetHelmList(filter string, namespace string) ([]*HelmRelease, error) {
 
 	if filter == "" {
 		filter = ".*"
 	}
-	args := []string{"list", "--all", "--all-namespaces", "--output", "yaml", "--filter", filter}
+	args := []string{"list", "--all", "--namespace", namespace, "--output", "yaml", "--filter", filter}
 	data, err := pkg.NewShellExe("helm", args...).RunOut()
 	if err != nil {
 		return nil, err
@@ -471,8 +471,14 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 		}
 	}
 
+	// resolve dynamic values
+	resolvedValues, err := resolvedValues.WithDynamicValuesResolved(ctx)
+	if err != nil {
+		return nil, errors.Wrapf(err, "resolve dynamic values")
+	}
+
 	// Finally apply any value mappings
-	err := a.AppManifest.AppConfig.ValueMappings.ApplyToValues(resolvedValues.Static)
+	err = a.AppManifest.AppConfig.ValueMappings.ApplyToValues(resolvedValues.Static)
 	if err != nil {
 		return nil, err
 	}
@@ -480,11 +486,11 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 		Values: resolvedValues.Static,
 	}
 
-	resolvedDump, _ := yaml.MarshalString(resolvedValues)
-
-	fmt.Println("Resolved values:")
-	fmt.Println(resolvedDump)
-	fmt.Println()
+	// resolvedDump, _ := yaml.MarshalString(resolvedValues)
+	//
+	// fmt.Println("Resolved values:")
+	// fmt.Println(resolvedDump)
+	// fmt.Println()
 
 	return r, nil
 }
@@ -766,7 +772,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) GetStatus() (string, error) {
-	release, err := a.GetHelmRelease(a.AppManifest.Name)
+	release, err := a.GetHelmRelease(a.AppManifest.Name, a.Namespace)
 	if err != nil {
 		return "", err
 	}

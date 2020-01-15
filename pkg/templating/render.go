@@ -13,9 +13,9 @@ func RenderTemplate(rawTemplate string, input interface{}) (string, error) {
 		return "", errors.Wrapf(err, "could not parse template %s", rawTemplate)
 	}
 	w := new(strings.Builder)
-	err = t.Execute(w, input)
+	err = t.Option("missingkey=error").Execute(w, input)
 	if err != nil {
-		return "", errors.Wrapf(err, "could not execute template %q with input %+v", rawTemplate, input)
+		return "", errors.Errorf("could not execute template: %s\ntemplate:\n%s\ninput:\n%#v", err, rawTemplate, input)
 	}
 	return w.String(), nil
 }

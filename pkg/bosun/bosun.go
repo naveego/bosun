@@ -308,23 +308,6 @@ func (b *Bosun) UseEnvironment(name string, clusterName string) error {
 	return b.useEnvironment(env, clusterName)
 }
 
-func (b *Bosun) UseCluster(name string) error {
-
-	env := b.GetCurrentEnvironment()
-
-	env.ClusterName = name
-
-	err := env.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
-		Name: name,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (b *Bosun) GetCurrentEnvironment() *environment.Environment {
 	if b.env == nil {
 		err := b.configureCurrentEnv()

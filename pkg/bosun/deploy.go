@@ -76,6 +76,8 @@ type DeploySettings struct {
 	IgnoreDependencies bool
 	ForceDeployApps    map[string]bool
 	Recycle            bool
+	AfterDeploy        func(app *AppDeploy, err error) // if set, called after a deploy
+
 }
 
 func (d DeploySettings) WithValueSets(valueSets ...values.ValueSet) DeploySettings {
@@ -313,7 +315,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 					continue
 				}
 
-				log.Infof("Deploying to namespace %q...", namespace.Name)
+				log.Infof("Configuring app deploy...", namespace.Name)
 
 				deployedToNamespaceForRole[namespace.Name] = namespaceRole
 
@@ -545,7 +547,8 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 			return errors.Wrapf(err, "switch to cluster %q to deploy %q", app.Cluster, app.Name)
 		}
 
-		appCtx = appCtx.WithLogField("cluster", app.Cluster).(BosunContext)
+		appCtx = appCtx.WithLogField("cluster", app.Cluster).
+			WithLogField("namespace", app.Namespace).(BosunContext)
 
 		app.DesiredState.Status = workspace.StatusDeployed
 		if app.DesiredState.Routing == "" {
@@ -555,6 +558,10 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 		app.DesiredState.Force = appCtx.GetParameters().Force
 
 		err = app.Reconcile(appCtx)
+
+		if d.AfterDeploy != nil {
+			d.AfterDeploy(app, err)
+		}
 
 		if err != nil {
 			return err

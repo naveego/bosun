@@ -1,7 +1,11 @@
 package kube
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environmentvariables"
 	"github.com/naveego/bosun/pkg/values"
@@ -15,13 +19,6 @@ import (
 
 const DefaultRole core.ClusterRole = "default"
 
-type CommandContext struct {
-	KubeConfigPath string
-	Force          bool
-	Name           string
-	Log            *logrus.Entry
-}
-
 type ConfigDefinitions []*ClusterConfig
 
 func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ClusterConfig, error) {
@@ -34,11 +31,13 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ClusterC
 }
 
 type ConfigureKubeContextRequest struct {
-	Name           string
-	Role           core.ClusterRole
-	KubeConfigPath string
-	Force          bool
-	Log            *logrus.Entry
+	Name             string
+	Role             core.ClusterRole
+	KubeConfigPath   string
+	Force            bool
+	Log              *logrus.Entry
+	ExecutionContext command.ExecutionContext
+	PullSecrets      []PullSecret
 }
 
 // cache of clusters configured this run, no need to configure theme again
@@ -77,14 +76,7 @@ func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeCo
 		return nil
 	}
 
-	ktx := CommandContext{
-		Name:           konfig.Name,
-		Force:          req.Force,
-		KubeConfigPath: req.KubeConfigPath,
-		Log:            req.Log,
-	}
-
-	err = konfig.configureKubernetes(ktx)
+	err = konfig.configureKubernetes(req)
 	if err != nil {
 		return err
 	}
@@ -120,6 +112,13 @@ type ClusterConfig struct {
 	Minikube          *MinikubeConfig                  `yaml:"minikube,omitempty"`
 	Amazon            *AmazonClusterConfig             `yaml:"amazon,omitempty"`
 	Namespaces        NamespaceConfigs                 `yaml:"namespaces"`
+}
+
+type PullSecret struct {
+	Name     string               `yaml:"name"`
+	Domain   string               `yaml:"domain"`
+	Username string               `yaml:"username"`
+	Password command.CommandValue `yaml:"password"`
 }
 
 func (c *ClusterConfig) SetFromPath(fp string) {
@@ -196,30 +195,30 @@ func (k ClusterConfig) GetNamespace(role core.NamespaceRole) (NamespaceConfig, e
 	return NamespaceConfig{}, errors.Errorf("kubernetes cluster config %q does not have a namespace for the role %q", k.Namespaces, role)
 }
 
-func (k ClusterConfig) configureKubernetes(ctx CommandContext) error {
-	ctx.Name = k.Name
+func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) error {
+	req.Name = k.Name
 
-	if contextIsDefined(ctx.Name) && !ctx.Force {
-		ctx.Log.Debugf("Kubernetes context %q already exists (use --force to configure anyway).", ctx.Name)
+	if contextIsDefined(req.Name) && !req.Force {
+		req.Log.Debugf("Kubernetes context %q already exists (use --force to configure anyway).", req.Name)
 		return nil
 	}
 
 	if k.Oracle != nil {
-		ctx.Log.Infof("Configuring Oracle cluster %q...", k.Name)
+		req.Log.Infof("Configuring Oracle cluster %q...", k.Name)
 
-		if err := k.Oracle.configureKubernetes(ctx); err != nil {
+		if err := k.Oracle.configureKubernetes(req); err != nil {
 			return err
 		}
 	} else if k.Minikube != nil {
-		ctx.Log.Infof("Configuring minikube cluster %q...", k.Name)
+		req.Log.Infof("Configuring minikube cluster %q...", k.Name)
 
-		if err := k.Minikube.configureKubernetes(ctx); err != nil {
+		if err := k.Minikube.configureKubernetes(req); err != nil {
 			return err
 		}
 	} else if k.Amazon != nil {
-		ctx.Log.Infof("Configuring Amazon cluster %q...", k.Name)
+		req.Log.Infof("Configuring Amazon cluster %q...", k.Name)
 
-		if err := k.Amazon.configureKubernetes(ctx); err != nil {
+		if err := k.Amazon.configureKubernetes(req); err != nil {
 			return err
 		}
 	} else {
@@ -232,7 +231,7 @@ func (k ClusterConfig) configureKubernetes(ctx CommandContext) error {
 	}
 
 	for role, ns := range k.Namespaces {
-		ctx.Log.Infof("Creating namespace %q with role %q.", ns.Name, role)
+		req.Log.Infof("Creating namespace %q with role %q.", ns.Name, role)
 		namespace := &v1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ns.Name,
@@ -243,12 +242,71 @@ func (k ClusterConfig) configureKubernetes(ctx CommandContext) error {
 		}
 		_, err = client.CoreV1().Namespaces().Create(namespace)
 		if kerrors.IsAlreadyExists(err) {
-			ctx.Log.Infof("Namespace already exists, updating...")
+			req.Log.Infof("Namespace already exists, updating...")
 			_, err = client.CoreV1().Namespaces().Update(namespace)
 		}
 		if err != nil {
 			return errors.Wrapf(err, "create or update namespace %q with role %q", ns.Name, role)
 		}
+
+		for _, pullSecret := range req.PullSecrets {
+
+			if req.ExecutionContext == nil {
+				req.Log.Warnf("No execution context provided, cannot create pull secret %q in namespace %q", pullSecret.Name, ns.Name)
+				continue
+			}
+
+			req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
+
+			password, err := pullSecret.Password.Resolve(req.ExecutionContext)
+			if err != nil {
+				req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
+				continue
+			}
+
+			auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", pullSecret.Username, password)))
+
+			dockerConfig := map[string]interface{}{
+				"auths": map[string]interface{}{
+					pullSecret.Domain: map[string]interface{}{
+						"username": pullSecret.Username,
+						"password": password,
+						"email":    pullSecret.Username,
+						"auth":     auth,
+					},
+				},
+			}
+
+			dockerConfigJSON, err := json.Marshal(dockerConfig)
+
+			if err != nil {
+				return errors.Wrap(err, "marshall dockerconfigjson")
+			}
+
+
+			secret := &v1.Secret{
+				Type: v1.SecretTypeDockerConfigJson,
+				ObjectMeta: metav1.ObjectMeta{
+					Name: pullSecret.Name,
+				},
+				StringData: map[string]string{
+					".dockerconfigjson":string(dockerConfigJSON),
+				},
+			}
+			_, err = client.CoreV1().Secrets(namespace.Name).Create(secret)
+			if kerrors.IsAlreadyExists(err) {
+				req.Log.Infof("Pull secret already exists, updating...")
+				_, err = client.CoreV1().Secrets(namespace.Name).Update(secret)
+			}
+			if err != nil {
+				return errors.Wrapf(err, "create or update pull secret %q in namespace %q", pullSecret.Name, namespace.Name)
+			}
+
+			req.Log.Infof("Done creating or updating pull secret %q in namespace %q.", pullSecret.Name, ns.Name)
+
+		}
+
+		req.Log.Infof("Done creating or updating namespace %q.", ns.Name)
 	}
 
 	return nil

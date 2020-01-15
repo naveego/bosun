@@ -1,11 +1,17 @@
 package values_test
 
 import (
+	"context"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/util"
 	. "github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
+	"time"
 )
 
 var _ = Describe("ValueSetCollection", func() {
@@ -208,4 +214,65 @@ var _ = Describe("ValueSetCollection", func() {
 		Expect(redValues.Static).To(HaveKeyWithValue("red1", "b"), "it is in the red set")
 
 	})
+
+	It("should render internal templates safely", func() {
+		sut := ValueSet{
+
+			ConfigShared: core.ConfigShared{
+				Name: "redgreen",
+			},
+			Roles: []core.EnvironmentRole{"red", "green"},
+			Static: Values{
+				"static":   "static-value",
+				"template": "rendered-{{.Values.static}}",
+				"preserve": "{{.username}}",
+			},
+		}
+
+		actual, err := sut.WithDynamicValuesResolved(mockExecutionContext{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(actual.Static).To(HaveKeyWithValue("static", "static-value"))
+		Expect(actual.Static).To(HaveKeyWithValue("template", "rendered-static-value"))
+		Expect(actual.Static).To(HaveKeyWithValue("preserve", "{{.username}}"))
+
+	})
 })
+
+type mockExecutionContext struct {
+}
+
+func (mockExecutionContext) GetParameters() cli.Parameters {
+	panic("implement me")
+}
+
+func (mockExecutionContext) Pwd() string {
+	panic("implement me")
+}
+
+func (mockExecutionContext) WithPwd(pwd string) cli.WithPwder {
+	panic("implement me")
+}
+
+func (mockExecutionContext) GetEnvironmentVariables() map[string]string {
+	panic("implement me")
+}
+
+func (mockExecutionContext) TemplateValues() templating.TemplateValues {
+	panic("implement me")
+}
+
+func (mockExecutionContext) Log() *logrus.Entry {
+	panic("implement me")
+}
+
+func (mockExecutionContext) WithLogField(name string, value interface{}) util.WithLogFielder {
+	panic("implement me")
+}
+
+func (mockExecutionContext) Ctx() context.Context {
+	panic("implement me")
+}
+
+func (mockExecutionContext) WithTimeout(timeout time.Duration) core.Ctxer {
+	panic("implement me")
+}

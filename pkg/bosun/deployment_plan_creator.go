@@ -41,9 +41,10 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 		req.ManifestDirPath = dir
 	}
 	plan := &DeploymentPlan{
-		DirectoryPath:      dir,
-		Provider:           req.ProviderName,
-		IgnoreDependencies: req.IgnoreDependencies,
+		DirectoryPath:            dir,
+		Provider:                 req.ProviderName,
+		SkipDependencyValidation: req.IgnoreDependencies,
+		DeployApps:               map[string]bool{},
 	}
 	apps := map[string]*App{}
 	dependencies := map[string][]string{}
@@ -94,6 +95,7 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 		}
 
 		plan.Apps = append(plan.Apps, appPlan)
+		plan.DeployApps[appPlan.Name] = true
 	}
 
 	return plan, nil

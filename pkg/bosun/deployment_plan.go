@@ -10,12 +10,14 @@ import (
 )
 
 type DeploymentPlan struct {
-	core.ConfigShared  `yaml:",inline"`
-	DirectoryPath      string               `yaml:"-"`
-	Provider           string               `yaml:"provider"`
-	IgnoreDependencies bool                 `yaml:"ignoreDependencies,omitempty"`
-	ValueOverrides     values.ValueSet      `yaml:"valueOverrides"`
-	Apps               []*AppDeploymentPlan `yaml:"apps"`
+	core.ConfigShared         `yaml:",inline"`
+	DirectoryPath             string               `yaml:"-"`
+	Provider                  string               `yaml:"provider"`
+	SkipDependencyValidation  bool                 `yaml:"skipDependencyValidation"`
+	ValueOverrides            values.ValueSet      `yaml:"valueOverrides"`
+	DeployApps                map[string]bool      `yaml:"deployApps"`
+	EnvironmentDeployProgress map[string][]string  `yaml:"environmentDeployProgress"`
+	Apps                      []*AppDeploymentPlan `yaml:"apps"`
 }
 
 func LoadDeploymentPlanFromFile(path string) (*DeploymentPlan, error) {
@@ -42,6 +44,14 @@ func LoadDeploymentPlanFromFile(path string) (*DeploymentPlan, error) {
 func (d DeploymentPlan) Save() error {
 	var err error
 
+	if d.DirectoryPath == "" {
+		if d.FromPath != "" {
+			d.DirectoryPath = filepath.Dir(d.FromPath)
+		} else {
+			return errors.New("directoryPath and fromPath were both empty")
+		}
+	}
+
 	_ = os.RemoveAll(d.DirectoryPath)
 	if err = os.MkdirAll(d.DirectoryPath, 0700); err != nil {
 		return err
@@ -54,8 +64,19 @@ func (d DeploymentPlan) Save() error {
 		}
 	}
 
-	planPath := filepath.Join(d.DirectoryPath, "plan.yaml")
-	err = yaml.SaveYaml(planPath, d)
+	return d.SavePlanFileOnly()
+}
+
+func (d DeploymentPlan) SavePlanFileOnly() error {
+
+	planPath := d.FromPath
+	if planPath == "" {
+		if d.DirectoryPath == "" {
+			return errors.New("fromPath and directoryPath were both empty")
+		}
+		planPath = filepath.Join(d.DirectoryPath, "plan.yaml")
+	}
+	err := yaml.SaveYaml(planPath, d)
 
 	return err
 }

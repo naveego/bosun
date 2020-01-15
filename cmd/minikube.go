@@ -79,9 +79,12 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 			},
 		}
 
+		env := b.GetCurrentEnvironment()
 		err := konfigs.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
-			Name: "minikube",
-			Log:  ctx.Log(),
+			Name:             "minikube",
+			Log:              ctx.Log(),
+			ExecutionContext: ctx,
+			PullSecrets:      env.PullSecrets,
 		})
 		if err != nil {
 			return err

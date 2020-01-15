@@ -13,7 +13,7 @@ type MinikubeConfig struct {
 	Version  string `yaml:"version" json:"version"`
 }
 
-func (c MinikubeConfig) configureKubernetes(ctx CommandContext) error {
+func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) error {
 
 	if c.DiskSize == "" {
 		c.DiskSize = "40G"

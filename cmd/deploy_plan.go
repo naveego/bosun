@@ -15,11 +15,14 @@
 package cmd
 
 import (
+	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 func init() {
@@ -57,7 +60,9 @@ var _ = addCommand(deployCmd, &cobra.Command{
 				apps = append(apps, a.Name)
 			}
 			sort.Strings(apps)
-			apps = userChooseApps("Choose apps to deploy", apps)
+			if !viper.GetBool(argDeployPlanAll) {
+				apps = userChooseApps("Choose apps to deploy", apps)
+			}
 		}
 
 		var req = bosun.CreateDeploymentPlanRequest{
@@ -78,12 +83,35 @@ var _ = addCommand(deployCmd, &cobra.Command{
 
 		err = plan.Save()
 
+		if err != nil {
+			return err
+		}
+
+		color.Blue("Saved deployment plan to %s", req.Path)
+
+		color.White("To run this plan again, use this:")
+		cli := fmt.Sprintf("bosun deploy plan --path %s --provider %s ", req.Path, req.ProviderName)
+		if req.IgnoreDependencies {
+			cli += "--ignore-deps "
+		}
+		if req.AutomaticDependencies {
+			cli += "--auto-deps "
+		}
+		if viper.GetBool(argDeployPlanAll) {
+			cli += "--all "
+		} else {
+			cli += "--apps "
+			cli += strings.Join(req.Apps, ",")
+		}
+		color.White(cli)
+
 		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployPlanPath, "", "Path where plan should be stored.")
 	cmd.Flags().String(argDeployPlanProvider, "", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
 	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
+	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps which target the current environment.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, false, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
 })
@@ -91,6 +119,7 @@ var _ = addCommand(deployCmd, &cobra.Command{
 const (
 	argDeployPlanPath       = "path"
 	argDeployPlanApps       = "apps"
+	argDeployPlanAll        = "all"
 	argDeployPlanProvider   = "provider"
 	argDeployPlanIgnoreDeps = "ignore-deps"
 	argDeployPlanAutoDeps   = "auto-deps"

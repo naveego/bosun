@@ -1,10 +1,17 @@
 package filter
 
-import "github.com/naveego/bosun/pkg/util/stringsn"
+import (
+	"fmt"
+	"github.com/naveego/bosun/pkg/util/stringsn"
+)
 
 type ExactMatchConfig map[string][]string
 
 type ExactMatchArgs map[string]string
+
+func (e ExactMatchArgs) String() string {
+	return fmt.Sprintf("%#v", map[string]string(e))
+}
 
 func (e ExactMatchConfig) Matches(args ExactMatchArgs) bool {
 	if len(e) == 0 {

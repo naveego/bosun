@@ -5,6 +5,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/kube"
@@ -808,7 +809,37 @@ func writeYaml(path string, value interface{}) error {
 	return err
 }
 
+type AppsAndDependencies struct {
+	Apps             map[string]*App
+	Dependencies     map[string][]string
+	TopologicalOrder []string
+}
+
+func (p *Platform) GetAppsAndDependencies(b *Bosun, req CreateDeploymentPlanRequest) (AppsAndDependencies, error) {
+	apps := map[string]*App{}
+	dependencies := map[string][]string{}
+	out := AppsAndDependencies{
+		Apps:         apps,
+		Dependencies: dependencies,
+	}
+	err := p.buildAppsAndDepsRec(b, req, req.Apps, apps, dependencies)
+	if err != nil {
+		return out, err
+	}
+
+	topology, err := GetDependenciesInTopologicalOrder(dependencies, req.Apps...)
+
+	if err != nil {
+		return out, errors.Wrapf(err, "apps could not be sorted in dependency order (apps: %#v)", req.Apps)
+	}
+
+	out.TopologicalOrder = topology
+
+	return out, nil
+}
+
 func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest, appNames []string, apps map[string]*App, deps map[string][]string) error {
+	ctx := b.NewContext()
 	for len(appNames) > 0 {
 		appName := appNames[0]
 		appNames = appNames[1:]
@@ -817,13 +848,21 @@ func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest
 			continue
 		}
 
-		platformApp, err := p.getPlatformApp(appName)
+		platformApp, err := p.getPlatformApp(appName, ctx)
 		if err != nil {
 			return err
 		}
-		app, err := b.GetAppFromProvider(appName, req.ProviderName)
-		if err != nil {
-			return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderName)
+		var app *App
+		if req.ProviderName != "" {
+			app, err = b.GetAppFromProvider(appName, req.ProviderName)
+			if err != nil {
+				return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderName)
+			}
+		} else {
+			app, err = b.GetApp(appName)
+			if err != nil {
+				return errors.Wrapf(err, "get app %q from anywhere", appName)
+			}
 		}
 		apps[appName] = app
 		appDeps := deps[app.Name]
@@ -973,9 +1012,9 @@ func (p *Platform) IncludeApp(ctx BosunContext, config *PlatformAppConfig) error
 	return err
 }
 
-func (p *Platform) AddAppValuesForCluster(appName string, overridesName string, matchRules map[string][]string) error {
+func (p *Platform) AddAppValuesForCluster(ctx BosunContext, appName string, overridesName string, matchRules map[string][]string) error {
 
-	appConfig, err := p.getPlatformApp(appName)
+	appConfig, err := p.getPlatformApp(appName, ctx)
 	if err != nil {
 		return err
 	}
@@ -1424,13 +1463,25 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 	return nil
 }
 
-func (p *Platform) getPlatformApp(appName string) (*PlatformAppConfig, error) {
-	for _, a := range p.Apps {
+func (p *Platform) GetApps(ctx filter.ExactMatchArgsContainer) []*PlatformAppConfig {
+
+	var out []*PlatformAppConfig
+	for _, app := range p.Apps {
+		if app.TargetFilters.Matches(ctx.GetExactMatchArgs()) {
+			out = append(out, app)
+		}
+	}
+
+	return out
+}
+
+func (p *Platform) getPlatformApp(appName string, ctx filter.ExactMatchArgsContainer) (*PlatformAppConfig, error) {
+	for _, a := range p.GetApps(ctx) {
 		if a.Name == appName {
 			return a, nil
 		}
 	}
-	return nil, errors.Errorf("no platform app config with name %q", appName)
+	return nil, errors.Errorf("no platform app config with name %q matched filters %s", appName, ctx.GetExactMatchArgs())
 }
 
 func (p *Platform) LoadChildren() error {
@@ -1445,7 +1496,7 @@ func (p *Platform) LoadChildren() error {
 		appPath := filepath.Join(appPathDir, file.Name())
 		err = yaml.LoadYaml(appPath, &app)
 		if err != nil {
-			return errors.Wrapf(err, "load platform app config from %s", file)
+			return errors.Wrapf(err, "load platform app config from %s", appPath)
 		}
 		p.Apps = append(p.Apps, &app)
 	}

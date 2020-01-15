@@ -116,6 +116,7 @@ require (
 	github.com/ory-am/common v0.4.0 // indirect
 	github.com/ory/dockertest v3.3.2+incompatible // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
+	github.com/pborman/uuid v1.2.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pkg/browser v0.0.0-20180916011732-0a3d74bf9ce4

@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
@@ -224,7 +225,9 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			matches[key] = values
 		}
 
-		err = p.AddAppValuesForCluster(args[0], args[1], matches)
+		ctx := b.NewContext()
+
+		err = p.AddAppValuesForCluster(ctx, args[0], args[1], matches)
 
 		if err != nil {
 			return err
@@ -307,5 +310,38 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 		fmt.Println(string(y))
 		return nil
+	},
+})
+
+var _ = addCommand(platformCmd, &cobra.Command{
+	Use:   "tree",
+	Args:  cobra.ExactArgs(0),
+	Short: "Prints off the apps in the platform in dependency order.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		var appNames []string
+		for _, app := range p.Apps {
+			appNames = append(appNames, app.Name)
+		}
+
+		appsAndDeps, err := p.GetAppsAndDependencies(b, bosun.CreateDeploymentPlanRequest{
+			Apps: appNames,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		for _, appName := range appsAndDeps.TopologicalOrder {
+			fmt.Println(color.BlueString("- %s", appName), color.WhiteString(" : %v", appsAndDeps.Dependencies[appName]))
+		}
+
+		return nil
+
 	},
 })

@@ -146,10 +146,12 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 		ctx := b.NewContext()
 
 		err := env.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
-			Log:   ctx.Log(),
-			Name:  name,
-			Force: ctx.GetParameters().Force,
-			Role:  role,
+			Log:              ctx.Log(),
+			Name:             name,
+			Force:            ctx.GetParameters().Force,
+			Role:             role,
+			ExecutionContext: ctx,
+			PullSecrets:      env.PullSecrets,
 		})
 
 		return err
@@ -348,7 +350,7 @@ func kubectlProxy() (*exec.Cmd, string, error) {
 
 	// port=0 picks a random system port
 	// config.GetMachineName() respects the -p (profile) flag
-	cmd := exec.Command(path, "proxy", "--port=0")
+	cmd := exec.Command(path, "proxy", "--port=8765")
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, "", errors.Wrap(err, "cmd stdout")

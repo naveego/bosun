@@ -14,11 +14,6 @@ func ResolveValues(collectionProvider values.ValueSetCollectionProvider, ctx Bos
 		return loaded, errors.Wrapf(err, "load value set files")
 	}
 
-	resolved, err := loaded.WithDynamicValuesResolved(ctx)
-	if err != nil {
-		return loaded, errors.Wrapf(err, "resolve dynamic values")
-	}
-
-	return resolved, nil
+	return loaded, nil
 
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -18,6 +19,7 @@ type Config struct {
 	Role           core.EnvironmentRole   `yaml:"role" json:"role"`
 	DefaultCluster string                 `yaml:"defaultCluster" json:"defaultCluster"`
 	Clusters       kube.ConfigDefinitions `yaml:"clusters"`
+	PullSecrets    []kube.PullSecret      `yaml:"pullSecrets"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool                             `yaml:"protected" json:"protected"`
@@ -87,6 +89,11 @@ func (e *Environment) ForceEnsure(ctx environmentvariables.EnsureContext) error 
 // sets the cluster, but only if the environment has not already
 // been set.
 func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) error {
+
+	if ctx.GetParameters().NoCluster {
+		return nil
+	}
+
 	if e.ClusterName == "" {
 		e.ClusterName = os.Getenv(core.EnvCluster)
 	}
@@ -113,19 +120,12 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 			return err
 		}
 	}
-
-	err = e.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
-		Name:  e.Cluster.Name,
-		Log:   pkg.Log,
-		Force: ctx.GetParameters().Force,
-	})
-
-	if err != nil {
-		return err
-	}
-
 	pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
-	_, err = pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
+	out, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
+
+	if strings.Contains(out, "no context exists with the name") {
+		return errors.Errorf("No context found with name %q (try running `bosun kube configure-cluster %s`)", e.ClusterName, e.ClusterName)
+	}
 
 	return err
 }
