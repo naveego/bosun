@@ -753,7 +753,7 @@ diff go-between 2.4.2/blue green
 					return "", errors.Errorf("invalid scenario %q", scenario)
 				}
 
-				environmentConfig, err := b.GetEnvironment(envName)
+				environmentConfig, err := b.GetEnvironmentConfig(envName)
 				if err != nil {
 					return "", errors.Wrap(err, "environment")
 				}

@@ -46,6 +46,7 @@ var (
 // The platform contains a history of all releases created for the platform.
 type Platform struct {
 	core.ConfigShared            `yaml:",inline"`
+	BosunVersion                 semver.Version                   `yaml:"bosunVersion"`
 	DefaultChartRepo             string                           `yaml:"defaultChartRepo"`
 	Branching                    git.BranchSpec                   `yaml:"branching"`
 	ReleaseBranchFormat_OBSOLETE string                           `yaml:"releaseBranchFormat,omitempty"`
@@ -71,6 +72,11 @@ func (p *Platform) MarshalYAML() (interface{}, error) {
 	}
 	type proxy Platform
 	px := proxy(*p)
+
+	bosunVersion := core.GetVersion()
+	if px.BosunVersion.LessThan(bosunVersion) {
+		px.BosunVersion = bosunVersion
+	}
 
 	return &px, nil
 }
@@ -120,6 +126,12 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				issues.ColumnClosed:           "Closed",
 			},
 		}
+	}
+
+	if versionErr := core.CheckCompatibility(p.BosunVersion); versionErr != nil {
+		fmt.Println()
+		color.Red("Platform may be incompatible: %s", versionErr)
+		fmt.Println()
 	}
 
 	return err
@@ -1012,7 +1024,7 @@ func (p *Platform) IncludeApp(ctx BosunContext, config *PlatformAppConfig) error
 	return err
 }
 
-func (p *Platform) AddAppValuesForCluster(ctx BosunContext, appName string, overridesName string, matchRules map[string][]string) error {
+func (p *Platform) AddAppValuesForCluster(ctx BosunContext, appName string, overridesName string, matchMap filter.MatchMapConfig) error {
 
 	appConfig, err := p.getPlatformApp(appName, ctx)
 	if err != nil {
@@ -1047,7 +1059,7 @@ func (p *Platform) AddAppValuesForCluster(ctx BosunContext, appName string, over
 	valueSet.Files = nil
 	valueSet.Roles = nil
 	valueSet.Name = overridesName
-	valueSet.ExactMatchFilters = matchRules
+	valueSet.ExactMatchFilters = matchMap
 
 	appConfig.ValueOverrides.ValueSets[index] = valueSet
 
@@ -1463,11 +1475,11 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 	return nil
 }
 
-func (p *Platform) GetApps(ctx filter.ExactMatchArgsContainer) []*PlatformAppConfig {
+func (p *Platform) GetApps(ctx filter.MatchMapArgContainer) []*PlatformAppConfig {
 
 	var out []*PlatformAppConfig
 	for _, app := range p.Apps {
-		if app.TargetFilters.Matches(ctx.GetExactMatchArgs()) {
+		if app.TargetFilters.Matches(ctx.GetMatchMapArgs()) {
 			out = append(out, app)
 		}
 	}
@@ -1475,13 +1487,13 @@ func (p *Platform) GetApps(ctx filter.ExactMatchArgsContainer) []*PlatformAppCon
 	return out
 }
 
-func (p *Platform) getPlatformApp(appName string, ctx filter.ExactMatchArgsContainer) (*PlatformAppConfig, error) {
+func (p *Platform) getPlatformApp(appName string, ctx filter.MatchMapArgContainer) (*PlatformAppConfig, error) {
 	for _, a := range p.GetApps(ctx) {
 		if a.Name == appName {
 			return a, nil
 		}
 	}
-	return nil, errors.Errorf("no platform app config with name %q matched filters %s", appName, ctx.GetExactMatchArgs())
+	return nil, errors.Errorf("no platform app config with name %q matched filters %s", appName, ctx.GetMatchMapArgs())
 }
 
 func (p *Platform) LoadChildren() error {
@@ -1502,6 +1514,23 @@ func (p *Platform) LoadChildren() error {
 	}
 
 	return nil
+}
+
+func (p *Platform) GetPlatformAppUnfiltered(appName string) (*PlatformAppConfig, error) {
+	for _, app := range p.Apps {
+		if app.Name == appName {
+			return app, nil
+		}
+	}
+	return nil, errors.Errorf("no platform app config found with name %q, even disregarding filters", appName)
+}
+
+func (p *Platform) GetKnownAppMap() map[string]*PlatformAppConfig {
+	out := map[string]*PlatformAppConfig{}
+	for _, app := range p.Apps {
+		out[app.Name] = app
+	}
+	return out
 }
 
 type mergeTarget struct {

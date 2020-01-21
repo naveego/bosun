@@ -1,6 +1,7 @@
 package values
 
 import (
+	"fmt"
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
@@ -21,7 +22,7 @@ type ValueSet struct {
 	StaticAttributions  Values                           `yaml:"staticAttributions,omitempty"`
 	DynamicAttributions Values                           `yaml:"dynamicAttributions,omitempty"`
 	Roles               []core.EnvironmentRole           `yaml:"roles,flow,omitempty"`
-	ExactMatchFilters   filter.ExactMatchConfig          `yaml:"exactMatchFilters,omitempty"`
+	ExactMatchFilters   filter.MatchMapConfig            `yaml:"exactMatchFilters,omitempty"`
 	Dynamic             map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
 	Files               []string                         `yaml:"files,omitempty" json:"files,omitempty"`
 	Static              Values                           `yaml:"static,omitempty" json:"static,omitempty"`
@@ -147,13 +148,25 @@ func (v ValueSet) withTriviaFrom(other ValueSet) ValueSet {
 
 func (v ValueSet) WithSource(source string) ValueSet {
 	v.Source = source
-	return v
+
+	return v.WithDefaultSource(source)
 }
 
 // Returns a value set with the source set if it wasn't set before.
 func (v ValueSet) WithDefaultSource(source string) ValueSet {
 	if v.Source == "" {
 		v.Source = source
+	}
+	if v.StaticAttributions == nil {
+		v.StaticAttributions = Values{}
+	}
+	v.StaticAttributions.Merge(v.Static.MakeAttributionValues(source))
+
+	if v.DynamicAttributions == nil {
+		v.DynamicAttributions = map[string]interface{}{}
+	}
+	for k := range v.Dynamic {
+		v.DynamicAttributions[k] = source
 	}
 	return v
 }
@@ -195,11 +208,15 @@ func (v ValueSet) WithValues(other ValueSet) ValueSet {
 	out.StaticAttributions.Merge(other.StaticAttributions)
 	out.DynamicAttributions.Merge(other.DynamicAttributions)
 
-	out.Static.MergeWithAttribution(other.Static, attribution, out.StaticAttributions)
+	out.Static.Merge(other.Static)
 
-	for k, v := range other.Dynamic {
-		out.Dynamic[k] = v
-		out.DynamicAttributions[k] = attribution
+	for k, cmd := range other.Dynamic {
+		out.Dynamic[k] = cmd
+		attr := other.DynamicAttributions[k]
+		if attr == "" {
+			attr = attribution
+		}
+		out.DynamicAttributions[k] = attr
 	}
 
 	return out
@@ -234,14 +251,15 @@ func (v ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, err
 		if err != nil {
 			return out, errors.Errorf("reading values file %q: %s", file, err)
 		}
-		mergedValues.Merge(valuesFromFile)
+		valueSetFromFile := ValueSet{
+			Static:valuesFromFile,
+		}
+		out = out.WithValues(valueSetFromFile.WithSource(fmt.Sprintf("file imported by app: %s", file)))
 	}
 
 	// make sure any existing static values are merged OVER the values from the file
 	mergedValues.Merge(out.Static)
 	out.Static = mergedValues
-
-	out.Dynamic = v.Dynamic
 
 	return out, nil
 }
@@ -278,6 +296,11 @@ func (v ValueSet) WithDynamicValuesResolved(ctx command.ExecutionContext) (Value
 	out = out.withTriviaFrom(v)
 
 	for k, value := range out.Dynamic {
+
+		if value.Script != "" {
+			ctx.Log().Debugf("Resolving dynamic value %q using script:\n %s", k, value.Script)
+		}
+
 		resolved, err := value.Resolve(ctx)
 		if err != nil {
 			return out, errors.Errorf("resolving dynamic values for key %q: %s", k, err)

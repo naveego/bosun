@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
@@ -48,29 +49,41 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			path = userChooseStringWithDefault("Where should the plan be saved?", filepath.Join(filepath.Dir(p.FromPath), "/deployments/default/plan.yaml"))
 		}
 		log.Debugf("Saving plan to %q", path)
-		provider, _ := cmd.Flags().GetString(argDeployPlanProvider)
-		if provider == "" {
-			provider = userChooseProvider(provider)
-		}
-		log.Debugf("Obtaining apps from provider %q", provider)
-
-		apps := viper.GetStringSlice(argDeployPlanApps)
-		if len(apps) == 0 {
-			for _, a := range p.Apps {
-				apps = append(apps, a.Name)
-			}
-			sort.Strings(apps)
-			if !viper.GetBool(argDeployPlanAll) {
-				apps = userChooseApps("Choose apps to deploy", apps)
-			}
-		}
 
 		var req = bosun.CreateDeploymentPlanRequest{
-			Apps:                  apps,
 			Path:                  path,
-			ProviderName:          provider,
 			IgnoreDependencies:    viper.GetBool(argDeployPlanIgnoreDeps),
 			AutomaticDependencies: viper.GetBool(argDeployPlanAutoDeps),
+		}
+		update := viper.GetBool(argDeployPlanUpdate)
+		var previousPlan *bosun.DeploymentPlan
+		if update {
+			previousPlan, err = bosun.LoadDeploymentPlanFromFile(path)
+			if err != nil {
+				return errors.Wrap(err, "could not load existing plan")
+			}
+			req.ProviderName = previousPlan.Provider
+			for _, app := range previousPlan.Apps {
+				req.Apps = append(req.Apps, app.Name)
+			}
+		} else {
+
+			req.ProviderName, _ = cmd.Flags().GetString(argDeployPlanProvider)
+			if req.ProviderName == "" {
+				req.ProviderName = userChooseProvider(req.ProviderName)
+			}
+			log.Debugf("Obtaining apps from provider %q", req.ProviderName)
+
+			req.Apps = viper.GetStringSlice(argDeployPlanApps)
+			if len(req.Apps) == 0 {
+				for _, a := range p.GetApps(ctx) {
+					req.Apps = append(req.Apps, a.Name)
+				}
+				sort.Strings(req.Apps)
+				if !viper.GetBool(argDeployPlanAll) {
+					req.Apps = userChooseApps("Choose apps to deploy", req.Apps)
+				}
+			}
 		}
 
 		planCreator := bosun.NewDeploymentPlanCreator(b, p)
@@ -79,6 +92,10 @@ var _ = addCommand(deployCmd, &cobra.Command{
 
 		if err != nil {
 			return err
+		}
+
+		if update && previousPlan != nil {
+			plan.EnvironmentDeployProgress = previousPlan.EnvironmentDeployProgress
 		}
 
 		err = plan.Save()
@@ -114,6 +131,7 @@ var _ = addCommand(deployCmd, &cobra.Command{
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps which target the current environment.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, false, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
+	cmd.Flags().Bool(argDeployPlanUpdate, false, "Update an existing plan rather than creating a new one.")
 })
 
 const (
@@ -123,4 +141,5 @@ const (
 	argDeployPlanProvider   = "provider"
 	argDeployPlanIgnoreDeps = "ignore-deps"
 	argDeployPlanAutoDeps   = "auto-deps"
+	argDeployPlanUpdate     = "update"
 )

@@ -35,7 +35,7 @@ const (
 	StatusNotFound       = "NOTFOUND"
 	StatusDeleted        = "DELETED"
 	StatusFailed         = "FAILED"
-	StatusPendingUpgrade = "PENDING_UPGRADE"
+	StatusPendingUpgrade = "PENDING-UPGRADE"
 	StatusUnchanged      = "UNCHANGED"
 )
 

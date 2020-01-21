@@ -82,7 +82,7 @@ func useEnvironment(args ...string) error {
 
 	envName := args[0]
 	if envName != "current" {
-		err = b.UseEnvironment(envName, viper.GetString(ArgEnvCluster))
+		err = b.UseEnvironmentAndCluster(envName, viper.GetString(ArgEnvCluster))
 		if err != nil {
 			return err
 		}
@@ -232,7 +232,7 @@ var _ = addCommand(envCmd, &cobra.Command{
 		var env *environment.Config
 		var err error
 		if len(args) == 1 {
-			env, err = b.GetEnvironment(args[0])
+			env, err = b.GetEnvironmentConfig(args[0])
 			if err != nil {
 				return err
 			}

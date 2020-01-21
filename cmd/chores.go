@@ -229,14 +229,27 @@ func migrateAppToRolePatterns(app *bosun.AppConfig) {
 	for i, a := range app.Actions {
 		where := mapRoles(a.Where)
 		if a.WhereFilter == nil {
-			a.WhereFilter = filter.ExactMatchConfig{}
+			a.WhereFilter = filter.MatchMapConfig{}
 		}
 		a.WhereFilter[core.KeyEnvironmentRole] = nil
 		for _, r := range where {
-			a.WhereFilter[core.KeyEnvironmentRole] = append(a.WhereFilter[core.KeyEnvironmentRole], string(r))
+			a.WhereFilter[core.KeyEnvironmentRole] = append(a.WhereFilter[core.KeyEnvironmentRole], filter.MatchMapConfigValue(r))
 		}
 		a.Where = nil
+
+		hasFilters := false
+		for _, v := range a.WhereFilter {
+			if len(v) > 0 {
+				hasFilters = true
+			}
+		}
+		if !hasFilters {
+			a.WhereFilter = nil
+		}
+
 		app.Actions[i] = a
+
+
 	}
 
 }

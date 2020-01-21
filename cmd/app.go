@@ -47,7 +47,6 @@ const (
 	ArgAppValueSet        = "value-sets"
 	ArgAppSet             = "set"
 
-	ArgAppDeployDeps        = "deploy-deps"
 	ArgAppFromRelease       = "release"
 	ArgAppLatest            = "latest"
 	ArgAppDeletePurge       = "purge"

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
@@ -14,7 +13,6 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
-	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -43,7 +41,7 @@ func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 	envFromEnv := os.Getenv(core.EnvEnvironment)
 	envFromConfig := b.GetCurrentEnvironment().Name
 	if envFromConfig != envFromEnv {
-		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)",
+		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)\n\n",
 			envFromConfig,
 			core.EnvEnvironment,
 			envFromEnv)
@@ -165,7 +163,7 @@ func getAppDeploysFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppDepl
 			return nil, err
 		}
 
-		includeDeps := viper.GetBool(ArgAppDeployDeps)
+		includeDeps := viper.GetBool(argDeployPlanAutoDeps)
 		deploySettings := bosun.DeploySettings{
 			Environment:        ctx.Environment(),
 			ValueSets:          valueSets,
@@ -212,6 +210,11 @@ func getFilterParams(b *bosun.Bosun, names []string) FilterParams {
 	p.Include = viper.GetStringSlice(ArgFilteringInclude)
 	p.Exclude = viper.GetStringSlice(ArgFilteringExclude)
 
+	p.All = len(p.Labels) == 0	&&
+		len(p.Include) == 0	&&
+		len(p.Exclude) == 0 &&
+		len(p.Names) == 0
+
 	return p
 }
 
@@ -238,7 +241,7 @@ func (f FilterParams) Chain() filter.Chain {
 	var include []filter.Filter
 	var exclude []filter.Filter
 
-	if viper.GetBool(ArgFilteringAll) {
+	if f.All {
 		include = append(include, filter.FilterMatchAll())
 	} else if len(f.Names) > 0 {
 		for _, name := range f.Names {
@@ -270,30 +273,30 @@ func (f FilterParams) MustGetApp() *bosun.App {
 }
 
 func (f FilterParams) GetApp() (*bosun.App, error) {
-	apps := f.b.GetAppsSortedByName()
+	apps := f.b.GetAllApps().ToList()
 
 	result, err := f.Chain().ToGetExactly(1).FromErr(apps)
 	if err != nil {
 		return nil, err
 	}
 
-	return result.([]*bosun.App)[0], nil
+	return result.(bosun.AppList)[0], nil
 }
 
-func (f FilterParams) GetApps() []*bosun.App {
-	apps := f.b.GetAppsSortedByName()
+func (f FilterParams) GetApps() bosun.AppList {
+	apps := f.b.GetAllApps().ToList()
 
-	result := f.Chain().From(apps)
+	result := f.Chain().From(apps).(bosun.AppList).SortByName()
 
-	return result.([]*bosun.App)
+	return result
 }
 
 func (f FilterParams) GetAppsChain(chain filter.Chain) ([]*bosun.App, error) {
-	apps := f.b.GetAppsSortedByName()
+	apps := f.b.GetAllApps().ToList()
 
 	result, err := chain.FromErr(apps)
 
-	return result.([]*bosun.App), err
+	return result.(bosun.AppList), err
 }
 
 func mustGetAppsIncludeCurrent(b *bosun.Bosun, names []string) []*bosun.App {
@@ -325,7 +328,7 @@ func (f FilterParams) MustGetAppDeploys() []*bosun.AppDeploy {
 func getCurrentApp(b *bosun.Bosun) (*bosun.App, error) {
 	var bosunFile string
 	var err error
-	var app *bosun.App
+	var matchedApp *bosun.App
 
 	wd, _ := os.Getwd()
 	bosunFile, err = util.FindFileInDirOrAncestors(wd, "bosun.yaml")
@@ -333,19 +336,22 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.App, error) {
 		return nil, err
 	}
 
-	_, err = b.GetOrAddAppForPath(bosunFile)
-	if err != nil {
-		return nil, err
+	ctx := b.NewContext()
+	matchedApp, err = b.GetOrAddAppForPath(bosunFile)
+	if err == nil {
+		return matchedApp, nil
 	}
+
+	ctx.Log().Errorf("Could not get an app from bosun file at %s: %s", bosunFile, err)
 
 	bosunFileDir := filepath.Dir(bosunFile)
 
 	var appsUnderDirNames []string
 	var appsUnderDir []*bosun.App
-	for _, app = range b.GetApps() {
-		if app.IsRepoCloned() && strings.HasPrefix(app.FromPath, bosunFileDir) {
-			appsUnderDirNames = append(appsUnderDirNames, app.Name)
-			appsUnderDir = append(appsUnderDir, app)
+	for _, matchedApp = range b.GetAllApps() {
+		if matchedApp.IsRepoCloned() && strings.HasPrefix(matchedApp.FromPath, bosunFileDir) {
+			appsUnderDirNames = append(appsUnderDirNames, matchedApp.Name)
+			appsUnderDir = append(appsUnderDir, matchedApp)
 		}
 	}
 	sort.Strings(appsUnderDirNames)
@@ -369,6 +375,7 @@ func getCurrentApp(b *bosun.Bosun) (*bosun.App, error) {
 	}
 
 	return appsUnderDir[i], nil
+
 }
 
 // gets one or more apps matching names, or if names
@@ -551,101 +558,6 @@ var (
 	colorOK     = color.New(color.FgGreen, color.Bold)
 )
 
-// renderOutput is an alias for printOutput because I can't remember which it is
-func renderOutput(out interface{}, columns ...string) error {
-	return printOutput(out, columns...)
-}
-
-func printOutput(out interface{}, columns ...string) error {
-
-	format := viper.GetString(ArgGlobalOutput)
-
-	if format == "" {
-		format = "y"
-	}
-	formatKey := strings.ToLower(format[0:1])
-
-	switch formatKey {
-	case "j":
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(out)
-	case "y":
-		enc := yaml.NewEncoder(os.Stdout)
-		return enc.Encode(out)
-	case "t":
-
-		var header []string
-		var rows [][]string
-
-		switch t := out.(type) {
-		case util.Tabler:
-			header = t.Headers()
-			rows = t.Rows()
-		default:
-			segs := strings.Split(format, "=")
-			if len(segs) > 1 {
-				columns = strings.Split(segs[1], ",")
-			}
-			j, err := json.Marshal(out)
-			if err != nil {
-				return err
-			}
-			var mapSlice []map[string]json.RawMessage
-			err = json.Unmarshal(j, &mapSlice)
-			if err != nil {
-				return errors.Wrapf(err, "only slices of structs or maps can be rendered as a table, but got %T", out)
-			}
-			if len(mapSlice) == 0 {
-				return nil
-			}
-
-			first := mapSlice[0]
-
-			var keys []string
-			if len(columns) > 0 {
-				keys = columns
-			} else {
-				for k := range first {
-					keys = append(keys, k)
-				}
-				sort.Strings(keys)
-			}
-			for _, k := range keys {
-				header = append(header, k)
-			}
-			for _, m := range mapSlice {
-				var values []string
-
-				for _, k := range keys {
-					if v, ok := m[k]; ok && len(v) > 0 {
-						values = append(values, strings.Trim(string(v), `"`))
-					} else {
-						values = append(values, "")
-					}
-				}
-				rows = append(rows, values)
-			}
-		}
-
-		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader(header)
-		table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-		table.SetCenterSeparator("|")
-
-		for _, row := range rows {
-			table.Append(row)
-		}
-
-		table.Render()
-
-		return nil
-	default:
-		return errors.Errorf("Unrecognized format %q (valid formats are 'json', 'yaml', and 'table')", format)
-	}
-
-}
-
 func getResolvedValuesFromApp(b *bosun.Bosun, app *bosun.App) (*values.PersistableValues, error) {
 	ctx := b.NewContext().WithDir(app.FromPath)
 
@@ -658,7 +570,7 @@ func getResolvedValuesFromApp(b *bosun.Bosun, app *bosun.App) (*values.Persistab
 
 func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppManifest) (*values.PersistableValues, error) {
 
-	ctx := b.NewContext()
+	ctx := b.NewContext().WithDir(appManifest.AppConfig.FromPath)
 
 	valueSets, err := getValueSetSlice(b, ctx.Environment())
 	if err != nil {

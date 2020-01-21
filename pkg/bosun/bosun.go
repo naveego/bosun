@@ -8,12 +8,14 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/script"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/workspace"
@@ -25,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -117,20 +120,6 @@ func (b *Bosun) initializeAppProviders() error {
 	return nil
 }
 
-func (b *Bosun) GetAppsSortedByName() []*App {
-	var ms AppsSortedByName
-
-	apps := b.GetApps()
-
-	for _, x := range apps {
-		if x.Name != "" {
-			ms = append(ms, x)
-		}
-	}
-	sort.Sort(ms)
-	return ms
-}
-
 // GetAllVersionsOfAllApps gets all apps from all providers, ignoring provider priority.
 func (b *Bosun) GetAllVersionsOfAllApps(providerPriority ...string) (AppList, error) {
 	if len(providerPriority) == 0 {
@@ -147,14 +136,40 @@ func (b *Bosun) GetAllProviderNames() []string {
 	return b.params.ProviderPriority
 }
 
-func (b *Bosun) GetApps() map[string]*App {
+func (b *Bosun) GetAllApps() AppMap {
 
 	apps, err := b.appProvider.GetAllApps(b.params.ProviderPriority)
 	if err != nil {
 		b.log.WithError(err).Error("Could not get apps.")
 		apps = map[string]*App{}
 	}
+
 	return apps
+}
+
+func (b *Bosun) GetPlatformApps() map[string]*App {
+
+	apps, err := b.appProvider.GetAllApps(b.params.ProviderPriority)
+	if err != nil {
+		b.log.WithError(err).Error("Could not get apps.")
+		apps = map[string]*App{}
+	}
+
+	return b.removeNonPlatformAppsFromMap(apps)
+}
+
+func (b *Bosun) removeNonPlatformAppsFromMap(in map[string]*App) map[string]*App {
+	p, _ := b.GetCurrentPlatform()
+
+	knownApps := p.GetKnownAppMap()
+
+	out := map[string]*App{}
+	for k, app := range in {
+		if _, ok := knownApps[k]; ok {
+			out[app.Name] = app
+		}
+	}
+	return out
 }
 
 func (b *Bosun) GetAppDesiredStates() map[string]workspace.AppState {
@@ -163,7 +178,7 @@ func (b *Bosun) GetAppDesiredStates() map[string]workspace.AppState {
 
 func (b *Bosun) GetAppDependencyMap() map[string][]string {
 	deps := map[string][]string{}
-	for _, app := range b.GetApps() {
+	for _, app := range b.GetPlatformApps(){
 		for _, dep := range app.DependsOn {
 			deps[app.Name] = append(deps[app.Name], dep.Name)
 		}
@@ -218,7 +233,7 @@ func (b *Bosun) GetScripts() []*script.Script {
 	scripts := make([]*script.Script, len(env.Scripts))
 	copy(scripts, env.Scripts)
 	copy(scripts, b.GetMergedConfig().Scripts)
-	for _, app := range b.GetAppsSortedByName() {
+	for _, app := range b.GetAllApps() {
 		for _, script := range app.Scripts {
 			script.Name = fmt.Sprintf("%s-%s", app.Name, script.Name)
 			scripts = append(scripts, script)
@@ -271,17 +286,57 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 
 	provider := NewFilePathAppProvider(b.log)
 	app, err := provider.GetApp(path)
+
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = b.GetApp(app.Name)
+	if err != nil {
+		ctx := b.NewContext()
+		ctx.Log().Infof("Adding app %s at path %s to workspace...", app.Name)
+
+		b.AddImport(path)
+
+		err = b.ws.Save()
+		return app, err
+	}
+
 	return app, err
 }
 
-func (b *Bosun) useEnvironment(config *environment.Config, clusterName string) error {
+// Configures the workspace to use the specified environment, and activates that environment.
+// If the nameOrAlias is a cluster environment alias, that cluster will also be used and activated.
+// Otherwise, the default cluster for the environment will be used and activated.
+func (b *Bosun) UseEnvironment(nameOrAlias string) error {
 
-	if clusterName == "" {
-		clusterName = config.DefaultCluster
+	env, err := b.GetEnvironmentConfig(nameOrAlias)
+	if err != nil {
+		return err
 	}
 
-	b.ws.CurrentEnvironment = config.Name
+	return b.UseEnvironmentAndCluster(nameOrAlias, env.DefaultCluster)
+}
+
+// Configures the workspace to use the specified environment and cluster, and activates them.
+func (b *Bosun) UseEnvironmentAndCluster(environmentNameOrAlias string, clusterName string) error {
+
+	env, err := b.GetEnvironmentConfig(environmentNameOrAlias)
+	if err != nil {
+		return err
+	}
+
+	if clusterName == "" {
+		clusterName = env.DefaultCluster
+	}
+
+	b.ws.CurrentEnvironment = env.Name
 	b.ws.CurrentCluster = clusterName
+
+	return b.ActivateEnvironmentAndCluster(env, clusterName)
+}
+
+func (b *Bosun) ActivateEnvironmentAndCluster(config *environment.Config, clusterName string) error {
 
 	env := &environment.Environment{
 		Config:      *config,
@@ -292,20 +347,10 @@ func (b *Bosun) useEnvironment(config *environment.Config, clusterName string) e
 
 	err := b.env.ForceEnsure(b.NewContext())
 	if err != nil {
-		return errors.Errorf("ensure environment %q: %s", b.env.Name, err)
+		return errors.Wrapf(err, "ensure environment %q", b.env.Name)
 	}
 
 	return nil
-}
-
-func (b *Bosun) UseEnvironment(name string, clusterName string) error {
-
-	env, err := b.GetEnvironment(name)
-	if err != nil {
-		return err
-	}
-
-	return b.useEnvironment(env, clusterName)
 }
 
 func (b *Bosun) GetCurrentEnvironment() *environment.Environment {
@@ -317,6 +362,58 @@ func (b *Bosun) GetCurrentEnvironment() *environment.Environment {
 	}
 
 	return b.env
+}
+
+func (b *Bosun) getActiveEnvironmentAndClusterNames() (environmentName string, clusterName string, err error) {
+
+	found := false
+	if environmentName, clusterName, found = core.GetInternalEnvironmentAndCluster(); found {
+		return
+	}
+
+	var env *environment.Config
+
+	if b.ws.CurrentEnvironment == "" {
+		var envs []*environment.Config
+		envs, err = b.GetEnvironments()
+		if err != nil {
+			return
+		}
+		switch len(envs) {
+		case 0:
+			err = errors.New("no environments configured")
+			return
+		case 1:
+			// if only one environment exists, it's the current one
+			env = envs[0]
+		default:
+			var envNames []string
+			for _, env := range envs {
+				envNames = append(envNames, env.Name)
+				for _, cluster := range env.Clusters {
+					envNames = append(envNames, cluster.EnvironmentAlias+"(alias)")
+				}
+			}
+			err = errors.Errorf("no environment set (available: %v)", envNames)
+			return
+		}
+	} else {
+		env, err = b.GetEnvironmentConfig(b.ws.CurrentEnvironment)
+		if err != nil {
+			return
+		}
+	}
+
+	environmentName = env.Name
+	clusterName = os.Getenv(core.EnvCluster)
+	if clusterName == "" {
+		clusterName = b.ws.CurrentCluster
+	}
+	if clusterName == "" {
+		clusterName = env.DefaultCluster
+	}
+
+	return
 }
 
 func (b *Bosun) SetDesiredState(app string, state workspace.AppState) {
@@ -438,7 +535,7 @@ func (b *Bosun) ClearImports() {
 	b.ws.Imports = []string{}
 }
 
-func (b *Bosun) GetEnvironment(name string) (*environment.Config, error) {
+func (b *Bosun) GetEnvironmentConfig(name string) (*environment.Config, error) {
 	envs, err := b.GetEnvironments()
 	if err != nil {
 		return nil, err
@@ -446,6 +543,12 @@ func (b *Bosun) GetEnvironment(name string) (*environment.Config, error) {
 	for _, env := range envs {
 		if env.Name == name {
 			return env, nil
+		}
+		for _, cluster := range env.Clusters {
+			if cluster.EnvironmentAlias == name {
+				env.DefaultCluster = cluster.Name
+				return env, nil
+			}
 		}
 	}
 	return nil, errors.Errorf("no environment named %q", name)
@@ -583,27 +686,36 @@ func (b *Bosun) setCurrentPlatform(platform *Platform) (*Platform, error) {
 	return platform, nil
 }
 
-func (b *Bosun) GetCurrentClusterName() (string, error) {
+func (b *Bosun) GetCurrentClusterName(env *environment.Config) (string, error) {
 	if b.ws.CurrentCluster != "" {
 		return b.ws.CurrentCluster, nil
 	}
 
-	env := b.GetCurrentEnvironment()
+	if cluster, ok := os.LookupEnv(core.EnvCluster); ok {
+		return cluster, nil
+	}
 
-	cluster, err := env.Clusters.GetKubeConfigDefinitionByRole(kube.DefaultRole)
+	if env == nil {
+		envx := b.GetCurrentEnvironment()
+		env = &envx.Config
+	}
+
+	if env.DefaultCluster != "" {
+		return env.DefaultCluster, nil
+	}
+
+	clusters, err := env.Clusters.GetKubeConfigDefinitionsByRole(kube.DefaultRole)
 	if err != nil {
 		return "", err
 	}
 
-	return cluster.Name, nil
+	return clusters[0].Name, nil
 }
 
 func (b *Bosun) GetPlatform(name string) (*Platform, error) {
 	for _, p := range b.file.Platforms {
 		if p.Name == name {
 			return b.setCurrentPlatform(p)
-
-			return b.platform, nil
 		}
 	}
 	return nil, errors.Errorf("current platform %q is not found", b.ws.CurrentPlatform)
@@ -660,7 +772,36 @@ func (b *Bosun) TidyWorkspace() {
 	log := ctx.Log()
 	var importMap = map[string]struct{}{}
 
-	for _, repo := range b.GetRepos() {
+	repos := b.GetRepos()
+
+	for _, gitRoot := range b.ws.GitRoots {
+
+		_ = filepath.Walk(gitRoot, func(path string, info os.FileInfo, err error) error {
+
+			relPath, _ := filepath.Rel(gitRoot, path)
+			depth := len(strings.Split(relPath, string(os.PathSeparator)))
+			// don't go too deep
+			if depth > 2 {
+				log.Debugf("Depth = %d @ (%s)/(%s) => skipping", depth, gitRoot, relPath)
+				return filepath.SkipDir
+			}
+
+			if !strings.HasSuffix(path, "bosun.yaml") {
+				return nil
+			}
+
+			if b.ws.ImportedBosunFiles[path] != nil {
+				return nil
+			}
+
+			log.Infof("Adding discovered bosun file %s", path)
+			b.ws.Imports = append(b.ws.Imports, path)
+
+			return nil
+		})
+	}
+
+	for _, repo := range repos {
 		if repo.CheckCloned() != nil {
 			for _, root := range b.ws.GitRoots {
 				clonedFolder := filepath.Join(root, repo.Name)
@@ -685,13 +826,14 @@ func (b *Bosun) TidyWorkspace() {
 						Path: clonedFolder,
 					}
 					b.AddLocalRepo(localRepo)
+					b.ws.Imports = stringsn.AppendIfNotPresent(b.ws.Imports, bosunFilePath)
 					break
 				}
 			}
 		}
 	}
 
-	for _, app := range b.GetApps() {
+	for _, app := range b.GetAllApps(){
 		if app.IsRepoCloned() {
 			importMap[app.FromPath] = struct{}{}
 			log.Debugf("App %s found at %s", app.Name, app.FromPath)
@@ -753,44 +895,22 @@ func (b *Bosun) TidyWorkspace() {
 }
 
 func (b *Bosun) configureCurrentEnv() error {
-	if b.ws.CurrentEnvironment == "" {
-		envs, err := b.GetEnvironments()
-		if err != nil {
-			return err
-		}
-		switch len(envs) {
-		case 0:
-			b.log.Warn("No environments found, using a dummy environment.")
-			return b.useEnvironment(&environment.Config{
-				Name:     "",
-				FromPath: b.ws.Path,
-			}, "")
-		case 1:
-			// if only one environment exists, it's the current one
-			b.ws.CurrentEnvironment = envs[0].Name
-		default:
-			var envNames []string
-			for _, env := range envs {
-				envNames = append(envNames, env.Name)
-			}
-			return errors.Errorf("no environment set (available: %v)", envNames)
-		}
-	}
 
-	if b.ws.CurrentEnvironment != "" {
-		env, err := b.GetEnvironment(b.ws.CurrentEnvironment)
-		if err != nil {
-			return errors.Errorf("get environment %q: %s", b.ws.CurrentEnvironment, err)
-		}
-
-		// set the current environment.
-		// this will also set environment vars based on it.
-		err = b.useEnvironment(env, "")
-
+	environmentName, clusterName, err := b.getActiveEnvironmentAndClusterNames()
+	if err != nil {
 		return err
 	}
 
-	return errors.New("no current environment set in workspace")
+	env, err := b.GetEnvironmentConfig(environmentName)
+	if err != nil {
+		return errors.Errorf("get environment %q: %s", b.ws.CurrentEnvironment, err)
+	}
+
+	// set the current environment.
+	// this will also set environment vars based on it.
+	err = b.ActivateEnvironmentAndCluster(env, clusterName)
+
+	return err
 }
 
 // Confirm environment checks that the environment has been confirmed by the
@@ -899,10 +1019,10 @@ func (b *Bosun) GetRepos() []*Repo {
 
 	if len(b.repos) == 0 {
 		b.repos = map[string]*Repo{}
-		for _, repoConfig := range b.ws.MergedBosunFile.Repos {
-			for _, app := range b.ws.MergedBosunFile.Apps {
-				if app.RepoName == repoConfig.Name {
+		for _, app := range b.ws.MergedBosunFile.Apps {
 					var repo *Repo
+			for _, repoConfig := range b.ws.MergedBosunFile.Repos {
+				if app.RepoName == repoConfig.Name {
 					var ok bool
 					if repo, ok = b.repos[repoConfig.Name]; !ok {
 						repo = &Repo{
@@ -917,8 +1037,19 @@ func (b *Bosun) GetRepos() []*Repo {
 					repo.Apps[app.Name] = app
 				}
 			}
+			if repo == nil {
+				resolvedApp, err := b.GetAppFromProvider(app.Name, WorkspaceProviderName)
+				if err == nil {
+					repo = resolvedApp.Repo
+					if repo.Apps == nil {
+						repo.Apps = map[string]*AppConfig{}
+					}
+					repo.Apps[app.Name] = app
+					b.repos[repo.Name] = repo
+				}
+			}
 		}
-		for _, app := range b.GetApps() {
+		for _, app := range b.GetAllApps() {
 			b.repos[app.RepoName] = app.Repo
 		}
 

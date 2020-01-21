@@ -6,7 +6,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/kube"
@@ -73,7 +72,7 @@ type AppDeploy struct {
 	Namespace         string             `yaml:"namespace,omitempty"`
 	AppDeploySettings AppDeploySettings  `yaml:"appDeploySettings,omitempty"`
 
-	MatchArgs filter.ExactMatchArgs `yaml:"matchArgs,omitempty"`
+	MatchArgs filter.MatchMapArgs `yaml:"matchArgs,omitempty"`
 
 	helmRelease *HelmRelease  `yaml:"-"`
 	labels      filter.Labels `yaml:"-"`
@@ -281,219 +280,6 @@ func (a *AppDeploy) GetHelmList(filter string, namespace string) ([]*HelmRelease
 	return result, errors.Wrapf(err, "helm list result:\n%s", data)
 }
 
-type Plan []PlanStep
-
-type PlanStep struct {
-	Name        string
-	Description string
-	Action      func(ctx BosunContext) error
-}
-
-func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
-
-	ctx = ctx.WithAppDeploy(a)
-
-	var steps []PlanStep
-
-	actual, desired := a.ActualState, a.DesiredState
-
-	log := ctx.Log().WithField("name", a.AppManifest.Name)
-
-	log.WithField("state", desired.String()).Debug("Desired state.")
-	log.WithField("state", actual.String()).Debug("Actual state.")
-
-	var (
-		needsDelete   bool
-		needsInstall  bool
-		needsRollback bool
-		needsUpgrade  bool
-	)
-
-	if desired.Status == workspace.StatusNotFound || desired.Status == workspace.StatusDeleted {
-		needsDelete = actual.Status != workspace.StatusDeleted && actual.Status != workspace.StatusNotFound
-	} else {
-		needsDelete = actual.Status == workspace.StatusFailed
-		needsDelete = needsDelete || actual.Status == workspace.StatusPendingUpgrade
-	}
-
-	if desired.Status == workspace.StatusDeployed {
-		switch actual.Status {
-		case workspace.StatusNotFound:
-			needsInstall = true
-		case workspace.StatusDeleted:
-			needsRollback = true
-			needsUpgrade = true
-		default:
-			needsUpgrade = actual.Status != workspace.StatusDeployed
-			needsUpgrade = needsUpgrade || actual.Routing != desired.Routing
-			needsUpgrade = needsUpgrade || actual.Version != desired.Version
-			needsUpgrade = needsUpgrade || actual.Diff != ""
-			needsUpgrade = needsUpgrade || desired.Force
-		}
-	}
-
-	if needsDelete {
-		steps = append(steps, PlanStep{
-			Name:        "Delete",
-			Description: "Delete release from kubernetes.",
-			Action:      a.Delete,
-		})
-	}
-
-	if desired.Status == workspace.StatusDeployed {
-		for i := range a.AppManifest.AppConfig.Actions {
-			action := a.AppManifest.AppConfig.Actions[i]
-			if action.When.Contains(actions.ActionBeforeDeploy) && action.WhereFilter.Matches(ctx.GetExactMatchArgs()) {
-				steps = append(steps, PlanStep{
-					Name:        action.Name,
-					Description: action.Description,
-					Action: func(ctx BosunContext) error {
-						return action.Execute(ctx)
-					},
-				})
-			}
-		}
-	}
-
-	if needsInstall {
-		steps = append(steps, PlanStep{
-			Name:        "Install",
-			Description: "Install chart to kubernetes.",
-			Action:      a.Install,
-		})
-	}
-
-	if needsRollback {
-		steps = append(steps, PlanStep{
-			Name:        "Rollback",
-			Description: "Rollback existing release in kubernetes to allow upgrade.",
-			Action:      a.Rollback,
-		})
-	}
-
-	if needsUpgrade {
-		steps = append(steps, PlanStep{
-			Name:        "Upgrade",
-			Description: "Upgrade existing release in kubernetes.",
-			Action:      a.Upgrade,
-		})
-	}
-
-	if desired.Status == workspace.StatusDeployed {
-		for i := range a.AppManifest.AppConfig.Actions {
-			action := a.AppManifest.AppConfig.Actions[i]
-			if action.When.Contains(actions.ActionAfterDeploy) && action.WhereFilter.Matches(ctx.GetExactMatchArgs()) {
-				steps = append(steps, PlanStep{
-					Name:        action.Name,
-					Description: action.Description,
-					Action: func(ctx BosunContext) error {
-						return action.Execute(ctx)
-					},
-				})
-			}
-		}
-	}
-
-	return steps, nil
-
-}
-
-// GetResolvedValues handles loading and merging all values needed for the
-// deployment of the app, including reading the default helm chart values,
-// loading any values files, and resolving any dynamic values.
-func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValues, error) {
-
-	matchArgs := ctx.GetExactMatchArgs()
-	bosunValues := values.Values{}
-	for k, v := range matchArgs {
-		bosunValues[k] = v
-	}
-
-	resolvedValues := values.NewValueSet().WithValues(
-		values.ValueSet{
-			Source: "bosun context",
-			Static: bosunValues,
-		})
-
-	// Make environment values available
-	if err := resolvedValues.Static.AddEnvAsPath(core.EnvPrefix, core.EnvAppVersion, a.AppManifest.Version); err != nil {
-		return nil, err
-	}
-	if err := resolvedValues.Static.AddEnvAsPath(core.EnvPrefix, core.EnvAppBranch, a.AppManifest.Branch); err != nil {
-		return nil, err
-	}
-	if err := resolvedValues.Static.AddEnvAsPath(core.EnvPrefix, core.EnvAppCommit, a.AppManifest.Hashes.Commit); err != nil {
-		return nil, err
-	}
-
-	if chartValues, err := a.AppManifest.AppConfig.LoadChartValues(); err != nil {
-		return nil, errors.Wrapf(err, "load chart values")
-	} else {
-		resolvedValues = resolvedValues.WithValues(chartValues)
-	}
-
-	if platformValues, err := ResolveValues(ctx.GetPlatform(), ctx); err != nil {
-		return nil, errors.Wrapf(err, "resolve platform values")
-	} else {
-		resolvedValues = resolvedValues.WithValues(platformValues.WithSource("platform overrides"))
-	}
-
-	env := ctx.Environment()
-	if environmentValues, err := ResolveValues(env, ctx); err != nil {
-		return nil, errors.Wrapf(err, "resolve environment values")
-	} else {
-		resolvedValues = resolvedValues.WithValues(environmentValues.WithDefaultSource(fmt.Sprintf("%s environment", env.Name)))
-	}
-
-	cluster := env.Cluster
-	if clusterValues, err := ResolveValues(cluster, ctx); err != nil {
-		return nil, errors.Wrapf(err, "resolve cluster values")
-	} else {
-		resolvedValues = resolvedValues.WithValues(clusterValues.WithDefaultSource(fmt.Sprintf("%s cluster", cluster.Name)))
-	}
-
-	if appConfigValues, err := ResolveValues(a.AppConfig, ctx); err != nil {
-		return nil, errors.Wrapf(err, "load value set from app config")
-	} else {
-		resolvedValues = resolvedValues.WithValues(appConfigValues.WithDefaultSource("app config"))
-	}
-
-	for _, v := range a.AppDeploySettings.ValueSets {
-		resolvedValues = resolvedValues.WithValues(v.WithDefaultSource("app deploy settings"))
-	}
-
-	// ApplyToValues any overrides from parameters passed to this invocation of bosun.
-	for k, v := range ctx.GetParameters().ValueOverrides {
-		var err error
-		resolvedValues, err = resolvedValues.WithValueSetAtPath(k, v, "command line parameter")
-		if err != nil {
-			return nil, errors.Errorf("applying overrides with path %q: %s", k, err)
-		}
-	}
-
-	// resolve dynamic values
-	resolvedValues, err := resolvedValues.WithDynamicValuesResolved(ctx)
-	if err != nil {
-		return nil, errors.Wrapf(err, "resolve dynamic values")
-	}
-
-	// Finally apply any value mappings
-	err = a.AppManifest.AppConfig.ValueMappings.ApplyToValues(resolvedValues.Static)
-	if err != nil {
-		return nil, err
-	}
-	r := &values.PersistableValues{
-		Values: resolvedValues.Static,
-	}
-
-	// resolvedDump, _ := yaml.MarshalString(resolvedValues)
-	//
-	// fmt.Println("Resolved values:")
-	// fmt.Println(resolvedDump)
-	// fmt.Println()
-
-	return r, nil
-}
 
 func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
@@ -737,6 +523,7 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 		args = append(args, "--purge")
 	}
 	args = append(args, a.AppManifest.Name)
+	args = append(args, a.getNamespaceFlag(ctx)...)
 
 	out, err := pkg.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
@@ -762,7 +549,7 @@ func (a *AppDeploy) Install(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.AppManifest.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"upgrade", a.AppManifest.Name, "--history-max", "2", a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}

@@ -83,7 +83,7 @@ func LoadYaml(path string, out interface{}) error {
 
 	err = yaml.Unmarshal(b, out)
 	if err != nil {
-		return errors.Wrapf(err, "load into %T", out)
+		return errors.Wrapf(err, "load into %T from %s", out, path)
 	}
 
 	mirror.ApplyFuncRecursively(out, func(x core.FromPathSetter) {

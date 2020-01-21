@@ -1,6 +1,6 @@
 // Copyright © 2018 NAME HERE <EMAIL ADDRESS>
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed under the Apache License, core.Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	"github.com/hashicorp/go-getter"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -45,7 +46,7 @@ var metaVersionCmd = addCommand(metaCmd, &cobra.Command{
 		fmt.Printf(`Version: %s
 Timestamp: %s
 GetCurrentCommit: %s
-`, Version, Timestamp, Commit)
+`, core.Version, core.Timestamp, core.Commit)
 	},
 })
 
@@ -58,15 +59,15 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 		client := getMaybeAuthenticatedGithubClient()
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		var err error
-		if Version == "" {
+		if core.Version == "" {
 			confirmed := confirm("You are using a locally built version of bosun, are you sure you want to upgrade?")
 			if !confirmed {
 				return nil
 			}
-			Version = "0.0.0-local"
+			core.Version = "0.0.0-local"
 		}
 
-		currentVersion, err := semver.NewVersion(Version)
+		currentVersion, err := semver.NewVersion(core.Version)
 
 		releases, _, err := client.Repositories.ListReleases(ctx, "naveego", "bosun", nil)
 		if err != nil {
@@ -92,7 +93,7 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 		}
 
 		if !upgradeAvailable {
-			fmt.Printf("Current version (%s) is up-to-date.\n", Version)
+			fmt.Printf("Current version (%s) is up-to-date.\n", core.Version)
 			return nil
 		}
 
@@ -120,15 +121,15 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 		client := getMaybeAuthenticatedGithubClient()
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		var err error
-		if Version == "" {
+		if core.Version == "" {
 			confirmed := confirm("You are using a locally built version of bosun, are you sure you want to upgrade?")
 			if !confirmed {
 				return nil
 			}
-			Version = "0.0.0-local"
+			core.Version = "0.0.0-local"
 		}
 
-		currentVersion, err := semver.NewVersion(Version)
+		currentVersion, err := semver.NewVersion(core.Version)
 
 		releases, _, err := client.Repositories.ListReleases(ctx, "naveego", "bosun", nil)
 		if err != nil {
@@ -154,7 +155,7 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 		}
 
 		if !downgradeAvailable {
-			fmt.Printf("Current version (%s) is the oldest.\n", Version)
+			fmt.Printf("Current version (%s) is the oldest.\n", core.Version)
 			return nil
 		}
 

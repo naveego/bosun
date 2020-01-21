@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"sort"
@@ -26,62 +27,104 @@ func init() {
 }
 
 var _ = addCommand(deployCmd, &cobra.Command{
-	Use:          "app {app}",
-	Args:         cobra.ExactArgs(1),
-	Short:        "Deploys a single app in one step (combines plan and execute).",
+	Use:          "app [apps...]",
+	Aliases:[]string{"apps"},
+	Short:        "Deploys one or more apps in one step (combines plan and execute).",
 	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-		ctx := b.NewContext()
-		log := ctx.Log()
+	RunE: deployApp,
+},deployAppFlags )
 
-		provider, _ := cmd.Flags().GetString(argDeployPlanProvider)
-		if provider == "" {
-			provider = userChooseProvider(provider)
-		}
-		log.Debugf("Obtaining apps from provider %q", provider)
+const(
+	argDeployAppClusters   = "clusters"
+	argDeployAppRecycle  = "recycle"
+)
 
-		apps := args
-		if len(apps) == 0 {
-			for _, a := range p.Apps {
-				apps = append(apps, a.Name)
-			}
-			sort.Strings(apps)
-			apps = userChooseApps("Choose apps to deploy", apps)
-		}
-
-		var req = bosun.CreateDeploymentPlanRequest{
-			Apps:                  apps,
-			ProviderName:          provider,
-			IgnoreDependencies:    viper.GetBool(argDeployPlanIgnoreDeps),
-			AutomaticDependencies: viper.GetBool(argDeployPlanAutoDeps),
-		}
-
-		planCreator := bosun.NewDeploymentPlanCreator(b, p)
-
-		plan, err := planCreator.CreateDeploymentPlan(req)
-
-		if err != nil {
-			return err
-		}
-
-		executeRequest := bosun.ExecuteDeploymentPlanRequest{
-			Plan: plan,
-		}
-
-		executor := bosun.NewDeploymentPlanExecutor(b, p)
-
-		err = executor.Execute(executeRequest)
-
-		return err
-	},
-}, func(cmd *cobra.Command) {
+func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployPlanProvider, "workspace", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
 	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
+	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
-})
+	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "Whitelist of specific clusters to deploy to.")
+	cmd.Flags().Bool(argAppDeployPreview, false, "Just dump the values which would be used to deploy, then exit.")
+	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
+	cmd.Flags().Bool(argDeployAppRecycle, false, "Recycle the app after deploying it.")
+	cmd.Flags().StringSliceP(ArgAppValueSet, "v", []string{}, "Additional value sets to include in this deploy.")
+	cmd.Flags().StringSliceP(ArgAppSet, "s", []string{}, "Value overrides to set in this deploy, as key=value pairs.")
+}
+
+func deployApp(cmd *cobra.Command, args []string) error {
+	b := MustGetBosun()
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return err
+	}
+	ctx := b.NewContext()
+	log := ctx.Log()
+
+	provider, _ := cmd.Flags().GetString(argDeployPlanProvider)
+	if provider == "" {
+		provider = userChooseProvider(provider)
+	}
+	log.Debugf("Obtaining apps from provider %q", provider)
+
+	apps := args
+	if len(apps) == 0 {
+		for _, a := range p.GetApps(ctx) {
+			apps = append(apps, a.Name)
+		}
+		sort.Strings(apps)
+		if !viper.GetBool(argDeployPlanAll) {
+			apps = userChooseApps("Choose apps to deploy", apps)
+		}
+	}
+
+	valueSets, err := getValueSetSlice(b, b.GetCurrentEnvironment())
+	if err != nil {
+		return err
+	}
+
+	if viper.GetBool(ArgAppLatest) {
+		workspaceApps, err := getKnownApps(b, apps)
+		if err != nil {
+			return err
+		}
+		err = pullApps(ctx, workspaceApps, true)
+		valueSets = append(valueSets, values.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
+	}
+
+	var req = bosun.CreateDeploymentPlanRequest{
+		Apps:                  apps,
+		ProviderName:          provider,
+		IgnoreDependencies:    viper.GetBool(argDeployPlanIgnoreDeps),
+		AutomaticDependencies: viper.GetBool(argDeployPlanAutoDeps),
+	}
+
+	planCreator := bosun.NewDeploymentPlanCreator(b, p)
+
+	plan, err := planCreator.CreateDeploymentPlan(req)
+
+	if err != nil {
+		return err
+	}
+
+	executeRequest := bosun.ExecuteDeploymentPlanRequest{
+		Plan: plan,
+		ValueSets: valueSets,
+		Recycle: viper.GetBool(argDeployAppRecycle),
+	}
+
+	clustersWhitelist := viper.GetStringSlice(argDeployAppClusters)
+	if len(clustersWhitelist) > 0 {
+		executeRequest.Clusters = map[string]bool{}
+		for _, cluster := range clustersWhitelist {
+			executeRequest.Clusters[cluster] = true
+		}
+	}
+
+	executor := bosun.NewDeploymentPlanExecutor(b, p)
+
+	err = executor.Execute(executeRequest)
+
+	return err
+}

@@ -34,6 +34,32 @@ type Config struct {
 	ValueOverrides *values.ValueSetCollection `yaml:"valueOverrides,omitempty"`
 }
 
+func (e *Config) MarshalYAML() (interface{}, error) {
+	if e == nil {
+		return nil, nil
+	}
+	type proxy Config
+	p := proxy(*e)
+
+	return &p, nil
+}
+
+func (e *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxy Config
+	var p proxy
+	if e != nil {
+		p = proxy(*e)
+	}
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		*e = Config(p)
+	}
+
+	return err
+}
+
 type Command struct {
 	FromPath string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
 	Name     string                `yaml:"name" json:"name"`
@@ -120,14 +146,23 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 			return err
 		}
 	}
-	pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
-	out, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
 
-	if strings.Contains(out, "no context exists with the name") {
-		return errors.Errorf("No context found with name %q (try running `bosun kube configure-cluster %s`)", e.ClusterName, e.ClusterName)
+	currentContext, _ := pkg.NewShellExe("kubectl config current-context ").RunOut()
+	if currentContext != e.Cluster.Name {
+
+		core.SetInternalEnvironmentAndCluster(e.Name, e.Cluster.Name)
+
+		pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
+
+		out, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
+
+		if strings.Contains(out, "no context exists with the name") {
+			return errors.Errorf("No context found with name %q (try running `bosun kube configure-cluster %s`)", e.ClusterName, e.ClusterName)
+		}
+		return err
 	}
 
-	return err
+	return nil
 }
 
 func (e *Environment) GetVariablesAsMap(ctx environmentvariables.EnsureContext) (map[string]string, error) {

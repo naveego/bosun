@@ -62,11 +62,12 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 	for _, dep := range topology {
 		app, ok := apps[dep]
 		if !ok {
-			if req.IgnoreDependencies {
-				continue
+			if !req.IgnoreDependencies {
+				if _, err = p.GetPlatformAppUnfiltered(dep); err != nil {
+					return nil, errors.Wrapf(err, "an app specifies a dependency that could not be found: %q (topological order: %v)", dep, topology)
+				}
 			}
-
-			return nil, errors.Errorf("an app specifies a dependency that could not be found: %q (topological order: %v)", dep, topology)
+			continue
 		}
 
 		appPlan := &AppDeploymentPlan{

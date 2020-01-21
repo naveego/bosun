@@ -19,6 +19,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
@@ -213,7 +214,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return err
 		}
 
-		matches := map[string][]string{}
+		matches := filter.MatchMapConfig{}
 		pairs := args[2:]
 		for _, pair := range pairs {
 			keyValues := strings.Split(pair, "=")
@@ -222,7 +223,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			}
 			key := keyValues[0]
 			values := strings.Split(keyValues[1], ",")
-			matches[key] = values
+			matches[key] = filter.MatchMapConfigValuesFromStrings(values)
 		}
 
 		ctx := b.NewContext()
@@ -324,8 +325,10 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return err
 		}
 
+		ctx := b.NewContext()
+
 		var appNames []string
-		for _, app := range p.Apps {
+		for _, app := range p.GetApps(ctx) {
 			appNames = append(appNames, app.Name)
 		}
 

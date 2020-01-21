@@ -20,7 +20,6 @@ import (
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
-	"gopkg.in/eapache/go-resiliency.v1/retrier"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -89,38 +88,6 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		r := retrier.New(retrier.ConstantBackoff(5, 5*time.Second), nil)
-
-		err = r.Run(func() error {
-			pkg.Log.Info("Initializing helm...")
-			_, err = pkg.NewShellExe("helm", "init").RunOut()
-			if err != nil {
-				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
-			}
-			return err
-		})
-
-		if err != nil {
-			return errors.Wrap(err, "helm init")
-		}
-
-		pkg.Log.Info("Helm initialized.")
-
-		r = retrier.New(retrier.ConstantBackoff(10, 6*time.Second), nil)
-		err = r.Run(func() error {
-			pkg.Log.Info("Checking tiller...")
-			status, err := pkg.NewShellExe("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o", `jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
-			if err != nil {
-				pkg.Log.WithError(err).Error("Getting tiller status failed, may retry.")
-				return err
-			}
-			if !strings.Contains(status, "True") {
-				return errors.Errorf("Wanted Ready status to be True but it was %q", status)
-			}
-			pkg.Log.Info("Tiller running.")
-			return nil
-		})
 
 		return err
 	},

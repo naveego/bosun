@@ -14,9 +14,12 @@ type DeploymentPlanExecutor struct {
 }
 
 type ExecuteDeploymentPlanRequest struct {
-	Path    string
-	Plan    *DeploymentPlan
-	Include []string
+	Path        string
+	Plan        *DeploymentPlan
+	IncludeApps []string
+	Clusters    map[string]bool
+	ValueSets   values.ValueSets
+	Recycle     bool
 }
 
 func NewDeploymentPlanExecutor(bosun *Bosun, platform *Platform) DeploymentPlanExecutor {
@@ -46,7 +49,9 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
 		Environment:        d.Bosun.GetCurrentEnvironment(),
-		ValueSets:          []values.ValueSet{deploymentPlan.ValueOverrides},
+		ValueSets:          append([]values.ValueSet{deploymentPlan.ValueOverrides}, req.ValueSets...),
+		Clusters:           req.Clusters,
+		Recycle:            req.Recycle,
 		IgnoreDependencies: true,
 	}
 

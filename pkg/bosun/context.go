@@ -41,7 +41,7 @@ type BosunContext struct {
 	contextValues    map[string]interface{}
 	provider         ioc.Provider
 	workspaceContext *workspace.Context
-	exactMatchArgs   filter.ExactMatchArgs
+	exactMatchArgs   filter.MatchMapArgs
 }
 
 // NewTestBosunContext creates a new BosunContext for testing purposes.
@@ -66,7 +66,7 @@ func (c BosunContext) WithDir(dirOrFilePath string) BosunContext {
 	}
 	dir := getDirIfFile(dirOrFilePath)
 	if c.Dir != dir {
-		c.LogLine(1, "[Context] Set dir to %q", dir)
+		c.LogLine(2, "[Context] Set dir to %q", dir)
 		c.Dir = dir
 	}
 	return c
@@ -144,7 +144,7 @@ func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interface{} {
 	c.Values = v
 
-	yml, _ := yaml.Marshal(v.Values)
+	yml, _ := yaml.Marshal(v)
 	c.LogLine(1, "[Context] Set release values:\n%s\n", string(yml))
 
 	return c
@@ -156,6 +156,7 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 		core.EnvCluster:         c.env.ClusterName,
 		core.EnvEnvironment:     c.env.Name,
 		core.EnvEnvironmentRole: string(c.env.Role),
+		core.EnvInternalEnvironmentAndCluster: os.Getenv(core.EnvInternalEnvironmentAndCluster),
 	}
 
 	return out
@@ -222,12 +223,10 @@ func (c BosunContext) GetParameters() cli.Parameters {
 
 func (c BosunContext) TemplateValues() templating.TemplateValues {
 	tv := templating.TemplateValues{
-		Cluster: c.WorkspaceContext().CurrentCluster,
+		Cluster: c.Environment().ClusterName,
 	}
 	if c.Values != nil {
-		values := c.Values.Values
-		values.MustSetAtPath("cluster", c.WorkspaceContext().CurrentCluster)
-		tv.Values = values
+		tv.Values = c.Values.Values
 	} else {
 		tv.Values = values.Values{}
 	}
@@ -411,7 +410,7 @@ func (c BosunContext) GetWorkspaceCommand(name string) *command.CommandValue {
 	return c.Bosun.ws.GetWorkspaceCommand(name)
 }
 
-func (c BosunContext) GetExactMatchArgs() filter.ExactMatchArgs {
+func (c BosunContext) GetMatchMapArgs() filter.MatchMapArgs {
 	if c.exactMatchArgs == nil {
 		c.exactMatchArgs = map[string]string{}
 		if c.Environment() != nil {
@@ -426,9 +425,9 @@ func (c BosunContext) GetExactMatchArgs() filter.ExactMatchArgs {
 	return c.exactMatchArgs
 }
 
-func (c BosunContext) WithExactMatchArgs(args filter.ExactMatchArgs) interface{} {
-	e := filter.ExactMatchArgs{}
-	for k, v := range c.GetExactMatchArgs() {
+func (c BosunContext) WithMatchMapArgs(args filter.MatchMapArgs) interface{} {
+	e := filter.MatchMapArgs{}
+	for k, v := range c.GetMatchMapArgs() {
 		e[k] = v
 	}
 	for k, v := range args {

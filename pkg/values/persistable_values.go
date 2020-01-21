@@ -7,8 +7,9 @@ import (
 )
 
 type PersistableValues struct {
-	Values   Values
-	FilePath string
+	Attribution Values `yaml:"attribution"`
+	Values   Values `yaml:"values"`
+	FilePath string `yaml:"-"`
 }
 
 func (r *PersistableValues) PersistValues() (string, error) {

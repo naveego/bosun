@@ -72,10 +72,10 @@ func (e *Environment) SwitchToCluster(ctx environmentvariables.EnsureContext, cl
 	return e.EnsureCluster(ctx)
 }
 
-func (e *Environment) GetClusterForRole(role core.ClusterRole) (*kube.ClusterConfig, error) {
+func (e *Environment) GetClustersForRole(role core.ClusterRole) ([]*kube.ClusterConfig, error) {
 
-	cluster, err := e.Clusters.GetKubeConfigDefinitionByRole(role)
-	return cluster, err
+	clusters, err := e.Clusters.GetKubeConfigDefinitionsByRole(role)
+	return clusters, err
 }
 
 func (e *Environment) GetClusterByName(name string) (*kube.ClusterConfig, error) {

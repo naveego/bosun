@@ -6,11 +6,11 @@ type ValueSetCollectionProvider interface {
 	GetValueSetCollection() ValueSetCollection
 }
 
-func ExtractValueSet(provider ValueSetCollectionProvider, argsProvider filter.ExactMatchArgsContainer) ValueSet {
+func ExtractValueSet(provider ValueSetCollectionProvider, argsProvider filter.MatchMapArgContainer) ValueSet {
 
 	vsc := provider.GetValueSetCollection()
 
-	args := argsProvider.GetExactMatchArgs()
+	args := argsProvider.GetMatchMapArgs()
 
 	result := vsc.ExtractValueSet(ExtractValueSetArgs{
 		ExactMatch: args,

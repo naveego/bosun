@@ -33,14 +33,14 @@ const (
 type AppAction struct {
 	core.ConfigShared `yaml:",inline"`
 
-	When               ActionSchedules         `yaml:"when,flow,omitempty" json:"when,omitempty"`
-	Where              core.EnvironmentRoles   `yaml:"where,omitempty"`
-	WhereFilter        filter.ExactMatchConfig `yaml:"whereFilter,omitempty" json:"where,omitempty"`
-	MaxAttempts        int                     `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
-	Timeout            time.Duration           `yaml:"timeout,omitempty" json:"timeout,omitempty"`
-	Interval           time.Duration           `yaml:"interval,omitempty" json:"interval,omitempty"`
-	Vault              *VaultAction            `yaml:"vault,omitempty" json:"vault,omitempty"`
-	Script             *ScriptAction           `yaml:"script,omitempty" json:"script,omitempty"`
+	When               ActionSchedules       `yaml:"when,flow,omitempty" json:"when,omitempty"`
+	Where              core.EnvironmentRoles `yaml:"where,omitempty"`
+	WhereFilter        filter.MatchMapConfig `yaml:"whereFilter,omitempty" json:"where,omitempty"`
+	MaxAttempts        int                   `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
+	Timeout            time.Duration         `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Interval           time.Duration         `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Vault              *VaultAction          `yaml:"vault,omitempty" json:"vault,omitempty"`
+	Script             *ScriptAction         `yaml:"script,omitempty" json:"script,omitempty"`
 	Bosun              *BosunAction            `yaml:"bosun,omitempty" json:"bosun,omitempty"`
 	Test               *TestAction             `yaml:"test,omitempty" json:"test,omitempty"`
 	DNSTest            *DNSTestAction          `yaml:"dnsTest,omitempty"`
@@ -210,7 +210,7 @@ func (a *AppAction) GetActions() []Action {
 }
 
 type VaultAction struct {
-	CacheKey string           `yaml:"cacheKey" json:"cacheKey"`
+	CacheKey string           `yaml:"cacheKey,omitempty" json:"cacheKey"`
 	File     string           `yaml:"file,omitempty" json:"file,omitempty"`
 	Layout   *pkg.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
 	Literal  string           `yaml:"literal,omitempty" json:"literal,omitempty"`

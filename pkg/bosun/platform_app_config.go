@@ -11,10 +11,10 @@ import (
 // an app from a platform and specifying the deployment
 // settings for the app.
 type PlatformAppConfig struct {
-	Name          string                  `yaml:"name"`
-	RepoRef       issues.RepoRef          `yaml:"repo"`
-	Dependencies  []string                `yaml:"dependsOn,omitempty"`
-	TargetFilters filter.ExactMatchConfig `yaml:"targetFilters"`
+	Name          string                `yaml:"name"`
+	RepoRef       issues.RepoRef        `yaml:"repo"`
+	Dependencies  []string              `yaml:"dependsOn,omitempty"`
+	TargetFilters filter.MatchMapConfig `yaml:"targetFilters"`
 	// The cluster roles this app should be deployed to.
 	ClusterRoles core.ClusterRoles `yaml:"clusterRoles,flow"`
 	// The namespace roles this app should be deployed to.

@@ -40,12 +40,12 @@ type AppConfig struct {
 	Values         values.ValueSetCollection `yaml:"values,omitempty" json:"values,omitempty"`
 	Scripts        []*script.Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	Actions        []*actions.AppAction      `yaml:"actions,omitempty" json:"actions,omitempty"`
-	ReleaseHistory AppReleaseHistory         `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
-
 	// Glob paths (relative to the file containing the app config)
 	// to files and folders  which should be included when the app is packaged for a release or a deployment.
 	// In particular, the path to the chart should be included.
 	Files []string `yaml:"files"`
+	ReleaseHistory AppReleaseHistory         `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
+
 	// If true, this app repo is only a ref, not a real cloned repo.
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.

@@ -53,50 +53,58 @@ func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeCo
 	}
 
 	var err error
-	var konfig *ClusterConfig
+	var konfigs []*ClusterConfig
 
 	if req.Name != "" {
-		konfig, err = k.GetKubeConfigDefinitionByName(req.Name)
+		konfig, err := k.GetKubeConfigDefinitionByName(req.Name)
 		if err != nil {
 			return err
 		}
+		konfigs = []*ClusterConfig{konfig}
 	} else {
-		konfig, err = k.GetKubeConfigDefinitionByRole(req.Role)
+		konfigs, err = k.GetKubeConfigDefinitionsByRole(req.Role)
 		if err != nil {
 			return err
 		}
 	}
 
-	if konfig == nil {
+	if len(konfigs) == 0 {
 		return errors.Errorf("could not find any kube configs")
 	}
 
-	if configuredClusters[konfig.Name] {
-		req.Log.Debugf("Already configured kubernetes cluster %q.", konfig.Name)
-		return nil
-	}
+	for _, konfig := range konfigs {
 
-	err = konfig.configureKubernetes(req)
-	if err != nil {
-		return err
-	}
+		if configuredClusters[konfig.Name] {
+			req.Log.Debugf("Already configured kubernetes cluster %q.", konfig.Name)
+			return nil
+		}
 
-	configuredClusters[konfig.Name] = true
+		err = konfig.configureKubernetes(req)
+		if err != nil {
+			return err
+		}
+
+		configuredClusters[konfig.Name] = true
+	}
 
 	return nil
 }
 
-func (k ConfigDefinitions) GetKubeConfigDefinitionByRole(role core.ClusterRole) (*ClusterConfig, error) {
+func (k ConfigDefinitions) GetKubeConfigDefinitionsByRole(role core.ClusterRole) ([]*ClusterConfig, error) {
 
 	if role == "" {
 		role = DefaultRole
 	}
+	var out []*ClusterConfig
 	for _, c := range k {
 		for _, r := range c.Roles {
 			if r == role {
-				return c, nil
+				out = append(out, c)
 			}
 		}
+	}
+	if len(out) > 0 {
+		return out, nil
 	}
 
 	return nil, errors.Errorf("no cluster definition had role %q", role)
@@ -105,6 +113,7 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByRole(role core.ClusterRole) 
 type ClusterConfig struct {
 	core.ConfigShared `yaml:",inline"`
 	Provider          string                           `yaml:"-"`
+	EnvironmentAlias  string                           `yaml:"environmentAlias,omitempty"`
 	Roles             core.ClusterRoles                `yaml:"roles,flow"`
 	Variables         []*environmentvariables.Variable `yaml:"variables,omitempty"`
 	ValueOverrides    *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
@@ -283,14 +292,13 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 				return errors.Wrap(err, "marshall dockerconfigjson")
 			}
 
-
 			secret := &v1.Secret{
 				Type: v1.SecretTypeDockerConfigJson,
 				ObjectMeta: metav1.ObjectMeta{
 					Name: pullSecret.Name,
 				},
 				StringData: map[string]string{
-					".dockerconfigjson":string(dockerConfigJSON),
+					".dockerconfigjson": string(dockerConfigJSON),
 				},
 			}
 			_, err = client.CoreV1().Secrets(namespace.Name).Create(secret)

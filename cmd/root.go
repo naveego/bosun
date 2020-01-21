@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"runtime/pprof"
@@ -33,9 +34,6 @@ var cfgFile string
 
 var step int
 
-var Version string
-var Timestamp string
-var Commit string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = TraverseRunHooks(&cobra.Command{
@@ -46,7 +44,7 @@ var rootCmd = TraverseRunHooks(&cobra.Command{
 Version: %s
 Timestamp: %s
 GetCurrentCommit: %s
-`, Version, Timestamp, Commit),
+`, core.Version, core.Timestamp, core.Commit),
 	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
