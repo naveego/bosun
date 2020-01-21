@@ -67,6 +67,7 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 			core.Version = "0.0.0-local"
 		}
 
+		requestedVersion := viper.GetString(ArgMetaUpgradeVersion)
 		currentVersion, err := semver.NewVersion(core.Version)
 
 		releases, _, err := client.Repositories.ListReleases(ctx, "naveego", "bosun", nil)
@@ -81,6 +82,12 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 				continue
 			}
 			tag := release.GetTagName()
+
+			if tag == requestedVersion {
+				upgradeAvailable = true
+				break
+			}
+
 			tagVersion, err := semver.NewVersion(strings.TrimLeft(tag, "v"))
 			if err != nil {
 				continue
@@ -110,6 +117,7 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().BoolP(ArgMetaUpgradePreRelease, "p", false, "Upgrade to pre-release version.")
+	cmd.Flags().String(ArgMetaUpgradeVersion, "", "Use specific version.")
 })
 
 var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
@@ -129,6 +137,7 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 			core.Version = "0.0.0-local"
 		}
 
+		requestedVersion := viper.GetString(ArgMetaUpgradeVersion)
 		currentVersion, err := semver.NewVersion(core.Version)
 
 		releases, _, err := client.Repositories.ListReleases(ctx, "naveego", "bosun", nil)
@@ -146,6 +155,11 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 			tagVersion, err := semver.NewVersion(strings.TrimLeft(tag, "v"))
 			if err != nil {
 				continue
+			}
+
+			if requestedVersion == tag {
+				downgradeAvailable = true
+				break
 			}
 
 			if tagVersion.LessThan(currentVersion) {
@@ -171,7 +185,7 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().BoolP(ArgMetaUpgradePreRelease, "p", false, "Upgrade to pre-release version.")
+	cmd.Flags().String(ArgMetaUpgradeVersion, "", "Use specific version.")
 })
 
 func downloadOtherVersion(release *github.RepositoryRelease) error {
@@ -226,6 +240,7 @@ func downloadOtherVersion(release *github.RepositoryRelease) error {
 
 const (
 	ArgMetaUpgradePreRelease = "pre-release"
+	ArgMetaUpgradeVersion = "version"
 )
 
 func init() {
