@@ -49,7 +49,7 @@ type BosunContext struct {
 func NewTestBosunContext() BosunContext {
 	dir, _ := os.Getwd()
 	testBosun := &Bosun{
-		vaultClient: &vault.Client{},
+
 	}
 	return BosunContext{
 		ctx:   context.Background(),

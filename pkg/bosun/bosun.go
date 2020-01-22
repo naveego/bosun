@@ -36,7 +36,6 @@ type Bosun struct {
 	params               cli.Parameters
 	ws                   *Workspace
 	file                 *File
-	vaultClient          *vault.Client
 	env                  *environment.Environment
 	log                  *logrus.Entry
 	environmentConfirmed *bool
@@ -178,7 +177,7 @@ func (b *Bosun) GetAppDesiredStates() map[string]workspace.AppState {
 
 func (b *Bosun) GetAppDependencyMap() map[string][]string {
 	deps := map[string][]string{}
-	for _, app := range b.GetPlatformApps(){
+	for _, app := range b.GetPlatformApps() {
 		for _, dep := range app.DependsOn {
 			deps[app.Name] = append(deps[app.Name], dep.Name)
 		}
@@ -220,11 +219,10 @@ func (b *Bosun) getAppDependencies(name string, visited map[string]bool) ([]stri
 }
 
 func (b *Bosun) GetVaultClient() (*vault.Client, error) {
-	var err error
-	if b.vaultClient == nil {
-		b.vaultClient, err = pkg.NewVaultLowlevelClient("", "")
-	}
-	return b.vaultClient, err
+
+	vaultClient, err := pkg.NewVaultLowlevelClient("", "")
+
+	return vaultClient, err
 }
 
 func (b *Bosun) GetScripts() []*script.Script {
@@ -833,7 +831,7 @@ func (b *Bosun) TidyWorkspace() {
 		}
 	}
 
-	for _, app := range b.GetAllApps(){
+	for _, app := range b.GetAllApps() {
 		if app.IsRepoCloned() {
 			importMap[app.FromPath] = struct{}{}
 			log.Debugf("App %s found at %s", app.Name, app.FromPath)
@@ -1020,7 +1018,7 @@ func (b *Bosun) GetRepos() []*Repo {
 	if len(b.repos) == 0 {
 		b.repos = map[string]*Repo{}
 		for _, app := range b.ws.MergedBosunFile.Apps {
-					var repo *Repo
+			var repo *Repo
 			for _, repoConfig := range b.ws.MergedBosunFile.Repos {
 				if app.RepoName == repoConfig.Name {
 					var ok bool

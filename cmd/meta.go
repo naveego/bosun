@@ -78,7 +78,7 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 		var upgradeAvailable bool
 		includePreRelease := viper.GetBool(ArgMetaUpgradePreRelease)
 		for _, release = range releases {
-			if !includePreRelease && release.GetPrerelease() {
+			if release.GetPrerelease() && (!includePreRelease || requestedVersion == "") {
 				continue
 			}
 			tag := release.GetTagName()
@@ -148,7 +148,7 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 		var downgradeAvailable bool
 		includePreRelease := viper.GetBool(ArgMetaUpgradePreRelease)
 		for _, release = range releases {
-			if !includePreRelease && release.GetPrerelease() {
+			if release.GetPrerelease() && (!includePreRelease || requestedVersion == "") {
 				continue
 			}
 			tag := release.GetTagName()
@@ -240,7 +240,7 @@ func downloadOtherVersion(release *github.RepositoryRelease) error {
 
 const (
 	ArgMetaUpgradePreRelease = "pre-release"
-	ArgMetaUpgradeVersion = "version"
+	ArgMetaUpgradeVersion    = "version"
 )
 
 func init() {

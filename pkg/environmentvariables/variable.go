@@ -49,6 +49,8 @@ func (e *Variable) Ensure(ctx EnsureContext) error {
 		log.WithField("value", e.Value).Debug("Resolved value.")
 	}
 
+	log.Debugf("Setting environment value %s=%s", e.Name, e.Value)
+
 	// set the value in the process environment
 	return os.Setenv(e.Name, e.Value)
 }

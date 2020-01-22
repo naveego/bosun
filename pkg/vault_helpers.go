@@ -144,7 +144,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	recordError := func(log *logrus.Entry, data interface{}, err error) {
 		b, _ := json.Marshal(data)
 		log.WithField("data", string(b)).Debug("Attempted data.")
-		log.WithError(err).Error()
+		log.WithField("vault_addr", client.Address()).WithError(err).Error()
 		hadErrors = true
 	}
 
