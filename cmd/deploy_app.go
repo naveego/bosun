@@ -40,7 +40,7 @@ const(
 )
 
 func deployAppFlags(cmd *cobra.Command) {
-	cmd.Flags().String(argDeployPlanProvider, "workspace", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
+	cmd.Flags().StringSlice(argDeployPlanProviderPriority, []string{bosun.WorkspaceProviderName, bosun.SlotUnstable, bosun.SlotStable}, "Providers in priority order to use to deploy apps (current, stable, unstable, or workspace).")
 	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
@@ -60,13 +60,6 @@ func deployApp(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	ctx := b.NewContext()
-	log := ctx.Log()
-
-	provider, _ := cmd.Flags().GetString(argDeployPlanProvider)
-	if provider == "" {
-		provider = userChooseProvider(provider)
-	}
-	log.Debugf("Obtaining apps from provider %q", provider)
 
 	apps := args
 	if len(apps) == 0 {
@@ -95,7 +88,7 @@ func deployApp(cmd *cobra.Command, args []string) error {
 
 	var req = bosun.CreateDeploymentPlanRequest{
 		Apps:                  apps,
-		ProviderName:          provider,
+		ProviderPriority:      viper.GetStringSlice(argDeployPlanProviderPriority),
 		IgnoreDependencies:    viper.GetBool(argDeployPlanIgnoreDeps),
 		AutomaticDependencies: viper.GetBool(argDeployPlanAutoDeps),
 	}

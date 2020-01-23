@@ -12,7 +12,7 @@ import (
 type DeploymentPlan struct {
 	core.ConfigShared         `yaml:",inline"`
 	DirectoryPath             string               `yaml:"-"`
-	Provider                  string               `yaml:"provider"`
+	ProviderPriority                  []string               `yaml:"providerPriority"`
 	SkipDependencyValidation  bool                 `yaml:"skipDependencyValidation"`
 	ValueOverrides            values.ValueSet      `yaml:"valueOverrides"`
 	DeployApps                map[string]bool      `yaml:"deployApps"`
@@ -60,7 +60,7 @@ func (d DeploymentPlan) Save() error {
 	for _, app := range d.Apps {
 		err = app.Manifest.Save(d.DirectoryPath)
 		if err != nil {
-			return errors.Wrapf(err, "saving portable manifest for app %q from provider %q", app.Name, d.Provider)
+			return errors.Wrapf(err, "saving portable manifest for app %q from providers %+v", app.Name, d.ProviderPriority)
 		}
 	}
 

@@ -251,8 +251,11 @@ func (b *Bosun) GetScript(name string) (*script.Script, error) {
 	return nil, errors.Errorf("no script found with name %q", name)
 }
 
-func (b *Bosun) GetApp(name string) (*App, error) {
-	app, err := b.appProvider.GetApp(name, b.params.ProviderPriority)
+func (b *Bosun) GetApp(name string, providerPriority ...string) (*App, error) {
+	if len(providerPriority) == 0 {
+		providerPriority = b.params.ProviderPriority
+	}
+	app, err := b.appProvider.GetApp(name, providerPriority)
 	return app, err
 }
 

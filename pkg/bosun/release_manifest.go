@@ -453,6 +453,11 @@ func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool
 		return err
 	}
 
+	err = manifest.MakePortable()
+	if err != nil{
+		return err
+	}
+
 	appManifests[manifest.Name] = manifest
 
 	r.AppMetadata[manifest.Name] = manifest.AppMetadata

@@ -14,7 +14,7 @@ type DeploymentPlanCreator struct {
 type CreateDeploymentPlanRequest struct {
 	Path                  string
 	ManifestDirPath       string
-	ProviderName          string
+	ProviderPriority      []string
 	Apps                  []string
 	IgnoreDependencies    bool
 	AutomaticDependencies bool
@@ -42,7 +42,7 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 	}
 	plan := &DeploymentPlan{
 		DirectoryPath:            dir,
-		Provider:                 req.ProviderName,
+		ProviderPriority:                 req.ProviderPriority,
 		SkipDependencyValidation: req.IgnoreDependencies,
 		DeployApps:               map[string]bool{},
 	}
@@ -82,12 +82,12 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 
 			appPlan.Manifest, err = app.GetManifest(ctx)
 			if err != nil {
-				return nil, errors.Wrapf(err, "getting manifest for app %q from provider %q", app.Name, req.ProviderName)
+				return nil, errors.Wrapf(err, "getting manifest for app %q from provider %q", app.Name, req.ProviderPriority)
 			}
 
 			err = appPlan.Manifest.MakePortable()
 			if err != nil {
-				return nil, errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderName)
+				return nil, errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderPriority)
 			}
 
 			manifestPath := filepath.Join(req.ManifestDirPath, appPlan.Name)

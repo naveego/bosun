@@ -122,6 +122,9 @@ func LoadAppManifestFromPathAndName(path string, name string) (*AppManifest, err
 				return nil, errors.Errorf("trying to load app manifest for %q from %q, but file contains manifest for %q", name, path, out.Name)
 			}
 			out.AppConfig.SetFromPath(path)
+
+			err = out.MakePortable()
+
 			return out, err
 		}
 	}
@@ -166,6 +169,11 @@ func (a *AppManifest) Save(dir string) error {
 func (a *AppManifest) MakePortable() error {
 
 	root := filepath.Dir(a.AppConfig.FromPath)
+
+	if a.Files != nil {
+		// already made portable
+		return nil
+	}
 
 	a.Files = map[string][]byte{}
 

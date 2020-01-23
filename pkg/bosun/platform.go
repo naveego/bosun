@@ -865,10 +865,10 @@ func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest
 			return err
 		}
 		var app *App
-		if req.ProviderName != "" {
-			app, err = b.GetAppFromProvider(appName, req.ProviderName)
+		if len(req.ProviderPriority) > 0 {
+			app, err = b.GetApp(appName, req.ProviderPriority...)
 			if err != nil {
-				return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderName)
+				return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderPriority)
 			}
 		} else {
 			app, err = b.GetApp(appName)

@@ -111,7 +111,9 @@ func (c *ShellExe) prepare() {
 
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
-	Log.WithField("exe", exe).WithField("args", c.Args).
+	Log.WithField("exe", exe).
+		WithField("args", c.Args).
+		WithField("dir", c.cmd.Dir).
 		//	WithField("env", c.cmd.Env).
 		Debug("ShellExe prepared.")
 

@@ -310,8 +310,8 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "add {current|unstable} {app} {bump}",
-	Args:  cobra.ExactArgs(3),
+	Use:   "add {current|unstable} [apps...]",
+	Args:  cobra.MinimumNArgs(1),
 	Short: "Adds an app to the release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -323,34 +323,38 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 
 		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotCurrent)
 
-		app, err := b.GetApp(args[1])
-		if err != nil {
-			return err
+		apps := mustGetKnownApps(b, args[1:])
+		bump := viper.GetString(ArgReleaseAddBump)
+		for _, app := range apps {
+
+			ctx := b.NewContext().WithApp(app)
+
+			ctx.Log().Info("Adding app to release...")
+
+			branch := viper.GetString(ArgReleaseAddBranch)
+
+			appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(bump), branch)
+			if err != nil {
+				return err
+			}
+
+			err = r.AddApp(appManifest, true)
+			if err != nil {
+				return err
+			}
 		}
 
-		ctx := b.NewContext()
-
-		branch := viper.GetString(ArgReleaseAddBranch)
-
-		appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(args[2]), branch)
-		if err != nil {
-			return err
-		}
-
-		err = r.AddApp(appManifest, true)
-		if err != nil {
-			return err
-		}
-
-		err = p.Save(ctx)
+		err = p.Save(b.NewContext())
 		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
-})
+	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
+}, withFilteringFlags)
 
 const (
 	ArgReleaseAddBranch = "branch"
+	ArgReleaseAddBump   = "bump"
 )
 
 //

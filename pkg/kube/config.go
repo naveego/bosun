@@ -11,9 +11,11 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"io/ioutil"
 	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"os"
 	"strings"
 )
 
@@ -124,10 +126,11 @@ type ClusterConfig struct {
 }
 
 type PullSecret struct {
-	Name     string               `yaml:"name"`
-	Domain   string               `yaml:"domain"`
-	Username string               `yaml:"username"`
-	Password command.CommandValue `yaml:"password"`
+	Name             string               `yaml:"name"`
+	Domain           string               `yaml:"domain"`
+	FromDockerConfig bool                 `yaml:"fromDockerConfig,omitempty"`
+	Username         string               `yaml:"username"`
+	Password         command.CommandValue `yaml:"password"`
 }
 
 func (c *ClusterConfig) SetFromPath(fp string) {
@@ -267,10 +270,46 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 
 			req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
 
-			password, err := pullSecret.Password.Resolve(req.ExecutionContext)
-			if err != nil {
-				req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
-				continue
+			var password string
+			var username string
+
+			if pullSecret.FromDockerConfig {
+				var dockerConfig map[string]interface{}
+				dockerConfigPath, ok := os.LookupEnv("DOCKER_CONFIG")
+				if !ok {
+					dockerConfigPath = os.ExpandEnv("$HOME/.docker/config.json")
+				}
+				data, err := ioutil.ReadFile(dockerConfigPath)
+				if err != nil {
+					return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, err)
+				}
+
+				err = json.Unmarshal(data, &dockerConfig)
+				if err != nil {
+					return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
+				}
+
+				auths, ok := dockerConfig["auths"].(map[string]interface{})
+
+				entry, ok := auths[pullSecret.Domain].(map[string]interface{})
+				if !ok {
+					return errors.Errorf("no %q entry in docker config, you should docker login first", pullSecret.Domain)
+				}
+				authBase64, _ := entry["auth"].(string)
+				auth, err := base64.StdEncoding.DecodeString(authBase64)
+				if err != nil {
+					return errors.Errorf("invalid %q entry in docker config, you should docker login first: %s", pullSecret.Domain, err)
+				}
+				segs := strings.Split(string(auth), ":")
+				username, password = segs[0], segs[1]
+			} else {
+
+				username = pullSecret.Username
+				password, err = pullSecret.Password.Resolve(req.ExecutionContext)
+				if err != nil {
+					req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
+					continue
+				}
 			}
 
 			auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", pullSecret.Username, password)))
@@ -278,9 +317,9 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 			dockerConfig := map[string]interface{}{
 				"auths": map[string]interface{}{
 					pullSecret.Domain: map[string]interface{}{
-						"username": pullSecret.Username,
+						"username": username,
 						"password": password,
-						"email":    pullSecret.Username,
+						"email":    username,
 						"auth":     auth,
 					},
 				},

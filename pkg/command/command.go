@@ -165,10 +165,12 @@ func executeScript(script string, ctx ExecutionContext, opt CommandOpts) (string
 
 	vars := ctx.GetEnvironmentVariables()
 
-	ctx.Log().Debugf("Running script:\n%s\n", script)
+	dir := ctx.Pwd()
+
+	ctx.Log().Debugf("Running script in %s:\n%s\n", dir, script)
 
 	cmd := GetCommandForScript(tmp.Name()).
-		WithDir(ctx.Pwd()).
+		WithDir(dir).
 		IncludeEnv(ctx.GetEnvironmentVariables()).
 		IncludeEnv(vars).
 		WithContext(ctx.Ctx())

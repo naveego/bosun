@@ -62,17 +62,18 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			if err != nil {
 				return errors.Wrap(err, "could not load existing plan")
 			}
-			req.ProviderName = previousPlan.Provider
+			req.ProviderPriority = previousPlan.ProviderPriority
 			for _, app := range previousPlan.Apps {
 				req.Apps = append(req.Apps, app.Name)
 			}
 		} else {
-
-			req.ProviderName, _ = cmd.Flags().GetString(argDeployPlanProvider)
-			if req.ProviderName == "" {
-				req.ProviderName = userChooseProvider(req.ProviderName)
+			provider := viper.GetString(argDeployPlanProviderPriority)
+			if provider == "" {
+				provider = userChooseProvider(provider)
 			}
-			log.Debugf("Obtaining apps from provider %q", req.ProviderName)
+			req.ProviderPriority = []string{provider}
+
+			log.Debugf("Obtaining apps from provider %q", req.ProviderPriority)
 
 			req.Apps = viper.GetStringSlice(argDeployPlanApps)
 			if len(req.Apps) == 0 {
@@ -107,7 +108,7 @@ var _ = addCommand(deployCmd, &cobra.Command{
 		color.Blue("Saved deployment plan to %s", req.Path)
 
 		color.White("To run this plan again, use this:")
-		cli := fmt.Sprintf("bosun deploy plan --path %s --provider %s ", req.Path, req.ProviderName)
+		cli := fmt.Sprintf("bosun deploy plan --path %s --provider %s ", req.Path, req.ProviderPriority)
 		if req.IgnoreDependencies {
 			cli += "--ignore-deps "
 		}
@@ -126,7 +127,7 @@ var _ = addCommand(deployCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployPlanPath, "", "Path where plan should be stored.")
-	cmd.Flags().String(argDeployPlanProvider, "", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
+	cmd.Flags().String(argDeployPlanProviderPriority, "", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
 	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps which target the current environment.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, false, "Don't validate dependencies.")
@@ -135,11 +136,11 @@ var _ = addCommand(deployCmd, &cobra.Command{
 })
 
 const (
-	argDeployPlanPath       = "path"
-	argDeployPlanApps       = "apps"
-	argDeployPlanAll        = "all"
-	argDeployPlanProvider   = "provider"
-	argDeployPlanIgnoreDeps = "ignore-deps"
-	argDeployPlanAutoDeps   = "auto-deps"
-	argDeployPlanUpdate     = "update"
+	argDeployPlanPath             = "path"
+	argDeployPlanApps             = "apps"
+	argDeployPlanAll              = "all"
+	argDeployPlanProviderPriority = "provider"
+	argDeployPlanIgnoreDeps       = "ignore-deps"
+	argDeployPlanAutoDeps         = "auto-deps"
+	argDeployPlanUpdate           = "update"
 )
