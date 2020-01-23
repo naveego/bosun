@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -72,23 +72,25 @@ var appMutateLabel = addCommand(appMutateCmd, &cobra.Command{
 })
 
 var appForEachLabel = addCommand(appMutateCmd, &cobra.Command{
-	Use:   "foreach --include {filter} -- {command} [args]",
+	Use:   "foreach {[app apps...] | --include {filter}} -- {command} [args]",
 	Short: "Runs a command for each matched app.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosun()
 
-		apps := mustGetKnownApps(b, nil)
+
+		appNames := args[0: cmd.ArgsLenAtDash()]
+		commandArgs := args[cmd.ArgsLenAtDash():]
+
+
+		apps := mustGetKnownApps(b, appNames)
 
 		if len(args) < 1 {
 			return errors.New("a command is required")
 		}
 		dryRun := viper.GetBool(ArgGlobalDryRun)
 
-
-		commandExe := args[0]
-		commandArgs := args[1:]
 
 		for _, app := range apps {
 			ctx := b.NewContext().WithApp(app)
@@ -107,11 +109,16 @@ var appForEachLabel = addCommand(appMutateCmd, &cobra.Command{
 
 
 			ctx.Log().Infof("Running command in %s", dir)
-			_, err := pkg.NewShellExe(commandExe, commandArgs...).WithDir(dir).RunOutLog()
+			script := strings.Join(commandArgs, " ")
+			c := command.Command{
+				Script:script,
+			}
+			ctx = ctx.WithDir(dir)
+			_, err := c.Execute(ctx, command.CommandOpts{StreamOutput: true})
 			if err != nil {
 				color.Red("Command failed:\n")
 				color.Yellow("dir:     %s\n", dir)
-				color.Yellow("command: %s %s\n", commandExe, strings.Join(commandArgs, " "))
+				color.Yellow("command: %s\n", script)
 				color.Yellow("error:   %s\n", err.Error())
 				continue
 			}
@@ -120,7 +127,3 @@ var appForEachLabel = addCommand(appMutateCmd, &cobra.Command{
 		return nil
 	},
 })
-
-const (
-	argAppMutateForeachCommand = "command"
-)

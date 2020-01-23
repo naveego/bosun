@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
@@ -13,6 +14,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const logConfigs = false
@@ -170,6 +172,13 @@ func (w *Workspace) GetWorkspaceCommand(key string) *command.CommandValue {
 
 	if c, ok := w.WorkspaceCommands[key]; ok {
 		return c
+	}
+
+	if !cli.IsInteractive() {
+		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Your workspace contains no command to generate value %q, but bosun is not running in an interactive mode.", key))
+		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Run the command below in interactive mode to fix this problem."))
+		_, _ = fmt.Fprintf(os.Stderr, "%s\n", strings.Join(os.Args, " "))
+		os.Exit(0)
 	}
 
 	create := cli.RequestConfirmFromUser("Your workspace contains no command to generate value %q, do you want to create one", key)
