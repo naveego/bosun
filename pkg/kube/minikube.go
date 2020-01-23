@@ -44,7 +44,8 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 
 	ctx.Log.Info("minikube not running, starting minikube...")
 
-	pkg.NewShellExe("minikube config set embed-certs true").MustRun()
+	// this is disabled because of a bug in minikube:
+	// pkg.NewShellExe("minikube config set embed-certs true").MustRun()
 
 	if c.Driver == "none" {
 		cmd := pkg.NewShellExe("sudo",
