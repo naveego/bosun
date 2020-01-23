@@ -312,7 +312,7 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 				}
 			}
 
-			auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", pullSecret.Username, password)))
+			auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 
 			dockerConfig := map[string]interface{}{
 				"auths": map[string]interface{}{
