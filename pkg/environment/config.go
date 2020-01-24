@@ -154,10 +154,25 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 
 		pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
 
-		out, err := pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
+		_, err = pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
 
-		if strings.Contains(out, "no context exists with the name") {
-			return errors.Errorf("No context found with name %q (try running `bosun kube configure-cluster %s`)", e.ClusterName, e.ClusterName)
+		if err != nil && strings.Contains(err.Error(), "no context exists with the name") {
+
+			pkg.Log.Warnf("No context configured for cluster %q, I will try to configure it...", e.Cluster.Name)
+			err = e.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+				Log:              ctx.Log(),
+				Name:             e.Cluster.Name,
+				Force:            ctx.GetParameters().Force,
+				ExecutionContext: ctx,
+				PullSecrets:      e.PullSecrets,
+			})
+
+			if err != nil {
+				return err
+			}
+
+			pkg.Log.Warnf("Configured new context for cluster %q, you may need to run this command again.", e.Cluster.Name)
+			return nil
 		}
 		return err
 	}
