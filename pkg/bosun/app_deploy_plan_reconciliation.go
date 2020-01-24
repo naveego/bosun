@@ -41,19 +41,23 @@ func (a *AppDeploy) PlanReconciliation(ctx BosunContext) (Plan, error) {
 	}
 
 	if desired.Status == workspace.StatusDeployed {
-		switch actual.Status {
-		case workspace.StatusNotFound:
+		if needsDelete {
 			needsInstall = true
-		case workspace.StatusDeleted:
-			needsInstall = true
-		case workspace.StatusPendingUpgrade:
-			needsInstall = true
-		default:
-			needsUpgrade = actual.Status != workspace.StatusDeployed
-			needsUpgrade = needsUpgrade || actual.Routing != desired.Routing
-			needsUpgrade = needsUpgrade || actual.Version != desired.Version
-			needsUpgrade = needsUpgrade || actual.Diff != ""
-			needsUpgrade = needsUpgrade || desired.Force
+		} else {
+			switch actual.Status {
+			case workspace.StatusNotFound:
+				needsInstall = true
+			case workspace.StatusDeleted:
+				needsInstall = true
+			case workspace.StatusPendingUpgrade:
+				needsInstall = true
+			default:
+				needsUpgrade = actual.Status != workspace.StatusDeployed
+				needsUpgrade = needsUpgrade || actual.Routing != desired.Routing
+				needsUpgrade = needsUpgrade || actual.Version != desired.Version
+				needsUpgrade = needsUpgrade || actual.Diff != ""
+				needsUpgrade = needsUpgrade || desired.Force
+			}
 		}
 	}
 
