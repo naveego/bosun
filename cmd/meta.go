@@ -56,7 +56,7 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		client := getMaybeAuthenticatedGithubClient()
+		client := getUnauthenticatedGithubClient()
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		var err error
 		if core.Version == "" {
@@ -126,7 +126,7 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		client := getMaybeAuthenticatedGithubClient()
+		client := getUnauthenticatedGithubClient()
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		var err error
 		if core.Version == "" {
