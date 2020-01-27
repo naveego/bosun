@@ -6,9 +6,12 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -238,14 +241,14 @@ var releaseImpactCmd = addCommand(releaseCmd, &cobra.Command{
 		// 		ctx := b.NewContext().WithAppDeploy(appRelease)
 		// 		values, err := appRelease.GetResolvedValues(ctx)
 		// 		if err != nil {
-		// 			ctx.Log.WithError(err).Error("Could not create values map for app release.")
+		// 			ctx.Log().WithError(err).Error("Could not create values map for app release.")
 		// 			return
 		// 		}
 		//
 		// 		ctx = ctx.WithPersistableValues(values)
 		// 		err = appRelease.LoadActualState(ctx, true)
 		// 		if err != nil {
-		// 			ctx.Log.WithError(err).Error("Could not load actual state.")
+		// 			ctx.Log().WithError(err).Error("Could not load actual state.")
 		// 			return
 		// 		}
 		// 		complete += 1
@@ -307,8 +310,8 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "add {current|unstable} {app} {bump}",
-	Args:  cobra.ExactArgs(3),
+	Use:   "add {current|unstable} [apps...]",
+	Args:  cobra.MinimumNArgs(1),
 	Short: "Adds an app to the release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -320,45 +323,49 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 
 		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotCurrent)
 
-		app, err := b.GetApp(args[1])
-		if err != nil {
-			return err
+		apps := mustGetKnownApps(b, args[1:])
+		bump := viper.GetString(ArgReleaseAddBump)
+		for _, app := range apps {
+
+			ctx := b.NewContext().WithApp(app)
+
+			ctx.Log().Info("Adding app to release...")
+
+			branch := viper.GetString(ArgReleaseAddBranch)
+
+			appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(bump), branch)
+			if err != nil {
+				return err
+			}
+
+			err = r.AddApp(appManifest, true)
+			if err != nil {
+				return err
+			}
 		}
 
-		ctx := b.NewContext()
-
-		branch := viper.GetString(ArgReleaseAddBranch)
-
-		appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(args[2]), branch)
-		if err != nil {
-			return err
-		}
-
-		err = r.AddApp(appManifest, true)
-		if err != nil {
-			return err
-		}
-
-		err = p.Save(ctx)
+		err = p.Save(b.NewContext())
 		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
-})
+	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
+}, withFilteringFlags)
 
 const (
 	ArgReleaseAddBranch = "branch"
+	ArgReleaseAddBump   = "bump"
 )
 
 //
-// var releaseExcludeCmd = addCommand(releaseCmd, &cobra.Command{
+// var releaseExcludeCmd = addCommand(releaseCmd, &cobra.ShellExe{
 // 	Use:   "exclude [names...]",
 // 	Short: "Excludes and removes one or more apps from a release.",
 // 	Long: "Provide app names or use labels. The matched apps will be removed " +
 // 		"from the release and will not be re-added even if apps which depend on " +
 // 		"them are added or synced. If the app is explicitly added it will be " +
 // 		"removed from the exclude list.",
-// 	RunE: func(cmd *cobra.Command, args []string) error {
+// 	RunE: func(cmd *cobra.ShellExe, args []string) error {
 // 		viper.BindPFlags(cmd.Flags())
 // 		b := MustGetBosun()
 // 		release := mustGetCurrentRelease(b)
@@ -396,7 +403,7 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		ctx := b.NewContext()
 
 		deploySettings := bosun.DeploySettings{
-			Environment: ctx.Env,
+			Environment: ctx.Environment(),
 			ValueSets:   valueSets,
 			Manifest:    release,
 		}
@@ -439,7 +446,7 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 
 	// ctx.GetMinikubeDockerEnv()
 
-	err := pkg.NewCommand("helm", "repo", "update").RunE()
+	err := pkg.NewShellExe("helm", "repo", "update").RunE()
 	if err != nil {
 		return errors.Wrap(err, "update repo indexes")
 	}
@@ -525,9 +532,10 @@ var releaseTestCmd = addCommand(releaseCmd, &cobra.Command{
 			ctx = ctx.WithAppDeploy(appRelease)
 			for _, action := range appRelease.AppConfig.Actions {
 				if action.Test != nil {
+
 					err := action.Execute(ctx)
 					if err != nil {
-						ctx.Log.WithError(err).Error("Test failed.")
+						ctx.Log().WithError(err).Error("Test failed.")
 					}
 				}
 			}
@@ -560,7 +568,7 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		deploySettings := bosun.DeploySettings{
-			Environment:     ctx.Env,
+			Environment:     ctx.Environment(),
 			ValueSets:       valueSets,
 			Manifest:        release,
 			Recycle:         viper.GetBool(ArgReleaseRecycle),
@@ -578,9 +586,8 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		color.Yellow("About to deploy the following apps:")
-		for _, name := range util.SortedKeys(deploy.AppDeploys) {
-			app := deploy.AppDeploys[name]
-			fmt.Printf("- %s: %s (tag %s)\n", name, app.Version, deploySettings.GetImageTag(app.AppMetadata))
+		for _, app := range deploy.AppDeploys {
+			fmt.Printf("- %s: %s (tag %s) => %s.%s \n", app, app.AppConfig.Version, deploySettings.GetImageTag(app.AppManifest.AppMetadata), app.Cluster, app.Namespace)
 		}
 
 		if !confirm("Is this what you expected") {
@@ -588,9 +595,9 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		if viper.GetBool(ArgReleaseSkipValidate) {
-			ctx.Log.Warn("Validation disabled.")
+			ctx.Log().Warn("Validation disabled.")
 		} else {
-			ctx.Log.Info("Validating...")
+			ctx.Log().Info("Validating...")
 			err = validateDeploy(b, ctx, deploy)
 			if err != nil {
 				return err
@@ -750,23 +757,26 @@ diff go-between 2.4.2/blue green
 					return "", errors.Errorf("invalid scenario %q", scenario)
 				}
 
-				env, err := b.GetEnvironment(envName)
+				environmentConfig, err := b.GetEnvironmentConfig(envName)
 				if err != nil {
 					return "", errors.Wrap(err, "environment")
 				}
+
+				env, err := environment.New(*environmentConfig, environment.Options{})
+				if err != nil {
+					return "", err
+				}
+
 				ctx := b.NewContext().WithEnv(env)
 
 				var ok bool
 				if releaseName != "" {
 					releaseManifest, err := p.GetReleaseManifestBySlot(releaseName)
 
-					valueSets, err := getValueSetSlice(b, env)
-					if err != nil {
-						return "", err
-					}
+					valueSets := []values.ValueSet{}
 
 					deploySettings := bosun.DeploySettings{
-						Environment: ctx.Env,
+						Environment: ctx.Environment(),
 						ValueSets:   valueSets,
 						Manifest:    releaseManifest,
 					}
@@ -776,19 +786,22 @@ diff go-between 2.4.2/blue green
 						return "", err
 					}
 
-					appDeploy, ok = deploy.AppDeploys[app.Name]
+					for _, candidate := range deploy.AppDeploys {
+						if candidate.Name == app.Name {
+							appDeploy = candidate
+							ok = true
+						}
+					}
+
 					if !ok {
 						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
 					}
 
 				} else {
-					valueSets, err := getValueSetSlice(b, env)
-					if err != nil {
-						return "", err
-					}
+					valueSets := []values.ValueSet{}
 
 					deploySettings := bosun.DeploySettings{
-						Environment: ctx.Env,
+						Environment: ctx.Environment(),
 						ValueSets:   valueSets,
 						Apps: map[string]*bosun.App{
 							app.Name: app,
@@ -800,7 +813,12 @@ diff go-between 2.4.2/blue green
 						return "", err
 					}
 
-					appDeploy, ok = deploy.AppDeploys[app.Name]
+					for _, candidate := range deploy.AppDeploys {
+						if candidate.Name == app.Name {
+							appDeploy = candidate
+							ok = true
+						}
+					}
 					if !ok {
 						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
 					}
@@ -863,7 +881,7 @@ func renderDiff(diff difflib.DiffRecord) string {
 
 func getDeployableApps(b *bosun.Bosun, args []string) ([]*bosun.App, error) {
 	fp := getFilterParams(b, args)
-	apps, err := fp.GetAppsChain(fp.Chain().Including(filter.MustParse(bosun.LabelDeployable)))
+	apps, err := fp.GetAppsChain(fp.Chain().Including(filter.MustParse(core.LabelDeployable)))
 	if err != nil {
 		return nil, err
 	}

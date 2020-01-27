@@ -7,11 +7,12 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -41,26 +42,7 @@ func (v VaultLayout) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p)
 }
 
-type TemplateValues struct {
-	Cluster string
-	Domain  string
-	Values  map[string]interface{}
-}
-
-func NewTemplateValues(args ...string) (TemplateValues, error) {
-	t := TemplateValues{}
-	for _, kv := range args {
-		segs := strings.Split(kv, "=")
-		if len(segs) != 2 {
-			return t, errors.Errorf("invalid values flag value: %q (should be Key=value)", kv)
-		}
-		t.Values[segs[0]] = segs[1]
-	}
-
-	return t, nil
-}
-
-func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, client *api.Client) (*VaultLayout, error) {
+func LoadVaultLayoutFromFiles(globs []string, templateArgs templating.TemplateValues, client *api.Client) (*VaultLayout, error) {
 	mergedLayout := new(VaultLayout)
 	var paths []string
 	for _, glob := range globs {
@@ -94,7 +76,7 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs TemplateValues, clien
 	return mergedLayout, nil
 }
 
-func LoadVaultLayoutFromBytes(label string, data []byte, templateArgs TemplateValues, client *api.Client) (*VaultLayout, error) {
+func LoadVaultLayoutFromBytes(label string, data []byte, templateArgs templating.TemplateValues, client *api.Client) (*VaultLayout, error) {
 	yamlString, err := NewTemplateBuilder(label).
 		WithKubeFunctions().
 		WithVaultTemplateFunctions(client).
@@ -151,7 +133,7 @@ func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[str
 	return m
 }
 
-// Apply applies the vault layout to vault, first checking if
+// ApplyToValues applies the vault layout to vault, first checking if
 // it has changed since the last time it was applied based on the
 // hashKey. If hashKey is empty, or force is true, the change detection
 // step is skipped.
@@ -162,7 +144,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	recordError := func(log *logrus.Entry, data interface{}, err error) {
 		b, _ := json.Marshal(data)
 		log.WithField("data", string(b)).Debug("Attempted data.")
-		log.WithError(err).Error()
+		log.WithField("vault_addr", client.Address()).WithError(err).Error()
 		hadErrors = true
 	}
 

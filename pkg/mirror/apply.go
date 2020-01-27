@@ -17,9 +17,15 @@ func ApplyFuncRecursively(target interface{}, fn interface{}) {
 	argType := fnVal.Type().In(0)
 
 	val := reflect.ValueOf(target)
-	if val.Kind() == reflect.Ptr {
+
+	for val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
+
+	if val.Type().AssignableTo(argType) || val.Type().Implements(argType) {
+		fnVal.Call([]reflect.Value{val})
+	}
+
 	numFields := val.NumField()
 	for i := 0; i < numFields; i++ {
 		field := val.Field(i)

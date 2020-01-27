@@ -11,13 +11,13 @@ import (
 	"strings"
 )
 
-type Command struct {
+type ShellExe struct {
 	// Exe is the executable to invoke.
 	Exe *string
 	// Args is the arguments to be passed to the exe.
 	Args []string
 	Env  []string
-	// Command is the exe with its args as a single string, as you would type it on the CLI.
+	// ShellExe is the exe with its args as a single string, as you would type it on the CLI.
 	Command  *string
 	Dir      *string
 	ctx      context.Context
@@ -26,8 +26,8 @@ type Command struct {
 	sudo     bool
 }
 
-func NewCommand(exe string, args ...string) *Command {
-	c := new(Command)
+func NewShellExe(exe string, args ...string) *ShellExe {
+	c := new(ShellExe)
 	if len(args) == 0 {
 		c.Command = &exe
 	} else {
@@ -38,48 +38,48 @@ func NewCommand(exe string, args ...string) *Command {
 	return c
 }
 
-func (c *Command) WithDir(dir string) *Command {
+func (c *ShellExe) WithDir(dir string) *ShellExe {
 	c.Dir = &dir
 	return c
 }
-func (c *Command) WithExe(exe string) *Command {
+func (c *ShellExe) WithExe(exe string) *ShellExe {
 	c.Exe = &exe
 	return c
 }
 
-func (c *Command) IncludeEnv(env map[string]string) *Command {
+func (c *ShellExe) IncludeEnv(env map[string]string) *ShellExe {
 	for k, v := range env {
 		c.WithEnvValue(k, v)
 	}
 	return c
 }
 
-func (c *Command) WithEnvValue(key, value string) *Command {
+func (c *ShellExe) WithEnvValue(key, value string) *ShellExe {
 	c.Env = append(c.Env, fmt.Sprintf("%s=%s", key, value))
 	return c
 }
 
-func (c *Command) WithContext(ctx context.Context) *Command {
+func (c *ShellExe) WithContext(ctx context.Context) *ShellExe {
 	c.ctx = ctx
 	return c
 }
 
-func (c *Command) WithArgs(args ...string) *Command {
+func (c *ShellExe) WithArgs(args ...string) *ShellExe {
 	c.Args = append(c.Args, args...)
 	return c
 }
 
-func (c *Command) WithCommand(cmd string) *Command {
+func (c *ShellExe) WithCommand(cmd string) *ShellExe {
 	c.Command = &cmd
 	return c
 }
 
-func (c *Command) GetCmd() *exec.Cmd {
+func (c *ShellExe) GetCmd() *exec.Cmd {
 	c.prepare()
 	return c.cmd
 }
 
-func (c *Command) prepare() {
+func (c *ShellExe) prepare() {
 
 	if c.cmd != nil {
 		return
@@ -111,19 +111,21 @@ func (c *Command) prepare() {
 
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
-	Log.WithField("exe", exe).WithField("args", c.Args).
+	Log.WithField("exe", exe).
+		WithField("args", c.Args).
+		WithField("dir", c.cmd.Dir).
 		//	WithField("env", c.cmd.Env).
-		Debug("Command prepared.")
+		Debug("ShellExe prepared.")
 
 	c.prepared = true
 }
 
 // MustRun runs the command and kills this process if the command returns an error.
-func (c *Command) MustRun() {
+func (c *ShellExe) MustRun() {
 	Must(c.RunE())
 }
 
-func (c *Command) MustOut() string {
+func (c *ShellExe) MustOut() string {
 	out, err := c.RunOut()
 	Must(err)
 	return out
@@ -131,7 +133,7 @@ func (c *Command) MustOut() string {
 
 // RunE runs the command and returns the error only.
 // Input and output for current process are attached to the command process.
-func (c *Command) RunE() error {
+func (c *ShellExe) RunE() error {
 	c.prepare()
 
 	c.cmd.Stdin = os.Stdin
@@ -147,7 +149,7 @@ func (c *Command) RunE() error {
 }
 
 // RunOut runs the command and returns the output or an error.
-func (c *Command) RunOut() (string, error) {
+func (c *ShellExe) RunOut() (string, error) {
 	c.prepare()
 	var result string
 	var err error
@@ -166,7 +168,7 @@ func (c *Command) RunOut() (string, error) {
 }
 
 // RunOutLog runs the command and returns all output as a string.
-func (c *Command) RunOutLog() (string, error) {
+func (c *ShellExe) RunOutLog() (string, error) {
 	c.prepare()
 	var result string
 	var err error
@@ -187,7 +189,7 @@ func (c *Command) RunOutLog() (string, error) {
 	return result, err
 }
 
-func (c *Command) Sudo(enabled bool) *Command {
+func (c *ShellExe) Sudo(enabled bool) *ShellExe {
 	c.sudo = enabled
 	return c
 

@@ -10,7 +10,7 @@ builds:
 - env:
   - CGO_ENABLED=0
   ldflags:
-    - -s -w -X github.com/naveego/bosun/cmd.Version={{.Version}} -X github.com/naveego/bosun/cmd.Timestamp={{.Timestamp}} -X github.com/naveego/bosun/cmd.Commit={{.ShortCommit}}
+    - -s -w -X github.com/naveego/bosun/pkg/core.Version={{.Version}} -X github.com/naveego/bosun/pkg/core.Timestamp={{.Timestamp}} -X github.com/naveego/bosun/pkg/core.Commit={{.ShortCommit}}
   goos:
   - windows
   - linux

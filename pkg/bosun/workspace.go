@@ -1,34 +1,41 @@
 package bosun
 
 import (
+	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/vcs"
+	"github.com/naveego/bosun/pkg/workspace"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const logConfigs = false
 
 type Workspace struct {
-	Path                string                 `yaml:"-" json:"-"`
-	CurrentEnvironment  string                 `yaml:"currentEnvironment" json:"currentEnvironment"`
-	CurrentPlatform     string                 `yaml:"currentPlatform" json:"currentPlatform"`
-	CurrentRelease      string                 `yaml:"currentRelease" json:"currentRelease"`
-	Imports             []string               `yaml:"imports,omitempty" json:"imports"`
-	GitRoots            []string               `yaml:"gitRoots" json:"gitRoots"`
-	GithubToken         *CommandValue          `yaml:"githubToken" json:"githubToken"`
-	ScratchDir          string                 `yaml:"scratchDir" json:"scratchDir"`
-	HostIPInMinikube    string                 `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
-	AppStates           AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
-	ClonePaths          map[string]string      `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
-	MergedBosunFile     *File                  `yaml:"-" json:"merged"`
-	ImportedBosunFiles  map[string]*File       `yaml:"-" json:"imported"`
-	ZenhubToken         *CommandValue          `yaml:"zenhubToken" json:"zenhubToken"`
-	Minikube            MinikubeConfig         `yaml:"minikube" json:"minikube"`
-	LocalRepos          map[string]*LocalRepo  `yaml:"localRepos" json:"localRepos"`
-	GithubCloneProtocol string                 `yaml:"githubCloneProtocol"`
+	Path                string `yaml:"-" json:"-"`
+	workspace.Context   `yaml:",inline"`
+	Imports             []string                         `yaml:"imports,omitempty" json:"imports"`
+	GitRoots            []string                         `yaml:"gitRoots" json:"gitRoots"`
+	GithubToken         *command.CommandValue            `yaml:"githubToken" json:"githubToken"`
+	ScratchDir          string                           `yaml:"scratchDir" json:"scratchDir"`
+	WorkspaceCommands   map[string]*command.CommandValue `yaml:"workspaceCommands"`
+	HostIPInMinikube    string                           `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
+	AppStates           workspace.AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
+	ClonePaths          map[string]string                `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
+	MergedBosunFile     *File                            `yaml:"-" json:"merged"`
+	ImportedBosunFiles  map[string]*File                 `yaml:"-" json:"imported"`
+	ZenhubToken         *command.CommandValue            `yaml:"zenhubToken" json:"zenhubToken"`
+	Minikube            *kube.MinikubeConfig             `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	LocalRepos          map[string]*vcs.LocalRepo        `yaml:"localRepos" json:"localRepos"`
+	GithubCloneProtocol string                           `yaml:"githubCloneProtocol"`
 }
 
 func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -51,17 +58,20 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*w = Workspace(proxy)
 
 	if w.LocalRepos == nil {
-		w.LocalRepos = map[string]*LocalRepo{}
+		w.LocalRepos = map[string]*vcs.LocalRepo{}
 	}
 
-	if w.Minikube.DiskSize == "" {
-		w.Minikube.DiskSize = "40g"
-	}
-	if w.Minikube.Driver == "" {
-		w.Minikube.Driver = "virtualbox"
-	}
-	if w.Minikube.HostIP == "" {
-		w.Minikube.HostIP = "192.168.99.1"
+	if w.Minikube != nil {
+
+		if w.Minikube.DiskSize == "" {
+			w.Minikube.DiskSize = "40g"
+		}
+		if w.Minikube.Driver == "" {
+			w.Minikube.Driver = "virtualbox"
+		}
+		if w.Minikube.HostIP == "" {
+			w.Minikube.HostIP = "192.168.99.1"
+		}
 	}
 	if w.ScratchDir == "" {
 		w.ScratchDir = "/tmp/bosun"
@@ -70,18 +80,15 @@ func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		w.GithubCloneProtocol = "ssh"
 	}
 
+	if w.WorkspaceCommands == nil {
+		w.WorkspaceCommands = map[string]*command.CommandValue{}
+	}
+
 	return nil
 }
 
-type MinikubeConfig struct {
-	HostIP   string `yaml:"hostIP" json:"hostIP"`
-	Driver   string `yaml:"driver" json:"driver"`
-	DiskSize string `yaml:"diskSize" json:"diskSize"`
-	Version  string `yaml:"version" json:"version"`
-}
-
 type State struct {
-	Microservices map[string]AppState
+	Microservices map[string]workspace.AppState
 }
 
 func LoadWorkspaceNoImports(path string) (*Workspace, error) {
@@ -111,7 +118,7 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 
 	c := &Workspace{
 		Path:               path,
-		AppStates:          AppStatesByEnvironment{},
+		AppStates:          workspace.AppStatesByEnvironment{},
 		ImportedBosunFiles: map[string]*File{},
 		MergedBosunFile:    new(File),
 	}
@@ -153,12 +160,43 @@ func LoadWorkspace(path string) (*Workspace, error) {
 		}
 	}
 
-	err = c.importFromPaths(path, syntheticPaths)
+	// err = c.importFromPaths(path, syntheticPaths)
 	if err != nil {
 		return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
 	}
 
 	return c, err
+}
+
+func (w *Workspace) GetWorkspaceCommand(key string) *command.CommandValue {
+
+	if c, ok := w.WorkspaceCommands[key]; ok {
+		return c
+	}
+
+	if !cli.IsInteractive() {
+		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Your workspace contains no command to generate value %q, but bosun is not running in an interactive mode.", key))
+		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Run the command below in interactive mode to fix this problem."))
+		_, _ = fmt.Fprintf(os.Stderr, "%s\n", strings.Join(os.Args, " "))
+		os.Exit(0)
+	}
+
+	create := cli.RequestConfirmFromUser("Your workspace contains no command to generate value %q, do you want to create one", key)
+	if !create {
+		color.Red("You need to update your workspace with a command to generate value %q.", key)
+		os.Exit(0)
+	}
+
+	script := cli.RequestStringFromUser("Enter script")
+
+	commandValue := &command.CommandValue{
+		Command: command.Command{
+			Script: script,
+		},
+	}
+	w.WorkspaceCommands[key] = commandValue
+
+	return commandValue
 }
 
 func (w *Workspace) importFromPaths(relativeTo string, paths []string) error {
@@ -176,14 +214,14 @@ func (w *Workspace) importFromPaths(relativeTo string, paths []string) error {
 
 func (w *Workspace) importFileFromPath(path string) error {
 	log := pkg.Log.WithField("import_path", path)
-	if logConfigs {
-		log.Debug("Importing mergedFragments...")
-	}
+	// if logConfigs {
+	// 	log.Debug("Importing mergedFragments...")
+	// }
 
 	if w.ImportedBosunFiles[path] != nil {
-		if logConfigs {
-			log.Debugf("Already imported.")
-		}
+		// if logConfigs {
+		// 	log.Debugf("Already imported.")
+		// }
 		return nil
 	}
 

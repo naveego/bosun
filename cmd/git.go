@@ -55,6 +55,10 @@ func getMaybeAuthenticatedGithubClient() *github.Client {
 	return git.NewGithubClient(token)
 }
 
+func getUnauthenticatedGithubClient() *github.Client {
+		return git.NewGithubClient("")
+}
+
 var gitTokenCmd = addCommand(gitCmd, &cobra.Command{
 	Use:   "token",
 	Short: "Prints the github token.",
@@ -226,7 +230,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		b := MustGetBosun()
 		svc, err := b.GetIssueService()
 		if err != nil {
-			b.NewContext().Log.Warnf("Could not get issue service, issues will not be updated: %s", err)
+			b.NewContext().Log().Warnf("Could not get issue service, issues will not be updated: %s", err)
 		}
 
 		acceptPRCommand := git.GitAcceptPRCommand{

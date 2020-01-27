@@ -2,7 +2,8 @@ package pkg
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v2"
+	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/yaml"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -101,7 +102,7 @@ func (r *HelmsmanCommand) Execute() error {
 	)
 
 	th := TemplateHelper{
-		TemplateValues: TemplateValues{
+		TemplateValues: templating.TemplateValues{
 			Domain:  r.Domain,
 			Cluster: r.Cluster,
 			Values:  r.Values,

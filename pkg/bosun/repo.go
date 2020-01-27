@@ -3,22 +3,24 @@ package bosun
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/pkg/errors"
 	"path/filepath"
 )
 
 type RepoConfig struct {
-	ConfigShared    `yaml:",inline"`
-	Branching       git.BranchSpec
-	FilteringLabels map[string]string `yaml:"labels" json:"labels"`
+	core.ConfigShared `yaml:",inline"`
+	Branching         git.BranchSpec
+	FilteringLabels   map[string]string `yaml:"labels" json:"labels"`
 }
 
 type Repo struct {
 	RepoConfig
-	LocalRepo *LocalRepo
+	LocalRepo *vcs.LocalRepo
 	Apps      map[string]*AppConfig
 }
 
@@ -52,7 +54,7 @@ func (r *Repo) Clone(ctx BosunContext, toDir string) error {
 
 	dir, _ := filepath.Abs(filepath.Join(toDir, r.Name))
 
-	err := pkg.NewCommand("git", "clone",
+	err := pkg.NewShellExe("git", "clone",
 		"--depth", "1",
 		"--no-single-branch",
 		fmt.Sprintf("git@github.com:%s.git", r.Name),
@@ -63,7 +65,7 @@ func (r *Repo) Clone(ctx BosunContext, toDir string) error {
 		return err
 	}
 
-	r.LocalRepo = &LocalRepo{
+	r.LocalRepo = &vcs.LocalRepo{
 		Name: r.Name,
 		Path: dir,
 	}
@@ -78,11 +80,7 @@ func (r Repo) GetLocalBranchName() git.BranchName {
 		return ""
 	}
 
-	if r.LocalRepo.branch == "" {
-		g, _ := git.NewGitWrapper(r.LocalRepo.Path)
-		r.LocalRepo.branch = git.BranchName(g.Branch())
-	}
-	return r.LocalRepo.branch
+	return r.LocalRepo.GetCurrentBranch()
 }
 
 func (r *Repo) Pull(ctx BosunContext, rebase bool) error {

@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"github.com/naveego/bosun/pkg/yaml"
 )
 
 type fixture struct {
@@ -86,28 +86,28 @@ func TestCompare(t *testing.T) {
 			t.Error(err)
 		}
 
-		if gt.LessThan(*lt) {
+		if gt.LessThan(lt) {
 			t.Errorf("%s should not be less than %s", gt, lt)
 		}
-		if gt.Equal(*lt) {
+		if gt.Equal(lt) {
 			t.Errorf("%s should not be equal to %s", gt, lt)
 		}
-		if gt.Compare(*lt) <= 0 {
+		if gt.Compare(lt) <= 0 {
 			t.Errorf("%s should be greater than %s", gt, lt)
 		}
-		if !lt.LessThan(*gt) {
+		if !lt.LessThan(gt) {
 			t.Errorf("%s should be less than %s", lt, gt)
 		}
-		if !lt.Equal(*lt) {
+		if !lt.Equal(lt) {
 			t.Errorf("%s should be equal to %s", lt, lt)
 		}
-		if lt.Compare(*gt) > 0 {
+		if lt.Compare(gt) > 0 {
 			t.Errorf("%s should not be greater than %s", lt, gt)
 		}
 	}
 }
 
-func testString(t *testing.T, orig string, version *Version) {
+func testString(t *testing.T, orig string, version Version) {
 	if orig != version.String() {
 		t.Errorf("%s != %s", orig, version)
 	}
@@ -143,7 +143,7 @@ func TestSort(t *testing.T) {
 	sortedVersions := []string{"1.0.0", "1.0.2", "1.2.0", "3.1.1"}
 	unsortedVersions := shuffleStringSlice(sortedVersions)
 
-	semvers := []*Version{}
+	semvers := []Version{}
 	for _, v := range unsortedVersions {
 		sv, err := NewVersion(v)
 		if err != nil {
@@ -161,29 +161,29 @@ func TestSort(t *testing.T) {
 	}
 }
 
-func Testsemver.BumpMajor(t *testing.T) {
+func TestBumpMajor(t *testing.T) {
 	version, _ := NewVersion("1.0.0")
-	version.semver.BumpMajor()
+	version = version.BumpMajor()
 	if version.Major != 2 {
 		t.Fatalf("bumping major on 1.0.0 resulted in %v", version)
 	}
 
 	version, _ = NewVersion("1.5.2")
-	version.semver.BumpMajor()
+	version = version.BumpMajor()
 	if version.Minor != 0 && version.Patch != 0 {
 		t.Fatalf("bumping major on 1.5.2 resulted in %v", version)
 	}
 
 	version, _ = NewVersion("1.0.0+build.1-alpha.1")
-	version.semver.BumpMajor()
-	if version.PreRelease != "" && version.PreRelease != "" {
+	version = version.BumpMajor()
+	if version.PreRelease != "" {
 		t.Fatalf("bumping major on 1.0.0+build.1-alpha.1 resulted in %v", version)
 	}
 }
 
-func Testsemver.BumpMinor(t *testing.T) {
+func TestBumpMinor(t *testing.T) {
 	version, _ := NewVersion("1.0.0")
-	version.semver.BumpMinor()
+	version = version.BumpMinor()
 
 	if version.Major != 1 {
 		t.Fatalf("bumping minor on 1.0.0 resulted in %v", version)
@@ -194,15 +194,15 @@ func Testsemver.BumpMinor(t *testing.T) {
 	}
 
 	version, _ = NewVersion("1.0.0+build.1-alpha.1")
-	version.semver.BumpMinor()
-	if version.PreRelease != "" && version.PreRelease != "" {
+	version.BumpMinor()
+	if version.PreRelease != "" {
 		t.Fatalf("bumping major on 1.0.0+build.1-alpha.1 resulted in %v", version)
 	}
 }
 
-func Testsemver.BumpPatch(t *testing.T) {
+func TestBumpPatch(t *testing.T) {
 	version, _ := NewVersion("1.0.0")
-	version.semver.BumpPatch()
+	version = version.BumpPatch()
 
 	if version.Major != 1 {
 		t.Fatalf("bumping minor on 1.0.0 resulted in %v", version)
@@ -217,8 +217,8 @@ func Testsemver.BumpPatch(t *testing.T) {
 	}
 
 	version, _ = NewVersion("1.0.0+build.1-alpha.1")
-	version.semver.BumpPatch()
-	if version.PreRelease != "" && version.PreRelease != "" {
+	version = version.BumpPatch()
+	if version.PreRelease != "" {
 		t.Fatalf("bumping major on 1.0.0+build.1-alpha.1 resulted in %v", version)
 	}
 }
@@ -227,12 +227,12 @@ func TestMust(t *testing.T) {
 	tests := []struct {
 		versionStr string
 
-		version *Version
+		version Version
 		recov   interface{}
 	}{
 		{
 			versionStr: "1.0.0",
-			version:    &Version{Major: 1},
+			version:    Version{Major: 1},
 		},
 		{
 			versionStr: "version number",
@@ -258,8 +258,8 @@ func TestMust(t *testing.T) {
 }
 
 type fixtureJSON struct {
-	GreaterVersion *Version
-	LesserVersion  *Version
+	GreaterVersion Version
+	LesserVersion  Version
 }
 
 func TestJSON(t *testing.T) {
@@ -364,7 +364,7 @@ func ExampleVersion_LessThan() {
 	vA := New("1.2.3")
 	vB := New("3.2.1")
 
-	fmt.Printf("%s < %s == %t\n", vA, vB, vA.LessThan(*vB))
+	fmt.Printf("%s < %s == %t\n", vA, vB, vA.LessThan(vB))
 	// Output:
 	// 1.2.3 < 3.2.1 == true
 }

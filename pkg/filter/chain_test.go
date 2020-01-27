@@ -108,7 +108,7 @@ var _ = Describe("Chain", func() {
 		It("should error if no step which meets requested count", func() {
 			_, err := Try().Including(MustParse("d==D")).
 				ToGetExactly(2).
-				From(items)
+				FromErr(items)
 			Expect(err).To(HaveOccurred())
 		})
 	})

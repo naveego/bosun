@@ -31,15 +31,15 @@ func CloneRepo(ref issues.RepoRef, protocol string, dir string) error {
 	var remote string
 	switch protocol {
 	case "ssh":
-		pkg.Log.Infof("Cloning %s using SSH protocol (set `githubCloneProtocol: https` in workspace to use HTTPS).")
+		pkg.Log.Infof("Cloning %s using SSH protocol (set `githubCloneProtocol: https` in workspace to use HTTPS).", ref)
 		remote = fmt.Sprintf("git@github.com:%s.git", ref)
 	case "http", "https":
-		pkg.Log.Infof("Cloning %s using HTTPS protocol (set `githubCloneProtocol: ssh` in workspace to use SSH).")
+		pkg.Log.Infof("Cloning %s using HTTPS protocol (set `githubCloneProtocol: ssh` in workspace to use SSH).", ref)
 		remote = fmt.Sprintf("https://github.com/%s.git", ref)
 	default:
 		return errors.Errorf("invalid protocol %q", protocol)
 	}
 
-	err := pkg.NewCommand("git", "clone", remote).WithDir(dir).RunE()
+	err := pkg.NewShellExe("git", "clone", remote).WithDir(dir).RunE()
 	return err
 }

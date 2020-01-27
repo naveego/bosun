@@ -2,7 +2,10 @@ package bosun
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/mongo"
+	"github.com/naveego/bosun/pkg/script"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"path/filepath"
@@ -10,7 +13,7 @@ import (
 )
 
 type E2ESuiteConfig struct {
-	ConfigShared      `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 	E2EBookendScripts `yaml:",inline"`
 	MongoConnections  map[string]mongo.Connection `yaml:"mongoConnections,omitempty"`
 	TestFiles         []string                    `yaml:"tests"`
@@ -18,11 +21,11 @@ type E2ESuiteConfig struct {
 }
 
 type E2ETestConfig struct {
-	ConfigShared      `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 	E2EBookendScripts `yaml:",inline"`
 	Dependencies      []*Dependency          `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
 	Variables         map[string]interface{} `yaml:"variables,omitempty" json:"variables"`
-	Steps             []ScriptStep           `yaml:"steps,omitempty" json:"steps,omitempty"`
+	Steps             []script.ScriptStep    `yaml:"steps,omitempty" json:"steps,omitempty"`
 }
 
 type E2EContext struct {
@@ -34,11 +37,11 @@ type E2EContext struct {
 const e2eContextKey = "e2e.context"
 
 func WithE2EContext(ctx BosunContext, e2eCtx E2EContext) BosunContext {
-	return ctx.WithKeyedValue(e2eContextKey, e2eCtx)
+	return ctx.WithValue(e2eContextKey, e2eCtx).(BosunContext)
 }
 
 func GetE2EContext(ctx BosunContext) E2EContext {
-	x := ctx.GetKeyedValue(e2eContextKey)
+	x := ctx.GetValue(e2eContextKey)
 	if x != nil {
 		return x.(E2EContext)
 	}
@@ -64,7 +67,7 @@ func (e *E2ETestConfig) SetFromPath(path string) {
 }
 
 type E2EStepConfig struct {
-	ConfigShared `yaml:",inline"`
+	core.ConfigShared `yaml:",inline"`
 }
 
 type E2ESuite struct {
@@ -73,18 +76,18 @@ type E2ESuite struct {
 }
 
 type E2EBookendScripts struct {
-	SetupScript    *Script `yaml:"setupScript,omitempty" json:"setupScript"`
-	TeardownScript *Script `yaml:"teardownScript,omitempty" json:"teardownScript,omitempty"`
+	SetupScript    *script.Script `yaml:"setupScript,omitempty" json:"setupScript"`
+	TeardownScript *script.Script `yaml:"teardownScript,omitempty" json:"teardownScript,omitempty"`
 }
 
 func (e E2EBookendScripts) Setup(ctx BosunContext) error {
 	if e.SetupScript == nil {
-		ctx.Log.Debug("No setup script defined.")
+		ctx.Log().Debug("No setup script defined.")
 		return nil
 	}
 
 	if GetE2EContext(ctx).SkipSetup {
-		ctx.Log.Warn("Skipping setup because skip-teardown flag was set.")
+		ctx.Log().Warn("Skipping setup because skip-teardown flag was set.")
 		return nil
 	}
 
@@ -95,12 +98,12 @@ func (e E2EBookendScripts) Setup(ctx BosunContext) error {
 func (e E2EBookendScripts) Teardown(ctx BosunContext) error {
 
 	if e.TeardownScript == nil {
-		ctx.Log.Debug("No teardown script defined.")
+		ctx.Log().Debug("No teardown script defined.")
 		return nil
 	}
 
 	if GetE2EContext(ctx).SkipTeardown {
-		ctx.Log.Warn("Skipping teardown because skip-teardown flag was set.")
+		ctx.Log().Warn("Skipping teardown because skip-teardown flag was set.")
 		return nil
 	}
 
@@ -144,17 +147,17 @@ func (s *E2ESuite) LoadTests(ctx BosunContext) error {
 func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) {
 
 	runID := xid.New().String()
-	releaseValues := &PersistableValues{
-		Values: Values{
-			"e2e": Values{
+	releaseValues := &values.PersistableValues{
+		Values: values.Values{
+			"e2e": values.Values{
 				"runID": runID,
 			},
 		},
 	}
 
 	ctx = ctx.WithDir(s.FromPath).
-		WithLogField("suite", s.Name).
-		WithPersistableValues(releaseValues)
+		WithLogField("suite", s.Name).(BosunContext).
+		WithPersistableValues(releaseValues).(BosunContext)
 
 	err := s.LoadTests(ctx)
 	if err != nil {
@@ -177,12 +180,12 @@ func (s *E2ESuite) Run(ctx BosunContext, tests ...string) ([]*E2EResult, error) 
 	for k, v := range s.MongoConnections {
 		// prepare the connection so that we establish a port forwarder (if needed)
 		// that will live for lifetime of the suite
-		p, err := v.Prepare(ctx.Log)
+		p, err := v.Prepare(ctx.Log())
 		if err != nil {
 			return nil, errors.Wrapf(err, "could not prepare suite mongo connection %q", k)
 		}
 		s.PreparedConnections = append(s.PreparedConnections, p)
-		run.Ctx = run.Ctx.WithKeyedValue(k, v)
+		run.Ctx = run.Ctx.WithValue(k, v).(BosunContext)
 	}
 
 	// get the configs which should be in this run
@@ -236,7 +239,7 @@ func (r *E2ERun) Execute() error {
 	// log if the suite teardown fails, but don't error out
 	defer func() {
 		if err := r.Suite.Teardown(r.Ctx); err != nil {
-			r.Ctx.Log.WithError(err).Error("Error during teardown.")
+			r.Ctx.Log().WithError(err).Error("Error during teardown.")
 		}
 	}()
 
@@ -289,7 +292,7 @@ func (t *Timed) StopTimer() {
 }
 
 func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
-	ctx = ctx.WithDir(e.FromPath).WithLog(ctx.Log.WithField("test", e.Name))
+	ctx = ctx.WithDir(e.FromPath).WithLog(ctx.Log().WithField("test", e.Name))
 
 	result := &E2EResult{
 		Name:   e.Name,
@@ -299,7 +302,7 @@ func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
 	result.StartTimer()
 	defer func(result *E2EResult) {
 		if err := e.Teardown(ctx); err != nil {
-			ctx.Log.WithError(err).Error("Error during teardown.")
+			ctx.Log().WithError(err).Error("Error during teardown.")
 		}
 		result.StopTimer()
 	}(result)
@@ -326,7 +329,7 @@ func (e *E2ETest) Execute(ctx BosunContext) (*E2EResult, error) {
 		result.Steps = append(result.Steps, stepResult)
 
 		if err != nil {
-			ctx.Log.WithError(err).Error("Step failed.")
+			ctx.Log().WithError(err).Error("Step failed.")
 			result.Passed = false
 			result.Error = err.Error()
 			stepResult.Passed = false

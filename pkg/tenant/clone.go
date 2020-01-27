@@ -9,12 +9,13 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	bmongo "github.com/naveego/bosun/pkg/mongo"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/yaml"
+	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -70,7 +71,7 @@ func (p *Planner) getPlanPath() string {
 func (p *Planner) Load() error {
 	path := p.getPlanPath()
 	var plan *Plan
-	err := util.LoadYaml(path, &plan)
+	err := yaml2.LoadYaml(path, &plan)
 	if err != nil {
 		if os.IsNotExist(err) {
 			plan = &Plan{}
@@ -88,7 +89,7 @@ func (p *Planner) Save() error {
 		return err
 	}
 	path := p.getPlanPath()
-	err = util.SaveYaml(path, p.Plan)
+	err = yaml2.SaveYaml(path, p.Plan)
 	return err
 }
 

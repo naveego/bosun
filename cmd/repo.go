@@ -133,7 +133,7 @@ var _ = addCommand(
 
 			ctx := b.NewContext()
 			for _, repo := range repos.([]*bosun.Repo) {
-				log := ctx.Log.WithField("repo", repo.Name)
+				log := ctx.Log().WithField("repo", repo.Name)
 
 				if repo.CheckCloned() == nil {
 					pkg.Log.Infof("Repo already cloned to %q", repo.LocalRepo.Path)
@@ -170,7 +170,7 @@ var _ = addCommand(
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rebase := viper.GetBool("rebase")
 			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
-				ctx.Log.Info("Fetching...")
+				ctx.Log().Info("Fetching...")
 				err := repo.Pull(ctx, rebase)
 				return err
 			})
@@ -188,7 +188,7 @@ var _ = addCommand(
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return forEachRepo(args, func(ctx bosun.BosunContext, repo *bosun.Repo) error {
-				ctx.Log.Info("Pulling...")
+				ctx.Log().Info("Pulling...")
 				err := repo.Fetch()
 				return err
 			})
@@ -205,13 +205,13 @@ func forEachRepo(args []string, fn func(ctx bosun.BosunContext, repo *bosun.Repo
 
 	errs := multierr.New()
 	for _, repo := range repos.([]*bosun.Repo) {
-		ctx.Log.Infof("Processing %q...", repo.Name)
+		ctx.Log().Infof("Processing %q...", repo.Name)
 		err = fn(ctx, repo)
 		if err != nil {
 			errs.Collect(err)
-			ctx.Log.WithError(err).Errorf("Error on repo %q", repo.Name)
+			ctx.Log().WithError(err).Errorf("Error on repo %q", repo.Name)
 		} else {
-			ctx.Log.Infof("Completed %q.", repo.Name)
+			ctx.Log().Infof("Completed %q.", repo.Name)
 		}
 	}
 	return errs.ToError()

@@ -3,7 +3,7 @@ package util
 import (
 	"crypto/sha256"
 	"fmt"
-	"gopkg.in/yaml.v2"
+	"github.com/naveego/bosun/pkg/yaml"
 	"reflect"
 	"sort"
 )

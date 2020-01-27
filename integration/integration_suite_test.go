@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	. "github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -37,11 +38,11 @@ func TestBosun(t *testing.T) {
 	RunSpecs(t, "Bosun Suite")
 }
 
-func GetBosun(optionalParams ...Parameters) *Bosun {
+func GetBosun(optionalParams ...cli.Parameters) *Bosun {
 	config, err := LoadWorkspace(filepath.Join(TestDataDir, "bosun.yaml"))
 	Expect(err).ToNot(HaveOccurred())
 
-	var params Parameters
+	var params cli.Parameters
 	if len(optionalParams) > 0 {
 		params = optionalParams[0]
 	}

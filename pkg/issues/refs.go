@@ -15,6 +15,25 @@ type RepoRef struct {
 	Repo string
 }
 
+func (r RepoRef) MarshalYAML() (interface{}, error) {
+	return r.String(), nil
+}
+
+func (r *RepoRef) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var p string
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		out, err := ParseRepoRef(p)
+		if err == nil {
+			*r = out
+		}
+	}
+
+	return err
+}
+
 func (r RepoRef) String() string {
 	return fmt.Sprintf("%s/%s", r.Org, r.Repo)
 }

@@ -6,10 +6,20 @@ import (
 	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
+	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/ioc"
+	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/workspace"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,16 +30,18 @@ import (
 
 type BosunContext struct {
 	Bosun  *Bosun
-	Env    *EnvironmentConfig
+	env    *environment.Environment
 	Dir    string
-	Log    *logrus.Entry
-	Values *PersistableValues
+	log    *logrus.Entry
+	Values *values.PersistableValues
 	// Release         *Deploy
-	AppRepo         *App
-	AppRelease      *AppDeploy
-	valuesAsEnvVars map[string]string
-	ctx             context.Context
-	contextValues   map[string]interface{}
+	appRepo          *App
+	appRelease       *AppDeploy
+	ctx              context.Context
+	contextValues    map[string]interface{}
+	provider         ioc.Provider
+	workspaceContext *workspace.Context
+	exactMatchArgs   filter.MatchMapArgs
 }
 
 // NewTestBosunContext creates a new BosunContext for testing purposes.
@@ -37,14 +49,14 @@ type BosunContext struct {
 func NewTestBosunContext() BosunContext {
 	dir, _ := os.Getwd()
 	testBosun := &Bosun{
-		vaultClient: &vault.Client{},
+
 	}
 	return BosunContext{
 		ctx:   context.Background(),
 		Dir:   dir,
-		Env:   &EnvironmentConfig{},
+		env:   &environment.Environment{},
 		Bosun: testBosun,
-		Log:   logrus.WithField("TEST", "INSTANCE"),
+		log:   logrus.WithField("TEST", "INSTANCE"),
 	}
 }
 
@@ -54,7 +66,7 @@ func (c BosunContext) WithDir(dirOrFilePath string) BosunContext {
 	}
 	dir := getDirIfFile(dirOrFilePath)
 	if c.Dir != dir {
-		c.LogLine(1, "[Context] Set dir to %q", dir)
+		c.LogLine(2, "[Context] Set dir to %q", dir)
 		c.Dir = dir
 	}
 	return c
@@ -67,7 +79,7 @@ func (c BosunContext) Ctx() context.Context {
 	return c.ctx
 }
 
-func (c BosunContext) WithKeyedValue(key string, value interface{}) BosunContext {
+func (c BosunContext) WithValue(key string, value interface{}) core.StringKeyValuer {
 	c.LogLine(1, "[Context] Set value at %q to %T", key, value)
 	kvs := map[string]interface{}{}
 	for k, v := range c.contextValues {
@@ -78,8 +90,26 @@ func (c BosunContext) WithKeyedValue(key string, value interface{}) BosunContext
 	return c
 }
 
-func (c BosunContext) GetKeyedValue(key string) interface{} {
-	return c.contextValues[key]
+func (c BosunContext) GetValue(key string, defaultValue ...interface{}) interface{} {
+	if out, ok := c.contextValues[key]; ok {
+		return out
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	panic(fmt.Sprintf("no value with key %q", key))
+}
+
+func (c BosunContext) WorkspaceContext() workspace.Context {
+	if c.workspaceContext != nil {
+		return *c.workspaceContext
+	}
+	return c.Bosun.ws.Context
+}
+
+func (c BosunContext) WithWorkspaceContext(ctx workspace.Context) BosunContext {
+	c.workspaceContext = &ctx
+	return c
 }
 
 //
@@ -91,60 +121,54 @@ func (c BosunContext) GetKeyedValue(key string) interface{} {
 // }
 
 func (c BosunContext) WithApp(a *App) BosunContext {
-	if c.AppRepo == a {
+	if c.appRepo == a {
 		return c
 	}
-	c.AppRepo = a
-	c.Log = c.Log.WithField("app", a.Name)
-	c.Log.Debug("")
+	c.appRepo = a
+	c.log = c.Log().WithField("app", a.Name)
+	c.Log().Debug("")
 	c.LogLine(1, "[Context] Changed App.")
 	return c.WithDir(a.FromPath)
 }
 
 func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
-	if c.AppRelease == a {
+	if c.appRelease == a {
 		return c
 	}
-	c.AppRelease = a
-	c.Log = c.Log.WithField("appDeploy", a.Name)
+	c.appRelease = a
+	c.log = c.Log().WithField("appDeploy", a.AppManifest.Name)
 	c.LogLine(1, "[Context] Changed AppDeploy.")
-	return c.WithDir(a.AppConfig.FromPath)
+	return c.WithDir(a.FromPath)
 }
 
-func (c BosunContext) WithPersistableValues(v *PersistableValues) BosunContext {
+func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interface{} {
 	c.Values = v
-	c.valuesAsEnvVars = nil
 
-	yml, _ := yaml.Marshal(v.Values)
+	yml, _ := yaml.Marshal(v)
 	c.LogLine(1, "[Context] Set release values:\n%s\n", string(yml))
 
 	return c
 }
 
-func (c BosunContext) GetValuesAsEnvVars() map[string]string {
-	if c.valuesAsEnvVars == nil {
-		if c.Values != nil {
-			c.valuesAsEnvVars = c.Values.Values.ToEnv("BOSUN_")
-		} else {
-			if c.Env != nil {
+func (c BosunContext) GetEnvironmentVariables() map[string]string {
 
-				c.valuesAsEnvVars = map[string]string{
-					EnvCluster: c.Env.Cluster,
-					EnvDomain:  c.Env.Domain,
-				}
-			}
-		}
+	out := map[string]string{
+		core.EnvCluster:         c.env.ClusterName,
+		core.EnvEnvironment:     c.env.Name,
+		core.EnvEnvironmentRole: string(c.env.Role),
+		core.EnvInternalEnvironmentAndCluster: os.Getenv(core.EnvInternalEnvironmentAndCluster),
 	}
-	return c.valuesAsEnvVars
+
+	return out
 }
 
 func (c BosunContext) WithLog(log *logrus.Entry) BosunContext {
-	c.Log = log
+	c.log = log
 	return c
 }
 
-func (c BosunContext) WithLogField(key string, value interface{}) BosunContext {
-	c.Log = c.Log.WithField(key, value)
+func (c BosunContext) WithLogField(key string, value interface{}) util.WithLogFielder {
+	c.log = c.Log().WithField(key, value)
 	return c
 }
 
@@ -152,16 +176,12 @@ func (c BosunContext) GetVaultClient() (*vault.Client, error) {
 	return c.Bosun.GetVaultClient()
 }
 
-func (c BosunContext) IsDryRun() bool {
-	return c.Bosun.params.DryRun
-}
-
 func (c BosunContext) WithContext(ctx context.Context) BosunContext {
 	c.ctx = ctx
 	return c
 }
 
-func (c BosunContext) WithTimeout(timeout time.Duration) BosunContext {
+func (c BosunContext) WithTimeout(timeout time.Duration) core.Ctxer {
 	ctx, _ := context.WithTimeout(c.Ctx(), timeout)
 	return c.WithContext(ctx)
 }
@@ -176,10 +196,10 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 	expMap := util.StringSliceToMap(expansions...)
 	path = os.Expand(path, func(name string) string {
 		switch name {
-		case "ENVIRONMENT", "BOSUN_ENVIRONMENT":
-			return c.Env.Name
-		case "DOMAIN", "BOSUN_DOMAIN":
-			return c.Env.Domain
+		case "ENVIRONMENT", core.EnvEnvironment:
+			return c.env.Name
+		case core.EnvEnvironmentRole:
+			return string(c.env.Role)
 		default:
 			if v, ok := expMap[name]; ok {
 				return v
@@ -194,25 +214,21 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 	return path
 }
 
-func (c BosunContext) GetParams() Parameters {
+func (c BosunContext) GetParameters() cli.Parameters {
 	if c.Bosun != nil {
 		return c.Bosun.params
 	}
-	return Parameters{}
+	return cli.Parameters{}
 }
 
-func (c BosunContext) GetTemplateArgs() pkg.TemplateValues {
-	tv := pkg.TemplateValues{
-		Cluster: c.Env.Cluster,
-		Domain:  c.Env.Domain,
+func (c BosunContext) TemplateValues() templating.TemplateValues {
+	tv := templating.TemplateValues{
+		Cluster: c.Environment().ClusterName,
 	}
 	if c.Values != nil {
-		values := c.Values.Values
-		values.MustSetAtPath("cluster", c.Env.Cluster)
-		values.MustSetAtPath("domain", c.Env.Domain)
-		tv.Values = values
+		tv.Values = c.Values.Values
 	} else {
-		tv.Values = Values{}
+		tv.Values = values.Values{}
 	}
 
 	return tv
@@ -225,21 +241,21 @@ func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
 	}
 
 	return &pkg.TemplateHelper{
-		TemplateValues: c.GetTemplateArgs(),
+		TemplateValues: c.TemplateValues(),
 		VaultClient:    vaultClient,
 	}, nil
 }
 
-func (c BosunContext) WithEnv(env *EnvironmentConfig) BosunContext {
-	c.Env = env
-	c.Log = c.Log.WithField("env", env.Name)
+func (c BosunContext) WithEnv(env environment.Environment) BosunContext {
+	c.env = &env
+	c.log = c.Log().WithField("env", env.Name)
 	return c
 }
 
 func (c BosunContext) LogLine(skip int, format string, args ...interface{}) {
-	if c.Log != nil {
+	if c.Log() != nil {
 		_, file, line, _ := runtime.Caller(skip)
-		c.Log.WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
+		c.Log().WithField("loc", fmt.Sprintf("%s:%d", file, line)).Debugf(format, args...)
 	}
 }
 
@@ -254,14 +270,14 @@ func (c BosunContext) GetMinikubeDockerEnv() []string {
 				color.Red("Attempting to use docker for minikube panicked: %v", e)
 			}
 		}()
-		log := c.GetLog()
+		log := c.Log()
 		log.Info("Attempting to use docker agent in minikube...")
-		if err := pkg.NewCommand("minikube", "ip").RunE(); err != nil {
+		if err := pkg.NewShellExe("minikube", "ip").RunE(); err != nil {
 			log.Warnf("Could not use minikube as a docker proxy: %s", err)
 			return
 		}
 
-		envblob, err := pkg.NewCommand("minikube", "docker-env").RunOut()
+		envblob, err := pkg.NewShellExe("minikube", "docker-env").RunOut()
 		if err != nil {
 			log.WithError(err).Error("Could not get docker-env.")
 			return
@@ -308,26 +324,123 @@ func (c BosunContext) GetMinikubeDockerEnv() []string {
 // }
 
 func (c BosunContext) IsVerbose() bool {
-	return c.GetParams().Verbose
+	return c.GetParameters().Verbose
 }
 
-func (c BosunContext) GetDomain() string {
-	if c.Env != nil {
-		return c.Env.Domain
+func (c BosunContext) GetClusterName() string {
+	if c.env == nil {
+		return c.WorkspaceContext().CurrentCluster
 	}
-	return ""
-}
-func (c BosunContext) GetCluster() string {
-	if c.Env != nil {
-		return c.Env.Cluster
-	}
-	return ""
+	return c.env.ClusterName
 }
 
-// GetLog gets a logger safely.
-func (c BosunContext) GetLog() *logrus.Entry {
-	if c.Log != nil {
-		return c.Log
+// Log gets a logger safely.
+func (c BosunContext) Log() *logrus.Entry {
+	if c.log != nil {
+		return c.log
 	}
 	return logrus.NewEntry(logrus.StandardLogger())
+}
+
+func (c BosunContext) Pwd() string {
+	if c.Dir != "" {
+		return c.Dir
+	}
+	pwd, _ := os.Getwd()
+	return pwd
+}
+
+func (c BosunContext) WithPwd(pwd string) cli.WithPwder {
+	return c.WithDir(pwd)
+}
+
+func (c BosunContext) WithStringValue(key string, value string) core.StringKeyValuer {
+	if c.contextValues == nil {
+		c.contextValues = map[string]interface{}{}
+	}
+	c.contextValues[key] = value
+	return c
+}
+
+func (c BosunContext) GetStringValue(key string, defaultValue ...string) string {
+	switch key {
+	case core.KeyEnvironment:
+		return c.env.Name
+	case core.KeyCluster:
+		return c.GetClusterName()
+	}
+
+	if out, ok := c.contextValues[key].(string); ok {
+		return out
+	}
+
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+
+	panic(fmt.Sprintf("no value in context under key %q", key))
+}
+
+func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
+	if c.provider == nil {
+		var container = ioc.NewContainer()
+		container.BindFactory(c.GetVaultClient)
+
+		container.BindFactory(kube.GetKubeClient)
+
+		c.provider = container
+	}
+
+	return c.provider.Provide(out, options...)
+}
+
+func (c BosunContext) EnsureEnvironment() error {
+	return c.env.Ensure(c)
+}
+
+func (c BosunContext) Environment() *environment.Environment {
+	return c.env
+}
+
+func (c BosunContext) GetReleaseValues() *values.PersistableValues {
+	return c.Values
+}
+
+func (c BosunContext) GetWorkspaceCommand(name string) *command.CommandValue {
+	return c.Bosun.ws.GetWorkspaceCommand(name)
+}
+
+func (c BosunContext) GetMatchMapArgs() filter.MatchMapArgs {
+	if c.exactMatchArgs == nil {
+		c.exactMatchArgs = map[string]string{}
+		if c.Environment() != nil {
+			c.exactMatchArgs[core.KeyEnvironment] = c.Environment().Name
+			c.exactMatchArgs[core.KeyEnvironmentRole] = string(c.Environment().Role)
+		}
+		if c.GetClusterName() != "" {
+			c.exactMatchArgs[core.KeyCluster] = c.GetClusterName()
+		}
+
+	}
+	return c.exactMatchArgs
+}
+
+func (c BosunContext) WithMatchMapArgs(args filter.MatchMapArgs) interface{} {
+	e := filter.MatchMapArgs{}
+	for k, v := range c.GetMatchMapArgs() {
+		e[k] = v
+	}
+	for k, v := range args {
+		e[k] = v
+	}
+	c.exactMatchArgs = e
+	return c
+}
+
+func (c BosunContext) GetPlatform() *Platform {
+	p, err := c.Bosun.GetCurrentPlatform()
+	if err != nil {
+		panic(fmt.Sprintf("no current platform: %s", err))
+	}
+	return p
 }

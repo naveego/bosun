@@ -17,6 +17,7 @@ package cmd
 import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,7 +39,7 @@ var issueShowCmd = addCommand(issueCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Shows info about an issue.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun(bosun.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
+		b := MustGetBosun(cli.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
 
 		svc, err := b.GetIssueService()
 		if err != nil {
@@ -104,7 +105,7 @@ var issueListCmd = addCommand(issueCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Shows info about an issue.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun(bosun.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
+		b := MustGetBosun(cli.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
 
 		svc, err := b.GetIssueService()
 		if err != nil {

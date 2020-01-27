@@ -169,7 +169,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			os.Exit(1)
 		}
 
-		color.Green("GetCurrentCommit succeeded.\n")
+		// color.Green("GetCurrentCommit succeeded.\n")
 
 		return nil
 	},

@@ -9,10 +9,11 @@ import (
 	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh/terminal"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ import (
 )
 
 type TemplateHelper struct {
-	TemplateValues TemplateValues
+	TemplateValues templating.TemplateValues
 	VaultClient    *vault.Client
 }
 
@@ -122,14 +123,14 @@ func NewTemplateBuilder(name string) *TemplateBuilder {
 		Funcs(sprig.TxtFuncMap()).
 		Funcs(template.FuncMap{
 			"exec": func(exe string, args ...string) (string, error) {
-				out, err := NewCommand(exe, args...).RunOut()
+				out, err := NewShellExe(exe, args...).RunOut()
 				return out, err
 			},
 			"xid": func() string {
 				return xid.New().String()
 			},
 			"generateLastPassPassword": func(name, username, url string) (string, error) {
-				password, err := NewCommand("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
+				password, err := NewShellExe("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
 				if err == nil {
 					return password, nil
 				}
@@ -138,7 +139,7 @@ func NewTemplateBuilder(name string) *TemplateBuilder {
 
 				// password doesn't exist yet
 
-				password, err = NewCommand("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
+				password, err = NewShellExe("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
 				if err != nil {
 					return "", err
 				}
@@ -202,7 +203,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				return "", err
 			}
 
-			o, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.server}`, cluster)).RunOut()
+			o, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.server}`, cluster)).RunOut()
 			return o, err
 		},
 		"kube_ca_cert": func(context string) (string, error) {
@@ -215,7 +216,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				return "", err
 			}
 
-			data, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority-data}`, cluster)).RunOut()
+			data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority-data}`, cluster)).RunOut()
 
 			if err != nil {
 				return "", err
@@ -223,7 +224,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 
 			var cert []byte
 			if data == "" {
-				data, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority}`, cluster)).RunOut()
+				data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority}`, cluster)).RunOut()
 				if err != nil {
 					return "", err
 				}
@@ -251,12 +252,12 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				namespace = optionalNamespace[0]
 			}
 
-			o, err := NewCommand("kubectl", "--namespace", namespace, "--context", context, "get", "serviceaccounts", serviceAccount, "-o", "jsonpath={.secrets[0].name}").RunOut()
+			o, err := NewShellExe("kubectl", "--namespace", namespace, "--context", context, "get", "serviceaccounts", serviceAccount, "-o", "jsonpath={.secrets[0].name}").RunOut()
 			if err != nil {
 				return "", errors.Errorf("getting service account data for account %q in context %q: %s", serviceAccount, context, err)
 			}
 
-			o, err = NewCommand(fmt.Sprintf(`kubectl --namespace %s  --context=%s get secrets %s -o jsonpath={.data.token}'`, namespace, context, o)).RunOut()
+			o, err = NewShellExe(fmt.Sprintf(`kubectl --namespace %s  --context=%s get secrets %s -o jsonpath={.data.token}'`, namespace, context, o)).RunOut()
 			if err != nil {
 				return "", err
 			}
@@ -280,7 +281,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 }
 
 func getClusterForContext(context string) (string, error) {
-	data, err := NewCommand(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.contexts[?(@.name=="%s")].context.cluster}`, context)).RunOut()
+	data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.contexts[?(@.name=="%s")].context.cluster}`, context)).RunOut()
 	return data, err
 }
 

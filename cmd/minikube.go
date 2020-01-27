@@ -17,9 +17,9 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
-	"gopkg.in/eapache/go-resiliency.v1/retrier"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -29,7 +29,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
 
 var portForwards []string
 
@@ -41,7 +40,6 @@ func init() {
 
 	rootCmd.AddCommand(minikubeCmd)
 }
-
 
 // minikubeCmd represents the minikube command
 var minikubeCmd = &cobra.Command{
@@ -56,46 +54,40 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 	Short: "Brings up minikube if it's not currently running.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-
 		b := MustGetBosun()
 		ctx := b.NewContext()
-		err := bosun.MinikubeUp(ctx)
+		ws := b.GetWorkspace()
 
+		konfig := ws.Minikube
+		if konfig == nil {
+			env := b.GetCurrentEnvironment()
+			for _, c := range env.Clusters {
+				if c.Name == "minikube" || c.Minikube != nil {
+					konfig = c.Minikube
+				}
+			}
+		}
+		if konfig == nil {
+			return errors.New("no kube config named minikube found in workspace or current environment")
+		}
+
+		konfigs := kube.ConfigDefinitions{
+			&kube.ClusterConfig{
+				Minikube:     konfig,
+				ConfigShared: core.ConfigShared{Name: "minikube"},
+			},
+		}
+
+		env := b.GetCurrentEnvironment()
+		err := konfigs.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+			Name:             "minikube",
+			Log:              ctx.Log(),
+			ExecutionContext: ctx,
+			PullSecrets:      env.PullSecrets,
+		})
 		if err != nil {
 			return err
 		}
-
-		r := retrier.New(retrier.ConstantBackoff(5, 5 * time.Second), nil)
-
-		err = r.Run(func()error {
-			pkg.Log.Info("Initializing helm...")
-			_, err = pkg.NewCommand("helm", "init").RunOut()
-			if err != nil {
-				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
-			}
-			return err
-		})
-
-		if err != nil {
-			return errors.Wrap(err, "helm init")
-		}
-
-		pkg.Log.Info("Helm initialized.")
-
-		r = retrier.New(retrier.ConstantBackoff(10, 6 * time.Second), nil)
-		err = r.Run(func()error {
-			pkg.Log.Info("Checking tiller...")
-			status, err := pkg.NewCommand("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o",`jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
-			if err != nil {
-				pkg.Log.WithError(err).Error("Getting tiller status failed, may retry.")
-				return err
-			}
-			if !strings.Contains(status, "True") {
-				return errors.Errorf("Wanted Ready status to be True but it was %q", status)
-			}
-			pkg.Log.Info("Tiller running.")
-			return nil
-		})
 
 		return err
 	},
@@ -121,7 +113,7 @@ var minikubePortForward = &cobra.Command{
 				return errors.Errorf("services must be in the format serviceName:port, but argument %q at index %d was not", v, i)
 			}
 			svc, port := segs[0], segs[1]
-			pkg.Log.WithField("svc", svc).WithField("port",port).Debug("Configuring service...")
+			pkg.Log.WithField("svc", svc).WithField("port", port).Debug("Configuring service...")
 			cmdMap[v] = exec.Command("kubectl", "port-forward", "services/"+svc, port)
 		}
 
@@ -159,7 +151,7 @@ var minikubePortForward = &cobra.Command{
 		done := make(chan struct{})
 
 		go func() {
-			<-time.After(100*time.Millisecond)
+			<-time.After(100 * time.Millisecond)
 			wg.Wait()
 			close(done)
 		}()
@@ -187,7 +179,6 @@ var minikubePortForward = &cobra.Command{
 
 					log.Debug("Stopped.")
 				}
-
 
 				go func() {
 					<-time.After(5 * time.Second)

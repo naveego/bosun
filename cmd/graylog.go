@@ -18,11 +18,11 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 )
-
 
 var graylogCmd = &cobra.Command{
 	Use:   "graylog",
@@ -30,12 +30,12 @@ var graylogCmd = &cobra.Command{
 }
 
 var graylogConfigureCmd = &cobra.Command{
-	Use:   "configure {config-file.yaml}",
-	Args:  cobra.ExactArgs(1),
-	Short: "Configures graylog using API",
-	Aliases:[]string{"config"},
-	SilenceUsage:true,
-	SilenceErrors:true,
+	Use:           "configure {config-file.yaml}",
+	Args:          cobra.ExactArgs(1),
+	Short:         "Configures graylog using API",
+	Aliases:       []string{"config"},
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
@@ -44,14 +44,14 @@ var graylogConfigureCmd = &cobra.Command{
 		}
 
 		values := viper.GetStringSlice(ArgGraylogValues)
-		templateArgs, err := pkg.NewTemplateValues(values...)
+		templateArgs, err := templating.NewTemplateValuesFromStrings(values...)
 		if err != nil {
 			return err
 		}
 
 		th := &pkg.TemplateHelper{
-			VaultClient:vaultClient,
-			TemplateValues:templateArgs,
+			VaultClient:    vaultClient,
+			TemplateValues: templateArgs,
 		}
 
 		config := &pkg.GraylogConfig{}
@@ -71,7 +71,6 @@ var graylogConfigureCmd = &cobra.Command{
 			color.Red("config as rendered:\n")
 			fmt.Println(string(configYaml))
 
-
 		}
 
 		return err
@@ -80,9 +79,9 @@ var graylogConfigureCmd = &cobra.Command{
 
 const (
 	ArgGraylogApiOrigin = "api-origin"
-	ArgGraylogUsername = "username"
-	ArgGraylogPassword = "password"
-	ArgGraylogValues = "set"
+	ArgGraylogUsername  = "username"
+	ArgGraylogPassword  = "password"
+	ArgGraylogValues    = "set"
 )
 
 func init() {
@@ -94,7 +93,6 @@ func init() {
 	// graylogConfigureCmd.Flags().String(ArgGraylogPassword, "", "The graylog password")
 	//graylogConfigureCmd.MarkFlagRequired(ArgGraylogPassword)
 	graylogConfigureCmd.Flags().StringSlice(ArgGraylogValues, []string{}, "Values to pass to the template.")
-
 
 	graylogCmd.AddCommand(graylogConfigureCmd)
 

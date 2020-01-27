@@ -26,7 +26,7 @@ var _ = addCommand(helmCmd, &cobra.Command{
 	Use:   "init",
 	Short: "Initializes helm/tiller.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		err := pkg.NewCommand("helm", "init").RunE()
+		err := pkg.NewShellExe("helm", "init").RunE()
 		return err
 	},
 })
@@ -50,15 +50,15 @@ error if the chart has already been published.
 			log.Warn("Force publishing all matched charts.")
 		}
 
-		plugins, err := pkg.NewCommand("helm", "plugin", "list").RunOut()
+		plugins, err := pkg.NewShellExe("helm", "plugin", "list").RunOut()
 		check(err, plugins)
 		if !strings.Contains(plugins, "s3") {
-			pkg.NewCommand("helm plugin install https://github.com/hypnoglow/helm-s3.git").MustRun()
+			pkg.NewShellExe("helm plugin install https://github.com/hypnoglow/helm-s3.git").MustRun()
 		}
-		repos, err := pkg.NewCommand("helm repo list").RunOut()
+		repos, err := pkg.NewShellExe("helm repo list").RunOut()
 		check(err, repos)
 		if !strings.Contains(repos, "s3://helm.n5o.black") {
-			pkg.NewCommand("helm repo add helm.n5o.black s3://helm.n5o.black").WithEnvValue("AWS_DEFAULT_REGION", "us-east-1").MustRun()
+			pkg.NewShellExe("helm repo add helm.n5o.black s3://helm.n5o.black").WithEnvValue("AWS_DEFAULT_REGION", "us-east-1").MustRun()
 		}
 
 		if len(args) == 0 {
@@ -90,7 +90,7 @@ error if the chart has already been published.
 			chartName := filepath.Base(chart)
 			log := pkg.Log.WithField("path", chart).WithField("@chart", chartName)
 
-			chartText, err := new(pkg.Command).WithExe("helm").WithArgs("inspect", "chart", chart).RunOut()
+			chartText, err := new(pkg.ShellExe).WithExe("helm").WithArgs("inspect", "chart", chart).RunOut()
 			if err != nil {
 				log.WithError(err).Error("Could not inspect chart")
 				continue
@@ -105,7 +105,7 @@ error if the chart has already been published.
 			log = log.WithField("@version", thisVersion)
 			qualifiedName := "helm.n5o.black/" + chartName
 
-			repoContent, err := new(pkg.Command).WithExe("helm").WithEnvValue("AWS_DEFAULT_PROFILE", "black").WithArgs("search", qualifiedName, "--versions").RunOut()
+			repoContent, err := new(pkg.ShellExe).WithExe("helm").WithEnvValue("AWS_DEFAULT_PROFILE", "black").WithArgs("search", qualifiedName, "--versions").RunOut()
 			if err != nil {
 				log.WithError(err).Error("Could not search repo")
 				continue
@@ -125,7 +125,7 @@ error if the chart has already been published.
 				continue
 			}
 
-			out, err := pkg.NewCommand("helm", "package", chart).RunOut()
+			out, err := pkg.NewShellExe("helm", "package", chart).RunOut()
 			if err != nil {
 				log.WithError(err).Error("could not create package")
 				continue
@@ -140,7 +140,7 @@ error if the chart has already been published.
 				helmArgs = append(helmArgs, "--force")
 			}
 
-			err = pkg.NewCommand("helm", helmArgs...).WithEnvValue("AWS_DEFAULT_PROFILE", "black").RunE()
+			err = pkg.NewShellExe("helm", helmArgs...).WithEnvValue("AWS_DEFAULT_PROFILE", "black").RunE()
 
 			if err != nil {
 				log.WithError(err).Error("could not publish chart")

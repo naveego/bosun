@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
@@ -43,7 +44,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		b := MustGetBosun(bosun.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
+		b := MustGetBosun(cli.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
 
 		app, err := getCurrentApp(b)
 		if err != nil {
@@ -117,7 +118,7 @@ var gitTaskShow = addCommand(gitTaskCmd, &cobra.Command{
 	Use:   "issue [app]",
 	Short: "Shows the issue for the current branch, if any.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun(bosun.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
+		b := MustGetBosun(cli.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
 
 		app := mustGetApp(b, args)
 

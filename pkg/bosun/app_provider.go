@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"github.com/manifoldco/promptui"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
@@ -81,7 +83,7 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 		app.Repo = &Repo{
 			RepoConfig: RepoConfig{
 				Branching: app.Branching.WithDefaults(),
-				ConfigShared: ConfigShared{
+				ConfigShared: core.ConfigShared{
 					Name: app.RepoName,
 				},
 			},
@@ -91,7 +93,7 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 			localRepoPath, err := git.GetRepoPath(app.FromPath)
 
 			if err == nil {
-				app.Repo.LocalRepo = &LocalRepo{
+				app.Repo.LocalRepo = &vcs.LocalRepo{
 					Name: app.RepoName,
 					Path: localRepoPath,
 				}
@@ -156,7 +158,7 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 		app.Repo = &Repo{
 			RepoConfig: RepoConfig{
 				Branching: app.Branching.WithDefaults(),
-				ConfigShared: ConfigShared{
+				ConfigShared: core.ConfigShared{
 					Name: app.RepoName,
 				},
 			},
@@ -387,7 +389,8 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 		appConfig = c.Apps[index]
 	}
 	appConfig.Branching = appConfig.Branching.WithDefaults()
-	appConfig.SetParent(c)
+	appConfig.SetFileSaver(c)
+	appConfig.SetFromPath(c.FromPath)
 
 	repoPath, _ := git.GetRepoPath(bosunFile)
 
@@ -397,7 +400,7 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 			RepoConfig: RepoConfig{
 				Branching: appConfig.Branching.WithDefaults(),
 			},
-			LocalRepo: &LocalRepo{
+			LocalRepo: &vcs.LocalRepo{
 				Name: appConfig.RepoName,
 				Path: repoPath,
 			},

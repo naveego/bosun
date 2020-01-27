@@ -21,7 +21,7 @@ func (b *Bosun) GetRepoInfo() ([]RepoInfo, error) {
 			App:     app.Name,
 			Name:    app.Repo.LocalRepo.Name,
 			Path:    app.Repo.LocalRepo.Path,
-			Branch:  app.Repo.LocalRepo.GetCurrentBranch(),
+			Branch:  string(app.Repo.LocalRepo.GetCurrentBranch()),
 			IsDirty: app.Repo.LocalRepo.IsDirty(),
 		}
 		out = append(out, info)

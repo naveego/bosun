@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/hashicorp/go-getter"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
@@ -101,8 +102,8 @@ func (t ToolDef) RunInstall(ctx BosunContext) error {
 
 func (i Installer) Execute(ctx BosunContext) error {
 	if i.Script != "" {
-		cmd := &Command{Script: i.Script}
-		_, err := cmd.Execute(ctx, CommandOpts{StreamOutput: true})
+		cmd := &command.Command{Script: i.Script}
+		_, err := cmd.Execute(ctx, command.CommandOpts{StreamOutput: true})
 		return err
 	}
 
@@ -112,10 +113,10 @@ func (i Installer) Execute(ctx BosunContext) error {
 			return err
 		}
 
-		ctx.Log.Debugf("Downloading from %s to %s", i.Getter.URL, tmp)
+		ctx.Log().Debugf("Downloading from %s to %s", i.Getter.URL, tmp)
 
 		defer func() {
-			ctx.Log.Debugf("Deleting %s", tmp)
+			ctx.Log().Debugf("Deleting %s", tmp)
 			os.RemoveAll(tmp)
 		}()
 
@@ -123,14 +124,14 @@ func (i Installer) Execute(ctx BosunContext) error {
 		if err != nil {
 			return errors.Errorf("error getting content from %q: %s", i.Getter.URL, err)
 		}
-		ctx.Log.Debugf("Download complete.")
+		ctx.Log().Debugf("Download complete.")
 
 		for from, to := range i.Getter.Mappings {
 
 			from = filepath.Join(tmp, from)
 			to = os.ExpandEnv(to)
 
-			ctx.Log.Debugf("Moving %s to %s.", from, to)
+			ctx.Log().Debugf("Moving %s to %s.", from, to)
 			err = os.Rename(from, to)
 			if err != nil {
 				return err

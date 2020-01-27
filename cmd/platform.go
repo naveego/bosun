@@ -16,7 +16,10 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
@@ -25,6 +28,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func init() {
@@ -108,10 +112,10 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 		for _, app := range apps {
 			ctx = ctx.WithApp(app)
-			ctx.Log.Debug("Refreshing...")
+			ctx.Log().Debug("Refreshing...")
 
 			if !app.IsRepoCloned() {
-				ctx.Log.Warn("App is not cloned, refresh will be incomplete.")
+				ctx.Log().Warn("App is not cloned, refresh will be incomplete.")
 				continue
 			}
 
@@ -128,7 +132,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 			err = p.RefreshApp(ctx, app.Name, branch, slot)
 			if err != nil {
-				ctx.Log.WithError(err).Warn("Could not refresh.")
+				ctx.Log().WithError(err).Warn("Could not refresh.")
 			}
 		}
 
@@ -149,7 +153,8 @@ const (
 )
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "include [appNames...]",
+	Use:   "include {name} --cluster-roles {cluster-role, ...} --namespace-roles {namespace-role, ...)",
+	Args:  cobra.ExactArgs(1),
 	Short: "Adds an app from the workspace to the platform.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -158,18 +163,80 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return err
 		}
 		ctx := b.NewContext()
-		apps := mustGetKnownApps(b, args)
-		for _, app := range apps {
-			err = p.IncludeApp(ctx, app.Name)
-			if err != nil {
-				return err
-			}
+		app := mustGetApp(b, []string{args[0]})
+
+		repoRef, err := issues.ParseRepoRef(app.RepoName)
+		if err != nil {
+			return err
+		}
+
+		clusterRoles := viper.GetStringSlice(argPlatformAddClusterRoles)
+		if len(clusterRoles) == 0 {
+			return errors.Errorf("at least one cluster role must be specified using --%s", argPlatformAddClusterRoles)
+		}
+		namespaceRoles := viper.GetStringSlice(argPlatformAddNamespaceRoles)
+		if len(namespaceRoles) == 0 {
+			return errors.Errorf("at least one namespace role must be specified using --%s", argPlatformAddNamespaceRoles)
+		}
+
+		err = p.IncludeApp(ctx, &bosun.PlatformAppConfig{
+			Name:           app.Name,
+			RepoRef:        repoRef,
+			ClusterRoles:   core.ClusterRolesFromStrings(clusterRoles),
+			NamespaceRoles: core.NamespaceRolesFromStrings(namespaceRoles),
+		})
+		if err != nil {
+			return err
 		}
 
 		err = p.Save(ctx)
 		return err
 	},
-}, withFilteringFlags)
+}, withFilteringFlags,
+	func(cmd *cobra.Command) {
+		cmd.Flags().StringSlice(argPlatformAddClusterRoles, []string{}, "The cluster roles this app should be deployed to.")
+		cmd.Flags().StringSlice(argPlatformAddNamespaceRoles, []string{}, "The namespace roles this app should be deployed to.")
+	})
+
+const (
+	argPlatformAddClusterRoles   = "cluster-roles"
+	argPlatformAddNamespaceRoles = "namespace-roles"
+)
+
+var _ = addCommand(platformCmd, &cobra.Command{
+	Use:   "add-value-overrides {appName} {override-name} {cluster|clusterRole|environment={value,...} ...}",
+	Args:  cobra.MinimumNArgs(2),
+	Short: "Adds default values for an app to a cluster.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		matches := filter.MatchMapConfig{}
+		pairs := args[2:]
+		for _, pair := range pairs {
+			keyValues := strings.Split(pair, "=")
+			if len(keyValues) != 2 {
+				return errors.New("invalid match values")
+			}
+			key := keyValues[0]
+			values := strings.Split(keyValues[1], ",")
+			matches[key] = filter.MatchMapConfigValuesFromStrings(values)
+		}
+
+		ctx := b.NewContext()
+
+		err = p.AddAppValuesForCluster(ctx, args[0], args[1], matches)
+
+		if err != nil {
+			return err
+		}
+
+		return p.Save(b.NewContext())
+	},
+})
 
 var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "add-repo {org/repo...}",
@@ -186,7 +253,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			return err
 		}
 		ctx := b.NewContext()
-		log := ctx.GetLog()
+		log := ctx.Log()
 		ws := b.GetWorkspace()
 		path := ""
 		for _, gitRoot := range ws.GitRoots {
@@ -211,7 +278,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			path = filepath.Join(dir, repoRef.String())
 		}
 
-		//bosunFilePath := filepath.Join(path, "bosun.yaml")
+		// bosunFilePath := filepath.Join(path, "bosun.yaml")
 
 		err = p.Save(ctx)
 		return err
@@ -244,5 +311,40 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 		fmt.Println(string(y))
 		return nil
+	},
+})
+
+var _ = addCommand(platformCmd, &cobra.Command{
+	Use:   "tree",
+	Args:  cobra.ExactArgs(0),
+	Short: "Prints off the apps in the platform in dependency order.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		ctx := b.NewContext()
+
+		var appNames []string
+		for _, app := range p.GetApps(ctx) {
+			appNames = append(appNames, app.Name)
+		}
+
+		appsAndDeps, err := p.GetAppsAndDependencies(b, bosun.CreateDeploymentPlanRequest{
+			Apps: appNames,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		for _, appName := range appsAndDeps.TopologicalOrder {
+			fmt.Println(color.BlueString("- %s", appName), color.WhiteString(" : %v", appsAndDeps.Dependencies[appName]))
+		}
+
+		return nil
+
 	},
 })

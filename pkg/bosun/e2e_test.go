@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
 	. "github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v2"
 	"path/filepath"
 )
 
@@ -14,7 +15,7 @@ var _ = Describe("E2E", func() {
 
 	It("should round trip to yaml", func() {
 		sut := E2ETestConfig{
-			ConfigShared: ConfigShared{
+			ConfigShared: core.ConfigShared{
 				Name: "test-e2e-test",
 			},
 		}

@@ -4,8 +4,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/hashicorp/vault/api"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"path/filepath"
 )
@@ -46,7 +46,7 @@ func (v VaultInitializer) installPlugin() error {
 
 	Log.Debug("Getting hash for JOSE...")
 
-	joseSHA, err := NewCommand("kubectl exec -n default vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
+	joseSHA, err := NewShellExe("kubectl exec -n default vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (v VaultInitializer) Unseal(path string) error {
 	var keys []string
 
 	if path == "" {
-		secretYaml, err := NewCommand("kubectl get secret  -n default vault-unseal-keys -o yaml").RunOut()
+		secretYaml, err := NewShellExe("kubectl get secret  -n default vault-unseal-keys -o yaml").RunOut()
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ func (v VaultInitializer) Unseal(path string) error {
 		if err != nil {
 			return err
 		}
-		m := secret["data"].(map[interface{}]interface{})
+		m := secret["data"].(map[string]interface{})
 		for _, v := range m {
 			shard, _ := base64.StdEncoding.DecodeString(v.(string))
 			keys = append(keys, string(shard))
@@ -120,8 +120,8 @@ func (v VaultInitializer) Unseal(path string) error {
 func (v VaultInitializer) initialize() (keys []string, rootToken string, err error) {
 	vaultClient := v.Client
 
-	err = NewCommand("kubectl delete secret -n default vault-unseal-keys --ignore-not-found=true").RunE()
-	err = NewCommand("kubectl delete secret -n default vault-root-token --ignore-not-found=true").RunE()
+	err = NewShellExe("kubectl delete secret -n default vault-unseal-keys --ignore-not-found=true").RunE()
+	err = NewShellExe("kubectl delete secret -n default vault-root-token --ignore-not-found=true").RunE()
 	if err != nil {
 		return nil, "", err
 	}
@@ -134,7 +134,7 @@ func (v VaultInitializer) initialize() (keys []string, rootToken string, err err
 		return nil, "", err
 	}
 
-	err = NewCommand("kubectl", "create", "-n", "default", "secret", "generic", "vault-root-token", fmt.Sprintf("--from-literal=root=%s", initResp.RootToken)).RunE()
+	err = NewShellExe("kubectl", "create", "-n", "default", "secret", "generic", "vault-root-token", fmt.Sprintf("--from-literal=root=%s", initResp.RootToken)).RunE()
 	if err != nil {
 		return nil, "", err
 	}
@@ -142,7 +142,7 @@ func (v VaultInitializer) initialize() (keys []string, rootToken string, err err
 	for i, key := range initResp.Keys {
 		fmt.Printf("Seal Key %d: %q", i, key)
 
-		err = NewCommand("kubectl", "create", "-n", "default", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=Key%d=%s", i, key)).RunE()
+		err = NewShellExe("kubectl", "create", "-n", "default", "secret", "generic", "vault-unseal-keys", fmt.Sprintf("--from-literal=Key%d=%s", i, key)).RunE()
 		if err != nil {
 			return nil, "", err
 		}

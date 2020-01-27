@@ -7,6 +7,23 @@ import (
 )
 
 type AppList []*App
+type AppMap map[string]*App
+
+func (a AppMap) ToList() AppList {
+	out := AppList{}
+	for _, app := range a {
+		out = append(out, app)
+	}
+	return out
+}
+
+func (a AppList) ToMap() AppMap {
+	out := AppMap{}
+	for _, app := range a {
+		out[app.Name] = app
+	}
+	return out
+}
 
 func (a AppList) SortByProvider() AppList {
 	sort.With(len(a),

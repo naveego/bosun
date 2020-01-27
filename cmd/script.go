@@ -17,7 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg/bosun"
+	script2 "github.com/naveego/bosun/pkg/script"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -43,7 +43,7 @@ var scriptCmd = &cobra.Command{
 		script, err := b.GetScript(args[0])
 		if err != nil {
 			scriptFilePath := args[0]
-			var script bosun.Script
+			var script script2.Script
 			data, err := ioutil.ReadFile(scriptFilePath)
 			if err != nil {
 				return err

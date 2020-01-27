@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
-	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"strconv"
@@ -38,9 +38,9 @@ var gitDeployDryRunCmd = addCommand(gitDeploymentCmd, &cobra.Command{
 		}
 
 		ctx := b.NewContext()
-		log := ctx.Log
+		log := ctx.Log()
 
-		log.Infof("Found recent deployment:\n%s", util.MustYaml(previousDeployment))
+		log.Infof("Found recent deployment:\n%s", yaml.MustYaml(previousDeployment))
 
 		previousRef := previousDeployment.GetRef()
 		g, err := app.Repo.LocalRepo.Git()
@@ -85,7 +85,7 @@ var gitDeployStartCmd = addCommand(gitDeploymentCmd, &cobra.Command{
 		client := mustGetGithubClient()
 
 		cluster := args[0]
-		sha := pkg.NewCommand("git rev-parse HEAD").MustOut()
+		sha := pkg.NewShellExe("git rev-parse HEAD").MustOut()
 		isProd := cluster == "blue"
 
 		deploymentRequest := &github.DeploymentRequest{

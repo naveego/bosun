@@ -103,7 +103,15 @@ func (v *Version) Set(version string) error {
 	return nil
 }
 
+func StringOrDefault(v *Version) string {
+	if v == nil {
+		return "0.0.0-nil"
+	}
+	return v.String()
+}
+
 func (v Version) String() string {
+
 	var buffer bytes.Buffer
 
 	fmt.Fprintf(&buffer, "%d.%d.%d", v.Major, v.Minor, v.Patch)
