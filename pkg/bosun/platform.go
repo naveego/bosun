@@ -64,6 +64,9 @@ type Platform struct {
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 	bosun                        *Bosun                           `yaml:"-"`
+	// set to true if this platform is a dummy created for automation purposes
+	isAutomationDummy            bool `yaml:"-"`
+
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {

@@ -661,7 +661,21 @@ func (b *Bosun) GetCurrentPlatform() (*Platform, error) {
 
 	switch len(b.file.Platforms) {
 	case 0:
-		return nil, errors.New("no platforms found")
+		b.log.Debug("No platforms found, using dummy platform...")
+
+		return b.setCurrentPlatform(&Platform{
+			ConfigShared: core.ConfigShared{
+				Name:     "Default",
+				FromPath: filepath.Join(os.TempDir(), "bosun.platform.yaml"),
+			},
+			isAutomationDummy: true,
+			environmentConfigs: []*environment.Config{
+				{
+					Name:     "default-env",
+					FromPath: filepath.Join(os.TempDir(), "bosun.platform.yaml"),
+				},
+			},
+		})
 	case 1:
 		return b.setCurrentPlatform(b.file.Platforms[0])
 	default:
