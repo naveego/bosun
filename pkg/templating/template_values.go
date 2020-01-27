@@ -11,11 +11,13 @@ type TemplateValues struct {
 	Values  map[string]interface{}
 }
 
+
 type TemplateValuer interface {
 	TemplateValues() TemplateValues
 }
 
-func NewTemplateValues(args ...string) (TemplateValues, error) {
+
+func NewTemplateValuesFromStrings(args ...string) (TemplateValues, error) {
 	t := TemplateValues{}
 	for _, kv := range args {
 		segs := strings.Split(kv, "=")

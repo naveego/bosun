@@ -4,13 +4,13 @@ import (
 	"fmt"
 	. "github.com/naveego/bosun/pkg/bosun"
 	. "github.com/naveego/bosun/pkg/command"
-	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
+	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 	"runtime"
 	"strings"
 )
@@ -85,7 +85,7 @@ value`}}, `dv:
 		)
 
 		It("should assign string to Value", func() {
-			input := util.Yamlize(`
+			input := yaml2.Yamlize(`
 dv: some-value
 `)
 			var sut container
@@ -97,7 +97,7 @@ dv: some-value
 		})
 
 		It("should assign array to Command", func() {
-			input := util.Yamlize(`
+			input := yaml2.Yamlize(`
 dv: [some,command]
 `)
 			var sut container
@@ -111,7 +111,7 @@ dv: [some,command]
 		})
 
 		It("should assign multiline to script", func() {
-			input := util.Yamlize(`
+			input := yaml2.Yamlize(`
 dv: |
   some
   script

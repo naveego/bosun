@@ -55,6 +55,10 @@ func getMaybeAuthenticatedGithubClient() *github.Client {
 	return git.NewGithubClient(token)
 }
 
+func getUnauthenticatedGithubClient() *github.Client {
+		return git.NewGithubClient("")
+}
+
 var gitTokenCmd = addCommand(gitCmd, &cobra.Command{
 	Use:   "token",
 	Short: "Prints the github token.",

@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
@@ -24,16 +25,6 @@ var releasePlanCmd = addCommand(releaseCmd, &cobra.Command{
 	Short:   "Contains sub-commands for release planning.",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
-
-		_, p := getReleaseCmdDeps()
-
-		fmt.Println()
-		if p.NextReleaseName == "" {
-			color.Red("There is no current plan.\n")
-		} else {
-			color.Blue("Currently planning %s.\n", p.NextReleaseName)
-		}
-
 	},
 })
 
@@ -74,12 +65,12 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 })
 
 //
-// var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.Command{
+// var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.ShellExe{
 // 	Use:          "add {name}",
 // 	Args:         cobra.ExactArgs(1),
 // 	Short:        "Adds an app to the release plan.",
 // 	SilenceUsage: true,
-// 	RunE: func(cmd *cobra.Command, args []string) error {
+// 	RunE: func(cmd *cobra.ShellExe, args []string) error {
 // 		b, p := getReleaseCmdDeps()
 //
 // 		if p.Plan == nil {
@@ -158,7 +149,6 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 		}
 		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
 			plan.MarkDeleted()
-			p.NextReleaseName = ""
 			err = p.Save(b.NewContext())
 			return err
 		}
@@ -250,7 +240,7 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 		var apps []*bosun.App
 		fp := getFilterParams(b, args)
 		if !fp.IsEmpty() {
-			apps, _ = fp.GetAppsChain(fp.Chain().Including(filter.MustParse(bosun.LabelDeployable)))
+			apps, _ = fp.GetAppsChain(fp.Chain().Including(filter.MustParse(core.LabelDeployable)))
 		}
 
 		appPlans := map[string]*bosun.AppPlan{}

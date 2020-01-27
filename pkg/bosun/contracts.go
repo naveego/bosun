@@ -22,3 +22,7 @@ func (s Services) Log() *logrus.Entry {
 type Logger interface {
 	Log() *logrus.Entry
 }
+
+type AppProviderGroup interface {
+	GetAppFromProvider(appName string, providerName string) (*App, error)
+}

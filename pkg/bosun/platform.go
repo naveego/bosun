@@ -4,21 +4,28 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/util/worker"
+	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/vcs"
+	"github.com/naveego/bosun/pkg/yaml"
+	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const (
@@ -39,18 +46,24 @@ var (
 // The platform contains a history of all releases created for the platform.
 type Platform struct {
 	core.ConfigShared            `yaml:",inline"`
-	DefaultChartRepo             string                      `yaml:"defaultChartRepo"`
-	Branching                    git.BranchSpec              `yaml:"branching"`
-	ReleaseBranchFormat_OBSOLETE string                      `yaml:"releaseBranchFormat,omitempty"`
-	MasterBranch_OBSOLETE        string                      `yaml:"masterBranch,omitempty"`
-	ReleaseDirectory             string                      `yaml:"releaseDirectory" json:"releaseDirectory"`
-	ReleaseMetadata              []*ReleaseMetadata          `yaml:"releases" json:"releases"`
-	Repos                        []*Repo                     `yaml:"repos" json:"repos"`
-	Apps                         []*AppMetadata              `yaml:"apps"`
-	ZenHubConfig                 *zenhub.Config              `yaml:"zenHubConfig"`
-	NextReleaseName              string                      `yaml:"nextReleaseName,omitempty"`
-	Clusters                     kube.ConfigDefinitions      `yaml:"clusters"`
-	releaseManifests             map[string]*ReleaseManifest `yaml:"-"`
+	BosunVersion                 semver.Version                   `yaml:"bosunVersion"`
+	DefaultChartRepo             string                           `yaml:"defaultChartRepo"`
+	Branching                    git.BranchSpec                   `yaml:"branching"`
+	ReleaseBranchFormat_OBSOLETE string                           `yaml:"releaseBranchFormat,omitempty"`
+	MasterBranch_OBSOLETE        string                           `yaml:"masterBranch,omitempty"`
+	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
+	AppConfigDirectory           string                           `yaml:"appConfigDirectory,omitempty"`
+	EnvironmentPaths             []string                         `yaml:"environmentPaths" json:"environmentPaths"`
+	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
+	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
+	NamespaceRoles               []core.NamespaceRoleDefinition   `yaml:"namespaceRoles"`
+	ValueOverrides               *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
+	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
+	Apps                         PlatformAppConfigs               `yaml:"apps"`
+	ZenHubConfig                 *zenhub.Config                   `yaml:"zenHubConfig"`
+	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
+	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
+	bosun                        *Bosun                           `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -59,6 +72,11 @@ func (p *Platform) MarshalYAML() (interface{}, error) {
 	}
 	type proxy Platform
 	px := proxy(*p)
+
+	bosunVersion := core.GetVersion()
+	if px.BosunVersion.LessThan(bosunVersion) {
+		px.BosunVersion = bosunVersion
+	}
 
 	return &px, nil
 }
@@ -74,6 +92,14 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if err == nil {
 		*p = Platform(px)
+	}
+
+	if p.ReleaseDirectory == "" {
+		p.ReleaseDirectory = "releases"
+	}
+
+	if p.AppConfigDirectory == "" {
+		p.AppConfigDirectory = "apps"
 	}
 
 	p.Branching.Master = util.DefaultString(p.Branching.Master, p.MasterBranch_OBSOLETE, "master")
@@ -102,11 +128,45 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	if versionErr := core.CheckCompatibility(p.BosunVersion); versionErr != nil {
+		fmt.Println()
+		color.Red("Platform may be incompatible: %s", versionErr)
+		fmt.Println()
+	}
+
 	return err
 }
 
-func (p *Platform) GetCluster(name string) (*kube.ConfigDefinition, error) {
-	return p.Clusters.GetKubeConfigDefinitionByName(name)
+func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
+	if p.environmentConfigs == nil {
+	}
+	for _, path := range p.EnvironmentPaths {
+
+		path = p.ResolveRelative(path)
+		var config *environment.Config
+		err := yaml.LoadYaml(path, &config)
+		if err != nil {
+			return nil, err
+		}
+		config.SetFromPath(path)
+		p.environmentConfigs = append(p.environmentConfigs, config)
+	}
+	return p.environmentConfigs, nil
+}
+
+func (p *Platform) GetClusterByName(name string) (*kube.ClusterConfig, error) {
+	envs, err := p.GetEnvironmentConfigs()
+	if err != nil {
+		return nil, err
+	}
+	for _, env := range envs {
+		for _, cluster := range env.Clusters {
+			if cluster.Name == name {
+				return cluster, nil
+			}
+		}
+	}
+	return nil, errors.Errorf("no cluster in any environment with name %q", name)
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
@@ -177,7 +237,7 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 	if err != nil {
 		return err
 	}
-	localRepo := &LocalRepo{Path: platformRepoPath}
+	localRepo := &vcs.LocalRepo{Path: platformRepoPath}
 	if localRepo.IsDirty() {
 		return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
 	}
@@ -271,7 +331,6 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	ctx.Log().Infof("Created new release plan %s.", manifest)
 
 	manifest.plan = plan
-	p.NextReleaseName = settings.Name
 
 	p.SetReleaseManifest(SlotCurrent, manifest)
 
@@ -410,7 +469,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 				diffProviderPlan := appPlan.Providers[diffSlot]
 				log.Info("Computing change log...")
 
-				developVersion, changeLogErr := localVersion.GetManifestFromBranch(ctx, diffVersion.AppManifest.Branch)
+				developVersion, changeLogErr := localVersion.GetManifestFromBranch(ctx, diffVersion.AppManifest.Branch, false)
 				if changeLogErr != nil {
 					return changeLogErr
 				}
@@ -488,10 +547,6 @@ type AppValidationResult struct {
 }
 
 func (p *Platform) GetPlan(ctx BosunContext) (*ReleasePlan, error) {
-	if p.NextReleaseName == "" {
-		return nil, errors.New("no release being planned")
-	}
-
 	release, err := p.GetCurrentRelease()
 	if err != nil {
 		return nil, err
@@ -664,8 +719,6 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	releaseManifest.MarkDirty()
 	currentRelease.MarkDeleted()
 
-	p.NextReleaseName = ""
-
 	return releaseManifest, nil
 }
 
@@ -722,21 +775,33 @@ func (p *Platform) Save(ctx BosunContext) error {
 			return err
 		}
 
-		for _, appRelease := range appManifests {
-			path := filepath.Join(dir, appRelease.Name+".yaml")
-			err = writeYaml(path, appRelease)
+		for _, appManifest := range appManifests {
+			err = appManifest.Save(dir)
 			if err != nil {
-				return errors.Wrapf(err, "write app %q", appRelease.Name)
+				return errors.Wrapf(err, "write app %q", appManifest.Name)
 			}
 		}
 
 		for _, toDelete := range manifest.toDelete {
-			path := filepath.Join(dir, toDelete+".yaml")
-			_ = os.Remove(path)
+			_ = os.Remove(filepath.Join(dir, toDelete+".yaml"))
+			_ = os.RemoveAll(filepath.Join(dir, toDelete))
 		}
 	}
 
-	err := p.File.Save()
+	appConfigDir := p.ResolveRelative(p.AppConfigDirectory)
+	_ = os.MkdirAll(appConfigDir, 0700)
+
+	for _, app := range p.Apps {
+		appPath := filepath.Join(appConfigDir, app.Name+".yaml")
+		if err := yaml.SaveYaml(appPath, app); err != nil {
+			return errors.Wrapf(err, "save app %q to %q", app.Name, appPath)
+		}
+	}
+
+	apps := p.Apps
+	p.Apps = nil
+	err := p.FileSaver.Save()
+	p.Apps = apps
 
 	if err != nil {
 		return err
@@ -754,6 +819,78 @@ func writeYaml(path string, value interface{}) error {
 
 	err = ioutil.WriteFile(path, y, 0600)
 	return err
+}
+
+type AppsAndDependencies struct {
+	Apps             map[string]*App
+	Dependencies     map[string][]string
+	TopologicalOrder []string
+}
+
+func (p *Platform) GetAppsAndDependencies(b *Bosun, req CreateDeploymentPlanRequest) (AppsAndDependencies, error) {
+	apps := map[string]*App{}
+	dependencies := map[string][]string{}
+	out := AppsAndDependencies{
+		Apps:         apps,
+		Dependencies: dependencies,
+	}
+	err := p.buildAppsAndDepsRec(b, req, req.Apps, apps, dependencies)
+	if err != nil {
+		return out, err
+	}
+
+	topology, err := GetDependenciesInTopologicalOrder(dependencies, req.Apps...)
+
+	if err != nil {
+		return out, errors.Wrapf(err, "apps could not be sorted in dependency order (apps: %#v)", req.Apps)
+	}
+
+	out.TopologicalOrder = topology
+
+	return out, nil
+}
+
+func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest, appNames []string, apps map[string]*App, deps map[string][]string) error {
+	ctx := b.NewContext()
+	for len(appNames) > 0 {
+		appName := appNames[0]
+		appNames = appNames[1:]
+
+		if _, added := apps[appName]; added {
+			continue
+		}
+
+		platformApp, err := p.getPlatformApp(appName, ctx)
+		if err != nil {
+			return err
+		}
+		var app *App
+		if len(req.ProviderPriority) > 0 {
+			app, err = b.GetApp(appName, req.ProviderPriority...)
+			if err != nil {
+				return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderPriority)
+			}
+		} else {
+			app, err = b.GetApp(appName)
+			if err != nil {
+				return errors.Wrapf(err, "get app %q from anywhere", appName)
+			}
+		}
+		apps[appName] = app
+		appDeps := deps[app.Name]
+
+		for _, dep := range app.AppConfig.DependsOn {
+			appDeps = stringsn.AppendIfNotPresent(appDeps, dep.Name)
+		}
+		for _, dep := range platformApp.Dependencies {
+			appDeps = stringsn.AppendIfNotPresent(appDeps, dep)
+		}
+		deps[app.Name] = appDeps
+		if req.AutomaticDependencies {
+			err = p.buildAppsAndDepsRec(b, req, appDeps, apps, deps)
+		}
+	}
+	return nil
 }
 
 func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
@@ -854,9 +991,9 @@ func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, erro
 	return manifest, err
 }
 
-func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
+func (p *Platform) IncludeApp(ctx BosunContext, config *PlatformAppConfig) error {
 
-	app, err := ctx.Bosun.GetApp(name)
+	app, err := ctx.Bosun.GetApp(config.Name)
 	if err != nil {
 		return err
 	}
@@ -867,14 +1004,15 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 	}
 
 	var found bool
-	for _, knownApp := range p.Apps {
-		if knownApp.Name == name {
+	for i, knownApp := range p.Apps {
+		if knownApp.Name == config.Name {
 			found = true
+			p.Apps[i] = config
 			break
 		}
 	}
 	if !found {
-		p.Apps = append(p.Apps, appManifest.AppMetadata)
+		p.Apps = append(p.Apps, config)
 	}
 
 	manifest, err := p.GetUnstableRelease()
@@ -884,6 +1022,55 @@ func (p *Platform) IncludeApp(ctx BosunContext, name string) error {
 	err = manifest.AddApp(appManifest, false)
 
 	return err
+}
+
+func (p *Platform) AddAppValuesForCluster(ctx BosunContext, appName string, overridesName string, matchMap filter.MatchMapConfig) error {
+
+	appConfig, err := p.getPlatformApp(appName, ctx)
+	if err != nil {
+		return err
+	}
+
+	app, err := p.bosun.GetApp(appName)
+	if err != nil {
+		return err
+	}
+
+	if appConfig.ValueOverrides == nil {
+		appConfig.ValueOverrides = &values.ValueSetCollection{}
+	}
+
+	var valueSet values.ValueSet
+	index := -1
+	for i, vs := range appConfig.ValueOverrides.ValueSets {
+		if vs.Name == overridesName {
+			valueSet = vs
+			index = i
+		}
+	}
+	if index < 0 {
+		index = len(appConfig.ValueOverrides.ValueSets)
+		appConfig.ValueOverrides.ValueSets = append(appConfig.ValueOverrides.ValueSets, valueSet)
+	}
+
+	appConfig.ValueOverrides.ValueSets = append(appConfig.ValueOverrides.ValueSets)
+
+	valueSet = valueSet.WithValues(app.Values.DefaultValues)
+	valueSet.Files = nil
+	valueSet.Roles = nil
+	valueSet.Name = overridesName
+	valueSet.ExactMatchFilters = matchMap
+
+	appConfig.ValueOverrides.ValueSets[index] = valueSet
+
+	return nil
+}
+
+func (p *Platform) GetValueSetCollection() values.ValueSetCollection {
+	if p.ValueOverrides == nil {
+		return values.NewValueSetCollection()
+	}
+	return *p.ValueOverrides
 }
 
 // RefreshApp checks updates the specified slot with the specified branch of the named app.
@@ -957,10 +1144,10 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 	progress := map[string]bool{}
 	progressFileName := filepath.Join(os.TempDir(), fmt.Sprintf("bosun-release-commit-%s.yaml", release.Version))
-	_ = util.LoadYaml(progressFileName, &progress)
+	_ = yaml2.LoadYaml(progressFileName, &progress)
 
 	defer func() {
-		_ = util.SaveYaml(progressFileName, progress)
+		_ = yaml2.SaveYaml(progressFileName, progress)
 	}()
 
 	mergeTargets := map[string]*mergeTarget{
@@ -1090,7 +1277,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 	// validate that merge will work
 	for _, target := range mergeTargets {
 
-		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
+		localRepo := &vcs.LocalRepo{Name: target.name, Path: target.dir}
 
 		if localRepo.IsDirty() {
 			errs.Collect(errors.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path))
@@ -1105,7 +1292,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 
 		log := ctx.Log().WithField("repo", target.name)
 
-		localRepo := &LocalRepo{Name: target.name, Path: target.dir}
+		localRepo := &vcs.LocalRepo{Name: target.name, Path: target.dir}
 
 		if localRepo.IsDirty() {
 			return errors.Errorf("Repo at %s is dirty, cannot merge.", localRepo.Path)
@@ -1276,7 +1463,7 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 
 	message := fmt.Sprintf("Committing release %s to %s.", current.Version, branch)
 	err = g.AddAndCommit(message, ".")
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "nothing to commit, working tree clean") {
 		return err
 	}
 
@@ -1286,6 +1473,64 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 	}
 
 	return nil
+}
+
+func (p *Platform) GetApps(ctx filter.MatchMapArgContainer) []*PlatformAppConfig {
+
+	var out []*PlatformAppConfig
+	for _, app := range p.Apps {
+		if app.TargetFilters.Matches(ctx.GetMatchMapArgs()) {
+			out = append(out, app)
+		}
+	}
+
+	return out
+}
+
+func (p *Platform) getPlatformApp(appName string, ctx filter.MatchMapArgContainer) (*PlatformAppConfig, error) {
+	for _, a := range p.GetApps(ctx) {
+		if a.Name == appName {
+			return a, nil
+		}
+	}
+	return nil, errors.Errorf("no platform app config with name %q matched filters %s", appName, ctx.GetMatchMapArgs())
+}
+
+func (p *Platform) LoadChildren() error {
+	appPathDir := p.ResolveRelative(p.AppConfigDirectory)
+	appPaths, err := ioutil.ReadDir(appPathDir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range appPaths {
+		var app PlatformAppConfig
+		appPath := filepath.Join(appPathDir, file.Name())
+		err = yaml.LoadYaml(appPath, &app)
+		if err != nil {
+			return errors.Wrapf(err, "load platform app config from %s", appPath)
+		}
+		p.Apps = append(p.Apps, &app)
+	}
+
+	return nil
+}
+
+func (p *Platform) GetPlatformAppUnfiltered(appName string) (*PlatformAppConfig, error) {
+	for _, app := range p.Apps {
+		if app.Name == appName {
+			return app, nil
+		}
+	}
+	return nil, errors.Errorf("no platform app config found with name %q, even disregarding filters", appName)
+}
+
+func (p *Platform) GetKnownAppMap() map[string]*PlatformAppConfig {
+	out := map[string]*PlatformAppConfig{}
+	for _, app := range p.Apps {
+		out[app.Name] = app
+	}
+	return out
 }
 
 type mergeTarget struct {

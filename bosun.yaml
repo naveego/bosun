@@ -9,9 +9,30 @@ apps:
     release: ""
     feature: issue/{{.Number}}/{{.Slug}}
   repo: naveego/bosun
-  version: 1.20.0
+  version: 2.0.8
+  labels:
+    category: tool
+    repo-kind: own
   images: []
   scripts:
+  - name: build
+    steps:
+    - cmd: |
+        set -e
+        version=$(bosun app version bosun)
+        commit=$(git rev-parse --short HEAD)
+        timestamp=$(date -Iseconds)
+        ldflags="-s -w -X github.com/naveego/bosun/pkg/core.Version=${version} -X github.com/naveego/bosun/pkg/core.Timestamp='test' -X github.com/naveego/bosun/pkg/core.Commit=${commit}"
+        go build --ldflags "$ldflags"
+  - name: install
+    steps:
+    - cmd: |
+        set -e
+        version=$(bosun app version bosun)
+        commit=$(git rev-parse --short HEAD)
+        timestamp=$(date -Iseconds)
+        ldflags="-s -w -X github.com/naveego/bosun/pkg/core.Version=${version} -X github.com/naveego/bosun/pkg/core.Timestamp='test' -X github.com/naveego/bosun/pkg/core.Commit=${commit}"
+        go install --ldflags "$ldflags"
   - name: publish
     steps:
     - bosun: [""]
@@ -27,12 +48,12 @@ apps:
   actions:
   - name: TestManualHTTPTest
     description: Test for manual actions.
-    when: Manual
+    when: [Manual]
     test:
       http: https://google.com
   - name: ManualMongo
     description: Test for manual mongo insert action.
-    when: Manual
+    when: [Manual]
     mongo:
       connection:
         dbName: bosun-test
@@ -49,6 +70,7 @@ apps:
           authSource: admin
       databaseFile: test/mongo/db.yaml
       rebuildDb: false
+  files: []
   releaseHistory: []
 repos:
 - name: bosun

@@ -9,10 +9,10 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -133,7 +133,7 @@ func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[str
 	return m
 }
 
-// Apply applies the vault layout to vault, first checking if
+// ApplyToValues applies the vault layout to vault, first checking if
 // it has changed since the last time it was applied based on the
 // hashKey. If hashKey is empty, or force is true, the change detection
 // step is skipped.
@@ -144,7 +144,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	recordError := func(log *logrus.Entry, data interface{}, err error) {
 		b, _ := json.Marshal(data)
 		log.WithField("data", string(b)).Debug("Attempted data.")
-		log.WithError(err).Error()
+		log.WithField("vault_addr", client.Address()).WithError(err).Error()
 		hadErrors = true
 	}
 

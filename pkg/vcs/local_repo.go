@@ -1,7 +1,8 @@
-package bosun
+package vcs
 
 import (
 	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -63,13 +64,18 @@ func (r *LocalRepo) Push() error {
 	if r.HasUpstream() {
 		_, err = g.Exec("push")
 	} else {
-		_, err = g.Exec("push", "-u", "origin", r.GetCurrentBranch())
+		_, err = g.Exec("push", "-u", "origin", string(r.GetCurrentBranch()))
 	}
 	return err
 }
 
+func (r *LocalRepo) CheckOut(name git.BranchName) error {
+	_, err := r.git().Exec("checkout", string(name))
+	return err
+}
+
 // SwitchToNewBranch pulls the current branch, then creates a new branch based on it and checks it out.
-func (r *LocalRepo) SwitchToNewBranch(ctx BosunContext, parent, child string) error {
+func (r *LocalRepo) SwitchToNewBranch(ctx util.Logger, parent, child string) error {
 	ctx.Log().Infof("Creating branch %s...", child)
 	g := r.git()
 	_, err := g.Exec("checkout", parent)
@@ -103,7 +109,7 @@ func (r *LocalRepo) HasUpstream() bool {
 	return err == nil
 }
 
-func (r *LocalRepo) SwitchToBranchAndPull(logger Logger, name string) error {
+func (r *LocalRepo) SwitchToBranchAndPull(logger util.Logger, name string) error {
 	logger.Log().WithField("repo", r.Name).Infof("Checking out branch %q.", name)
 	g := r.git()
 	_, err := g.Exec("checkout", name)
@@ -136,11 +142,11 @@ func (r *LocalRepo) git() git.GitWrapper {
 	return g
 }
 
-func (r *LocalRepo) GetCurrentBranch() string {
-	return r.git().Branch()
+func (r *LocalRepo) GetCurrentBranch() git.BranchName {
+	return git.BranchName(r.git().Branch())
 }
 
-func (r *LocalRepo) DoesBranchExist(ctx BosunContext, name string) (bool, error) {
+func (r *LocalRepo) DoesBranchExist(ctx util.Logger, name string) (bool, error) {
 	if r == nil {
 		return false, errors.New("not cloned")
 	}

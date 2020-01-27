@@ -119,6 +119,8 @@ Otherwise, this will do nothing.
 			return err
 		}
 
+		pkg.Log.Infof("Bootstrapping vault using address %s and token %s", g.vaultAddr, g.vaultToken)
+
 		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err

@@ -35,7 +35,7 @@ func (g GitWrapper) ExecLines(args ...string) ([]string, error) {
 func (g GitWrapper) Exec(args ...string) (string, error) {
 	args = append([]string{"-C", g.dir}, args...)
 
-	out, err := pkg.NewCommand("git", args...).RunOut()
+	out, err := pkg.NewShellExe("git", args...).RunOut()
 	if err != nil {
 		return "", errors.Errorf("git %s\nOutput: %s\nError: %s", strings.Join(args, " "), out, err)
 	}
@@ -45,7 +45,7 @@ func (g GitWrapper) Exec(args ...string) (string, error) {
 func (g GitWrapper) ExecVerbose(args ...string) (string, error) {
 	args = append([]string{"-C", g.dir}, args...)
 
-	out, err := pkg.NewCommand("git", args...).RunOutLog()
+	out, err := pkg.NewShellExe("git", args...).RunOutLog()
 	if err != nil {
 		return "", errors.Errorf("git %s\nOutput: %s\nError: %s", strings.Join(args, " "), out, err)
 	}
@@ -53,28 +53,28 @@ func (g GitWrapper) ExecVerbose(args ...string) (string, error) {
 }
 
 func (g GitWrapper) Branch() string {
-	o, _ := pkg.NewCommand("git", "-C", g.dir, "rev-parse", "--abbrev-ref", "HEAD").RunOut()
+	o, _ := pkg.NewShellExe("git", "-C", g.dir, "rev-parse", "--abbrev-ref", "HEAD").RunOut()
 	return o
 }
 
 func (g GitWrapper) GetCurrentCommit() string {
-	o, _ := pkg.NewCommand("git", "-C", g.dir, "log", "--pretty=format:'%h'", "-n", "1").RunOut()
+	o, _ := pkg.NewShellExe("git", "-C", g.dir, "log", "--pretty=format:'%h'", "-n", "1").RunOut()
 	return strings.Trim(o, "'")
 }
 
 func (g GitWrapper) Tag() string {
-	o, _ := pkg.NewCommand("git", "-C", g.dir, "describe", "--abbrev=0", "--tags").RunOut()
+	o, _ := pkg.NewShellExe("git", "-C", g.dir, "describe", "--abbrev=0", "--tags").RunOut()
 	return o
 }
 
 func (g GitWrapper) Pull() error {
-	err := pkg.NewCommand("git", "-C", g.dir, "pull").RunE()
+	err := pkg.NewShellExe("git", "-C", g.dir, "pull").RunE()
 	return err
 
 }
 
 func (g GitWrapper) PullRebase() error {
-	err := pkg.NewCommand("git", "-C", g.dir, "pull", "--rebase").RunE()
+	err := pkg.NewShellExe("git", "-C", g.dir, "pull", "--rebase").RunE()
 	return err
 
 }
@@ -88,7 +88,7 @@ func (g GitWrapper) Fetch(flags ...string) error {
 	// don't fetch again if we've already fetched during this run
 	if !fetched[g.dir] {
 		args := append([]string{"-C", g.dir, "fetch"}, flags...)
-		err := pkg.NewCommand("git", args...).RunE()
+		err := pkg.NewShellExe("git", args...).RunE()
 		if err != nil {
 			return err
 		}
@@ -98,11 +98,11 @@ func (g GitWrapper) Fetch(flags ...string) error {
 }
 
 func (g GitWrapper) IsDirty() bool {
-	out, err := pkg.NewCommand("git", "-C", g.dir, "diff", "HEAD").RunOut()
+	out, err := pkg.NewShellExe("git", "-C", g.dir, "diff", "HEAD").RunOut()
 	if len(out) > 0 || err != nil {
 		return true
 	}
-	out, err = pkg.NewCommand("git", "-C", g.dir, "status", "--short").RunOut()
+	out, err = pkg.NewShellExe("git", "-C", g.dir, "status", "--short").RunOut()
 	if len(out) > 0 || err != nil {
 		return true
 	}
@@ -112,7 +112,7 @@ func (g GitWrapper) IsDirty() bool {
 
 func (g GitWrapper) Log(args ...string) ([]string, error) {
 	args = append([]string{"-C", g.dir, "log"}, args...)
-	out, err := pkg.NewCommand("git", args...).RunOut()
+	out, err := pkg.NewShellExe("git", args...).RunOut()
 	lines := strings.Split(out, "\n")
 	return lines, err
 }
@@ -129,7 +129,7 @@ func (g GitWrapper) CreateBranch(branch string) error {
 	}
 
 	pkg.Log.WithField("branch", branch).Info("Pushing branch.")
-	err = pkg.NewCommand("git", "push", "-u", "origin", branch).RunE()
+	err = pkg.NewShellExe("git", "push", "-u", "origin", branch).RunE()
 	if err != nil {
 		return errors.Wrap(err, "push branch")
 	}

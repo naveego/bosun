@@ -20,34 +20,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
-func init() {
-
-	lpassCmd.AddCommand(lpassPasswordCmd)
-
-	rootCmd.AddCommand(lpassCmd)
-}
-
 // lpassCmd represents the lpass command
-var lpassCmd = &cobra.Command{
-	Use:   "lpass",
-	Aliases:[]string{"lastpass"},
-	Args:  cobra.ExactArgs(1),
-	Short: "Root command for LastPass commands.",
-}
+var lpassCmd = addCommand(rootCmd,&cobra.Command{
+	Use:     "lpass",
+	Aliases: []string{"lastpass"},
+	Args:    cobra.ExactArgs(1),
+	Short:   "Root command for LastPass commands.",
+})
 
-
-var lpassPasswordCmd = &cobra.Command{
+var lpassPasswordCmd = addCommand(lpassCmd, &cobra.Command{
 	Use:   "password {folder/name} {username} {url}",
 	Short: "Gets (or generates if not found) a password in LastPass.",
-	Args:cobra.ExactArgs(3),
+	Args:  cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		name := args[0]
-		username:=args[1]
-		url:=args[2]
+		username := args[1]
+		url := args[2]
 
-		password, err := pkg.NewCommand("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
+		password, err := pkg.NewShellExe("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
 		if err == nil {
 			fmt.Println(password)
 			return nil
@@ -55,11 +46,30 @@ var lpassPasswordCmd = &cobra.Command{
 
 		pkg.Log.Debug("Password %q does not yet exist; it will be generated.", name)
 
-		password, err = pkg.NewCommand("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
+		password, err = pkg.NewShellExe("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
 		if err == nil {
 			fmt.Println(password)
 		}
 
 		return err
 	},
-}
+})
+
+var lpassNoteCmd = addCommand(lpassCmd, &cobra.Command{
+	Use:   "note {folder/name} {field}",
+	Short: "Gets the value of the specified field from the specified note in lastpass.",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		name := args[0]
+		field := args[1]
+
+		data, err := pkg.NewShellExe("lpass", "show", "--sync=now", name, "--field", field).RunOut()
+		if err == nil {
+			fmt.Println(data)
+			return nil
+		}
+
+		return err
+	},
+})

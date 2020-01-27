@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
-	actions2 "github.com/naveego/bosun/pkg/actions"
+	actions "github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/stevenle/topsort"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -45,16 +46,16 @@ func (a *App) ProviderName() string {
 func (a *App) GetLabels() filter.Labels {
 	if a.labels == nil {
 		a.labels = filter.LabelsFromMap(map[string]string{
-			LabelName:    a.Name,
-			LabelPath:    a.FromPath,
-			LabelVersion: a.Version.String(),
+			core.LabelName:    a.Name,
+			core.LabelPath:    a.FromPath,
+			core.LabelVersion: a.Version.String(),
 		})
 
-		a.labels[LabelBranch] = filter.LabelFunc(func() string { return a.GetBranchName().String() })
-		a.labels[LabelCommit] = filter.LabelFunc(a.GetCommit)
+		a.labels[core.LabelBranch] = filter.LabelFunc(func() string { return a.GetBranchName().String() })
+		a.labels[core.LabelCommit] = filter.LabelFunc(a.GetCommit)
 
 		if a.HasChart() {
-			a.labels[LabelDeployable] = filter.LabelString("true")
+			a.labels[core.LabelDeployable] = filter.LabelString("true")
 		}
 
 		for k, v := range a.Labels {
@@ -76,8 +77,10 @@ func NewApp(appConfig *AppConfig) *App {
 func NewAppFromDependency(dep *Dependency) *App {
 	return &App{
 		AppConfig: &AppConfig{
-			FromPath: dep.FromPath,
-			Name:     dep.Name,
+			ConfigShared: core.ConfigShared{
+				FromPath: dep.FromPath,
+				Name:     dep.Name,
+			},
 			Version:  dep.Version,
 			RepoName: dep.Repo,
 			IsRef:    true,
@@ -102,14 +105,14 @@ func (a AppsSortedByName) Swap(i, j int) {
 
 func (a *App) CheckRepoCloned() error {
 	if !a.IsRepoCloned() {
-		return ErrNotCloned
+		return core.ErrNotCloned
 	}
 	return nil
 }
 
-func (a *App) CheckOutBranch(name string) error {
+func (a *App) CheckOutBranch(name git.BranchName) error {
 	if !a.IsRepoCloned() {
-		return ErrNotCloned
+		return core.ErrNotCloned
 	}
 	local := a.Repo.LocalRepo
 	if local.GetCurrentBranch() == name {
@@ -119,7 +122,7 @@ func (a *App) CheckOutBranch(name string) error {
 		return errors.Errorf("current branch %q is dirty", local.GetCurrentBranch())
 	}
 
-	_, err := local.git().Exec("checkout", name)
+	err := local.CheckOut(name)
 	return err
 }
 
@@ -319,7 +322,7 @@ func (a *App) BuildImages(ctx BosunContext) error {
 		}
 
 		ctx.Log().Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
-		_, err := pkg.NewCommand(buildCommand[0], buildCommand[1:]...).
+		_, err := pkg.NewShellExe(buildCommand[0], buildCommand[1:]...).
 			WithEnvValue("VERSION_NUMBER", a.Version.String()).
 			WithEnvValue("COMMIT", a.GetCommit()).
 			WithEnvValue("BUILD_NUMBER", os.Getenv("BUILD_NUMBER")).
@@ -376,11 +379,11 @@ func (a *App) PublishImages(ctx BosunContext) error {
 		for _, taggedName := range a.GetTaggedImageNames(tag) {
 			ctx.Log().Infof("Tagging and pushing %q", taggedName)
 			untaggedName := strings.Split(taggedName, ":")[0]
-			_, err := pkg.NewCommand("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err := pkg.NewShellExe("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
-			_, err = pkg.NewCommand("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err = pkg.NewShellExe("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
@@ -578,7 +581,7 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 	// packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
 	// if _, err = os.Stat(packageJSONPath); err == nil {
 	// 	log.Info("package.json detected, its version will be updated.")
-	// 	err = pkg.NewCommand("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
+	// 	err = pkg.NewShellExe("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
 	// 		WithDir(filepath.Dir(a.FromPath)).
 	// 		RunE()
 	// 	if err != nil {
@@ -602,7 +605,7 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 		}
 	}
 
-	err = a.Parent.Save()
+	err = a.FileSaver.Save()
 	if err != nil {
 		return errors.Wrap(err, "save parent file")
 	}
@@ -672,87 +675,54 @@ func omitStrings(from []string, toOmit ...string) []string {
 	return out
 }
 
-// ExportValues creates an ValueSetMap instance with all the values
+// ExportValues creates an ValueSetCollection instance with all the values
 // for releasing this app, reified into their environments, including values from
 // files and from the default values.yaml file for the chart.
-func (a *App) ExportValues(ctx BosunContext) (values.ValueSetMap, error) {
+func (a *App) ExportValues(ctx BosunContext) (values.ValueSetCollection, error) {
 	ctx = ctx.WithApp(a)
-	var err error
-	envs := map[string]*EnvironmentConfig{}
-	for envNames := range a.Values {
-		for _, envName := range strings.Split(envNames, ",") {
-			if envName == values.ValueSetAll {
-				continue
-			}
-			if _, ok := envs[envName]; !ok {
-				env, err := ctx.Bosun.GetEnvironment(envName)
-				if err != nil {
-					ctx.Log().Warnf("App values include key for environment %q, but no such environment has been defined.", envName)
-					continue
-				}
-				envs[envName] = env
-			}
-		}
-	}
 	var defaultValues values.Values
 
 	if a.HasChart() {
 		chartRef := a.getAbsoluteChartPathOrChart(ctx)
-		valuesYaml, err := pkg.NewCommand(
+		valuesYaml, err := pkg.NewShellExe(
 			"helm", "inspect", "values",
 			chartRef,
 			"--version", a.Version.String(),
 		).RunOut()
 		if err != nil {
-			return nil, errors.Errorf("load default values from %q: %s", chartRef, err)
+			return values.ValueSetCollection{}, errors.Errorf("load default values from %q: %s", chartRef, err)
 		}
 		defaultValues, err = values.ReadValues([]byte(valuesYaml))
 		if err != nil {
-			return nil, errors.Errorf("parse default values from %q: %s", chartRef, err)
+			return values.ValueSetCollection{}, errors.Errorf("parse default values from %q: %s", chartRef, err)
 		}
 	} else {
 		defaultValues = values.Values{}
 	}
 
-	valueCopy := a.Values.CanonicalizedCopy()
+	out := a.Values.CanonicalizedCopy()
 
-	for name, values := range valueCopy {
+	out.DefaultValues = values.ValueSet{Static: defaultValues}.WithValues(out.DefaultValues)
 
-		if env, ok := envs[name]; ok {
-			ctx = ctx.WithEnv(env)
-		}
-
-		values, err = values.WithFilesLoaded(ctx)
-		if err != nil {
-			return nil, errors.Wrapf(err, "loading files for value set %q", name)
-		}
-		// make sure values from bosun app overwrite defaults from helm chart
-		static := defaultValues.Clone()
-		static.Merge(values.Static)
-		values.Static = static
-		values.Files = nil
-		valueCopy[name] = values
-	}
-
-	return valueCopy, nil
+	return out, nil
 }
 
-func (a *App) ExportActions(ctx BosunContext) ([]*actions2.AppAction, error) {
+func (a *App) ExportActions(ctx BosunContext) ([]*actions.AppAction, error) {
 	var err error
-	var actions []*actions2.AppAction
+	var actionList []*actions.AppAction
 	for _, action := range a.Actions {
-		if action.When == actions2.ActionManual {
+		if len(action.When) == 1 && action.When[0] == actions.ActionManual {
 			ctx.Log().Debugf("Skipping export of action %q because it is marked as manual.", action.Name)
 		} else {
 			err = action.MakeSelfContained(ctx)
 			if err != nil {
 				return nil, errors.Errorf("prepare action %q for release: %s", action.Name, err)
 			}
-			actions = append(actions, action)
+			actionList = append(actionList, action)
 		}
 	}
 
-	return actions, nil
+	return actionList, nil
 }
 
 func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
@@ -768,17 +738,6 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 	err := util.TryCatch(a.Name, func() error {
 
 		appConfig := a.AppConfig
-		var err error
-
-		appConfig.Values, err = a.ExportValues(ctx)
-		if err != nil {
-			return errors.Errorf("export values for manifest: %s", err)
-		}
-
-		appConfig.Actions, err = a.ExportActions(ctx)
-		if err != nil {
-			return errors.Errorf("export actions for manifest: %s", err)
-		}
 
 		hashes := AppHashes{}
 
@@ -786,7 +745,11 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 			hashes.Commit = a.Repo.LocalRepo.GetCurrentCommit()
 		}
 
+		var err error
 		hashes.AppConfig, err = util.HashToStringViaYaml(appConfig)
+		if err != nil {
+			return err
+		}
 
 		appManifest = &AppManifest{
 			AppConfig: appConfig,
@@ -830,7 +793,7 @@ func (a *App) GetMostRecentCommitFromBranch(ctx BosunContext, branch string) (st
 
 }
 
-func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManifest, error) {
+func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortable bool) (*AppManifest, error) {
 
 	wsApp, err := ctx.Bosun.GetAppFromWorkspace(a.Name)
 	if err != nil {
@@ -905,6 +868,13 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string) (*AppManife
 
 	// set branch to requested branch, not the temp branch
 	manifest.Branch = branch
+
+	if makePortable {
+		err = manifest.MakePortable()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return manifest, nil
 }

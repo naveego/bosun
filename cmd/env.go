@@ -21,6 +21,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -37,61 +38,84 @@ func init() {
 
 const (
 	ArgEnvCurrent = "current"
+	ArgEnvCluster = "cluster"
 )
 
 // envCmd represents the env command
 var envCmd = addCommand(rootCmd, &cobra.Command{
-	Use:     "env [environment]",
+	Use:        "env [environment]",
+	Args:       cobra.ExactArgs(1),
+	Short:      "Sets the environment, and outputs a script which will set environment variables in the environment. Should be called using $() so that the shell will apply the script.",
+	Long:       "The special environment name `current` will emit the script for the current environment without changing anything.",
+	Deprecated: "This command is deprecated in favor of `bosun env use {environment}`.",
+	Example:    "$(bosun env {env})",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return useEnvironment(args...)
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().Bool(ArgEnvCurrent, false, "Write script for setting current environment.")
+	cmd.Flags().StringP(ArgEnvCluster, "c", "", "Set the cluster.")
+})
+
+// envCmd represents the env command
+var envUseCmd = addCommand(envCmd, &cobra.Command{
+	Use:     "use [environment]",
 	Args:    cobra.ExactArgs(1),
 	Short:   "Sets the environment, and outputs a script which will set environment variables in the environment. Should be called using $() so that the shell will apply the script.",
 	Long:    "The special environment name `current` will emit the script for the current environment without changing anything.",
 	Example: "$(bosun env {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
-
-		b, err := getBosun(cli.Parameters{NoCurrentEnv: true})
-		if err != nil {
-			return err
-		}
-
-		envName := args[0]
-		if envName != "current" {
-			err = b.UseEnvironment(envName)
-			if err != nil {
-				return err
-			}
-		}
-
-		env := b.GetCurrentEnvironment()
-
-		ctx := b.NewContext()
-
-		err = env.ForceEnsure(ctx)
-		if err != nil {
-			return err
-		}
-
-		err = env.Execute(ctx)
-		if err != nil {
-			return err
-		}
-
-		script, err := env.Render(ctx)
-		if err != nil {
-			return err
-		}
-
-		err = b.Save()
-		if err != nil {
-			return err
-		}
-
-		fmt.Print(script)
-
-		return nil
+		return useEnvironment(args...)
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgEnvCurrent, false, "Write script for setting current environment.")
+	cmd.Flags().StringP(ArgEnvCluster, "c", "", "Set the cluster.")
 })
+
+func useEnvironment(args ...string) error {
+
+	b, err := getBosun(cli.Parameters{NoEnvironment: true})
+	if err != nil {
+		return err
+	}
+
+	envName := args[0]
+	if envName != "current" {
+		err = b.UseEnvironmentAndCluster(envName, viper.GetString(ArgEnvCluster))
+		if err != nil {
+			return err
+		}
+	}
+
+	env := b.GetCurrentEnvironment()
+
+	ctx := b.NewContext()
+
+	err = env.ForceEnsure(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = env.Execute(ctx)
+	if err != nil {
+		return err
+	}
+
+	script, err := env.Render(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = b.Save()
+	if err != nil {
+		return err
+	}
+
+	fmt.Print(script)
+
+	return nil
+}
 
 var envNameCmd = addCommand(envCmd, &cobra.Command{
 	Use:   "name",
@@ -112,11 +136,21 @@ var envNameCmd = addCommand(envCmd, &cobra.Command{
 var envListCmd = addCommand(envCmd, &cobra.Command{
 	Use:   "list",
 	Short: "Lists environments.",
-	Run: func(cmd *cobra.Command, args []string) {
-		b := MustGetBosun()
-		for _, e := range b.GetEnvironments() {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b, err := getBosun(cli.Parameters{
+			NoEnvironment: true,
+		})
+		if err != nil {
+			return err
+		}
+		envs, err := b.GetEnvironments()
+		if err != nil {
+			return err
+		}
+		for _, e := range envs {
 			fmt.Println(e.Name)
 		}
+		return nil
 	},
 })
 
@@ -163,7 +197,7 @@ var envGetOrCreateCert = addCommand(envCmd, &cobra.Command{
 
 		mkcertArgs := append([]string{"-cert-file", certPath, "-key-file", keyPath}, hosts...)
 
-		out, err := pkg.NewCommand("mkcert", mkcertArgs...).RunOut()
+		out, err := pkg.NewShellExe("mkcert", mkcertArgs...).RunOut()
 		fmt.Fprintf(os.Stderr, "mkcert output:\n%s\n---- end output\n", out)
 
 		if err != nil {
@@ -195,15 +229,16 @@ var _ = addCommand(envCmd, &cobra.Command{
 	Short:   "Shows the current environment with its valueSets.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
-		var env *bosun.EnvironmentConfig
+		var env *environment.Config
 		var err error
 		if len(args) == 1 {
-			env, err = b.GetEnvironment(args[0])
+			env, err = b.GetEnvironmentConfig(args[0])
 			if err != nil {
 				return err
 			}
 		} else {
-			env = b.GetCurrentEnvironment()
+			e := b.GetCurrentEnvironment()
+			env = &e.Config
 		}
 
 		y, err := yaml.Marshal(env)

@@ -1,5 +1,5 @@
 package core
 
-type Saver interface {
+type FileSaver interface {
 	Save() error
 }

@@ -10,8 +10,19 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
 2. In the root of this repo, run `go install`
 3. Get the latest version of https://github.com/naveegoinc/devops (recommendation: clone to `$HOME/src/github.com/naveegoinc/devops`).
 4. In the root of the devops repo, run `bosun workspace add bosun.yaml`
-    - Run `bosun app list` to check if bosun has added all the imports to your workspace. It should list a bunch of apps.    
-5. Run `eval $(bosun env red)` to set the environment variables for the red environment. Run it without the `$()` to see what it does.
+    - Run `bosun app list` to check if bosun has added all the imports to your workspace. It should list a bunch of apps.
+    - If you don't see a bunch of apps, run `bosun workspace tidy`.    
+    
+5. Run `eval $(bosun env use red)` to set the environment variables for the red environment. Run it without the `$()` to see what it does.
+    - You can add an alias to your .zshrc to make switching environments easier:
+      ```
+      function be() {
+        eval $(bosun env use $1)
+      }
+      ```
+      This allows you to write `> be qa` to switch to the QA environment, for example.
+    - If you work in multiple environments it's a good idea to add `$BOSUN_ENVIRONMENT` to your prompt so it's always obvious where you are.
+
 6. Run `bosun tools list` to see tools which are registered with bosun.
     - You'll need to install some of these tools to proceed, using `bosun tool install {name}`
     - virtualbox
@@ -23,8 +34,6 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
     - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/ and `sudo chmod 777 .docker && sudo chmod 777 .docker/config`)
 7. Add docker login for our private repo: `sudo docker login docker.n5o.black`. Get username/password from your mentor.
 8. Add aws login for CLI: `aws configure --profile black`. Get key/secret from your mentor.
-8. Install helm s3 plugin: `helm plugin install https://github.com/hypnoglow/helm-s3.git`
-8. Add our private helm repo: `helm repo add helm.n5o.black s3://helm.n5o.black`
 8. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
    - You may need to run this a few times if things are slow to come up and subsequent steps time out.
    - After minikube has started you can run `minikube dashboard` to open the dashboard and see what things have been deployed.

@@ -122,7 +122,7 @@ func (c *CommandValue) Resolve(ctx ExecutionContext) (string, error) {
 	if c.Value != "" {
 		c.resolvedValue, err = templating.RenderTemplate(c.Value, ctx.TemplateValues())
 	} else {
-		c.resolvedValue, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true})
+		c.resolvedValue, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true, StreamOutput:ctx.GetParameters().Verbose})
 		// trim whitespace, as script output may contain line breaks at the end
 		c.resolvedValue = strings.TrimSpace(c.resolvedValue)
 	}

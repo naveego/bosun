@@ -55,9 +55,9 @@ var tagImageCmd = &cobra.Command{
 
 		fmt.Printf("tagging image %q for release %q\n", src, marketingRelease)
 
-		new(pkg.Command).WithExe("docker").WithArgs("pull", src).MustRun()
-		new(pkg.Command).WithExe("docker").WithArgs("tag", src, dst).MustRun()
-		new(pkg.Command).WithExe("docker").WithArgs("push", dst).MustRun()
+		new(pkg.ShellExe).WithExe("docker").WithArgs("pull", src).MustRun()
+		new(pkg.ShellExe).WithExe("docker").WithArgs("tag", src, dst).MustRun()
+		new(pkg.ShellExe).WithExe("docker").WithArgs("push", dst).MustRun()
 
 		return nil
 
@@ -88,11 +88,11 @@ x/imageB:0.5.0 x/imageB:0.5.0-rc
 
 			src, dst := f[0], f[1]
 			pkg.Log.WithField("@from", src).WithField("@to", dst).Infof("Retagging %d of %d.", i, len(lines))
-			new(pkg.Command).WithExe("docker").WithArgs("pull", src).MustRun()
-			new(pkg.Command).WithExe("docker").WithArgs("tag", src, dst).MustRun()
-			new(pkg.Command).WithExe("docker").WithArgs("push", dst).MustRun()
-			//new(Command).WithExe("docker").WithArgs("rmi", src, "--force").MustRun()
-			//new(Command).WithExe("docker").WithArgs("rmi", dst, "--force").MustRun()
+			new(pkg.ShellExe).WithExe("docker").WithArgs("pull", src).MustRun()
+			new(pkg.ShellExe).WithExe("docker").WithArgs("tag", src, dst).MustRun()
+			new(pkg.ShellExe).WithExe("docker").WithArgs("push", dst).MustRun()
+			//new(ShellExe).WithExe("docker").WithArgs("rmi", src, "--force").MustRun()
+			//new(ShellExe).WithExe("docker").WithArgs("rmi", dst, "--force").MustRun()
 
 		}
 

@@ -247,12 +247,11 @@ func (s ScriptStep) Execute(ctx ScriptContext, index int) error {
 		stepArgs = append(stepArgs, "--dry-run")
 	}
 
-	stepArgs = append(stepArgs, "--domain", ctx.GetStringValue(core.KeyDomain))
 	stepArgs = append(stepArgs, "--cluster", ctx.GetStringValue(core.KeyCluster))
 
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
+	err = pkg.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err

@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"runtime/pprof"
@@ -33,9 +34,6 @@ var cfgFile string
 
 var step int
 
-var Version string
-var Timestamp string
-var Commit string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = TraverseRunHooks(&cobra.Command{
@@ -46,7 +44,7 @@ var rootCmd = TraverseRunHooks(&cobra.Command{
 Version: %s
 Timestamp: %s
 GetCurrentCommit: %s
-`, Version, Timestamp, Commit),
+`, core.Version, core.Timestamp, core.Commit),
 	Long: `This is our tool for for devops. If you have some scripts for
 building, deploying, or monitoring apps you may want to add them to this tool.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -104,11 +102,11 @@ func Execute() {
 		case handledError:
 			fmt.Println(e.Error())
 		default:
-			if viper.GetBool(ArgGlobalVerbose) {
-				colorError.Fprintf(os.Stderr, "%+v\n", err)
+			if viper.GetBool(ArgGlobalVerbose) || viper.GetBool(ArgGlobalVerboseErrors) {
+				_, _ = colorError.Fprintf(os.Stderr, "%+v\n", err)
 
 			} else {
-				colorError.Fprintln(os.Stderr, err)
+				_, _ = colorError.Fprintln(os.Stderr, err)
 			}
 		}
 
@@ -117,18 +115,19 @@ func Execute() {
 }
 
 const (
-	ArgGlobalSudo         = "sudo"
-	ArgGlobalVerbose      = "verbose"
-	ArgGlobalDryRun       = "dry-run"
-	ArgGlobalCluster      = "cluster"
-	ArgGlobalDomain       = "domain"
-	ArgGlobalValues       = "values"
-	ArgBosunConfigFile    = "config-file"
-	ArgGlobalConfirmedEnv = "confirm-env"
-	ArgGlobalForce        = "force"
-	ArgGlobalNoReport     = "no-report"
-	ArgGlobalOutput       = "output"
-	ArgGlobalProfile      = "profile"
+	ArgGlobalSudo          = "sudo"
+	ArgGlobalVerbose       = "verbose"
+	ArgGlobalVerboseErrors = "verbose-errors"
+	ArgGlobalDryRun        = "dry-run"
+	ArgGlobalCluster       = "cluster"
+	ArgGlobalDomain        = "domain"
+	ArgGlobalValues        = "values"
+	ArgBosunConfigFile     = "config-file"
+	ArgGlobalConfirmedEnv  = "confirm-env"
+	ArgGlobalForce         = "force"
+	ArgGlobalNoReport      = "no-report"
+	ArgGlobalOutput        = "output"
+	ArgGlobalProfile       = "profile"
 )
 
 func init() {
@@ -139,6 +138,7 @@ func init() {
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
 	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "yaml", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
+	rootCmd.PersistentFlags().BoolP(ArgGlobalVerboseErrors, "V", false, "Enable verbose errors with stack traces.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")

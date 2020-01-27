@@ -41,7 +41,7 @@ func (m ScriptCommand) Execute() error {
 	m.Log.Infof("Using connection string %s", safeAddr)
 	m.Log.Infof("Executing script:\n %s", m.Script)
 
-	err = pkg.NewCommand("mongo", addr, "--eval", m.Script).RunE()
+	err = pkg.NewShellExe("mongo", addr, "--eval", m.Script).RunE()
 	if err != nil {
 		return errors.Wrapf(err, "running script %s", m.Script)
 	}

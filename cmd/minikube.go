@@ -17,9 +17,9 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
-	"gopkg.in/eapache/go-resiliency.v1/retrier"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -57,63 +57,37 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 		b := MustGetBosun()
 		ctx := b.NewContext()
 		ws := b.GetWorkspace()
+
 		konfig := ws.Minikube
 		if konfig == nil {
-			p, err := b.GetCurrentPlatform()
-			if err != nil {
-				return err
-			}
-			for _, c := range p.Clusters {
+			env := b.GetCurrentEnvironment()
+			for _, c := range env.Clusters {
 				if c.Name == "minikube" || c.Minikube != nil {
 					konfig = c.Minikube
 				}
 			}
 		}
 		if konfig == nil {
-			return errors.New("no kube config named minikube found in workspace or platform")
+			return errors.New("no kube config named minikube found in workspace or current environment")
 		}
 
-		ktx := kube.CommandContext{
-			Log: ctx.Log(),
+		konfigs := kube.ConfigDefinitions{
+			&kube.ClusterConfig{
+				Minikube:     konfig,
+				ConfigShared: core.ConfigShared{Name: "minikube"},
+			},
 		}
 
-		err := konfig.ConfigureKubernetes(ktx)
-
+		env := b.GetCurrentEnvironment()
+		err := konfigs.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+			Name:             "minikube",
+			Log:              ctx.Log(),
+			ExecutionContext: ctx,
+			PullSecrets:      env.PullSecrets,
+		})
 		if err != nil {
 			return err
 		}
-
-		r := retrier.New(retrier.ConstantBackoff(5, 5*time.Second), nil)
-
-		err = r.Run(func() error {
-			pkg.Log.Info("Initializing helm...")
-			_, err = pkg.NewCommand("helm", "init").RunOut()
-			if err != nil {
-				pkg.Log.WithError(err).Error("Helm init failed, may retry.")
-			}
-			return err
-		})
-
-		if err != nil {
-			return errors.Wrap(err, "helm init")
-		}
-
-		pkg.Log.Info("Helm initialized.")
-
-		r = retrier.New(retrier.ConstantBackoff(10, 6*time.Second), nil)
-		err = r.Run(func() error {
-			pkg.Log.Info("Checking tiller...")
-			status, err := pkg.NewCommand("kubectl", "get", "-n", "kube-system", "pods", "--selector=name=tiller", "-o", `jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`).RunOut()
-			if err != nil {
-				pkg.Log.WithError(err).Error("Getting tiller status failed, may retry.")
-				return err
-			}
-			if !strings.Contains(status, "True") {
-				return errors.Errorf("Wanted Ready status to be True but it was %q", status)
-			}
-			pkg.Log.Info("Tiller running.")
-			return nil
-		})
 
 		return err
 	},

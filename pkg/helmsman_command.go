@@ -3,7 +3,7 @@ package pkg
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/templating"
-	"gopkg.in/yaml.v2"
+	"github.com/naveego/bosun/pkg/yaml"
 	"io/ioutil"
 	"os"
 	"os/exec"

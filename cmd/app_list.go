@@ -23,6 +23,7 @@ const (
 	AppListColDirty   = "dirty"
 	AppListColStale   = "stale"
 	AppListColPath    = "path"
+	AppListColLabels    = "meta-labels"
 )
 
 var appListAlwaysColumns = []string{
@@ -37,6 +38,7 @@ var appListOptionalColumns = []string{
 	AppListColDirty,
 	AppListColStale,
 	AppListColPath,
+	AppListColLabels,
 }
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
@@ -75,6 +77,7 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 			row[AppListColName] = app.Name
 			row[AppListColRepo] = app.RepoName
 
+
 			if app.IsRepoCloned() {
 				row[AppListColCloned] = fmtBool(true)
 				row[AppListColBranch] = app.GetBranchName().String()
@@ -96,6 +99,14 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 			} else {
 				row[AppListColPath], _ = filepath.Rel(wd, app.AppConfig.FromPath)
 			}
+
+			if colsMap[AppListColLabels] {
+				var labelLines []string
+				for _, k := range util.SortedKeys(app.Labels) {
+					labelLines = append(labelLines, fmt.Sprintf("%s: %s", k, app.Labels[k]))
+				}
+				row[AppListColLabels] = strings.Join(labelLines, "\n")
+			}
 			out = append(out, row)
 		}
 
@@ -110,9 +121,9 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 
 func fmtBool(b bool) string {
 	if b {
-		return emoji.Sprint(":heavy_check_mark:")
+		return emoji.Sprint("YES    ")
 	} else {
-		return emoji.Sprint("    :x:")
+		return emoji.Sprint("     NO")
 	}
 }
 
@@ -205,7 +216,7 @@ var appListActionsCmd = addCommand(appListCmd, &cobra.Command{
 		for _, app := range apps {
 
 			for _, action := range app.Actions {
-				t.AddLine(app.Name, action.Name, action.When, action.Where, action.Description)
+				t.AddLine(app.Name, action.Name, action.When, action.WhereFilter, action.Description)
 			}
 		}
 

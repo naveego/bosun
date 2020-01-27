@@ -18,7 +18,7 @@ func RenderEnvironmentSettingScript(vars map[string]string) string {
 	return w.String()
 }
 
-func GetCommandForScript(file string) *pkg.Command {
-	cmd := pkg.NewCommand("cmd", "/q", "/c", file)
+func GetCommandForScript(file string) *pkg.ShellExe {
+	cmd := pkg.NewShellExe("cmd", "/q", "/c", file)
 	return cmd
 }

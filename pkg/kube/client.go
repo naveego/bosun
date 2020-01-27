@@ -1,12 +1,13 @@
 package kube
 
 import (
-	"github.com/go-errors/errors"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"path/filepath"
+	config2 "sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 func GetKubeClient() (*kubernetes.Clientset, error) {
@@ -19,7 +20,24 @@ func GetKubeClient() (*kubernetes.Clientset, error) {
 		config, err = clientcmd.BuildConfigFromFlags("", configPath)
 
 		if err != nil {
-			return nil, errors.Errorf("could not get kube config from in cluster strategy or from ~/.kube/config")
+			return nil, errors.Wrapf(err, "could not get kube config from in cluster strategy or from ~/.kube/config")
+		}
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+
+	return clientset, nil
+}
+
+func GetKubeClientWithContext(context string) (*kubernetes.Clientset, error) {
+	// creates the in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		// not running in kubernetes...
+		config, err = config2.GetConfigWithContext(context)
+
+		if err != nil {
+			return nil, errors.Wrapf(err, "could not get kube config with context %q from in cluster strategy or from ~/.kube/config", context)
 		}
 	}
 

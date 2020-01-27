@@ -1,32 +1,27 @@
 package actions
 
 import (
-	"bufio"
-	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/go-getter/helper/url"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/mongo"
 	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"time"
 
-	vault "github.com/hashicorp/vault/api"
 )
-
-type ActionSchedule string
 
 const (
 	ActionBeforeDeploy = "BeforeDeploy"
@@ -35,22 +30,32 @@ const (
 )
 
 type AppAction struct {
-	Name               string             `yaml:"name" json:"name"`
-	Description        string             `yaml:"description,omitempty" json:"description,omitempty"`
-	When               ActionSchedule     `yaml:"when,omitempty" json:"when,omitempty"`
-	Where              string             `yaml:"where,omitempty" json:"where,omitempty"`
-	MaxAttempts        int                `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
-	Timeout            time.Duration      `yaml:"timeout,omitempty" json:"timeout,omitempty"`
-	Interval           time.Duration      `yaml:"interval,omitempty" json:"interval,omitempty"`
-	Vault              *VaultAction       `yaml:"vault,omitempty" json:"vault,omitempty"`
-	Script             *ScriptAction      `yaml:"script,omitempty" json:"script,omitempty"`
-	Bosun              *BosunAction       `yaml:"bosun,omitempty" json:"bosun,omitempty"`
-	Test               *TestAction        `yaml:"test,omitempty" json:"test,omitempty"`
-	Mongo              *MongoAction       `yaml:"mongo,omitempty" json:"mongo,omitempty"`
-	MongoAssert        *MongoAssertAction `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
-	HTTP               *HTTPAction        `yaml:"http,omitempty" json:"http,omitempty"`
-	ExcludeFromRelease bool               `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
-	FromPath           string             `yaml:"-" json:"-"`
+	core.ConfigShared `yaml:",inline"`
+
+	When               ActionSchedules       `yaml:"when,flow,omitempty" json:"when,omitempty"`
+	Where              core.EnvironmentRoles `yaml:"where,omitempty"`
+	WhereFilter        filter.MatchMapConfig `yaml:"whereFilter,omitempty" json:"where,omitempty"`
+	MaxAttempts        int                   `yaml:"maxAttempts,omitempty" json:"maxAttempts,omitempty"`
+	Timeout            time.Duration         `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Interval           time.Duration         `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Vault              *VaultAction          `yaml:"vault,omitempty" json:"vault,omitempty"`
+	Script             *ScriptAction         `yaml:"script,omitempty" json:"script,omitempty"`
+	Bosun              *BosunAction            `yaml:"bosun,omitempty" json:"bosun,omitempty"`
+	Test               *TestAction             `yaml:"test,omitempty" json:"test,omitempty"`
+	DNSTest            *DNSTestAction          `yaml:"dnsTest,omitempty"`
+	Mongo              *MongoAction            `yaml:"mongo,omitempty" json:"mongo,omitempty"`
+	MongoAssert        *MongoAssertAction      `yaml:"mongoAssert,omitempty" json:"mongoAssert,omitempty"`
+	HTTP               *HTTPAction             `yaml:"http,omitempty" json:"http,omitempty"`
+	ExcludeFromRelease bool                    `yaml:"excludeFromRelease,omitempty" json:"excludeFromRelease,omitempty"`
+}
+
+func (a *AppAction) GetEnvironmentName() (string, bool) {
+	return "", false
+}
+
+type ActionConditions struct {
+	When             ActionSchedule         `yaml:"when"`
+	EnvironmentRoles []core.EnvironmentRole `yaml:"environmentRoles,omitempty"`
 }
 
 type Action interface {
@@ -80,13 +85,7 @@ func (a *AppAction) MakeSelfContained(ctx ActionContext) error {
 }
 
 func (a *AppAction) Execute(ctx ActionContext) error {
-	log := ctx.Log()
-	env := ctx.GetStringValue(core.KeyEnv)
-
-	if a.Where != "" && !strings.Contains(a.Where, env) {
-		log.Debugf("Skipping because 'where' is %q but current environment is %q.", a.Where, env)
-		return nil
-	}
+	//log := ctx.Log()
 
 	attempts := a.MaxAttempts
 	if attempts == 0 {
@@ -111,10 +110,26 @@ func (a *AppAction) Execute(ctx ActionContext) error {
 		ctx = ctx.WithPwd(a.FromPath).(ActionContext)
 	}
 
+	rawAction, _ := yaml.MarshalString(a)
+
+	renderedRawAction, err := templating.RenderTemplate(rawAction, ctx.TemplateValues())
+	if err != nil {
+		return errors.Wrapf(err, "rendering action with contextual values")
+	}
+
+	var renderedAction *AppAction
+	err = yaml.UnmarshalString(renderedRawAction, &renderedAction)
+	if err != nil {
+		return errors.Wrapf(err, "parsing rendered action:\n%s\n", renderedRawAction)
+	}
+
 	for i := 0; i < attempts; i++ {
-		if i > 0 {
+		if i > 0 && err != nil {
 			seconds := int(interval.Seconds())
-			ctx.Log().WithError(err).WithField("attempts_remaining", attempts-i).Errorf("Action failed, waiting %s...", interval)
+
+			color.Red(err.Error())
+			fmt.Println()
+			color.Yellow("Attempts remaining: %d\n", attempts-i)
 			if seconds > 0 {
 				fmt.Printf("\rWaiting: %d", seconds)
 				for ; seconds >= 0; seconds = seconds - 1 {
@@ -134,7 +149,7 @@ func (a *AppAction) Execute(ctx ActionContext) error {
 
 		attemptCtx := ctx.WithTimeout(timeout).(ActionContext)
 
-		err = a.execute(attemptCtx)
+		err = renderedAction.execute(attemptCtx)
 
 		if err == nil {
 			ctx.Log().Info("Action completed.")
@@ -192,72 +207,6 @@ func (a *AppAction) GetActions() []Action {
 
 	return actions
 }
-
-type VaultAction struct {
-	CacheKey string           `yaml:"cacheKey" json:"cacheKey"`
-	File     string           `yaml:"file,omitempty" json:"file,omitempty"`
-	Layout   *pkg.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
-	Literal  string           `yaml:"literal,omitempty" json:"literal,omitempty"`
-}
-
-func (a *VaultAction) Execute(ctx ActionContext) error {
-	var vaultClient *vault.Client
-	err := ctx.Provide(&vaultClient)
-	if err != nil {
-		return err
-	}
-
-	var vaultLayout *pkg.VaultLayout
-	var layoutBytes []byte
-	if a.File != "" {
-		path := ctx.ResolvePath(a.File)
-		layoutBytes, err = ioutil.ReadFile(path)
-		if err != nil {
-			return err
-		}
-	} else if a.Literal != "" {
-		layoutBytes = []byte(a.Literal)
-	} else {
-		layoutBytes, _ = yaml.Marshal(a.Layout)
-	}
-
-	templateArgs := ctx.TemplateValues()
-
-	vaultLayout, err = pkg.LoadVaultLayoutFromBytes("action", layoutBytes, templateArgs, vaultClient)
-	if err != nil {
-		return err
-	}
-
-	y, _ := yaml.Marshal(vaultLayout)
-	ctx.Log().Debugf("Vault layout from %s:\n%s\n", a.Layout, string(y))
-
-	if ctx.GetParameters().DryRun {
-		return nil
-	}
-
-	err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, vaultClient)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (a *VaultAction) MakeSelfContained(ctx ActionContext) error {
-	if a.File != "" {
-
-		path := ctx.ResolvePath(a.File)
-		layoutBytes, err := ioutil.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		a.File = ""
-		a.Literal = string(layoutBytes)
-	}
-
-	return nil
-}
-
 type ScriptAction string
 
 func (a *ScriptAction) Execute(ctx ActionContext) error {
@@ -290,13 +239,12 @@ func (a BosunAction) Execute(ctx ActionContext) error {
 		stepArgs = append(stepArgs, "--dry-run")
 	}
 
-	stepArgs = append(stepArgs, "--domain", ctx.GetStringValue(core.KeyDomain))
 	stepArgs = append(stepArgs, "--cluster", ctx.GetStringValue(core.KeyCluster))
 
 	log := ctx.WithLogField("args", stepArgs).Log()
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewCommand(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
+	err = pkg.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err
@@ -477,88 +425,6 @@ func (a *MongoAssertAction) Execute(ctx ActionContext) error {
 
 	if res != a.ExpectedResultCount {
 		return errors.Errorf("expected %d results, but found %d", a.ExpectedResultCount, res)
-	}
-
-	return nil
-}
-
-type HTTPAction struct {
-	URL     string                 `yaml:"url" json:"url"`
-	Method  string                 `yaml:"method" json:"method"`
-	Headers map[string]string      `yaml:"headers" json:"headers"`
-	Body    map[string]interface{} `yaml:"body,omitempty" json:"body"`
-	Raw     string                 `yaml:"raw,omitempty" json:"raw,omitempty"`
-	OKCodes []int                  `yaml:"okCodes,omitempty,flow" json:"okCodes,omitempty"` // codes which should be treated as OK (passing). Defaults to [200, 201, 202, 204].
-}
-
-func (a *HTTPAction) Execute(ctx ActionContext) error {
-
-	var req *http.Request
-	var err error
-	if a.Raw == "" {
-		var bodyBytes []byte
-		var err error
-		if a.Body != nil {
-			bodyBytes, err = json.Marshal(a.Body)
-			if err != nil {
-				return errors.Wrap(err, "marshal body")
-			}
-		}
-
-		bodyBuffer := bytes.NewBuffer(bodyBytes)
-		a.Method = strings.ToUpper(a.Method)
-
-		ctx.Log().Debugf("Making %s request to %s...", a.Method, a.URL)
-
-		req, err = http.NewRequest(a.Method, a.URL, bodyBuffer)
-		if err != nil {
-			return errors.Wrap(err, "create req")
-		}
-		for k, v := range a.Headers {
-			req.Header.Add(k, v)
-		}
-	} else {
-		if !strings.Contains(a.Raw, "\n\n") {
-			a.Raw = a.Raw + "\n\n"
-		}
-
-		r := bufio.NewReader(strings.NewReader(a.Raw))
-
-		req, err = http.ReadRequest(r)
-		if err != nil {
-			return errors.Wrapf(err, "create req from raw input:\n%s", a.Raw)
-		}
-		req.URL, err = url.Parse(req.RequestURI)
-		if err != nil {
-			return errors.Wrapf(err, "parse url %q", req.RequestURI)
-		}
-		req.RequestURI = ""
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "made request")
-	}
-
-	ctx.Log().Debugf("Request returned %d - %s.", resp.StatusCode, resp.Status)
-
-	if len(a.OKCodes) == 0 {
-		a.OKCodes = []int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}
-	}
-
-	defer resp.Body.Close()
-	isOK := false
-	for _, okCode := range a.OKCodes {
-		if resp.StatusCode == okCode {
-			isOK = true
-			break
-		}
-	}
-
-	if !isOK {
-		respBody, _ := ioutil.ReadAll(resp.Body)
-		err = errors.Errorf("Response had non-success status code %d (OKCodes: %v): %s", resp.StatusCode, a.OKCodes, string(respBody))
-		return err
 	}
 
 	return nil

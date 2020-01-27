@@ -44,7 +44,7 @@ var graylogConfigureCmd = &cobra.Command{
 		}
 
 		values := viper.GetStringSlice(ArgGraylogValues)
-		templateArgs, err := templating.NewTemplateValues(values...)
+		templateArgs, err := templating.NewTemplateValuesFromStrings(values...)
 		if err != nil {
 			return err
 		}

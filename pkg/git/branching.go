@@ -29,7 +29,34 @@ type BranchSpec struct {
 			"Slug":string,
 		  }
 	*/
-	Feature string `yaml:"feature"`
+	Feature     string `yaml:"feature"`
+	IsDefaulted bool   `yaml:"-"`
+}
+
+func (f BranchSpec) MarshalYAML() (interface{}, error) {
+	if f.IsDefaulted {
+		return nil, nil
+	}
+	type proxy BranchSpec
+	p := proxy(f)
+
+	return &p, nil
+}
+
+func (f *BranchSpec) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type proxy BranchSpec
+	var p proxy
+	if f != nil {
+		p = proxy(*f)
+	}
+
+	err := unmarshal(&p)
+
+	if err == nil {
+		*f = BranchSpec(p)
+	}
+
+	return err
 }
 
 type BranchType string

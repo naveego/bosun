@@ -26,13 +26,12 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/kube"
 	script2 "github.com/naveego/bosun/pkg/script"
+	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"io/ioutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -48,7 +47,6 @@ const (
 	ArgAppValueSet        = "value-sets"
 	ArgAppSet             = "set"
 
-	ArgAppDeployDeps        = "deploy-deps"
 	ArgAppFromRelease       = "release"
 	ArgAppLatest            = "latest"
 	ArgAppDeletePurge       = "purge"
@@ -59,8 +57,8 @@ const (
 )
 
 func init() {
-	appCmd.PersistentFlags().BoolP(ArgFilteringAll, "a", false, "Apply to all known microservices.")
-	appCmd.PersistentFlags().StringSliceP(ArgFilteringLabels, "i", []string{}, "Apply to microservices with the provided labels.")
+	appCmd.PersistentFlags().BoolP(ArgFilteringAll, "a", false, "ApplyToValues to all known microservices.")
+	appCmd.PersistentFlags().StringSliceP(ArgFilteringLabels, "i", []string{}, "ApplyToValues to microservices with the provided labels.")
 	appCmd.PersistentFlags().StringSlice(ArgFilteringInclude, []string{}, `Only include apps which match the provided selectors. --include trumps --exclude.".`)
 	appCmd.PersistentFlags().StringSlice(ArgFilteringExclude, []string{}, `Don't include apps which match the provided selectors.".`)
 
@@ -196,9 +194,9 @@ func appBump(b *bosun.Bosun, app *bosun.App, bump string) error {
 		return err
 	}
 
-	err = app.Parent.Save()
+	err = app.FileSaver.Save()
 	if err == nil {
-		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.Parent.FromPath)
+		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.FromPath)
 	}
 	return err
 }
@@ -212,64 +210,66 @@ The current domain and the minikube IP are used to populate the output. To updat
 	Example: "bosun apps add-hosts --all | sudo tee /etc/hosts",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-		apps := mustGetAppsIncludeCurrent(b, args)
-		env := b.GetCurrentEnvironment()
-		ip := pkg.NewCommand("minikube", "ip").MustOut()
+		return errors.New("not implemented, needs rewrite to render domains correctly based on value sets in current environment")
 
-		toAdd := map[string]hostLine{}
-		for _, app := range apps {
-			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
-			toAdd[host] = hostLine{
-				IP:      ip,
-				Host:    host,
-				Comment: fmt.Sprintf("bosun"),
-			}
-		}
-
-		hosts, err := ioutil.ReadFile("/etc/hosts")
-		if err != nil {
-			return err
-		}
-
-		var lines []hostLine
-		for _, line := range strings.Split(string(hosts), "\n") {
-			segs := hostLineRE.FindStringSubmatch(line)
-			hostLine := hostLine{}
-			if len(segs) == 0 {
-				hostLine.Comment = strings.TrimPrefix(line, "#")
-			}
-			if len(segs) >= 3 {
-				hostLine.IP = segs[1]
-				hostLine.Host = segs[2]
-			}
-			if len(segs) >= 4 {
-				hostLine.Comment = segs[3]
-			}
-
-			delete(toAdd, hostLine.Host)
-
-			lines = append(lines, hostLine)
-		}
-
-		for _, line := range toAdd {
-			lines = append(lines, line)
-		}
-
-		for _, h := range lines {
-			if h.IP != "" && h.Host != "" {
-				fmt.Fprintf(os.Stdout, "%s\t%s    ", h.IP, h.Host)
-			}
-			if h.Comment != "" {
-				fmt.Fprintf(os.Stdout, "# %s", strings.TrimSpace(h.Comment))
-				if h.IP == "" && h.Host == "" {
-					fmt.Fprint(os.Stdout, "\t\t")
-				}
-			}
-			fmt.Fprintln(os.Stdout)
-		}
-
-		return err
+		// b := MustGetBosun()
+		// apps := mustGetAppsIncludeCurrent(b, args)
+		// env := b.GetCurrentEnvironment()
+		// ip := pkg.NewShellExe("minikube", "ip").MustOut()
+		//
+		// toAdd := map[string]hostLine{}
+		// for _, app := range apps {
+		// 	host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
+		// 	toAdd[host] = hostLine{
+		// 		IP:      ip,
+		// 		Host:    host,
+		// 		Comment: fmt.Sprintf("bosun"),
+		// 	}
+		// }
+		//
+		// hosts, err := ioutil.ReadFile("/etc/hosts")
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// var lines []hostLine
+		// for _, line := range strings.Split(string(hosts), "\n") {
+		// 	segs := hostLineRE.FindStringSubmatch(line)
+		// 	hostLine := hostLine{}
+		// 	if len(segs) == 0 {
+		// 		hostLine.Comment = strings.TrimPrefix(line, "#")
+		// 	}
+		// 	if len(segs) >= 3 {
+		// 		hostLine.IP = segs[1]
+		// 		hostLine.Host = segs[2]
+		// 	}
+		// 	if len(segs) >= 4 {
+		// 		hostLine.Comment = segs[3]
+		// 	}
+		//
+		// 	delete(toAdd, hostLine.Host)
+		//
+		// 	lines = append(lines, hostLine)
+		// }
+		//
+		// for _, line := range toAdd {
+		// 	lines = append(lines, line)
+		// }
+		//
+		// for _, h := range lines {
+		// 	if h.IP != "" && h.Host != "" {
+		// 		fmt.Fprintf(os.Stdout, "%s\t%s    ", h.IP, h.Host)
+		// 	}
+		// 	if h.Comment != "" {
+		// 		fmt.Fprintf(os.Stdout, "# %s", strings.TrimSpace(h.Comment))
+		// 		if h.IP == "" && h.Host == "" {
+		// 			fmt.Fprint(os.Stdout, "\t\t")
+		// 		}
+		// 	}
+		// 	fmt.Fprintln(os.Stdout)
+		// }
+		//
+		// return err
 	},
 })
 
@@ -278,53 +278,55 @@ var appRemoveHostsCmd = addCommand(appCmd, &cobra.Command{
 	Short: "Removes apps with the current domain from the hosts file.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-		apps := mustGetAppsIncludeCurrent(b, args)
-		env := b.GetCurrentEnvironment()
+		return errors.New("not implemented, needs rewrite to render domains correctly based on value sets in current environment")
 
-		toRemove := map[string]bool{}
-		for _, app := range apps {
-			host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
-			toRemove[host] = true
-		}
-
-		hosts, err := ioutil.ReadFile("/etc/hosts")
-		if err != nil {
-			return err
-		}
-
-		var lines []hostLine
-		for _, line := range strings.Split(string(hosts), "\n") {
-			segs := hostLineRE.FindStringSubmatch(line)
-			hostLine := hostLine{}
-			if len(segs) == 0 {
-				hostLine.Comment = strings.TrimPrefix(line, "#")
-			}
-			if len(segs) >= 3 {
-				hostLine.IP = segs[1]
-				hostLine.Host = segs[2]
-			}
-			if len(segs) >= 4 {
-				hostLine.Comment = segs[3]
-			}
-			lines = append(lines, hostLine)
-		}
-
-		out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		for _, line := range lines {
-			if !toRemove[line.Host] {
-				_, err = fmt.Fprintf(out, "%s\n", line.String())
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		return err
+		// b := MustGetBosun()
+		// apps := mustGetAppsIncludeCurrent(b, args)
+		// env := b.GetCurrentEnvironment()
+		//
+		// toRemove := map[string]bool{}
+		// for _, app := range apps {
+		// 	host := fmt.Sprintf("%s.%s", app.Name, env.Domain)
+		// 	toRemove[host] = true
+		// }
+		//
+		// hosts, err := ioutil.ReadFile("/etc/hosts")
+		// if err != nil {
+		// 	return err
+		// }
+		//
+		// var lines []hostLine
+		// for _, line := range strings.Split(string(hosts), "\n") {
+		// 	segs := hostLineRE.FindStringSubmatch(line)
+		// 	hostLine := hostLine{}
+		// 	if len(segs) == 0 {
+		// 		hostLine.Comment = strings.TrimPrefix(line, "#")
+		// 	}
+		// 	if len(segs) >= 3 {
+		// 		hostLine.IP = segs[1]
+		// 		hostLine.Host = segs[2]
+		// 	}
+		// 	if len(segs) >= 4 {
+		// 		hostLine.Comment = segs[3]
+		// 	}
+		// 	lines = append(lines, hostLine)
+		// }
+		//
+		// out, err := os.OpenFile("/etc/hosts", os.O_TRUNC|os.O_WRONLY, 0644)
+		// if err != nil {
+		// 	return err
+		// }
+		// defer out.Close()
+		// for _, line := range lines {
+		// 	if !toRemove[line.Host] {
+		// 		_, err = fmt.Fprintf(out, "%s\n", line.String())
+		// 		if err != nil {
+		// 			return err
+		// 		}
+		// 	}
+		// }
+		//
+		// return err
 	},
 })
 
@@ -365,7 +367,7 @@ var appAcceptActualCmd = &cobra.Command{
 		ctx := b.NewContext()
 
 		deploySettings := bosun.DeploySettings{
-			Environment: ctx.Env,
+			Environment: ctx.Environment(),
 		}
 		for _, app := range apps {
 			if !app.HasChart() {
@@ -429,7 +431,6 @@ var appStatusCmd = &cobra.Command{
 		}
 
 		// check first to avoid concurrency issues
-		_ = b.IsClusterAvailable()
 
 		if !skipActual {
 			wg := new(sync.WaitGroup)
@@ -467,15 +468,15 @@ var appStatusCmd = &cobra.Command{
 			}
 
 			if desired.Status == "" {
-				desired.Status = bosun.StatusNotFound
+				desired.Status = workspace.StatusNotFound
 			}
 
 			if desired.Routing == "" {
-				desired.Routing = bosun.RoutingNA
+				desired.Routing = workspace.RoutingNA
 			}
 
 			routing := "n/a"
-			if env.Cluster == "minikube" {
+			if env.ClusterName == "minikube" {
 				routing = fmtDesiredActual(desired.Routing, actual.Routing)
 			}
 
@@ -546,22 +547,22 @@ var appToggleCmd = &cobra.Command{
 			wantsLocalhost := viper.GetBool(ArgSvcToggleLocalhost)
 			wantsMinikube := viper.GetBool(ArgSvcToggleMinikube)
 			if wantsLocalhost {
-				app.DesiredState.Routing = bosun.RoutingLocalhost
+				app.DesiredState.Routing = workspace.RoutingLocalhost
 			} else if wantsMinikube {
-				app.DesiredState.Routing = bosun.RoutingCluster
+				app.DesiredState.Routing = workspace.RoutingCluster
 			} else {
 				switch app.DesiredState.Routing {
-				case bosun.RoutingCluster:
-					app.DesiredState.Routing = bosun.RoutingLocalhost
-				case bosun.RoutingLocalhost:
-					app.DesiredState.Routing = bosun.RoutingCluster
+				case workspace.RoutingCluster:
+					app.DesiredState.Routing = workspace.RoutingLocalhost
+				case workspace.RoutingLocalhost:
+					app.DesiredState.Routing = workspace.RoutingCluster
 				default:
-					app.DesiredState.Routing = bosun.RoutingCluster
+					app.DesiredState.Routing = workspace.RoutingCluster
 				}
 			}
 
-			if app.DesiredState.Routing == bosun.RoutingLocalhost {
-				err = app.RouteToLocalhost(ctx)
+			if app.DesiredState.Routing == workspace.RoutingLocalhost {
+				err = app.RouteToLocalhost(ctx, "default")
 				if err != nil {
 					return err
 				}
@@ -570,14 +571,14 @@ var appToggleCmd = &cobra.Command{
 			} else {
 				// force upgrade the app to restore it to its normal state.
 				ctx.Log().Info("Deleting app.")
-				app.DesiredState.Status = bosun.StatusNotFound
+				app.DesiredState.Status = workspace.StatusNotFound
 				err = app.Reconcile(ctx)
 				if err != nil {
 					return err
 				}
 
 				ctx.Log().Info("Re-deploying app.")
-				app.DesiredState.Status = bosun.StatusDeployed
+				app.DesiredState.Status = workspace.StatusDeployed
 
 				err = app.Reconcile(ctx)
 
@@ -654,7 +655,7 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 				ctx.Log().Info("Pulling latest version of image(s) on minikube...")
 				for _, image := range appRelease.AppConfig.GetImages() {
 					imageName := image.GetFullNameWithTag("latest")
-					err := pkg.NewCommand("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
+					err := pkg.NewShellExe("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
 					if err != nil {
 						return err
 					}
@@ -696,14 +697,14 @@ var appDeleteCmd = &cobra.Command{
 
 		for _, app := range appReleases {
 			if viper.GetBool(ArgAppDeletePurge) {
-				app.DesiredState.Status = bosun.StatusNotFound
+				app.DesiredState.Status = workspace.StatusNotFound
 			} else {
-				app.DesiredState.Status = bosun.StatusDeleted
+				app.DesiredState.Status = workspace.StatusDeleted
 			}
 
 			b.SetDesiredState(app.Name, app.DesiredState)
 
-			app.DesiredState.Routing = bosun.RoutingNA
+			app.DesiredState.Routing = workspace.RoutingNA
 			err := app.Reconcile(ctx)
 			if err != nil {
 				return errors.Errorf("error deleting %q: %s", app.Name, err)

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"os"
@@ -17,7 +17,7 @@ import (
 
 var Log = logrus.NewEntry(logrus.StandardLogger())
 
-func RequestConfirmFromUser(label string, args ... interface{}) bool {
+func RequestConfirmFromUser(label string, args ...interface{}) bool {
 
 	if !IsInteractive() {
 		return false
@@ -40,7 +40,7 @@ func RequestConfirmFromUser(label string, args ... interface{}) bool {
 	return false
 }
 
-func RequestStringFromUser(text string, args ... interface{}) (string) {
+func RequestStringFromUser(text string, args ...interface{}) string {
 
 	if !IsInteractive() {
 		panic(fmt.Sprintf("Requested string from user but no terminal is attached: %q, %v", text, args))
@@ -59,7 +59,7 @@ func RequestStringFromUser(text string, args ... interface{}) (string) {
 	return value
 }
 
-func RequestSecretFromUser(text string, args ... interface{}) (string) {
+func RequestSecretFromUser(text string, args ...interface{}) string {
 	prompt := promptui.Prompt{
 		Label: fmt.Sprintf(text, args...),
 		Mask:  '*',
@@ -73,7 +73,6 @@ func RequestSecretFromUser(text string, args ... interface{}) (string) {
 
 	return value
 }
-
 
 // IfTTY invokes the function if there is a TTY attached, and returns ErrNoTTY otherwise.
 // If the function returns an error of promptui.ErrInterrupt or promptui.ErrAbort
@@ -94,7 +93,7 @@ func IfTTY(fn func() (string, error)) (string, error) {
 
 var ErrNoTTY = errors.New("no tty attached")
 
-func Must(err error, msgAndArgs ... string) {
+func Must(err error, msgAndArgs ...string) {
 	if err == nil {
 		return
 	}
@@ -128,7 +127,6 @@ func LoadYaml(path string, out interface{}) error {
 	err = yaml.Unmarshal(b, out)
 	return err
 }
-
 
 // Prefixer implements io.Reader and io.WriterTo. It reads
 // data from the underlying reader and prepends every line

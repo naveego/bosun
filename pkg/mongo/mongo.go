@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -148,7 +148,7 @@ type preparedConnectionEntry struct {
 
 func GetPreparedConnection(log *logrus.Entry, c Connection) (PreparedConnection, error) {
 
-	jc := util.MustJSON(c)
+	jc := yaml.MustJSON(c)
 	log.Debugf("Getting prepared connection: %s", jc)
 
 	key := strings.Join([]string{

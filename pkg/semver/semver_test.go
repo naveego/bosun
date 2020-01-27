@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"github.com/naveego/bosun/pkg/yaml"
 )
 
 type fixture struct {

@@ -1,24 +1,79 @@
 package values
 
 import (
+	"fmt"
 	"github.com/imdario/mergo"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/yaml"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
+	"regexp"
 	"strings"
 )
 
 const ValueSetAll = "all"
 
 type ValueSet struct {
-	core.ConfigShared `yaml:",inline"`
-	Dynamic           map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
-	Files             []string                         `yaml:"files,omitempty" json:"files,omitempty"`
-	Static            Values                           `yaml:"static,omitempty" json:"static,omitempty"`
+	core.ConfigShared   `yaml:",inline"`
+	Source              string                           `yaml:"source,omitempty"`
+	StaticAttributions  Values                           `yaml:"staticAttributions,omitempty"`
+	DynamicAttributions Values                           `yaml:"dynamicAttributions,omitempty"`
+	Roles               []core.EnvironmentRole           `yaml:"roles,flow,omitempty"`
+	ExactMatchFilters   filter.MatchMapConfig            `yaml:"exactMatchFilters,omitempty"`
+	Dynamic             map[string]*command.CommandValue `yaml:"dynamic,omitempty" json:"dynamic,omitempty"`
+	Files               []string                         `yaml:"files,omitempty" json:"files,omitempty"`
+	Static              Values                           `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
-func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *ValueSet) MarshalYAML() (interface{}, error) {
+	type proxy ValueSet
+	px := proxy(*v)
+
+	if len(px.StaticAttributions) == 0 {
+		px.StaticAttributions = nil
+	}
+	if len(px.DynamicAttributions) == 0 {
+		px.DynamicAttributions = nil
+	}
+
+	return px, nil
+}
+
+func NewValueSet() ValueSet {
+	return ValueSet{
+		Dynamic: map[string]*command.CommandValue{},
+		Static:  Values{},
+	}
+}
+
+type ValueSets []ValueSet
+
+func (v ValueSets) Len() int {
+	return len(v)
+}
+
+func (v ValueSets) Less(i, j int) bool {
+	li := len(v[i].Roles)
+	lj := len(v[j].Roles)
+	// secondary sort by role names
+	if li == lj && li > 0 {
+		ri := v[i].Roles[0]
+		rj := v[j].Roles[0]
+		return ri < rj
+	}
+
+	// sets with more roles go before sets with fewer roles
+	return lj < li
+}
+
+func (v ValueSets) Swap(i, j int) {
+	v[i], v[j] = v[j], v[i]
+}
+
+func (v *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var m map[string]interface{}
 	err := unmarshal(&m)
 	if err != nil {
@@ -31,8 +86,8 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		if a == nil {
-			*a = ValueSet{}
+		if v == nil {
+			*v = ValueSet{}
 		}
 		if v1.Static == nil {
 			v1.Static = Values{}
@@ -40,12 +95,12 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if v1.Set == nil {
 			v1.Set = map[string]*command.CommandValue{}
 		}
-		a.Files = v1.Files
-		a.Static = v1.Static
-		a.Dynamic = v1.Set
+		v.Files = v1.Files
+		v.Static = v1.Static
+		v.Dynamic = v1.Set
 		// handle case where set AND dynamic both have values
 		if v1.Dynamic != nil {
-			err = mergo.Map(a.Dynamic, v1.Dynamic)
+			err = mergo.Map(v.Dynamic, v1.Dynamic)
 		}
 		return err
 	}
@@ -56,7 +111,9 @@ func (a *ValueSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	*a = ValueSet(p)
+
+	*v = ValueSet(p)
+
 	return nil
 }
 
@@ -67,18 +124,69 @@ type appValuesConfigV1 struct {
 	Static  Values                           `yaml:"static,omitempty" json:"static,omitempty"`
 }
 
-// Combine returns a new ValueSet with the values from
+func (v ValueSet) Clone() ValueSet {
+	s, _ := yaml.Marshal(v)
+	var out ValueSet
+	_ = yaml.Unmarshal(s, &out)
+
+	out = out.withTriviaFrom(v)
+	return out
+}
+
+func (v ValueSet) withTriviaFrom(other ValueSet) ValueSet {
+	if v.DynamicAttributions == nil {
+		v.DynamicAttributions = Values{}
+	}
+	if v.StaticAttributions == nil {
+		v.StaticAttributions = Values{}
+	}
+	v.FileSaver = other.FileSaver
+	v.FromPath = other.FromPath
+
+	return v
+}
+
+func (v ValueSet) WithSource(source string) ValueSet {
+	v.Source = source
+
+	return v.WithDefaultSource(source)
+}
+
+// Returns a value set with the source set if it wasn't set before.
+func (v ValueSet) WithDefaultSource(source string) ValueSet {
+	if v.Source == "" {
+		v.Source = source
+	}
+	if v.StaticAttributions == nil {
+		v.StaticAttributions = Values{}
+	}
+	v.StaticAttributions.Merge(v.Static.MakeAttributionValues(source))
+
+	if v.DynamicAttributions == nil {
+		v.DynamicAttributions = map[string]interface{}{}
+	}
+	for k := range v.Dynamic {
+		v.DynamicAttributions[k] = source
+	}
+	return v
+}
+
+// WithValues returns a new ValueSet with the values from
 // other added after (and/or overwriting) the values from this instance)
-func (a ValueSet) Combine(other ValueSet) ValueSet {
+func (v ValueSet) WithValues(other ValueSet) ValueSet {
 
 	// clone the valueSet to ensure we don't mutate `a`
-	y, _ := yaml.Marshal(a)
-	var out ValueSet
-	_ = yaml.Unmarshal(y, &out)
+	out := v.Clone()
+
+	if out.StaticAttributions == nil {
+		out.StaticAttributions = Values{}
+	}
+	if out.DynamicAttributions == nil {
+		out.DynamicAttributions = Values{}
+	}
 
 	// clone the other valueSet to ensure we don't capture items from it
-	y, _ = yaml.Marshal(other)
-	_ = yaml.Unmarshal(y, &other)
+	other = other.Clone()
 
 	if out.Dynamic == nil {
 		out.Dynamic = map[string]*command.CommandValue{}
@@ -87,128 +195,146 @@ func (a ValueSet) Combine(other ValueSet) ValueSet {
 		out.Static = Values{}
 	}
 
+	attribution := other.Source
+	if attribution == "" {
+		attribution = other.Name
+	}
+	if attribution == "" {
+		attribution = other.FromPath
+	}
+
 	out.Files = append(out.Files, other.Files...)
+
+	out.StaticAttributions.Merge(other.StaticAttributions)
+	out.DynamicAttributions.Merge(other.DynamicAttributions)
 
 	out.Static.Merge(other.Static)
 
-	for k, v := range other.Dynamic {
-		out.Dynamic[k] = v
+	for k, cmd := range other.Dynamic {
+		out.Dynamic[k] = cmd
+		attr := other.DynamicAttributions[k]
+		if attr == "" {
+			attr = attribution
+		}
+		out.DynamicAttributions[k] = attr
 	}
 
 	return out
+
 }
 
-// ValueSetMap is a map of (possibly multiple) names
-// to ValueSets. The the keys can be single names (like "red")
-// or multiple, comma-delimited names (like "red,green").
-// Use ExtractValueSetByName to get a merged ValueSet
-// comprising the ValueSets under each key which contains that name.
-type ValueSetMap map[string]ValueSet
+func (v ValueSet) WithValueSetAtPath(path string, value interface{}, attribution string) (ValueSet, error) {
+	out := v.Clone()
 
-// ExtractValueSetByName returns a merged ValueSet
-// comprising the ValueSets under each key which contains the provided names.
-// ValueSets with the same name are merged in order from least specific key
-// to most specific, so values under the key "red" will overwrite values under "red,green",
-// which will overwrite values under "red,green,blue", and so on. Then the
-// ValueSets with each name are merged in the order the names were provided.
-func (a ValueSetMap) ExtractValueSetByName(name string) ValueSet {
-
-	out := ValueSet{}
-
-	// More precise values should override less precise values
-	// We assume no ValueSetMap will ever have more than 10
-	// named keys in it.
-	priorities := make([][]ValueSet, 10, 10)
-
-	for k, v := range a {
-		keys := strings.Split(k, ",")
-		for _, k2 := range keys {
-			if k2 == name {
-				priorities[len(keys)] = append(priorities[len(keys)], v)
-			}
-		}
+	err := out.Static.SetAtPath(path, value)
+	if err != nil {
+		return out, err
 	}
 
-	for i := len(priorities) - 1; i >= 0; i-- {
-		for _, v := range priorities[i] {
-			out = out.Combine(v)
-		}
-	}
+	_ = out.StaticAttributions.SetAtPath(path, attribution)
 
-	return out
-}
-
-// ExtractValueSetByName returns a merged ValueSet
-// comprising the ValueSets under each key which contains the provided names.
-// The process starts with the values under the key "all", then
-// ValueSets with the same name are merged in order from least specific key
-// to most specific, so values under the key "red" will overwrite values under "red,green",
-// which will overwrite values under "red,green,blue", and so on. Then the
-// ValueSets with each name are merged in the order the names were provided.
-func (a ValueSetMap) ExtractValueSetByNames(names ...string) ValueSet {
-
-	out := a.ExtractValueSetByName(ValueSetAll)
-
-	for _, name := range names {
-		vs := a.ExtractValueSetByName(name)
-		out = out.Combine(vs)
-	}
-
-	return out
-}
-
-// CanonicalizedCopy returns a copy of this ValueSetMap with
-// only single-name keys, by de-normalizing any multi-name keys.
-// Each ValueSet will have its name set to the value of the name it's under.
-func (a ValueSetMap) CanonicalizedCopy() ValueSetMap {
-
-	out := ValueSetMap{
-		ValueSetAll: ValueSet{},
-	}
-
-	for k := range a {
-		names := strings.Split(k, ",")
-		for _, name := range names {
-			out[name] = ValueSet{}
-		}
-	}
-
-	for name := range out {
-		vs := a.ExtractValueSetByName(name)
-		vs.Name = name
-		out[name] = vs
-	}
-	// don't write out the "all" value set, it's integrated into the others
-	delete(out, ValueSetAll)
-
-	return out
+	return out, nil
 }
 
 // WithFilesLoaded resolves all file system dependencies into static values
 // on this instance, then clears those dependencies.
-func (a ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, error) {
+func (v ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, error) {
 
-	out := ValueSet{
-		Static: a.Static.Clone(),
-	}
+	out := v.Clone()
 
 	mergedValues := Values{}
 
 	// merge together values loaded from files
-	for _, file := range a.Files {
-		file = pathResolver.ResolvePath(file, "VALUE_SET", a.Name)
+	for _, file := range v.Files {
+		file = pathResolver.ResolvePath(file, "VALUE_SET", v.Name)
 		valuesFromFile, err := ReadValuesFile(file)
 		if err != nil {
 			return out, errors.Errorf("reading values file %q: %s", file, err)
 		}
-		mergedValues.Merge(valuesFromFile)
+		valueSetFromFile := ValueSet{
+			Static:valuesFromFile,
+		}
+		out = out.WithValues(valueSetFromFile.WithSource(fmt.Sprintf("file imported by app: %s", file)))
 	}
 
 	// make sure any existing static values are merged OVER the values from the file
 	mergedValues.Merge(out.Static)
 	out.Static = mergedValues
 
-	out.Dynamic = a.Dynamic
+	return out, nil
+}
+
+// WithDynamicValuesResolved returns a ValueSet based on this instance, but with
+// all dynamic values resolved and merged into the static values, and with all values
+// which contain go templates rendered into their final values using the static values
+// as of when this method was called.
+func (v ValueSet) WithDynamicValuesResolved(ctx command.ExecutionContext) (ValueSet, error) {
+
+	y, _ := yaml.MarshalString(v)
+
+	templateValues := templating.TemplateValues{
+		Values: v.Static,
+	}
+
+	escaped, unescape := escapeNonValuesTemplateCode(y)
+
+	rendered, err := templating.RenderTemplate(escaped, templateValues)
+
+	if err != nil {
+		return v, errors.Wrapf(err, "rendering internal templates")
+	}
+
+	rendered = unescape(rendered)
+
+	var out ValueSet
+	err = yaml.UnmarshalString(rendered, &out)
+
+	if err != nil {
+		return v, err
+	}
+
+	out = out.withTriviaFrom(v)
+
+	for k, value := range out.Dynamic {
+
+		if value.Script != "" {
+			ctx.Log().Debugf("Resolving dynamic value %q using script:\n %s", k, value.Script)
+		}
+
+		resolved, err := value.Resolve(ctx)
+		if err != nil {
+			return out, errors.Errorf("resolving dynamic values for key %q: %s", k, err)
+		}
+
+		err = out.Static.SetAtPath(k, resolved)
+		if err != nil {
+			return out, errors.Errorf("merging dynamic values for key %q: %s", k, err)
+		}
+	}
 
 	return out, nil
+}
+
+var templateEscapeRE = regexp.MustCompile(`{{[^}]+}}`)
+
+func escapeNonValuesTemplateCode(in string) (escaped string, unescape func(string) string) {
+
+	m := map[string]string{}
+
+	escaped = templateEscapeRE.ReplaceAllStringFunc(in, func(s string) string {
+		if strings.Contains(s, ".Values") {
+			return s
+		}
+		key := uuid.New()
+		m[key] = s
+		return key
+	})
+
+	unescape = func(s string) string {
+		for key, value := range m {
+			s = strings.Replace(s, key, value, 1)
+		}
+		return s
+	}
+	return
 }

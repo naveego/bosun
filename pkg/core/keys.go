@@ -1,9 +1,19 @@
 package core
 
 const (
-	KeyEnv     = "env"
-	KeyCluster = "cluster"
-	KeyDomain  = "domain"
+	KeyCluster         = "cluster"
+	KeyClusterRole     = "clusterRole"
+	KeyClusterRoles    = "clusterRoles"
+	KeyClustersRoles    = "clustersRoles"
+	KeyClusterProvider = "clusterProvider"
+	KeyNamespace       = "namespace"
+	KeyNamespaceRole   = "namespaceRole"
+	KeyNamespaceRoles  = "namespaceRoles"
+	KeyEnvironment     = "environment"
+	KeyEnvironmentRole = "environmentRole"
+	KeyAppName         = "appName"
+	KeyAppVersion         = "appVersion"
+	KeyReleaseVersion  = "releaseVersion"
 )
 
 type StringKeyValuer interface {

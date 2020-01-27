@@ -3,8 +3,8 @@ package values
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -79,7 +79,7 @@ func (v Values) toEnv(prefix string, acc map[string]string) {
 //
 // Compound table names may be specified with dots:
 //
-//	foo.bar
+// 	foo.bar
 //
 // The above will be evaluated as "The table bar inside the table
 // foo".
@@ -257,6 +257,134 @@ func (v Values) Merge(src Values) {
 		}
 	}
 }
+//
+// // Merge takes the properties in src and merges them into Values. Maps
+// // are merged (keys are overwritten) while values and arrays are replaced.
+// func (v Values) MergeWithAttribution(src Values, attribution string, debug Values) {
+// 	for key, srcVal := range src {
+// 		destVal, found := v[key]
+//
+// 		srcType := fmt.Sprintf("%T", srcVal)
+// 		destType := fmt.Sprintf("%T", destVal)
+// 		match := srcType == destType
+// 		validSrc := istable(srcVal)
+// 		validDest := istable(destVal)
+//
+// 		if found && match && validSrc && validDest {
+// 			destMap := destVal.(Values)
+// 			srcMap := srcVal.(Values)
+//
+// 			childDebug, hasChildDebug := debug[key].(Values)
+// 			if !hasChildDebug {
+// 				childDebug = Values{}
+// 				debug[key] = childDebug
+// 			}
+//
+// 			destMap.MergeWithAttribution(srcMap, attribution, childDebug)
+// 		} else {
+// 			v[key] = srcVal
+// 			debug[key] = attribution
+// 		}
+// 	}
+// }
+
+func (v Values) MakeAttributionValues(attribution string) Values {
+	out := Values{}
+	for key, srcVal := range v {
+
+		validSrc := istable(srcVal)
+
+		if validSrc {
+			srcMap := srcVal.(Values)
+
+			out[key] = srcMap.MakeAttributionValues(attribution)
+		} else {
+			out[key] = attribution
+		}
+	}
+	return out
+}
+
+// Include takes any properties in src which are not in this instance and adds them to this instance.
+func (v Values) Include(src Values) {
+	for key, srcVal := range src {
+		destVal, found := v[key]
+
+		srcType := fmt.Sprintf("%T", srcVal)
+		destType := fmt.Sprintf("%T", destVal)
+		match := srcType == destType
+		validSrc := istable(srcVal)
+		validDest := istable(destVal)
+
+		if found && match && validSrc && validDest {
+			destMap := destVal.(Values)
+			srcMap := srcVal.(Values)
+			destMap.Include(srcMap)
+		} else if !found {
+			v[key] = srcVal
+		}
+	}
+}
+
+// Distill returns what is common between this instance and the other instance.
+// Anything that is not common is returned in the residue parameter.
+func Distill(left Values, right Values) (common Values, leftResidue Values, rightResidue Values) {
+
+	common = Values{}
+	leftResidue = Values{}
+	rightResidue = Values{}
+
+	var keys []string
+	keyMap := map[string]bool{}
+	for key := range left {
+		keys = append(keys, key)
+		keyMap[key] = true
+	}
+	for key := range right {
+		if !keyMap[key] {
+			keys = append(keys, key)
+		}
+	}
+
+	for _, key := range keys {
+		leftValue, leftOK := left[key]
+		rightValue, rightOK := right[key]
+		if leftOK && rightOK {
+
+			if leftValue == nil && rightValue == nil {
+				continue
+			} else if leftValue == nil {
+				rightResidue[key] = rightValue
+				continue
+			} else if rightValue == nil {
+				leftResidue[key] = leftValue
+				continue
+			}
+
+			leftValues := asValues(leftValue)
+			rightValues := asValues(rightValue)
+			if leftValues != nil && rightValues != nil {
+				common[key], leftResidue[key], rightResidue[key] = Distill(leftValues, rightValues)
+				continue
+			}
+
+			rightYaml, _ := yaml.MarshalString(rightValue)
+			leftYaml, _ := yaml.MarshalString(leftValue)
+			if rightYaml == leftYaml {
+				common[key] = rightValue
+			} else {
+				rightResidue[key] = rightValue
+				leftResidue[key] = leftValue
+			}
+		} else if leftOK {
+			leftResidue[key] = leftValue
+		} else if rightOK {
+			rightResidue[key] = rightValue
+		}
+	}
+
+	return
+}
 
 func (v Values) Clone() Values {
 	if v == nil {
@@ -276,6 +404,18 @@ func istable(v interface{}) bool {
 		_, ok = v.(Values)
 	}
 	return ok
+}
+
+func asValues(in interface{}) Values {
+	if msi, ok := in.(map[string]interface{}); ok {
+		return Values(msi)
+	}
+
+	if v, ok := in.(Values); ok {
+		return v
+	}
+
+	return nil
 }
 
 func tableLookup(v Values, simple string) (Values, error) {
@@ -327,10 +467,29 @@ func (v Values) cleanUp() {
 			}
 			cv.cleanUp()
 			v[k] = cv
+		case []map[interface{}]interface{}:
+			cvs := make([]Values, len(c))
+			for i, e := range c {
+				cv := Values{}
+				for k2, v2 := range e {
+					cv[fmt.Sprint(k2)] = v2
+				}
+				cv.cleanUp()
+				cvs[i] = cv
+			}
+			v[k] = cvs
 		case map[string]interface{}:
 			cv := Values(c)
 			cv.cleanUp()
 			v[k] = cv
+		case []map[string]interface{}:
+			cvs := make([]Values, len(c))
+			for i, e := range c {
+				cv := Values(e)
+				cv.cleanUp()
+				cvs[i] = cv
+			}
+			v[k] = cvs
 		default:
 		}
 	}

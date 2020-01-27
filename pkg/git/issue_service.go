@@ -158,14 +158,18 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 
 	// update parent issue body
 	if parent != nil {
+
+
 		parentIssue, _, err := s.github.Issues.Get(s.ctx(), parentOrg, parentRepo, parentIssueNumber)
 		if err != nil {
 			return -1, errors.Wrap(err, "get issue")
 		}
 		issueString := issues.NewIssueRef(issue.Org, issue.Repo, issue.Number)
-		parentNewChild := fmt.Sprintf("\nrequires %s", issueString)
+		parentNewChild := fmt.Sprintf("\n- [ ] requires %s", issueString)
 		parentNewBody := *parentIssue.Body
 		parentNewBody += parentNewChild
+
+		log.Infof("Annotating issue %s with 'requires %s'", parent, issueString)
 
 		newParentRequest := &github.IssueRequest{
 			Title: parentIssue.Title,

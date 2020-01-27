@@ -66,11 +66,19 @@ func (c *Container) BindFactory(factory interface{}, options ...Options) {
 	if factoryType.NumIn() == 0 {
 		fn = func() (reflect.Value, error) {
 			vo := factoryValue.Call(nil)
-			if len(vo) == 1 {
+			switch len(vo) {
+			case 1:
 				return vo[0], nil
+			case 2:
+				if vo[1].IsNil() {
+					return vo[0], nil
+				}
+				err := vo[1].Interface().(error)
+				return vo[0], err
+			default:
+				panic(fmt.Sprintf("invalid return: length was %d, should be 1 or 2", len(vo)))
 			}
-			err := vo[1].Interface().(error)
-			return vo[0], err
+
 		}
 	} else if factoryType.In(0) == providerType {
 		fn = func() (reflect.Value, error) {
