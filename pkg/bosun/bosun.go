@@ -695,7 +695,7 @@ func (b *Bosun) setCurrentPlatform(platform *Platform) (*Platform, error) {
 	b.platform = platform
 	platform.bosun = b
 	if !b.platform.isAutomationDummy {
-	
+
 		err := b.platform.LoadChildren()
 		if err != nil {
 			return nil, err

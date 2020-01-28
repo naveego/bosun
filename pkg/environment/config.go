@@ -116,7 +116,7 @@ func (e *Environment) ForceEnsure(ctx environmentvariables.EnsureContext) error 
 // been set.
 func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) error {
 
-	if ctx.GetParameters().NoCluster {
+	if ctx.GetParameters().NoCluster || len(e.Clusters) == 0 {
 		return nil
 	}
 

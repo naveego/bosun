@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-const logConfigs = false
+const logConfigs = true
 
 type Workspace struct {
 	Path                string `yaml:"-" json:"-"`

@@ -65,8 +65,7 @@ type Platform struct {
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 	bosun                        *Bosun                           `yaml:"-"`
 	// set to true if this platform is a dummy created for automation purposes
-	isAutomationDummy            bool `yaml:"-"`
-
+	isAutomationDummy bool `yaml:"-"`
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -142,17 +141,18 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 	if p.environmentConfigs == nil {
-	}
-	for _, path := range p.EnvironmentPaths {
 
-		path = p.ResolveRelative(path)
-		var config *environment.Config
-		err := yaml.LoadYaml(path, &config)
-		if err != nil {
-			return nil, err
+		for _, path := range p.EnvironmentPaths {
+
+			path = p.ResolveRelative(path)
+			var config *environment.Config
+			err := yaml.LoadYaml(path, &config)
+			if err != nil {
+				return nil, err
+			}
+			config.SetFromPath(path)
+			p.environmentConfigs = append(p.environmentConfigs, config)
 		}
-		config.SetFromPath(path)
-		p.environmentConfigs = append(p.environmentConfigs, config)
 	}
 	return p.environmentConfigs, nil
 }
@@ -1501,6 +1501,7 @@ func (p *Platform) getPlatformApp(appName string, ctx filter.MatchMapArgContaine
 
 func (p *Platform) LoadChildren() error {
 	appPathDir := p.ResolveRelative(p.AppConfigDirectory)
+	_ = os.MkdirAll(appPathDir, 0700)
 	appPaths, err := ioutil.ReadDir(appPathDir)
 	if err != nil {
 		return err
@@ -1514,6 +1515,18 @@ func (p *Platform) LoadChildren() error {
 			return errors.Wrapf(err, "load platform app config from %s", appPath)
 		}
 		p.Apps = append(p.Apps, &app)
+	}
+
+	for _, path := range p.EnvironmentPaths {
+
+		path = p.ResolveRelative(path)
+		var config *environment.Config
+		err = yaml.LoadYaml(path, &config)
+		if err != nil {
+			return err
+		}
+		config.SetFromPath(path)
+		p.environmentConfigs = append(p.environmentConfigs, config)
 	}
 
 	return nil

@@ -135,7 +135,13 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&step, "step", -1, "The step we are on.")
 	rootCmd.PersistentFlags().MarkHidden("step")
 
-	rootCmd.PersistentFlags().String(ArgBosunConfigFile, "$HOME/.bosun/bosun.yaml", "Config file for Bosun. You can also set BOSUN_CONFIG.")
+	bosunConfigFile := os.Getenv("BOSUN_CONFIG")
+	if bosunConfigFile == "" {
+		bosunConfigFile = os.ExpandEnv("$HOME/.bosun/bosun.yaml")
+	}
+
+
+	rootCmd.PersistentFlags().String(ArgBosunConfigFile, bosunConfigFile, "Config file for Bosun. You can also set BOSUN_CONFIG.")
 	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "yaml", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().BoolP(ArgGlobalVerboseErrors, "V", false, "Enable verbose errors with stack traces.")
