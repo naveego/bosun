@@ -7,16 +7,9 @@ async function run() {
   try {
     console.log("Running installer in " + __dirname);
 
-    var bosunPath = await installer.downloadBosun();
+    const bosunPath = await installer.downloadBosun();
 
     console.log(`Downloaded Bosun: ${bosunPath}`);
-
-    const globber = await glob.create(path.join(__dirname, "/../../**"), {
-      followSymbolicLinks: false
-    });
-    const files = await globber.glob();
-
-    console.log("Files: ", files);
 
     core.exportVariable(
       "BOSUN_CONFIG",
