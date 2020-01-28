@@ -1,0 +1,6 @@
+name: "Setup Bosun environment"
+description: "Setup a Bosun environment and add it to the PATH"
+author: "Naveego"
+runs:
+  using: "node12"
+  main: "github-action/dist/index.js"

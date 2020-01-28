@@ -1,0 +1,15 @@
+platforms:
+  - name: naveego
+    bosunVersion: 2.0.3
+    branching:
+      master: master
+      develop: develop
+      release: release/{{.Version}}
+      feature: ""
+    releaseDirectory: releases
+    appConfigDirectory: apps
+    environmentPaths:
+      - ./environments/github.yaml
+    environmentRoles:
+      - name: local
+        description: Environment for builds in github actions.

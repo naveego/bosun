@@ -1,0 +1,39 @@
+{
+  "name": "setup-bosun",
+  "version": "1.0.0",
+  "description": "A github action for setting up bosun",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "ncc build src/setup-bosun.ts",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naveego/setup-bosun.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/naveego/setup-bosun/issues"
+  },
+  "homepage": "https://github.com/naveego/setup-bosun#readme",
+  "dependencies": {
+    "@actions/core": "^1.2.0",
+    "@actions/glob": "^0.1.0",
+    "@actions/io": "^1.0.1",
+    "@actions/tool-cache": "^1.1.2",
+    "@types/request": "^2.48.4",
+    "@types/request-promise-native": "^1.0.17",
+    "request": "^2.87.0",
+    "request-promise-native": "^1.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^12.12.3",
+    "@types/jest": "^24.0.21",
+    "jest": "^24.9.0",
+    "jest-circus": "^24.9.0",
+    "ts-jest": "^24.1.0",
+    "typescript": "^3.6.4",
+    "zeit/ncc": "0.20.5"
+  }
+}

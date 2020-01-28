@@ -4,6 +4,8 @@ CLI documentation is here: [./docs/bosun.md](./docs/bosun.md)
 
 A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/bosun.yaml)
 
+> The Github Action for bosun is defined in the [./github-action](./github-action) folder.
+
 ## Quick Start
 
 1. Install Go 1.11.9 from https://golang.org/doc/install
