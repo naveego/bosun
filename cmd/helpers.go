@@ -50,6 +50,15 @@ func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 	return b
 }
 
+func MustGetPlatform(optionalParams ...cli.Parameters) (*bosun.Bosun, *bosun.Platform) {
+	b := MustGetBosun()
+	p, err := b.GetCurrentPlatform()
+	if err != nil{
+		log.Fatal(err)
+	}
+	return b, p
+}
+
 func mustGetActiveRelease(b *bosun.Bosun) *bosun.ReleaseManifest {
 	r, err := getActiveRelease(b)
 	if err != nil {
