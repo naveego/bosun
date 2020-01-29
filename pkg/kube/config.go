@@ -175,6 +175,9 @@ func (f *ClusterConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if f.Amazon != nil {
 			f.Provider = "amazon"
 		}
+		if f.Rancher != nil {
+			f.Provider = "rancher"
+		}
 	}
 
 	return err
