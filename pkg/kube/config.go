@@ -122,6 +122,7 @@ type ClusterConfig struct {
 	Oracle            *OracleClusterConfig             `yaml:"oracle,omitempty"`
 	Minikube          *MinikubeConfig                  `yaml:"minikube,omitempty"`
 	Amazon            *AmazonClusterConfig             `yaml:"amazon,omitempty"`
+	Rancher           *RancherClusterConfig            `yaml:"rancher,omitempty"`
 	Namespaces        NamespaceConfigs                 `yaml:"namespaces"`
 }
 
@@ -231,6 +232,12 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 		req.Log.Infof("Configuring Amazon cluster %q...", k.Name)
 
 		if err := k.Amazon.configureKubernetes(req); err != nil {
+			return err
+		}
+	} else if k.Rancher != nil {
+		req.Log.Infof("Configuring Rancher cluster %q...", k.Name)
+
+		if err := k.Rancher.configureKubernetes(req); err != nil {
 			return err
 		}
 	} else {
