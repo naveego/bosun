@@ -145,12 +145,11 @@ func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 		for _, path := range p.EnvironmentPaths {
 
 			path = p.ResolveRelative(path)
-			var config *environment.Config
-			err := yaml.LoadYaml(path, &config)
+
+			config, err := environment.LoadConfig(path)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "load environment from %s", path)
 			}
-			config.SetFromPath(path)
 			p.environmentConfigs = append(p.environmentConfigs, config)
 		}
 	}

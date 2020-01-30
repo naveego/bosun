@@ -35,6 +35,7 @@ func (m *MockExecutionContext) Pwd() string {
 
 func (m *MockExecutionContext) WithPwd(pwd string) cli.WithPwder {
 m.MockPwd = pwd
+return m
 }
 
 func (m *MockExecutionContext) GetEnvironmentVariables() map[string]string {
