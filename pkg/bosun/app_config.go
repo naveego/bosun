@@ -157,6 +157,7 @@ type AppRoutableService struct {
 	// The port the service should advertise within the cluster.
 	InternalPort  int `yaml:"internalPort" json:"internalPort"`
 	LocalhostPort int `yaml:"localhostPort" json:"localhostPort,omitempty"`
+	Namespace string `yaml:"namespace"`
 }
 
 type Dependency struct {

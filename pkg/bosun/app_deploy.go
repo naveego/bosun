@@ -599,7 +599,13 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 	for _, routableService := range a.AppManifest.AppConfig.Minikube.RoutableServices {
 		log := ctx.Log().WithField("routable_service", routableService.Name)
 
-		log.Info("Updating service and endpoint...")
+		namespace = routableService.Namespace
+		if namespace == "" {
+			log.Warnf("No namespace on RoutableService element in bosun.yaml, using 'default' namespace. Add a namespace to the routable service if this is incorrect.")
+			namespace = "default"
+		}
+
+		log.Infof("Updating service and endpoint in namespace %s...", namespace)
 
 		svcClient := client.CoreV1().Services(namespace)
 		svc, err := svcClient.Get(routableService.Name, metav1.GetOptions{})
