@@ -41,7 +41,7 @@ func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 	envFromEnv := os.Getenv(core.EnvEnvironment)
 	envFromConfig := b.GetCurrentEnvironment().Name
 	if envFromConfig != envFromEnv {
-		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env %[1]s)\n\n",
+		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env use %[1]s)\n\n",
 			envFromConfig,
 			core.EnvEnvironment,
 			envFromEnv)
@@ -136,7 +136,7 @@ func getBosun(optionalParams ...cli.Parameters) (*bosun.Bosun, error) {
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {
-	f := getFilterParams(b, names).IncludeCurrent()
+	f := getFilterParams(b, names).PreferCurrent()
 	return f.MustGetApp()
 }
 
@@ -229,6 +229,17 @@ func (f FilterParams) ApplyToDeploySettings(d *bosun.DeploySettings) {
 
 func (f FilterParams) IncludeCurrent() FilterParams {
 	if f.IsEmpty() {
+		app, err := getCurrentApp(f.b)
+		if err == nil && app != nil {
+			f.Names = []string{app.Name}
+		}
+	}
+	return f
+}
+
+func (f FilterParams) PreferCurrent() FilterParams {
+	if f.IsEmpty() {
+		f.All = false
 		app, err := getCurrentApp(f.b)
 		if err == nil && app != nil {
 			f.Names = []string{app.Name}

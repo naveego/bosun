@@ -236,13 +236,11 @@ func (v ValueSet) WithValueSetAtPath(path string, value interface{}, attribution
 	return out, nil
 }
 
-// WithFilesLoaded resolves all file system dependencies into static values
-// on this instance, then clears those dependencies.
+// WithFilesLoaded returns a new ValueSet based on this one, but with all files loaded
+// and merged UNDER existing static values.
 func (v ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, error) {
 
 	out := v.Clone()
-
-	mergedValues := Values{}
 
 	// merge together values loaded from files
 	for _, file := range v.Files {
@@ -258,8 +256,7 @@ func (v ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, err
 	}
 
 	// make sure any existing static values are merged OVER the values from the file
-	mergedValues.Merge(out.Static)
-	out.Static = mergedValues
+	out = out.WithValues(v)
 
 	return out, nil
 }

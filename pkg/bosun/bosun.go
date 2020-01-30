@@ -1197,6 +1197,7 @@ func (b *Bosun) GetGithubToken() (string, error) {
 		ctx := b.NewContext().WithDir(ws.Path)
 		if ws.GithubToken == nil {
 			fmt.Println("Github token was not found. Please provide a command that can be run to obtain a github token.")
+			fmt.Println("Your token should have scopes [read, read:packages]")
 			fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
 			fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
 			fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
