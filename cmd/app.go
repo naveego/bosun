@@ -562,7 +562,7 @@ var appToggleCmd = &cobra.Command{
 			}
 
 			if app.DesiredState.Routing == workspace.RoutingLocalhost {
-				err = app.RouteToLocalhost(ctx, "default")
+				err = app.RouteToLocalhost(ctx, app.Namespace)
 				if err != nil {
 					return err
 				}
