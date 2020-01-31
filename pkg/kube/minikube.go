@@ -35,6 +35,9 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 	_, _ = pkg.NewShellExe("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
 
 	leasePath := os.ExpandEnv("$HOME/.config/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
+	if runtime.GOOS == "darwin" {
+		leasePath = os.ExpandEnv("$HOME/Library/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
+	}
 	err = os.RemoveAll(leasePath)
 	if err != nil {
 		pkg.Log.WithError(err).Warn("Could not delete virtualbox leases, IP address may be incorrect.")
