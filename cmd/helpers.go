@@ -165,9 +165,11 @@ func getAppDeploysFromApps(b *bosun.Bosun, repos []*bosun.App) ([]*bosun.AppDepl
 
 		includeDeps := viper.GetBool(argDeployPlanAutoDeps)
 		deploySettings := bosun.DeploySettings{
-			Environment:        ctx.Environment(),
+			SharedDeploySettings: bosun.SharedDeploySettings{
+				Environment:     ctx.Environment(),
+				UseLocalContent: true,
+			},
 			ValueSets:          valueSets,
-			UseLocalContent:    true,
 			IgnoreDependencies: !includeDeps,
 			Apps:               map[string]*bosun.App{},
 		}
@@ -210,8 +212,8 @@ func getFilterParams(b *bosun.Bosun, names []string) FilterParams {
 	p.Include = viper.GetStringSlice(ArgFilteringInclude)
 	p.Exclude = viper.GetStringSlice(ArgFilteringExclude)
 
-	p.All = len(p.Labels) == 0	&&
-		len(p.Include) == 0	&&
+	p.All = len(p.Labels) == 0 &&
+		len(p.Include) == 0 &&
 		len(p.Exclude) == 0 &&
 		len(p.Names) == 0
 
@@ -589,8 +591,10 @@ func getResolvedValuesFromAppManifest(b *bosun.Bosun, appManifest *bosun.AppMani
 	}
 
 	appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{
-		Environment: ctx.Environment(),
-		ValueSets:   valueSets,
+		SharedDeploySettings: bosun.SharedDeploySettings{
+			Environment: ctx.Environment(),
+		},
+		ValueSets: valueSets,
 	}, appManifest)
 	if err != nil {
 		return nil, err

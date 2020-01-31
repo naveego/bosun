@@ -280,7 +280,6 @@ func (a *AppDeploy) GetHelmList(filter string, namespace string) ([]*HelmRelease
 	return result, errors.Wrapf(err, "helm list result:\n%s", data)
 }
 
-
 func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
 	log := ctx.Log()
@@ -296,6 +295,16 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	}
 
 	valuesYaml, _ := yaml.MarshalString(resolvedValues)
+
+	if a.AppDeploySettings.PreviewOnly {
+		log.Infof("Running in preview only mode, here are the values that would have been used to deploy:")
+		fmt.Printf("# Cluster: %s\n", a.Cluster)
+		fmt.Printf("# Namespace: %s\n", a.Namespace)
+		fmt.Println(valuesYaml)
+		fmt.Println("---")
+		return nil
+	}
+
 	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
 	_, err = resolvedValues.PersistValues()

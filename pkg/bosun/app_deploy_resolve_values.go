@@ -71,6 +71,11 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 		resolvedValues = resolvedValues.WithValues(clusterValues.WithDefaultSource(fmt.Sprintf("%s cluster", cluster.Name)))
 	}
 
+	if environmentAppValues, err := ResolveValues(env.GetAppValueSetCollectionProvider(a.Name), ctx); err != nil {
+		return nil, errors.Wrapf(err, "resolve environment app values")
+	} else {
+		resolvedValues = resolvedValues.WithValues(environmentAppValues.WithDefaultSource(fmt.Sprintf("%s environment app value overrides", env.Name)))
+	}
 
 	// ApplyToValues any overrides from parameters passed to this invocation of bosun.
 	for k, v := range ctx.GetParameters().ValueOverrides {

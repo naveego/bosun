@@ -20,6 +20,7 @@ type ExecuteDeploymentPlanRequest struct {
 	Clusters    map[string]bool
 	ValueSets   values.ValueSets
 	Recycle     bool
+	PreviewOnly bool
 }
 
 func NewDeploymentPlanExecutor(bosun *Bosun, platform *Platform) DeploymentPlanExecutor {
@@ -46,12 +47,15 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 	ctx := d.Bosun.NewContext()
 
 	deploySettings := DeploySettings{
+		SharedDeploySettings: SharedDeploySettings{
+			Environment: d.Bosun.GetCurrentEnvironment(),
+			Recycle:     req.Recycle,
+			PreviewOnly: req.PreviewOnly,
+		},
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
-		Environment:        d.Bosun.GetCurrentEnvironment(),
 		ValueSets:          append([]values.ValueSet{deploymentPlan.ValueOverrides}, req.ValueSets...),
 		Clusters:           req.Clusters,
-		Recycle:            req.Recycle,
 		IgnoreDependencies: true,
 	}
 

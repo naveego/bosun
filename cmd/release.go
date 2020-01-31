@@ -403,9 +403,11 @@ var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 		ctx := b.NewContext()
 
 		deploySettings := bosun.DeploySettings{
-			Environment: ctx.Environment(),
-			ValueSets:   valueSets,
-			Manifest:    release,
+			SharedDeploySettings: bosun.SharedDeploySettings{
+				Environment: ctx.Environment(),
+			},
+			ValueSets: valueSets,
+			Manifest:  release,
 		}
 
 		getFilterParams(b, args).ApplyToDeploySettings(&deploySettings)
@@ -568,10 +570,12 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 		}
 
 		deploySettings := bosun.DeploySettings{
-			Environment:     ctx.Environment(),
+			SharedDeploySettings: bosun.SharedDeploySettings{
+				Environment: ctx.Environment(),
+				Recycle:     viper.GetBool(ArgReleaseRecycle),
+			},
 			ValueSets:       valueSets,
 			Manifest:        release,
-			Recycle:         viper.GetBool(ArgReleaseRecycle),
 			ForceDeployApps: map[string]bool{},
 		}
 		for _, appName := range args {
@@ -776,9 +780,11 @@ diff go-between 2.4.2/blue green
 					valueSets := []values.ValueSet{}
 
 					deploySettings := bosun.DeploySettings{
-						Environment: ctx.Environment(),
-						ValueSets:   valueSets,
-						Manifest:    releaseManifest,
+						SharedDeploySettings: bosun.SharedDeploySettings{
+							Environment: ctx.Environment(),
+						},
+						ValueSets: valueSets,
+						Manifest:  releaseManifest,
 					}
 
 					deploy, err := bosun.NewDeploy(ctx, deploySettings)
@@ -801,8 +807,10 @@ diff go-between 2.4.2/blue green
 					valueSets := []values.ValueSet{}
 
 					deploySettings := bosun.DeploySettings{
-						Environment: ctx.Environment(),
-						ValueSets:   valueSets,
+						SharedDeploySettings: bosun.SharedDeploySettings{
+							Environment: ctx.Environment(),
+						},
+						ValueSets: valueSets,
 						Apps: map[string]*bosun.App{
 							app.Name: app,
 						},

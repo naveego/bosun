@@ -64,8 +64,16 @@ type Deploy struct {
 	Filtered   map[string]bool // contains any app deploys which were part of the release but which were filtered out
 }
 
-type DeploySettings struct {
+// SharedDeploySettings are copied from the DeploySettings to the AppDeploySettings
+type SharedDeploySettings struct {
 	Environment        *environment.Environment
+	PreviewOnly bool
+	UseLocalContent    bool
+	Recycle            bool
+}
+
+type DeploySettings struct {
+	SharedDeploySettings
 	ValueSets          []values.ValueSet
 	Manifest           *ReleaseManifest
 	Apps               map[string]*App
@@ -73,13 +81,14 @@ type DeploySettings struct {
 	AppDeploySettings  map[string]AppDeploySettings
 	AppOrder           []string
 	Clusters           map[string]bool
-	UseLocalContent    bool
 	Filter             *filter.Chain // If set, only apps which match the filter will be deployed.
 	IgnoreDependencies bool
-	Recycle bool
 	ForceDeployApps    map[string]bool
-	AfterDeploy        func(app *AppDeploy, err error) // if set, called after a deploy
+	AfterDeploy        func(app *AppDeploy, err error)
+	// if set, called after a deploy
 }
+
+
 
 func (d DeploySettings) WithValueSets(valueSets ...values.ValueSet) DeploySettings {
 	d.ValueSets = append(d.ValueSets, valueSets...)
@@ -106,9 +115,8 @@ func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 }
 
 type AppDeploySettings struct {
-	Environment       *environment.Environment
+	SharedDeploySettings
 	ValueSets         []values.ValueSet
-	UseLocalContent   bool // if true, the app will be deployed using the local chart
 	PlatformAppConfig *PlatformAppConfig
 }
 
@@ -134,8 +142,7 @@ func (d DeploySettings) GetAppDeploySettings(name string) AppDeploySettings {
 
 	appSettings.ValueSets = valueSets
 
-	appSettings.Environment = d.Environment
-	appSettings.UseLocalContent = d.UseLocalContent
+	appSettings.SharedDeploySettings = d.SharedDeploySettings
 
 	return appSettings
 }

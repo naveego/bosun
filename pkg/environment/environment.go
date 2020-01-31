@@ -22,6 +22,29 @@ func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
 	return *e.ValueOverrides
 }
 
+// GetAppValueSetCollectionProvider returns a ValuesSetCollectionProvider that will provide any values set collection
+// defined in this environment for a specific app. If none is defined, an instance that does nothing will be returned.
+func (e *Environment) GetAppValueSetCollectionProvider(appName string) values.ValueSetCollectionProvider {
+
+	if appValueOverride, ok := e.AppValueOverrides[appName]; ok {
+		return appValueSetCollectionProvider{
+			valueSetCollection:appValueOverride,
+		}
+	}
+
+	return appValueSetCollectionProvider{
+		valueSetCollection:values.NewValueSetCollection(),
+	}
+}
+
+type appValueSetCollectionProvider struct {
+	valueSetCollection values.ValueSetCollection
+}
+
+func (a appValueSetCollectionProvider) GetValueSetCollection() values.ValueSetCollection {
+	return a.valueSetCollection
+}
+
 type Options struct {
 	Cluster string
 }

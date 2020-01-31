@@ -29,9 +29,10 @@ type Config struct {
 	Scripts   []*script.Script                 `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues      *values.ValueSet           `yaml:"appValues" json:"appValues"`
-	ValueSetNames  []string                   `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
-	ValueOverrides *values.ValueSetCollection `yaml:"valueOverrides,omitempty"`
+	AppValues         *values.ValueSet                     `yaml:"appValues" json:"appValues"`
+	ValueSetNames     []string                             `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
+	ValueOverrides    *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
+	AppValueOverrides map[string]values.ValueSetCollection `yaml:"appValueOverrides,omitempty"`
 }
 
 func (e *Config) MarshalYAML() (interface{}, error) {
