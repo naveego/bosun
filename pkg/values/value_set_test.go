@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	. "github.com/naveego/bosun/pkg/values"
@@ -84,9 +85,9 @@ var _ = Describe("ValueSetCollection", func() {
 						Name: "redfiltered",
 					},
 					Roles: []core.EnvironmentRole{"red", "redfiltered"},
-					ExactMatchFilters: map[string][]string{
-						"multi":  []string{"a", "b"},
-						"single": []string{"c"},
+					ExactMatchFilters: filter.MatchMapConfig{
+						"multi": filter.MatchMapConfigValues{"a", "b"},
+						"single": filter.MatchMapConfigValues{"c"},
 					},
 					Static: Values{
 						"filtered": "not-present-without-filter",
