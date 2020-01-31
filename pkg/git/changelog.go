@@ -36,8 +36,26 @@ const (
 	StateLookingForTitle
 	StateLookingForBody
 )
+var bumpMap = map[string]semver.Bump{
+	"feat":              semver.BumpMinor,
+	"fix":               semver.BumpPatch,
+	"refactor":          semver.BumpPatch,
+	"perf":              semver.BumpPatch,
+	"docs":              semver.BumpNone,
+	"style":             semver.BumpNone,
+	"test":              semver.BumpNone,
+	"chore":             semver.BumpNone,
+	"deploy":            semver.BumpPatch,
+	MalformedCommitFlag: semver.BumpPatch,
+}
 
-var allTypes = []string{"feat", "perf", "test", "chore", "fix", "docs", "style", "refactor"}
+func init(){
+	for k := range bumpMap {
+		allTypes = append(allTypes, k)
+	}
+}
+
+var allTypes []string
 var allCommitTypeString = strings.Join(allTypes, "|")
 
 // TODO: imporve Regex with $ and ^ to be robust
@@ -57,18 +75,7 @@ var skipKeys = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*$`),
 }
 
-var bumpMap = map[string]semver.Bump{
-	"feat":              semver.BumpMinor,
-	"fix":               semver.BumpPatch,
-	"refactor":          semver.BumpPatch,
-	"perf":              semver.BumpPatch,
-	"docs":              semver.BumpNone,
-	"style":             semver.BumpNone,
-	"test":              semver.BumpNone,
-	"chore":             semver.BumpNone,
-	"deploy":            semver.BumpPatch,
-	MalformedCommitFlag: semver.BumpPatch,
-}
+
 
 const MalformedCommitFlag = "malformed"
 

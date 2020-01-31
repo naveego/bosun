@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -46,7 +47,25 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			IssueService:  svc,
 		}
 
-		return acceptPRCommand.Execute()
+		err = acceptPRCommand.Execute()
+		if err != nil {
+			return err
+		}
+
+		g, err := git.NewGitWrapper(repoPath)
+		if err != nil {
+			return err
+		}
+		_ = g.Fetch()
+
+		if g.Branch() == "develop" {
+			err = g.Pull()
+			return err
+		} else {
+			pkg.Log.Infof("You should probably pull the develop branch now.")
+		}
+
+		return nil
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(ArgGitAcceptPRAppVersion, []string{}, "Apps to apply version bump to.")
