@@ -1,9 +1,7 @@
 package bosun
 
 import (
-	"bufio"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
@@ -12,11 +10,8 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
-	"io"
-	"os/exec"
 	"regexp"
 	"sort"
-	"strings"
 )
 
 //
@@ -414,105 +409,6 @@ func (a AppDeployMap) GetAppsSortedByName() AppReleasesSortedByName {
 	return out
 }
 
-func (a *AppDeploy) Validate(ctx BosunContext) []error {
-
-	var errs []error
-
-	out, err := pkg.NewShellExe("helm", "search", a.Chart(ctx), "-v", a.AppConfig.Version.String()).RunOut()
-	if err != nil {
-		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.AppConfig.Chart, a.AppConfig.Version, err))
-	}
-	if !strings.Contains(out, a.AppConfig.Chart) {
-		errs = append(errs, errors.Errorf("chart %s@%s not found", a.AppConfig.Chart, a.AppConfig.Version))
-	}
-
-	if !a.AppConfig.BranchForRelease {
-		return errs
-	}
-
-	values, err := a.GetResolvedValues(ctx)
-	if err != nil {
-		return []error{err}
-	}
-
-	for _, imageConfig := range a.AppConfig.GetImages() {
-
-		tag, ok := values.Values["tag"].(string)
-		if !ok {
-			tag = a.AppConfig.Version.String()
-		}
-
-		imageName := imageConfig.GetFullNameWithTag(tag)
-		err = checkImageExists(ctx, imageName)
-
-		if err != nil {
-			errs = append(errs, errors.Errorf("image %q: %s", imageConfig, err))
-		}
-	}
-
-	// if a.App.IsCloned() {
-	// 	appBranch := a.App.GetBranchName()
-	// 	if appBranch != a.Branch {
-	// 		errs = append(errs, errors.Errorf("app was added to release from branch %s, but is currently on branch %s", a.Branch, appBranch))
-	// 	}
-	//
-	// 	appCommit := a.App.GetCommit()
-	// 	if appCommit != a.GetCurrentCommit {
-	// 		errs = append(errs, errors.Errorf("app was added to release at commit %s, but is currently on commit %s", a.GetCurrentCommit, appCommit))
-	// 	}
-	// }
-
-	return errs
-}
-
-func checkImageExists(ctx BosunContext, name string) error {
-
-	cmd := exec.Command("docker", "pull", name)
-	stdout, err := cmd.StdoutPipe()
-	stderr, err := cmd.StderrPipe()
-	// cmd.Env = ctx.GetMinikubeDockerEnv()
-	if err != nil {
-		return err
-	}
-	reader := io.MultiReader(stdout, stderr)
-	scanner := bufio.NewScanner(reader)
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	defer cmd.Process.Kill()
-
-	var lines []string
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		lines = append(lines, line)
-		if strings.Contains(line, "Pulling from") {
-			return nil
-		}
-		if strings.Contains(line, "Error") {
-			return errors.New(line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-
-	cmd.Process.Kill()
-
-	state, err := cmd.Process.Wait()
-	if err != nil {
-		return err
-	}
-
-	if !state.Success() {
-		return errors.Errorf("Pull failed: %s\n%s", state.String(), strings.Join(lines, "\n"))
-	}
-
-	return nil
-}
 
 //
 // func (r *Deploy) IncludeDependencies(ctx BosunContext) error {

@@ -26,9 +26,9 @@ func init() {
 }
 
 var _ = addCommand(deployCmd, &cobra.Command{
-	Use:          "execute {path | release}",
+	Use:          "validate {path | release}",
 	Args:         cobra.ExactArgs(1),
-	Short:        "Executes a deployment against the current environment.",
+	Short:        "Validates a deployment plan.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -36,24 +36,24 @@ var _ = addCommand(deployCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		req := bosun.ExecuteDeploymentPlanRequest{
-		}
 
-		pathOrSlot := args[0]
-		if pathOrSlot == "release" {
-			r, err := p.GetCurrentRelease()
+
+		deploymentPlanPath := args[0]
+		if deploymentPlanPath == "release" {
+			release, err := p.GetCurrentRelease()
 			if err != nil {
 				return err
 			}
-			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
-		} else {
-			req.Path = pathOrSlot
+			deploymentPlanPath = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", release.Version.String()))
 		}
 
-		executor := bosun.NewDeploymentPlanExecutor(b, p)
+		plan, err := bosun.LoadDeploymentPlanFromFile(deploymentPlanPath)
 
-		err = executor.Execute(req)
+		if err != nil {
+			return err
+		}
 
+		fmt.Println(plan)
 
 		return err
 	},

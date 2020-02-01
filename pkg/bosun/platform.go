@@ -235,17 +235,22 @@ func (p *Platform) checkPlanningOngoing() error {
 }
 
 func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error {
+	log := ctx.Log()
 
 	platformRepoPath, err := git.GetRepoPath(p.FromPath)
 	if err != nil {
 		return err
 	}
+
 	localRepo := &vcs.LocalRepo{Path: platformRepoPath}
-	if localRepo.IsDirty() {
-		return errors.New("repo is dirty, commit or stash your changes before adding it to the release")
+	if localRepo.GetCurrentBranch() == git.BranchName(branch) {
+		log.Debugf("Repo at %s is already on branch %s.", platformRepoPath, branch)
+		return nil
 	}
 
-	log := ctx.Log()
+	if localRepo.IsDirty() {
+		return errors.Errorf("repo at %s is dirty, commit or stash your changes before adding it to the release")
+	}
 
 	log.Debug("Checking if release branch exists...")
 
@@ -1547,6 +1552,12 @@ func (p *Platform) GetKnownAppMap() map[string]*PlatformAppConfig {
 		out[app.Name] = app
 	}
 	return out
+}
+
+func (p *Platform) GetDeploymentsDir() string {
+	dir := filepath.Join(filepath.Dir(p.FromPath), "deployments")
+	_ = os.MkdirAll(dir, 0700)
+	return dir
 }
 
 type mergeTarget struct {

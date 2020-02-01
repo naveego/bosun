@@ -18,6 +18,11 @@ func (c *ConfigShared) SetFileSaver(p FileSaver) {
 }
 
 func (c *ConfigShared) ResolveRelative(path string) string {
+
+	if filepath.IsAbs(path) {
+		return path
+	}
+
 	if c.FromPath == "" {
 		panic("FromPath was not set (SetFromPath should have been called after loading)")
 	}

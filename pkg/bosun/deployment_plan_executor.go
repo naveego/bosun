@@ -14,13 +14,15 @@ type DeploymentPlanExecutor struct {
 }
 
 type ExecuteDeploymentPlanRequest struct {
-	Path        string
-	Plan        *DeploymentPlan
-	IncludeApps []string
-	Clusters    map[string]bool
-	ValueSets   values.ValueSets
-	Recycle     bool
-	PreviewOnly bool
+	Path         string
+	Plan         *DeploymentPlan
+	IncludeApps  []string
+	Clusters     map[string]bool
+	ValueSets    values.ValueSets
+	Recycle      bool
+	Validate     bool
+	ValidateOnly bool
+	PreviewOnly  bool
 }
 
 func NewDeploymentPlanExecutor(bosun *Bosun, platform *Platform) DeploymentPlanExecutor {
@@ -101,6 +103,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 
 		appManifest := appPlan.Manifest
 		appManifest.AppConfig.IsFromManifest = true
+		appManifest.PinnedReleaseVersion = deploymentPlan.ReleaseVersion
 
 		appDeploySettings := AppDeploySettings{}
 

@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"path/filepath"
@@ -18,6 +19,7 @@ type CreateDeploymentPlanRequest struct {
 	Apps                  []string
 	IgnoreDependencies    bool
 	AutomaticDependencies bool
+	ReleaseVersion        *semver.Version
 }
 
 func NewDeploymentPlanCreator(bosun *Bosun, platform *Platform) DeploymentPlanCreator {
@@ -42,9 +44,10 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 	}
 	plan := &DeploymentPlan{
 		DirectoryPath:            dir,
-		ProviderPriority:                 req.ProviderPriority,
+		ProviderPriority:         req.ProviderPriority,
 		SkipDependencyValidation: req.IgnoreDependencies,
 		DeployApps:               map[string]bool{},
+		ReleaseVersion:           req.ReleaseVersion,
 	}
 	apps := map[string]*App{}
 	dependencies := map[string][]string{}

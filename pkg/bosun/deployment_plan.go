@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
@@ -11,8 +12,9 @@ import (
 
 type DeploymentPlan struct {
 	core.ConfigShared         `yaml:",inline"`
+	ReleaseVersion            *semver.Version      `yaml:"releaseVersion"`
 	DirectoryPath             string               `yaml:"-"`
-	ProviderPriority                  []string               `yaml:"providerPriority"`
+	ProviderPriority          []string             `yaml:"providerPriority"`
 	SkipDependencyValidation  bool                 `yaml:"skipDependencyValidation"`
 	ValueOverrides            values.ValueSet      `yaml:"valueOverrides"`
 	DeployApps                map[string]bool      `yaml:"deployApps"`

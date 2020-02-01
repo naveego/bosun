@@ -26,33 +26,6 @@ import (
 	"time"
 )
 
-func runParentPersistentPreRunE(cmd *cobra.Command, args []string) error {
-	parent := cmd.Parent()
-	for parent != nil {
-		if parent.PersistentPreRunE != nil {
-			err := parent.PersistentPreRunE(cmd, args)
-			if err != nil {
-				return errors.Wrapf(err, "parent.PersistentPreRunE (%s)", parent.Name())
-			}
-		}
-		parent = parent.Parent()
-	}
-	return nil
-}
-func runParentPersistentPostRunE(cmd *cobra.Command, args []string) error {
-	parent := cmd.Parent()
-	for parent != nil {
-		if parent.PersistentPreRunE != nil {
-			err := parent.PersistentPostRunE(cmd, args)
-			if err != nil {
-				return errors.Wrapf(err, "parent.PersistentPreRunE (%s)", parent.Name())
-			}
-		}
-		parent = parent.Parent()
-	}
-	return nil
-}
-
 // releaseCmd represents the release command
 var releaseCmd = addCommand(rootCmd, &cobra.Command{
 	Use:     "release",

@@ -30,12 +30,17 @@ func init() {
 
 }
 
-var _ = addCommand(deployCmd, &cobra.Command{
-	Use:          "plan",
-	Args:         cobra.ExactArgs(0),
-	Short:        "Plans a deployment.",
+var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
+	Use:          "plan [release]",
+	Short:        "Plans a deployment, optionally of an existing release.",
+	Args:cobra.RangeArgs(0, 1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+
+		if len(args) > 0 && args[0] == "release" {
+			return releaseDeployPlan()
+		}
+
 		b := MustGetBosun()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
@@ -46,7 +51,7 @@ var _ = addCommand(deployCmd, &cobra.Command{
 
 		path, _ := cmd.Flags().GetString(argDeployPlanPath)
 		if path == "" {
-			path = userChooseStringWithDefault("Where should the plan be saved?", filepath.Join(filepath.Dir(p.FromPath), "/deployments/default/plan.yaml"))
+			path = userChooseStringWithDefault("Where should the plan be saved?", filepath.Join(p.GetDeploymentsDir(), "default/plan.yaml"))
 		}
 		log.Debugf("Saving plan to %q", path)
 
@@ -144,3 +149,65 @@ const (
 	argDeployPlanAutoDeps         = "auto-deps"
 	argDeployPlanUpdate           = "update"
 )
+
+var deployReleasePlanCmd = addCommand(deployPlanCmd, &cobra.Command{
+	Use:          "plan",
+	Short:        "Plan the deployment of the current release",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return releaseDeployPlan()
+	},
+})
+
+func releaseDeployPlan() error {
+
+	b := MustGetBosun()
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return err
+	}
+	r, err := p.GetCurrentRelease()
+	if err != nil {
+		return err
+	}
+
+	deploymentPlanPath := filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
+
+	previousPlan, _ := bosun.LoadDeploymentPlanFromFile(deploymentPlanPath)
+
+	var req = bosun.CreateDeploymentPlanRequest{
+		Path:                  deploymentPlanPath,
+		ProviderPriority:      []string{r.Slot},
+		IgnoreDependencies:    true,
+		AutomaticDependencies: false,
+		ReleaseVersion: &r.Version,
+	}
+	for name, included := range r.UpgradedApps {
+		if included {
+			req.Apps = append(req.Apps, name)
+		}
+	}
+
+	planCreator := bosun.NewDeploymentPlanCreator(b, p)
+
+	plan, err := planCreator.CreateDeploymentPlan(req)
+
+	if err != nil {
+		return err
+	}
+
+	if previousPlan != nil {
+		plan.EnvironmentDeployProgress = previousPlan.EnvironmentDeployProgress
+	}
+
+	err = plan.Save()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(deploymentPlanPath)
+
+	return nil
+}
+
