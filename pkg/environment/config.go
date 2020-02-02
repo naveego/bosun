@@ -11,12 +11,11 @@ import (
 )
 
 type Config struct {
-	FromPath       string                 `yaml:"-" json:"-"`
-	Name           string                 `yaml:"name" json:"name"`
+	core.ConfigShared `yaml:",inline"`
 	Role           core.EnvironmentRole   `yaml:"role" json:"role"`
-	DefaultCluster string                 `yaml:"defaultCluster" json:"defaultCluster"`
-	Clusters       kube.ConfigDefinitions `yaml:"clusters"`
-	PullSecrets    []kube.PullSecret      `yaml:"pullSecrets"`
+	DefaultCluster string                 `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
+	Clusters       kube.ConfigDefinitions `yaml:"clusters,omitempty"`
+	PullSecrets    []kube.PullSecret      `yaml:"pullSecrets,omitempty"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool                             `yaml:"protected" json:"protected"`
@@ -26,11 +25,11 @@ type Config struct {
 	Scripts   []*script.Script                 `yaml:"scripts,omitempty" json:"scripts,omitempty"`
 	// Contains app value overrides which should be applied when deploying
 	// apps to this environment.
-	AppValues         *values.ValueSet                     `yaml:"appValues" json:"appValues"`
+	AppValues         *values.ValueSet                     `yaml:"appValues,omitempty" json:"appValues"`
 	ValueSetNames     []string                             `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 	ValueOverrides    *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
 	AppValueOverrides map[string]values.ValueSetCollection `yaml:"appValueOverrides,omitempty"`
-	SecretGroupConfigs []*SecretGroupConfig       `yaml:"secrets,omitempty"`
+	SecretGroupFilePaths map[string]string `yaml:"secretFiles"`
 }
 
 func (e *Config) MarshalYAML() (interface{}, error) {
@@ -66,9 +65,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	config.SetFromPath(path)
-	for _, secret := range config.SecretGroupConfigs {
-		secret.SetFromPath(path)
-	}
 	return config, nil
 }
 

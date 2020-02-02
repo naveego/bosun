@@ -1,6 +1,7 @@
 package environment
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
@@ -10,6 +11,7 @@ import (
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -19,7 +21,6 @@ type Environment struct {
 	ClusterName    string
 	Cluster        *kube.ClusterConfig
 	secretGroups   map[string]*SecretGroup
-	secretsContext command.ExecutionContext
 }
 
 func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
@@ -35,12 +36,12 @@ func (e *Environment) GetAppValueSetCollectionProvider(appName string) values.Va
 
 	if appValueOverride, ok := e.AppValueOverrides[appName]; ok {
 		return appValueSetCollectionProvider{
-			valueSetCollection:appValueOverride,
+			valueSetCollection: appValueOverride,
 		}
 	}
 
 	return appValueSetCollectionProvider{
-		valueSetCollection:values.NewValueSetCollection(),
+		valueSetCollection: values.NewValueSetCollection(),
 	}
 }
 
@@ -61,6 +62,7 @@ func New(config Config, options Options) (*Environment, error) {
 	env := &Environment{
 		Config:      config,
 		ClusterName: options.Cluster,
+		secretGroups: map[string]*SecretGroup{},
 	}
 
 	return env, nil
@@ -75,8 +77,8 @@ func (e *Environment) Save() error {
 
 	// save any secret groups which were loaded
 	for _, secretGroup := range e.secretGroups {
-		if err := secretGroup.Save(e.secretsContext); err != nil {
-			return errors.Wrapf(err, "saving loaded secret group %q", secretGroup.Name)
+		if err := secretGroup.Save(); err != nil {
+			return err
 		}
 	}
 
@@ -305,21 +307,23 @@ func (e *Environment) Execute(ctx environmentvariables.EnsureContext) error {
 	return nil
 }
 
-func (e *Environment) PrepareSecrets(ctx command.ExecutionContext) error {
-
-	e.secretGroups = map[string]*SecretGroup{}
-	e.secretsContext = ctx
-
-	return nil
-}
-
 func (e *Environment) GetSecretGroupConfig(groupName string) (*SecretGroupConfig, error) {
-	for _, group := range e.SecretGroupConfigs {
-		if group.Name == groupName {
-			return group, nil
-		}
+
+	secretGroupFilePath, ok := e.SecretGroupFilePaths[groupName]
+	if !ok {
+		return nil, errors.Errorf("no secret group found with name %q", groupName)
 	}
-	return nil, errors.Errorf("no secret group found with name %q", groupName)
+
+	secretGroupFilePath = filepath.Join(filepath.Dir(e.FromPath), secretGroupFilePath)
+
+	var secretGroupConfig SecretGroupConfig
+	if err := yaml.LoadYaml(secretGroupFilePath, &secretGroupConfig); err != nil {
+		return nil, err
+	}
+
+	secretGroupConfig.SetFromPath(secretGroupFilePath)
+
+	return &secretGroupConfig, nil
 }
 
 func (e *Environment) GetSecretConfig(groupName string, secretName string) (*SecretConfig, error) {
@@ -336,20 +340,17 @@ func (e *Environment) GetSecretConfig(groupName string, secretName string) (*Sec
 }
 
 func (e *Environment) getSecretGroup(groupName string) (*SecretGroup, error) {
-	if e.secretsContext == nil {
-		panic("environment secretContext was nil (did you call PrepareSecrets on the environment?)")
-	}
-
 	group, ok := e.secretGroups[groupName]
 	if !ok {
 		groupConfig, err := e.GetSecretGroupConfig(groupName)
 		if err != nil {
 			return nil, err
 		}
-		group, err = groupConfig.LoadSecrets(e.secretsContext)
+		group, err = NewSecretGroup(groupConfig)
 		if err != nil {
 			return nil, err
 		}
+
 		e.secretGroups[groupName] = group
 	}
 
@@ -366,48 +367,102 @@ func (e *Environment) GetSecretValue(groupName string, secretName string) (strin
 	return group.GetSecretValue(secretName)
 }
 
-func (e *Environment) AddOrReKeySecretGroup(groupName, keyCommand string) error {
-	group, err := e.GetSecretGroupConfig(groupName)
+// AddSecretGroup creates or replaces a secret group using the provided  key config.
+func (e *Environment) AddSecretGroup(groupName string, keyConfig SecretKeyConfig) error {
+	groupConfig, err := e.GetSecretGroupConfig(groupName)
 	if err != nil {
-		group = &SecretGroupConfig{
-			ConfigShared: core.ConfigShared{
-				Name:groupName,
-				FromPath:e.FromPath,
-			},
-
+		if e.SecretGroupFilePaths == nil {
+			e.SecretGroupFilePaths = map[string]string{}
 		}
-		e.SecretGroupConfigs = append(e.SecretGroupConfigs, group)
-	}
-	group.Key = command.CommandValue{
-		Command:command.Command{
-			Script:keyCommand,
-		},
+		groupFilepath := fmt.Sprintf("%s.secrets.yaml", groupName)
+
+		groupConfig = &SecretGroupConfig{
+			ConfigShared: core.ConfigShared{
+				Name:     groupName,
+				FromPath: e.ResolveRelative(groupFilepath),
+			},
+			isNew: true,
+			Key:   &keyConfig,
+		}
+		e.SecretGroupFilePaths[groupName] = groupFilepath
+		err = e.Save()
+		if err != nil {
+			return err
+		}
 	}
 
-	return nil
+	group, err := NewSecretGroup(groupConfig)
+	if err != nil {
+		return err
+	}
+	group.valuesDirty = true
+
+	return group.Save()
 }
 
-func (e *Environment) AddOrUpdateSecret(groupName string, secret *Secret) error {
+func (e *Environment) DeleteSecretGroup(groupName string) error {
+
+	if groupFilePath, ok := e.SecretGroupFilePaths[groupName]; ok {
+		groupFilePath = e.ResolveRelative(groupFilePath)
+		_ = os.Remove(groupFilePath)
+	}
+
+	delete(e.SecretGroupFilePaths, groupName)
+
+	return e.Save()
+
+}
+
+// GetSecretGroup gets the secret group with the provided name. If the group does not exist,
+// the returned bool will be false. If the group could not be loaded, the error will not be nil.
+func (e *Environment) GetSecretGroup(name string) (group *SecretGroup, exists bool, loadErr error) {
+	groupConfig, err := e.GetSecretGroupConfig(name)
+	if err != nil {
+		return nil, false, nil
+	}
+
+	group, loadErr = NewSecretGroup(groupConfig)
+
+	return group, true, loadErr
+}
+
+func (e *Environment) AddOrUpdateSecretValue(groupName string, secretName string, value string) error {
 	group, err := e.getSecretGroup(groupName)
 	if err != nil {
 		return err
 	}
 
-	group.updated = true
+	return group.AddOrUpdateSecretValue(secretName, value)
+}
 
-	group.values[secret.Name] = secret.Value
+func (e *Environment) ValidateSecrets(secretPaths ...string) error{
 
-	replaced := false
-	for i, existing := range group.Secrets{
-		if existing.Name == secret.Name {
-			group.Secrets[i] = &secret.SecretConfig
-			replaced = true
-			break
+	for _, secretPath := range secretPaths {
+		groupName, secretName, err := parseSecretPath(secretPath)
+		if err != nil {
+			return err
+		}
+
+		group, found, err := e.GetSecretGroup(groupName)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return errors.Errorf("group %q not found", groupName)
+		}
+
+		_, err = group.GetSecretValue(secretName)
+		if err != nil {
+			return err
 		}
 	}
-	if !replaced {
-		group.Secrets = append(group.Secrets, &secret.SecretConfig)
-	}
-
 	return nil
+}
+
+func parseSecretPath(path string) (groupName string, secretName string, err error) {
+	segs := strings.Split(path, "/")
+	if len (segs) != 2 {
+		return "","", errors.Errorf("invalid secret path %q (want group/secret)", path)
+	}
+	return segs[0], segs[1], nil
 }

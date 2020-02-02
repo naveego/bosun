@@ -1,14 +1,6 @@
 name: test-env
 role: ""
-defaultCluster: ""
-clusters: []
-pullSecrets: []
 protected: false
 isLocal: false
-appValues: null
-secrets:
-- configshared:
-    name: default
-  metadata: []
-  key:
-    value: ""
+secretFiles:
+  default: default.secrets.yaml
