@@ -6,12 +6,8 @@ import (
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
-	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/yaml"
-	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
-	"regexp"
-	"strings"
 )
 
 const ValueSetAll = "all"
@@ -250,7 +246,7 @@ func (v ValueSet) WithFilesLoaded(pathResolver core.PathResolver) (ValueSet, err
 			return out, errors.Errorf("reading values file %q: %s", file, err)
 		}
 		valueSetFromFile := ValueSet{
-			Static:valuesFromFile,
+			Static: valuesFromFile,
 		}
 		out = out.WithValues(valueSetFromFile.WithSource(fmt.Sprintf("file imported by app: %s", file)))
 	}
@@ -269,19 +265,15 @@ func (v ValueSet) WithDynamicValuesResolved(ctx command.ExecutionContext) (Value
 
 	y, _ := yaml.MarshalString(v)
 
-	templateValues := templating.TemplateValues{
-		Values: v.Static,
-	}
+	// Get the template values from the context
+	templateValues := ctx.TemplateValues()
+	// Merge the existing values into it so they can be used to format themselves
+	templateValues.Values = Values(templateValues.Values).Merge(v.Static).ToMapStringInterface()
 
-	escaped, unescape := escapeNonValuesTemplateCode(y)
-
-	rendered, err := templating.RenderTemplate(escaped, templateValues)
-
-	if err != nil {
-		return v, errors.Wrapf(err, "rendering internal templates")
-	}
-
-	rendered = unescape(rendered)
+    rendered, err := templateValues.RenderInto(y)
+if err != nil {
+	return v, err
+}
 
 	var out ValueSet
 	err = yaml.UnmarshalString(rendered, &out)
@@ -310,28 +302,4 @@ func (v ValueSet) WithDynamicValuesResolved(ctx command.ExecutionContext) (Value
 	}
 
 	return out, nil
-}
-
-var templateEscapeRE = regexp.MustCompile(`{{[^}]+}}`)
-
-func escapeNonValuesTemplateCode(in string) (escaped string, unescape func(string) string) {
-
-	m := map[string]string{}
-
-	escaped = templateEscapeRE.ReplaceAllStringFunc(in, func(s string) string {
-		if strings.Contains(s, ".Values") {
-			return s
-		}
-		key := uuid.New()
-		m[key] = s
-		return key
-	})
-
-	unescape = func(s string) string {
-		for key, value := range m {
-			s = strings.Replace(s, key, value, 1)
-		}
-		return s
-	}
-	return
 }

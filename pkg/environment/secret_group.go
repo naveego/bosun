@@ -25,10 +25,8 @@ type SecretGroupConfig struct {
 type SecretGroup struct {
 	config *SecretGroupConfig
 
-	valuesDirty bool
-
 	// contains the values of secrets that have been loaded or added
-	values map[string]string `yaml:"-" json:"-"`
+	values *SecretValues `yaml:"-" json:"-"`
 }
 
 // Creates an in-memory secret group from the given config, with secret values decrypted.
@@ -44,7 +42,7 @@ func newSecretGroup(s *SecretGroupConfig) (*SecretGroup, error) {
 
 	group := &SecretGroup{
 		config: s,
-		values: map[string]string{},
+		values: &SecretValues{},
 	}
 
 	if s.isNew {
@@ -81,48 +79,53 @@ func newSecretGroup(s *SecretGroupConfig) (*SecretGroup, error) {
 		return nil, errors.Wrap(err, "invalid secret data")
 	}
 
-	var values map[string]string
+	var values SecretValues
 	err = yaml.Unmarshal(plaintext, &values)
 	if err != nil {
 		return nil, errors.Wrapf(err, "")
 	}
 
-	group.values = values
+	group.values = &values
 	return group, nil
 }
 
-func (s *SecretGroup) setValue(name string, value string) {
-	if s.values == nil {
-		s.values = map[string]string{}
-	}
-	if existing, ok := s.values[name]; ok && existing == value {
-		return
-	}
-	s.valuesDirty = true
-	s.values[name] = value
+type SecretValues struct {
+	Values map[string]string `yaml:"values"`
+	Dirty  bool              `yaml:"-"`
 }
 
-func (s *SecretGroup) deleteValue(name string) {
-	if s.values == nil {
-		s.values = map[string]string{}
+func (s *SecretValues) setValue(name string, value string) {
+	if s.Values == nil {
+		s.Values = map[string]string{}
 	}
-	if _, ok := s.values[name]; ok {
-		delete(s.values, name)
-		s.valuesDirty = true
+	if existing, ok := s.Values[name]; ok && existing == value {
+		return
+	}
+	s.Dirty = true
+	s.Values[name] = value
+}
+
+func (s *SecretValues) deleteValue(name string) {
+	if s.Values == nil {
+		s.Values = map[string]string{}
+	}
+	if _, ok := s.Values[name]; ok {
+		delete(s.Values, name)
+		s.Dirty = true
 		return
 	}
 }
 
-func (s *SecretGroup) GetSecretValue(name string) (string, error) {
-	secret, err := s.getSecretValue(name)
+func (s *SecretGroup) GetSecretValue(name string, generationConfig *SecretGenerationConfig) (string, error) {
+	secret, err := s.getSecretValue(name, generationConfig)
 	if err != nil {
 		return "", errors.Wrapf(err, "get secret %q from group %q", name, s.config.Name)
 	}
 	return secret, nil
 }
 
-func (s *SecretGroup) getSecretValue(name string) (string, error) {
-	if value, ok := s.values[name]; ok {
+func (s *SecretGroup) getSecretValue(name string, generationConfig *SecretGenerationConfig) (string, error) {
+	if value, ok := s.values.Values[name]; ok {
 		return value, nil
 	}
 
@@ -133,7 +136,20 @@ func (s *SecretGroup) getSecretValue(name string) (string, error) {
 		}
 	}
 	if secretConfig == nil {
-		return "", errors.New("group did not contain secret")
+		if generationConfig == nil {
+			return "", errors.New("group did not contain secret and no generation config was provided")
+		}
+
+		secretConfig = &SecretConfig{
+			Name:        name,
+			Generation:  generationConfig,
+			Description: "Auto-generated secret.",
+		}
+
+		err := s.AddOrUpdateSecret("", secretConfig)
+		if err != nil {
+			return "", errors.Wrap(err, "auto-generating secret")
+		}
 	}
 
 	if secretConfig.Generation == nil {
@@ -146,7 +162,7 @@ func (s *SecretGroup) getSecretValue(name string) (string, error) {
 
 	password := SecureRandomPassword(DefaultPasswordAlphabet, secretConfig.Generation.Length)
 
-	s.setValue(name, password)
+	s.values.setValue(name, password)
 
 	err := s.Save()
 	if err != nil {
@@ -158,7 +174,7 @@ func (s *SecretGroup) getSecretValue(name string) (string, error) {
 }
 
 // AddOrUpdateSecretValue adds or replaces an existing secret, then saves the group.
-func (s *SecretGroup) AddOrUpdateSecret(value string, config SecretConfig) error {
+func (s *SecretGroup) AddOrUpdateSecret(value string, config *SecretConfig) error {
 	if config.Name == "" {
 		return errors.New("secret name is required")
 	}
@@ -168,22 +184,22 @@ func (s *SecretGroup) AddOrUpdateSecret(value string, config SecretConfig) error
 			return errors.New("if value is not provided then generation config must not be nil")
 		}
 	} else {
-		s.setValue(config.Name, value)
+		s.values.setValue(config.Name, value)
 	}
 
 	replaced := false
 	for i, existing := range s.config.Secrets {
 		if existing.Name == config.Name {
-			s.config.Secrets[i] = &config
+			s.config.Secrets[i] = config
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
-		s.config.Secrets = append(s.config.Secrets, &config)
+		s.config.Secrets = append(s.config.Secrets, config)
 	}
 
-	s.valuesDirty = true
+	s.values.Dirty = true
 	return s.Save()
 }
 
@@ -204,11 +220,11 @@ func (s *SecretGroup) AddOrUpdateSecretValue(name string, value string) error {
 	}
 	if !found {
 		s.config.Secrets = append(s.config.Secrets, &SecretConfig{
-			Name:name,
+			Name: name,
 		})
 	}
 
-	s.setValue(name, value)
+	s.values.setValue(name, value)
 
 	return s.Save()
 }
@@ -224,21 +240,22 @@ func (s *SecretGroup) DeleteSecretConfig(name string) error {
 
 	s.config.Secrets = secrets
 
-	s.deleteValue(name)
+	s.values.deleteValue(name)
 
 	return s.Save()
 }
 
 // DeleteSecret deletes the value of a secret (but not the config) from the group, then saves the group.
 func (s *SecretGroup) DeleteSecretValue(name string) error {
-	s.deleteValue(name)
+	s.values.deleteValue(name)
 	return s.Save()
 }
 
 // DeleteAllSecretValues drops all secret values, then saves the group.
 func (s *SecretGroup) DeleteAllSecretValues() error {
-	s.values = map[string]string{}
-	s.valuesDirty = true
+	s.values = &SecretValues{
+		Dirty: true,
+	}
 	return s.Save()
 }
 
@@ -250,34 +267,31 @@ func (s *SecretGroup) Save() error {
 
 func (s *SecretGroup) save() error {
 
-	if s.valuesDirty {
+	if s.values.Dirty {
 		// discard previous nonce because we are encrypting new info
 		s.config.Key.Nonce = ""
 
-		if len(s.values) == 0 {
-			s.config.SecretValues = ""
-		} else {
-			key, nonce, err := s.config.Key.GetKeyComponents(s.config.Name)
-			if err != nil {
-				return err
-			}
-
-			block, err := aes.NewCipher(key)
-			if err != nil {
-				panic(err.Error())
-			}
-
-			aesgcm, err := cipher.NewGCM(block)
-			if err != nil {
-				panic(err.Error())
-			}
-
-			plaintext, _ := yaml.Marshal(s.values)
-
-			ciphertext := aesgcm.Seal(nil, nonce, plaintext, nil)
-
-			s.config.SecretValues = hex.EncodeToString(ciphertext)
+		key, nonce, err := s.config.Key.GetKeyComponents(s.config.Name)
+		if err != nil {
+			return err
 		}
+
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		aesgcm, err := cipher.NewGCM(block)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		plaintext, _ := yaml.Marshal(s.values)
+
+		ciphertext := aesgcm.Seal(nil, nonce, plaintext, nil)
+
+		s.config.SecretValues = hex.EncodeToString(ciphertext)
+
 	}
 
 	err := yaml.SaveYaml(s.config.FromPath, s.config)

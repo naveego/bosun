@@ -67,13 +67,13 @@ var _ = Describe("Secret", func() {
 	It("can generate and persist secret", func(){
 		const generateSecretName = "generate"
 		environment := loadTestEnvironment()
-		Expect(environment.AddSecretGroup(secretGroup, SecretKeyConfig{UnsafeStoredPassphrase: "test"})).To(Succeed())
+		Expect(environment.AddSecretGroup(secretGroup, &SecretKeyConfig{UnsafeStoredPassphrase: "test"})).To(Succeed())
 		group, found, err := environment.GetSecretGroup(secretGroup)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(found).To(BeTrue())
 
 		expectedPasswordLength := 10
-		err = group.AddOrUpdateSecret("", SecretConfig{
+		err = group.AddOrUpdateSecret("", &SecretConfig{
 			Name:generateSecretName,
 			Generation: &SecretGenerationConfig {
 				Length: expectedPasswordLength,
@@ -93,7 +93,7 @@ var _ = Describe("Secret", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(found).To(BeTrue())
 		expectedPasswordLength := 10
-		err = group.AddOrUpdateSecret("", SecretConfig{
+		err = group.AddOrUpdateSecret("", &SecretConfig{
 			Name:generateSecretName,
 			Generation: &SecretGenerationConfig {
 				Length: expectedPasswordLength,
@@ -107,7 +107,7 @@ var _ = Describe("Secret", func() {
 
 func loadTestEnvironmentWithSecret(secretGroup, secretName, secretValue string) *Environment {
 	environment := loadTestEnvironment()
-	Expect(environment.AddSecretGroup(secretGroup, SecretKeyConfig{UnsafeStoredPassphrase: "test"})).To(Succeed())
+	Expect(environment.AddSecretGroup(secretGroup, &SecretKeyConfig{UnsafeStoredPassphrase: "test"})).To(Succeed())
 	Expect(environment.AddOrUpdateSecretValue(secretGroup, secretName, secretValue)).To(Succeed())
 	Expect(environment.Save()).To(Succeed())
 

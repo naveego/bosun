@@ -153,9 +153,9 @@ func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interfa
 func (c BosunContext) GetEnvironmentVariables() map[string]string {
 
 	out := map[string]string{
-		core.EnvCluster:         c.env.ClusterName,
-		core.EnvEnvironment:     c.env.Name,
-		core.EnvEnvironmentRole: string(c.env.Role),
+		core.EnvCluster:                       c.env.ClusterName,
+		core.EnvEnvironment:                   c.env.Name,
+		core.EnvEnvironmentRole:               string(c.env.Role),
 		core.EnvInternalEnvironmentAndCluster: os.Getenv(core.EnvInternalEnvironmentAndCluster),
 	}
 
@@ -229,6 +229,10 @@ func (c BosunContext) TemplateValues() templating.TemplateValues {
 		tv.Values = c.Values.Values
 	} else {
 		tv.Values = values.Values{}
+	}
+
+	tv.Functions = templating.TemplateFunctions{
+		ResolveSecretPath: c.env.ResolveSecretPath,
 	}
 
 	return tv

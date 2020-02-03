@@ -671,8 +671,10 @@ func (b *Bosun) GetCurrentPlatform() (*Platform, error) {
 			isAutomationDummy: true,
 			environmentConfigs: []*environment.Config{
 				{
-					Name:     "default-env",
-					FromPath: filepath.Join(os.TempDir(), "bosun.platform.yaml"),
+					ConfigShared: core.ConfigShared{
+						Name:     "default-env",
+						FromPath: filepath.Join(os.TempDir(), "bosun.platform.yaml"),
+					},
 				},
 			},
 		})

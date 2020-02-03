@@ -238,7 +238,7 @@ func (v Values) setAtPath(path []string, value interface{}) error {
 
 // Merge takes the properties in src and merges them into Values. Maps
 // are merged (keys are overwritten) while values and arrays are replaced.
-func (v Values) Merge(src Values) {
+func (v Values) Merge(src Values) Values {
 	for key, srcVal := range src {
 		destVal, found := v[key]
 
@@ -256,6 +256,7 @@ func (v Values) Merge(src Values) {
 			v[key] = srcVal
 		}
 	}
+	return v
 }
 //
 // // Merge takes the properties in src and merges them into Values. Maps
@@ -493,4 +494,12 @@ func (v Values) cleanUp() {
 		default:
 		}
 	}
+}
+
+func (v Values) ToMapStringInterface() map[string]interface{} {
+	out := map[string]interface{}{}
+	for k, vx := range v {
+		out[k] = vx
+	}
+	return out
 }

@@ -351,6 +351,9 @@ func (e *Environment) getSecretGroup(groupName string) (*SecretGroup, error) {
 			return nil, err
 		}
 
+		if e.secretGroups == nil {
+			e.secretGroups = map[string]*SecretGroup{}
+		}
 		e.secretGroups[groupName] = group
 	}
 
@@ -358,17 +361,16 @@ func (e *Environment) getSecretGroup(groupName string) (*SecretGroup, error) {
 }
 
 func (e *Environment) GetSecretValue(groupName string, secretName string) (string, error) {
-
 	group, err := e.getSecretGroup(groupName)
 	if err != nil {
 		return "", err
 	}
 
-	return group.GetSecretValue(secretName)
+	return group.GetSecretValue(secretName, nil)
 }
 
 // AddSecretGroup creates or replaces a secret group using the provided  key config.
-func (e *Environment) AddSecretGroup(groupName string, keyConfig SecretKeyConfig) error {
+func (e *Environment) AddSecretGroup(groupName string, keyConfig *SecretKeyConfig) error {
 	groupConfig, err := e.GetSecretGroupConfig(groupName)
 	if err != nil {
 		if e.SecretGroupFilePaths == nil {
@@ -382,7 +384,7 @@ func (e *Environment) AddSecretGroup(groupName string, keyConfig SecretKeyConfig
 				FromPath: e.ResolveRelative(groupFilepath),
 			},
 			isNew: true,
-			Key:   &keyConfig,
+			Key:   keyConfig,
 		}
 		e.SecretGroupFilePaths[groupName] = groupFilepath
 		err = e.Save()
@@ -395,9 +397,15 @@ func (e *Environment) AddSecretGroup(groupName string, keyConfig SecretKeyConfig
 	if err != nil {
 		return err
 	}
-	group.valuesDirty = true
+	group.values.Dirty = true
 
-	return group.Save()
+	err = group.Save()
+	if err != nil {
+		return err
+	}
+
+	err = e.Save()
+	return err
 }
 
 func (e *Environment) DeleteSecretGroup(groupName string) error {
@@ -435,34 +443,44 @@ func (e *Environment) AddOrUpdateSecretValue(groupName string, secretName string
 	return group.AddOrUpdateSecretValue(secretName, value)
 }
 
+func (e *Environment) ResolveSecretPath(secretPath string) (string, error) {
+
+
+	sp, err := ParseSecretPath(secretPath)
+	if err != nil {
+		return "", err
+	}
+
+
+	group, err := e.getSecretGroup(sp.GroupName)
+	if err != nil {
+		return "", err
+	}
+
+	return group.GetSecretValue(sp.SecretName, sp.Generation)
+
+}
+
 func (e *Environment) ValidateSecrets(secretPaths ...string) error{
-
 	for _, secretPath := range secretPaths {
-		groupName, secretName, err := parseSecretPath(secretPath)
-		if err != nil {
-			return err
-		}
 
-		group, found, err := e.GetSecretGroup(groupName)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return errors.Errorf("group %q not found", groupName)
-		}
-
-		_, err = group.GetSecretValue(secretName)
+		_, err := e.ResolveSecretPath(secretPath)
 		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
-func parseSecretPath(path string) (groupName string, secretName string, err error) {
-	segs := strings.Split(path, "/")
-	if len (segs) != 2 {
-		return "","", errors.Errorf("invalid secret path %q (want group/secret)", path)
+func (e *Environment) GetSecretGroupConfigs() ([]SecretGroupConfig, error) {
+	var out []SecretGroupConfig
+	for name := range e.SecretGroupFilePaths {
+		group, err := e.GetSecretGroupConfig(name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *group)
 	}
-	return segs[0], segs[1], nil
+	return out, nil
 }

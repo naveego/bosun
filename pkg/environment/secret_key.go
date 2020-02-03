@@ -15,14 +15,15 @@ type SecretKeyConfig struct {
 	Prompt                 bool   `yaml:"prompt,omitempty"`
 	EnvironmentVariable    string `yaml:"environmentVariable,omitempty"`
 	UnsafeStoredPassphrase string `yaml:"UNSAFE,omitempty"`
-	Lastpass               *struct {
-		Path  string `yaml:"path"`
-		Field string `yaml:"field"`
-	} `yaml:"lastpass,omitempty"`
+	Lastpass              *LastpassKeyConfig `yaml:"lastpass,omitempty"`
 	Nonce               string `yaml:"nonce"`
 	Salt                string `yaml:"salt"`
 
 	key []byte `yaml:"-"`
+}
+type LastpassKeyConfig  struct {
+	Path  string `yaml:"path"`
+	Field string `yaml:"field"`
 }
 
 func (s *SecretKeyConfig) GetKeyComponents(secretGroupName string) (key []byte, nonce []byte, err error) {

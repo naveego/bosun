@@ -744,7 +744,7 @@ diff go-between 2.4.2/blue green
 					return "", err
 				}
 
-				ctx := b.NewContext().WithEnv(env)
+				ctx := b.NewContext().WithEnv(*env)
 
 				var ok bool
 				if releaseName != "" {
