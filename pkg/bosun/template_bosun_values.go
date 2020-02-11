@@ -19,6 +19,7 @@ type TemplateBosunValues struct {
 	Environment     string              `yaml:"environment"`
 	EnvironmentRole string              `yaml:"environmentRole"`
 	ReleaseVersion  string              `yaml:"releaseVersion"`
+	DeployedAt      string              `yaml:"deployedAt"`
 }
 
 func (t TemplateBosunValues) ToValues() values.Values {

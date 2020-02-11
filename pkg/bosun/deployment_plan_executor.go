@@ -91,14 +91,24 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 
 		appCtx := d.Bosun.NewContext().WithLogField("app", appPlan.Name).(BosunContext)
 
-		if len(deploymentPlan.DeployApps) > 0 && !deploymentPlan.DeployApps[appPlan.Name] {
-			appCtx.Log().Infof("Skipping app because it is false in plan.deployApps.")
+		deployRequested := stringsn.Contains(appPlan.Name, req.IncludeApps)
+		deployDenied := len(req.IncludeApps) > 0 && !stringsn.Contains(appPlan.Name, req.IncludeApps)
+
+		if deployDenied {
+			appCtx.Log().Infof("Skipping app because it is not included in the requested apps %v.", req.IncludeApps)
 			continue
 		}
 
-		if stringsn.Contains(appPlan.Name, deploymentPlan.EnvironmentDeployProgress[env.Name]) {
-			appCtx.Log().Infof("Skipping app because it has already been deployed from this plan to this environment (delete from environmentDeployProgress list to reset).")
-			continue
+		if !deployRequested {
+			if len(deploymentPlan.DeployApps) > 0 && !deploymentPlan.DeployApps[appPlan.Name] {
+				appCtx.Log().Infof("Skipping app because it is false in plan.deployApps.")
+				continue
+			}
+
+			if stringsn.Contains(appPlan.Name, deploymentPlan.EnvironmentDeployProgress[env.Name]) {
+				appCtx.Log().Infof("Skipping app because it has already been deployed from this plan to this environment (delete from environmentDeployProgress list to reset).")
+				continue
+			}
 		}
 
 		appManifest := appPlan.Manifest

@@ -783,7 +783,7 @@ func (p *Platform) Save(ctx BosunContext) error {
 		}
 
 		for _, appManifest := range appManifests {
-			err = appManifest.Save(dir)
+			_, err = appManifest.Save(dir)
 			if err != nil {
 				return errors.Wrapf(err, "write app %q", appManifest.Name)
 			}

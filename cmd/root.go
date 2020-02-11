@@ -54,7 +54,7 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 		viper.BindPFlags(cmd.PersistentFlags())
 
 		logrus.SetFormatter(&logrus.TextFormatter{
-			FullTimestamp: true,
+			DisableTimestamp: true,
 			ForceColors:   true,
 		})
 

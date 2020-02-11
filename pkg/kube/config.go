@@ -130,8 +130,8 @@ type PullSecret struct {
 	Name             string               `yaml:"name"`
 	Domain           string               `yaml:"domain"`
 	FromDockerConfig bool                 `yaml:"fromDockerConfig,omitempty"`
-	Username         string               `yaml:"username"`
-	Password         command.CommandValue `yaml:"password"`
+	Username         string               `yaml:"username,omitempty"`
+	Password         command.CommandValue `yaml:"password,omitempty"`
 }
 
 func (c *ClusterConfig) SetFromPath(fp string) {

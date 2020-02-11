@@ -97,14 +97,14 @@ func (a AppMetadata) DiffersFrom(other *AppMetadata) bool {
 	return a.Version != other.Version || a.Hashes != other.Hashes
 }
 
-func LoadAppManifestFromPathAndName(path string, name string) (*AppManifest, error) {
+func LoadAppManifestFromPathAndName(fileOrDir string, name string) (*AppManifest, error) {
 
 	paths := []string{
-		path,
-		filepath.Join(path, "bosun.yaml"),
-		filepath.Join(path, name+".yaml"),
-		filepath.Join(path, name, name+".yaml"),
-		filepath.Join(path, name, "bosun.yaml"),
+		fileOrDir,
+		filepath.Join(fileOrDir, "bosun.yaml"),
+		filepath.Join(fileOrDir, name+".yaml"),
+		filepath.Join(fileOrDir, name, name+".yaml"),
+		filepath.Join(fileOrDir, name, "bosun.yaml"),
 	}
 
 	var out *AppManifest
@@ -132,38 +132,41 @@ func LoadAppManifestFromPathAndName(path string, name string) (*AppManifest, err
 	return nil, errors.Errorf("could not find bosun file for %q (tried paths %v)", name, paths)
 }
 
-func (a *AppManifest) Save(dir string) error {
+// Save saves the app manifest in the provided directory. It return the path to the bosun file which was saved and contains the manifest.
+func (a *AppManifest) Save(dir string) (string, error) {
 
 	hasFiles := len(a.Files) > 0
 	if hasFiles {
 		dir = filepath.Join(dir, a.Name)
 		if err := os.MkdirAll(dir, 0700); err != nil {
-			return err
+			return "", errors.WithStack(err)
 		}
 	}
+
+	savePath := ""
 
 	if hasFiles {
 		for path, bytes := range a.Files {
 			path = filepath.Join(dir, path)
 			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-				return err
+				return "", errors.WithStack(err)
 			}
 			if err := ioutil.WriteFile(path, bytes, 0600); err != nil {
-				return err
+				return "", errors.WithStack(err)
 			}
 		}
-		outPath := filepath.Join(dir, "bosun.yaml")
-		if err := yaml.SaveYaml(outPath, a); err != nil {
-			return err
+		savePath = filepath.Join(dir, "bosun.yaml")
+		if err := yaml.SaveYaml(savePath, a); err != nil {
+			return "", errors.WithStack(err)
 		}
 	} else {
-		outPath := filepath.Join(dir, a.Name+".yaml")
-		if err := yaml.SaveYaml(outPath, a); err != nil {
-			return err
+		savePath = filepath.Join(dir, a.Name+".yaml")
+		if err := yaml.SaveYaml(savePath, a); err != nil {
+			return savePath, errors.WithStack(err)
 		}
 	}
 
-	return nil
+	return savePath, nil
 }
 
 func (a *AppManifest) MakePortable() error {

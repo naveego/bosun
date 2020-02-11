@@ -26,9 +26,10 @@ func init() {
 }
 
 var _ = addCommand(deployCmd, &cobra.Command{
-	Use:          "execute {path | release}",
-	Args:         cobra.ExactArgs(1),
+	Use:          "execute {path | release} [apps...]",
+	Args:         cobra.MinimumNArgs(1),
 	Short:        "Executes a deployment against the current environment.",
+	Long:"If apps are provided, only those apps will be deployed.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -48,6 +49,10 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
 		} else {
 			req.Path = pathOrSlot
+		}
+
+		if len(args) > 1 {
+			req.IncludeApps = args[1:]
 		}
 
 		executor := bosun.NewDeploymentPlanExecutor(b, p)

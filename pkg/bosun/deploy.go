@@ -6,7 +6,6 @@ import (
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/kube"
-	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
@@ -201,7 +200,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "all apps were filtered out")
 		}
-		appDeployMap = filtered.(map[string]*AppDeploy)
+		appDeployMap = filtered.(AppDeployMap)
 		for name := range unfilteredAppDeployMap {
 			if _, ok := appDeployMap[name]; !ok {
 				ctx.Log().Warnf("App %q was filtered out of the release.", name)
@@ -350,11 +349,20 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 
 					appCtx = appCtx.WithMatchMapArgs(matchArgs).(BosunContext)
 
+					var releaseVersion string
+					if app.AppManifest.PinnedReleaseVersion != nil {
+						releaseVersion = app.AppManifest.PinnedReleaseVersion.String()
+					} else if len(app.AppConfig.ReleaseHistory) > 0{
+						releaseVersion = app.AppConfig.ReleaseHistory[0].ReleaseVersion
+					} else {
+						releaseVersion = "0.0.0"
+					}
+
 					app.Namespace = namespace.Name
 					app = app.WithValueSet(values.ValueSet{
 						Static: values.Values{
 							"bosun": TemplateBosunValues{
-								ReleaseVersion:  semver.StringOrDefault(app.AppManifest.PinnedReleaseVersion),
+								ReleaseVersion:  releaseVersion,
 								AppName:         app.Name,
 								AppVersion:      app.AppManifest.Version.String(),
 								Environment:     env.Name,
@@ -367,6 +375,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 								ClusterRoles:    cluster.Roles.Strings(),
 								ClusterProvider: cluster.Provider,
 								ClustersRoles:   clustersRoles,
+
 							}.ToValues(),
 						},
 					})

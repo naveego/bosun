@@ -60,10 +60,11 @@ func (d DeploymentPlan) Save() error {
 	}
 
 	for _, app := range d.Apps {
-		err = app.Manifest.Save(d.DirectoryPath)
-		if err != nil {
+		savePath, saveErr := app.Manifest.Save(d.DirectoryPath)
+		if saveErr != nil {
 			return errors.Wrapf(err, "saving portable manifest for app %q from providers %+v", app.Name, d.ProviderPriority)
 		}
+		app.ManifestPath, _ = filepath.Rel(d.DirectoryPath, savePath)
 	}
 
 	return d.SavePlanFileOnly()
@@ -78,6 +79,7 @@ func (d DeploymentPlan) SavePlanFileOnly() error {
 		}
 		planPath = filepath.Join(d.DirectoryPath, "plan.yaml")
 	}
+
 	err := yaml.SaveYaml(planPath, d)
 
 	return err

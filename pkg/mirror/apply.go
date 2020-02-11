@@ -22,6 +22,10 @@ func ApplyFuncRecursively(target interface{}, fn interface{}) {
 		val = val.Elem()
 	}
 
+	if val.Kind() == reflect.Map {
+		return
+	}
+
 	if val.Type().AssignableTo(argType) || val.Type().Implements(argType) {
 		fnVal.Call([]reflect.Value{val})
 	}
