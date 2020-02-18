@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -343,6 +344,8 @@ func (a *App) BuildImages(ctx BosunContext) error {
 	return nil
 }
 
+var featureBranchTagRE = regexp.MustCompile(`\W+`)
+
 func (a *App) PublishImages(ctx BosunContext) error {
 
 	var report []string
@@ -352,26 +355,24 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	branch := a.GetBranchName()
 
 	if a.Branching.IsFeature(branch) {
-		if ctx.GetParameters().Force {
-			ctx.Log().WithField("branch", branch).Warn("You should not push images from a feature branch (overridden by --force).")
-		} else {
-			ctx.Log().WithField("branch", branch).Warn("You cannot push images from a feature branch (override by setting the --force flag).")
-			return nil
-		}
-	}
-
-	if a.Branching.IsDevelop(branch) {
+		tag := "unstable-" + featureBranchTagRE.ReplaceAllString(strings.ToLower(branch.String()), "-")
+		ctx.Log().WithField("branch", branch).Warnf(`Publishing from feature branch, pushing "unstable" and %q tag only.`, tag)
+		tags = []string { "unstable", tag }
+	} else if a.Branching.IsDevelop(branch) {
 		tags = append(tags, "develop")
-	}
-
-	if a.Branching.IsMaster(branch) {
+	} else if a.Branching.IsMaster(branch) {
 		tags = append(tags, "master")
-	}
-
-	if a.Branching.IsRelease(branch) {
+	} else if a.Branching.IsRelease(branch) {
 		_, releaseVersion, err := a.Branching.GetReleaseNameAndVersion(branch)
 		if err == nil {
 			tags = append(tags, fmt.Sprintf("%s-%s", a.Version, releaseVersion))
+		}
+	} else {
+		if ctx.GetParameters().Force {
+			ctx.Log().WithField("branch", branch).Warnf(`Non-standard branch format, pushing "unstable" tag only.`)
+			tags = []string{"unstable"}
+		} else {
+			return errors.Errorf("branch %q matches no patterns; use --force flag to publish with 'unstable' tag anyway")
 		}
 	}
 
@@ -590,18 +591,18 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 	// }
 
 	if a.HasChart() {
-		m, err := a.getChartAsMap()
-		if err != nil {
-			return err
+		m, chartErr := a.getChartAsMap()
+		if chartErr != nil {
+			return chartErr
 		}
 
 		m["version"] = a.Version
 		if a.BranchForRelease {
 			m["appVersion"] = a.Version
 		}
-		err = a.saveChart(m)
-		if err != nil {
-			return err
+		chartErr = a.saveChart(m)
+		if chartErr != nil {
+			return chartErr
 		}
 	}
 
