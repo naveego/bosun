@@ -87,6 +87,7 @@ func (d DeploymentPlan) SavePlanFileOnly() error {
 
 type AppDeploymentPlan struct {
 	Name           string          `yaml:"name"`
+	Tag            string          `yaml:"tag"`
 	ValueOverrides values.ValueSet `yaml:"valueOverrides"`
 	ManifestPath   string          `yaml:"manifestPath"`
 	Manifest       *AppManifest    `yaml:"-"`

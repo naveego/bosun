@@ -115,7 +115,18 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 		appManifest.AppConfig.IsFromManifest = true
 		appManifest.PinnedReleaseVersion = deploymentPlan.ReleaseVersion
 
-		appDeploySettings := AppDeploySettings{}
+		appDeploySettings := AppDeploySettings{
+		}
+		if appPlan.Tag != "" {
+			appDeploySettings.ValueSets = []values.ValueSet{
+				values.ValueSet{
+					Source:"app plan",
+					Static: values.Values{
+						"tag": appPlan.Tag,
+					},
+				},
+			}
+		}
 
 		for _, platformAppConfig := range d.Platform.GetApps(appCtx) {
 			if platformAppConfig.Name == appPlan.Name {

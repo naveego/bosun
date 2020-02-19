@@ -81,9 +81,13 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 		if app.IsFromManifest {
 			appPlan.Manifest = app.AppManifest
 			appPlan.ManifestPath = app.FromPath
+
+			appPlan.Tag = appPlan.Manifest.GetTagBasedOnVersionAndBranch()
+
 		} else {
 
 			appPlan.Manifest, err = app.GetManifest(ctx)
+			appPlan.Tag = appPlan.Manifest.GetTagBasedOnVersionAndBranch()
 			if err != nil {
 				return nil, errors.Wrapf(err, "getting manifest for app %q from provider %q", app.Name, req.ProviderPriority)
 			}

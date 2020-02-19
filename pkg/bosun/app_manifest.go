@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/mattn/go-zglob"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -208,4 +209,20 @@ func (a *AppManifest) MakePortable() error {
 	}
 
 	return nil
+}
+
+func (a *AppManifest) GetTagBasedOnVersionAndBranch() string {
+	branch := git.BranchName(a.Branch)
+	if a.AppConfig.Branching.IsFeature(branch) {
+		return "unstable-" + featureBranchTagRE.ReplaceAllString(strings.ToLower(branch.String()), "-")
+	} else if a.AppConfig.Branching.IsDevelop(branch) {
+		return "develop"
+	} else if a.AppConfig.Branching.IsMaster(branch) {
+		return a.AppConfig.Version.String()
+	} else if a.AppConfig.Branching.IsRelease(branch) {
+		_, releaseVersion, _ := a.AppConfig.Branching.GetReleaseNameAndVersion(branch)
+		return fmt.Sprintf("%s-%s", a.Version, releaseVersion)
+	} else {
+		return "latest"
+	}
 }

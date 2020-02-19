@@ -163,9 +163,9 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 				}
 			}
 
-			appDeploy, err := NewAppDeploy(ctx, settings, manifest)
-			if err != nil {
-				return nil, errors.Wrapf(err, "create app deploy from manifest for %q", manifest.Name)
+			appDeploy, newDeployErr := NewAppDeploy(ctx, settings, manifest)
+			if newDeployErr != nil {
+				return nil, errors.Wrapf(newDeployErr, "create app deploy from manifest for %q", manifest.Name)
 			}
 			appDeployMap[appDeploy.Name] = appDeploy
 		}

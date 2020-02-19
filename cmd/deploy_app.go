@@ -28,21 +28,23 @@ func init() {
 
 var _ = addCommand(deployCmd, &cobra.Command{
 	Use:          "app [apps...]",
-	Aliases:[]string{"apps"},
+	Aliases:      []string{"apps"},
 	Short:        "Deploys one or more apps in one step (combines plan and execute).",
 	SilenceUsage: true,
-	RunE: deployApp,
-},deployAppFlags )
+	RunE:         deployApp,
+}, deployAppFlags)
 
-const(
-	argDeployAppClusters   = "clusters"
+const (
+	argDeployAppClusters = "clusters"
 	argDeployAppRecycle  = "recycle"
+	argDeployAppTag      = "tag"
 )
 
 func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(argDeployPlanProviderPriority, []string{bosun.WorkspaceProviderName, bosun.SlotUnstable, bosun.SlotStable}, "Providers in priority order to use to deploy apps (current, stable, unstable, or workspace).")
 	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps.")
+	cmd.Flags().String(argDeployAppTag, "", "Tag to use when deploying the app or apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
 	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "Whitelist of specific clusters to deploy to.")
@@ -78,11 +80,11 @@ func deployApp(cmd *cobra.Command, args []string) error {
 	}
 
 	if viper.GetBool(ArgAppLatest) {
-		workspaceApps, err := getKnownApps(b, apps)
-		if err != nil {
-			return err
+		workspaceApps, getAppsErr := getKnownApps(b, apps)
+		if getAppsErr != nil {
+			return getAppsErr
 		}
-		err = pullApps(ctx, workspaceApps, true)
+		getAppsErr = pullApps(ctx, workspaceApps, true)
 		valueSets = append(valueSets, values.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
 	}
 
@@ -108,10 +110,17 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 		return err
 	}
 
+	tag := viper.GetString(argDeployAppTag)
+	if tag != "" {
+		for _, app := range plan.Apps {
+			app.Tag = tag
+		}
+	}
+
 	executeRequest := bosun.ExecuteDeploymentPlanRequest{
-		Plan: plan,
-		ValueSets: valueSets,
-		Recycle: viper.GetBool(argDeployAppRecycle),
+		Plan:        plan,
+		ValueSets:   valueSets,
+		Recycle:     viper.GetBool(argDeployAppRecycle),
 		PreviewOnly: viper.GetBool(argAppDeployPreview),
 	}
 
