@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -20,6 +21,11 @@ type DeploymentPlan struct {
 	DeployApps                map[string]bool      `yaml:"deployApps"`
 	EnvironmentDeployProgress map[string][]string  `yaml:"environmentDeployProgress"`
 	Apps                      []*AppDeploymentPlan `yaml:"apps"`
+	BundleInfo *BundleInfo `yaml:"bundleInfo,omitempty"`
+}
+
+type BundleInfo struct {
+	Environments map[string]*environment.Config
 }
 
 func LoadDeploymentPlanFromFile(path string) (*DeploymentPlan, error) {

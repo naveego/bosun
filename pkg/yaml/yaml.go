@@ -93,6 +93,25 @@ func LoadYaml(path string, out interface{}) error {
 	return nil
 }
 
+// TryLoadYaml tries to load something and returns false if it couldn't
+func TryLoadYaml(path string, out interface{}) bool {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return false
+	}
+
+	err = yaml.Unmarshal(b, out)
+	if err != nil{
+	return false
+	}
+
+	mirror.ApplyFuncRecursively(out, func(x core.FromPathSetter) {
+		x.SetFromPath(path)
+	})
+
+	return true
+}
+
 type FromPathSetter interface {
 	SetFromPath(fp string)
 }

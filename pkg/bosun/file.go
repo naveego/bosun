@@ -60,6 +60,21 @@ func (f *File) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
+func LoadFile(path string) (*File, error) {
+	f := &File{
+	}
+
+	err := pkg.LoadYaml(path, &f)
+
+	if err != nil {
+		return nil, errors.Errorf("yaml error loading %q: %s", path, err)
+	}
+
+	f.SetFromPath(path)
+
+	return f, nil
+}
+
 func (f *File) SetFromPath(path string) {
 
 	f.FromPath = path

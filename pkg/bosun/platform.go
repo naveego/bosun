@@ -53,6 +53,7 @@ type Platform struct {
 	MasterBranch_OBSOLETE        string                           `yaml:"masterBranch,omitempty"`
 	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
 	AppConfigDirectory           string                           `yaml:"appConfigDirectory,omitempty"`
+	EnvironmentDirectory           string                         `yaml:"environmentDirectory,omitempty" json:"environmentPaths"`
 	EnvironmentPaths             []string                         `yaml:"environmentPaths" json:"environmentPaths"`
 	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
 	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
@@ -635,14 +636,14 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 	for _, unclosedAppName := range util.SortedKeys(plan.Apps) {
 		appName := unclosedAppName
-		originalApp, err := ctx.Bosun.GetApp(appName)
-		if err != nil {
-			return nil, errors.Wrapf(err, "app %q is not real", appName)
+		originalApp, getAppErr := ctx.Bosun.GetApp(appName)
+		if getAppErr != nil {
+			return nil, errors.Wrapf(getAppErr, "app %q is not real", appName)
 		}
 		repo := originalApp.RepoName
 
 		dispatcher.Dispatch(repo, func() {
-			app, err := func() (*AppManifest, error) {
+			app, appErr := func() (*AppManifest, error) {
 
 				var app *App
 				appPlan := plan.Apps[appName]
@@ -658,7 +659,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				case SlotStable:
 					log.Infof("App %q will not be upgraded in this release; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
 
-					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
+					app, getAppErr = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
 					return stable.PrepareAppManifest(ctx, app, semver.BumpNone, "")
 
 				case SlotUnstable:
@@ -668,7 +669,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 					log.Infof("App %q will be upgraded in this release; adding version from unstable release.", appName)
 
 					providerPlan := appPlan.Providers[SlotUnstable]
-					if err != nil {
+					if getAppErr != nil {
 						return nil, errors.Errorf("app does not exist")
 					}
 					bump := semver.BumpNone
@@ -679,21 +680,21 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 						bump = appPlan.BumpOverride
 					}
 
-					appManifest, err := currentRelease.PrepareAppManifest(ctx, originalApp, bump, "")
-					return appManifest, err
+					appManifest, prepareErr := currentRelease.PrepareAppManifest(ctx, originalApp, bump, "")
+					return appManifest, prepareErr
 
 				case SlotCurrent:
 					log.Infof("App %q has already been added to this release.", appName)
 
-					app, err = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
+					app, getAppErr = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
 					return currentRelease.PrepareAppManifest(ctx, app, semver.BumpNone, "")
 				default:
 					return nil, errors.Errorf("invalid provider %q", appPlan.ChosenProvider)
 				}
 			}()
 
-			if err != nil {
-				errCh <- err
+			if appErr != nil {
+				errCh <- appErr
 			} else {
 				appCh <- app
 			}
@@ -1192,14 +1193,14 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 	for name := range release.UpgradedApps {
 		log := ctx.Log().WithField("app", name)
 
-		appDeploy, err := release.GetAppManifest(name)
-		if err != nil {
-			return err
+		appDeploy, appErr := release.GetAppManifest(name)
+		if appErr != nil {
+			return appErr
 		}
 
-		app, err := b.GetAppFromProvider(name, WorkspaceProviderName)
-		if err != nil {
-			ctx.Log().WithError(err).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+		app, appErr := b.GetAppFromProvider(name, WorkspaceProviderName)
+		if appErr != nil {
+			ctx.Log().WithError(appErr).Errorf("App repo %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
 			continue
 		}
 
@@ -1218,18 +1219,18 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 		// 	continue
 		// }
 
-		manifest, err := app.GetManifest(ctx)
-		if err != nil {
-			return errors.Wrapf(err, "App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
+		manifest, appErr := app.GetManifest(ctx)
+		if appErr != nil {
+			return errors.Wrapf(appErr, "App manifest %s (%s) not available.", appDeploy.Name, appDeploy.Repo)
 		}
 
 		if !app.IsRepoCloned() {
 			return errors.Errorf("App repo (%s) for app %s is not cloned, cannot merge.", app.RepoName, app.Name)
 		}
 
-		appBranch, err := app.Branching.RenderRelease(release.GetBranchParts())
-		if err != nil {
-			return err
+		appBranch, appErr := app.Branching.RenderRelease(release.GetBranchParts())
+		if appErr != nil {
+			return appErr
 		}
 
 		mt, ok := mergeTargets[app.Repo.Name]
@@ -1344,7 +1345,8 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 			tags = []string{tag}
 		}
 
-		changes, err := g.Exec("log", fmt.Sprintf("%s..%s", target.toBranch, target.fromBranch), "--oneline")
+		var changes string
+		changes, err = g.Exec("log", fmt.Sprintf("%s..%s", target.toBranch, target.fromBranch), "--oneline")
 		if err != nil {
 			return err
 		}
@@ -1521,9 +1523,21 @@ func (p *Platform) LoadChildren() error {
 		p.Apps = append(p.Apps, &app)
 	}
 
-	for _, path := range p.EnvironmentPaths {
+	environmentPaths := p.EnvironmentPaths[:]
+	environments := map[string]*environment.Config{}
 
+	// environmentDirs, _ := filepath.Glob(filepath.Join(p.EnvironmentDirectory, "*"))
+	//
+	// for _, dir := range environmentDirs {
+	// 	envName := filepath.Base(dir)
+	// 	environmentPaths = append(environmentDirs, filepath.Join(dir, fmt.Sprintf("%s.bosun.yaml", envName)));
+	// }
+
+	for _, path := range environmentPaths {
 		path = p.ResolveRelative(path)
+		if _, ok := environments[path]; ok {
+			continue
+		}
 		var config *environment.Config
 		err = yaml.LoadYaml(path, &config)
 		if err != nil {

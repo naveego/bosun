@@ -95,9 +95,8 @@ require (
 	github.com/jefferai/jsonx v0.0.0-20160721235117-9cc31c3135ee // indirect
 	github.com/jessevdk/go-flags v1.4.0 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
-	github.com/keybase/go-crypto v0.0.0-20181127160227-255a5089e85a
+	github.com/keybase/go-crypto v0.0.0-20181127160227-255a5089e85a // indirect
 	github.com/kr/binarydist v0.1.0 // indirect
-	github.com/kr/text v0.1.0
 	github.com/kyokomi/emoji v2.1.0+incompatible
 	github.com/lib/pq v1.0.0 // indirect
 	github.com/manifoldco/promptui v0.3.2
@@ -117,6 +116,7 @@ require (
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/ory-am/common v0.4.0 // indirect
 	github.com/ory/dockertest v3.3.2+incompatible // indirect
+	github.com/otiai10/copy v1.0.2
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pborman/uuid v1.2.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect

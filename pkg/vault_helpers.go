@@ -185,7 +185,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Mounts {
-		log := Log.WithField("@type", "Mount").WithField("Path", path)
+		log := Log.WithField("@type", "Mount").WithField("Dir", path)
 		mounts, err := client.Sys().ListMounts()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -206,11 +206,11 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Resources {
-		log := Log.WithField("@type", "Resource").WithField("Path", path)
+		log := Log.WithField("@type", "Resource").WithField("Dir", path)
 
 		u, err := url.Parse(path)
 		if err != nil {
-			recordError(log, data, errors.WithMessage(err, "resource Path was invalid"))
+			recordError(log, data, errors.WithMessage(err, "resource Dir was invalid"))
 			continue
 		}
 
@@ -250,7 +250,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Policies {
-		log := Log.WithField("@type", "Policy").WithField("Path", path)
+		log := Log.WithField("@type", "Policy").WithField("Dir", path)
 		var policy string
 		switch d := data.(type) {
 		case string:
@@ -432,7 +432,7 @@ func tryGetTokenUsingEC2Metadata(vaultClient *api.Client) (string, error) {
 			return "", fmt.Errorf("error saving nonce to %q: %s", noncePath, err)
 		}
 	} else if err != nil {
-		return "", fmt.Errorf("error reading nonce from Path %q: %s", noncePath, err)
+		return "", fmt.Errorf("error reading nonce from Dir %q: %s", noncePath, err)
 	}
 
 	secret, err := vaultClient.Logical().Write("Auth/aws/login", map[string]interface{}{

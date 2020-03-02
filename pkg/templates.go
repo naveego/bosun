@@ -454,10 +454,10 @@ func (g GetOrUpdateVaultSecretAction) Execute() (string, error) {
 			secretValue = defaultValue
 		} else if !IsInteractive() {
 			// No terminal attached, so we can't ask the user for values.
-			return "", errors.Errorf("no vault secret found at Path %q", path)
+			return "", errors.Errorf("no vault secret found at Dir %q", path)
 		} else {
 			// Prompt the user for the value.
-			secretValue = RequestStringFromUser("No value found in VaultClient at Path %q; please provide the value", path)
+			secretValue = RequestStringFromUser("No value found in VaultClient at Dir %q; please provide the value", path)
 		}
 
 		// User didn't provide a Key, so we'll set the value under "Key"

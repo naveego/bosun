@@ -152,7 +152,7 @@ func LoadWorkspace(path string) (*Workspace, error) {
 		if app.Repo != "" {
 			for _, root := range c.GitRoots {
 				dir := filepath.Join(root, app.Repo)
-				bosunFile := filepath.Join(dir, "bosun.yaml")
+				bosunFile := filepath.Join(dir, "b.yaml")
 				if _, err := os.Stat(bosunFile); err == nil {
 					syntheticPaths = append(syntheticPaths, bosunFile)
 				}
@@ -175,7 +175,7 @@ func (w *Workspace) GetWorkspaceCommand(key string) *command.CommandValue {
 	}
 
 	if !cli.IsInteractive() {
-		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Your workspace contains no command to generate value %q, but bosun is not running in an interactive mode.", key))
+		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Your workspace contains no command to generate value %q, but b is not running in an interactive mode.", key))
 		_, _ = fmt.Fprintln(os.Stderr, color.RedString("Run the command below in interactive mode to fix this problem."))
 		_, _ = fmt.Fprintf(os.Stderr, "%s\n", strings.Join(os.Args, " "))
 		os.Exit(0)

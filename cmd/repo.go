@@ -50,7 +50,7 @@ var _ = addCommand(repoCmd, &cobra.Command{
 
 		t := tablewriter.NewWriter(os.Stdout)
 
-		t.SetHeader([]string{"Name", "Cloned", "Local Path", "Labels", "Apps"})
+		t.SetHeader([]string{"Name", "Cloned", "Local Dir", "Labels", "Apps"})
 		t.SetReflowDuringAutoWrap(false)
 		t.SetAutoWrapText(false)
 

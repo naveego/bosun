@@ -535,7 +535,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 // 	shortPath := safeFileNameRE.ReplaceAllString(strings.TrimLeft(path, "./\\"), "_")
 // 	bf := &BundleFile{
 // 		App:     app,
-// 		Path:    shortPath,
+// 		Dir:    shortPath,
 // 		Content: content,
 // 	}
 // 	if r.BundleFiles == nil {
@@ -553,7 +553,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 // 		return nil, "", errors.Errorf("no bundle for app %q and path %q", app, path)
 // 	}
 //
-// 	bundleFilePath := filepath.Join(filepath.Dir(r.FromPath), r.Name, bf.App, bf.Path)
+// 	bundleFilePath := filepath.Join(filepath.Dir(r.FromPath), r.Name, bf.App, bf.Dir)
 // 	content, err := ioutil.ReadFile(bundleFilePath)
 // 	return content, bundleFilePath, err
 // }
@@ -577,10 +577,10 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 // 			return err
 // 		}
 //
-// 		bundleFilepath := filepath.Join(appDir, bf.Path)
+// 		bundleFilepath := filepath.Join(appDir, bf.Dir)
 // 		err = ioutil.WriteFile(bundleFilepath, bf.Content, 0770)
 // 		if err != nil {
-// 			return errors.Wrapf(err, "writing bundle file for app %q, path %q", bf.App, bf.Path)
+// 			return errors.Wrapf(err, "writing bundle file for app %q, path %q", bf.App, bf.Dir)
 // 		}
 // 	}
 //

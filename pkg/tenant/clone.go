@@ -10,7 +10,6 @@ import (
 	bmongo "github.com/naveego/bosun/pkg/mongo"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/yaml"
-	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/sirupsen/logrus"
@@ -71,13 +70,9 @@ func (p *Planner) getPlanPath() string {
 func (p *Planner) Load() error {
 	path := p.getPlanPath()
 	var plan *Plan
-	err := yaml2.LoadYaml(path, &plan)
-	if err != nil {
-		if os.IsNotExist(err) {
-			plan = &Plan{}
-		} else {
-			return err
-		}
+	ok := yaml.TryLoadYaml(path, &plan)
+	if !ok {
+		plan = &Plan{}
 	}
 	p.Plan = plan
 	return nil
@@ -89,7 +84,7 @@ func (p *Planner) Save() error {
 		return err
 	}
 	path := p.getPlanPath()
-	err = yaml2.SaveYaml(path, p.Plan)
+	err = yaml.SaveYaml(path, p.Plan)
 	return err
 }
 
@@ -205,6 +200,9 @@ func (p *Planner) ValidatePlan() error {
 	}
 
 	p.log.Info("Validating agent mappings...")
+	if plan.AgentMapping == nil {
+		plan.AgentMapping = map[string]string{}
+	}
 	for _, fromAgent := range plan.FromAgents {
 		toAgentID := plan.AgentMapping[fromAgent.ID]
 		if toAgentID == "" {
@@ -282,8 +280,10 @@ func (p *Planner) migrate() error {
 
 	collections := getDBCollections(p.Dir)
 	jobsPath := collections[JobsCollection].DataFile
+	jobsVersionsPath := collections[JobsVersionsCollection].DataFile
 	connectionsPath := collections[ConnectionsCollection].DataFile
 	shapesPath := collections[ShapesCollection].DataFile
+	shapesVersionsPath := collections[ShapesVersionsCollection].DataFile
 	schemasPath := collections[SchemasCollection].DataFile
 	writebacksPath := collections[WritebacksCollection].DataFile
 
@@ -349,7 +349,7 @@ func (p *Planner) migrate() error {
 	jobIDRE := regexp.MustCompile(strings.Join(util.SortedKeys(jobIDMap), "|"))
 
 	// Update all references to the old job IDs in all resources:
-	for _, filePath := range []string{jobsPath, connectionsPath, schemasPath, shapesPath} {
+	for _, filePath := range []string{jobsPath, jobsVersionsPath, connectionsPath, schemasPath, shapesPath, shapesVersionsPath} {
 		err = p.replaceInFile("update job ID references", filePath, jobIDRE, func(oldJobID string) string {
 			newJobID := jobIDMap[oldJobID]
 			if newJobID == "" {
@@ -411,16 +411,20 @@ func (p *Planner) PerformImport() error {
 }
 
 const JobsCollection = "metabase.jobs"
+const JobsVersionsCollection = "metabase.jobs.versions"
 const ConnectionsCollection = "metabase.connections"
 const ShapesCollection = "metabase.shapes"
+const ShapesVersionsCollection = "metabase.shapes.versions"
 const SchemasCollection = "metabase.schemas"
 const WritebacksCollection = "sync.writebacks"
 
 func getDBCollections(dir string) map[string]*bmongo.CollectionInfo {
 	collectionNames := []string{
 		JobsCollection,
+		JobsVersionsCollection,
 		ConnectionsCollection,
 		ShapesCollection,
+		ShapesVersionsCollection,
 		SchemasCollection,
 		WritebacksCollection,
 	}
