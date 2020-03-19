@@ -54,6 +54,7 @@ type Platform struct {
 	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
 	AppConfigDirectory           string                           `yaml:"appConfigDirectory,omitempty"`
 	EnvironmentDirectory           string                         `yaml:"environmentDirectory,omitempty" json:"environmentPaths"`
+	BundleDirectory           string                         `yaml:"bundleDirectory,omitempty" json:"bundleDirectory"`
 	EnvironmentPaths             []string                         `yaml:"environmentPaths" json:"environmentPaths"`
 	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
 	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
@@ -103,6 +104,9 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if p.AppConfigDirectory == "" {
 		p.AppConfigDirectory = "apps"
+	}
+	if p.BundleDirectory == "" {
+		p.BundleDirectory = "bundles"
 	}
 
 	p.Branching.Master = util.DefaultString(p.Branching.Master, p.MasterBranch_OBSOLETE, "master")

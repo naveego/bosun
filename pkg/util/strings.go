@@ -34,6 +34,16 @@ func ConcatStrings(stringsOrSlices ...interface{}) []string {
 	return out
 }
 
+func HashBytesToString(b []byte) string {
+
+	h := sha256.New()
+	_, _ = h.Write(b)
+
+	o := h.Sum(nil)
+
+	return fmt.Sprintf("%x", o)
+}
+
 func HashToStringViaYaml(i interface{}) (string, error) {
 	y, err := yaml.Marshal(i)
 	if err != nil {

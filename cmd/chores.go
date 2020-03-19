@@ -16,6 +16,8 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
@@ -23,17 +25,54 @@ import (
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
+	"github.com/rs/xid"
 	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var choresCmd = addCommand(rootCmd, &cobra.Command{
 	Use:     "chores",
 	Aliases: []string{"chore"},
 	Short:   "Commands for automating tiresome tasks, like migrating bosun files.",
+})
+
+var choresParseXids = addCommand(choresCmd, &cobra.Command{
+	Use:   "parse-xids [xids...]",
+	Aliases:[]string{"xid", "xids"},
+	Short: "Takes text containing XIDs (or reads from stdin) and echos with any XIDs parsed.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		re := regexp.MustCompile("[a-v0-9]{20}")
+		var scanner *bufio.Scanner
+		if len(args) > 0 {
+			content := strings.Join(args, " ")
+			b := bytes.NewBufferString(content)
+			scanner = bufio.NewScanner(b)
+		} else {
+			scanner = bufio.NewScanner(os.Stdin)
+		}
+
+
+		for scanner.Scan() {
+			text := scanner.Text()
+
+			parsed := re.ReplaceAllStringFunc(string(text), func(s string) string {
+				parsedXID, err := xid.FromString(s)
+				if err != nil {
+					return s
+				}
+				return fmt.Sprintf("%s(%s)", s, parsedXID.Time().Local().Format(time.RFC3339))
+			})
+
+			fmt.Println(parsed)
+		}
+
+		return nil
+	},
 })
 
 var choresImportDescendentsCmd = addCommand(choresCmd, &cobra.Command{

@@ -17,9 +17,18 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/util"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"io/ioutil"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"path/filepath"
+	"strings"
 )
 
 func init() {
@@ -27,33 +36,47 @@ func init() {
 }
 
 var bundleCmd = addCommand(platformCmd, &cobra.Command{
-	Use: "bundle",
-	Short:"Bundling commands",
+	Use:   "bundle",
+	Short: "Bundling commands",
 })
 
 var _ = addCommand(bundleCmd, &cobra.Command{
-	Use:          "create {environment [, environment...]}",
-	Args:         cobra.MinimumNArgs(1),
+	Use:          "create {name}",
+	Args:         cobra.ExactArgs(1),
 	Short:        "Creates a portable bundle zip from a platform and the active release.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
 		p, err := b.GetCurrentPlatform()
-		if err != nil  {
-			return err
-		}
-
-		release, err := p.GetCurrentRelease()
 		if err != nil {
 			return err
 		}
 
+		envNames := viper.GetStringSlice(argBundleCreateEnvs)
+		if len(envNames) == 0 {
+			envs, e := b.GetEnvironments()
+			check(e)
+			var envNameOptions []string
+			for _, env := range envs {
+				envNameOptions = append(envNameOptions, env.Name)
+			}
+			envNames = cli.RequestMultiChoice("Choose environments to include", envNameOptions)
+		}
+
+		release := cli.RequestChoiceIfEmpty(
+			viper.GetString(argBundleCreateRelease),
+			"Choose release to include",
+			"current",
+			"stable",
+			"unstable",
+		)
+
 		bundler := bosun.NewPlatformBundler(b, p)
 
 		result, err := bundler.Execute(bosun.BundlePlatformRequest{
-			Prefix:viper.GetString(argBundleCreateName),
-			Environments:args,
-			Releases: []string{release.Slot},
+			Prefix:       viper.GetString(args[0]),
+			Environments: args,
+			Releases:     []string{release},
 		})
 		if err != nil {
 			return err
@@ -64,22 +87,95 @@ var _ = addCommand(bundleCmd, &cobra.Command{
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-cmd.Flags().String(argBundleCreateName, "", "Name of the bundle")
+	cmd.Flags().StringSlice(argBundleCreateEnvs, []string{}, "Environments to include")
+	cmd.Flags().String(argBundleCreateRelease, "", "The release to include")
 })
 
 const (
-	argBundleCreateName = "name"
+	argBundleCreateEnvs    = "envs"
+	argBundleCreateRelease = "release"
 )
 
-func loadDeploymentPlan(b *bosun.Bosun, p *bosun.Platform, pathOrName string) (*bosun.DeploymentPlan, error) {
-	if pathOrName == "release" {
-		release, err := p.GetCurrentRelease()
+var _ = addCommand(bundleCmd, &cobra.Command{
+	Use:          "push [name]",
+	Args:         cobra.MaximumNArgs(1),
+	Short:        "Pushes a bundle to a kubernetes cluster.",
+	Long:         "By default, pushes to the current cluster selected in the kubeconfig",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		pathOrName = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", release.Version.String()))
-	}
 
-	plan, err := bosun.LoadDeploymentPlanFromFile(pathOrName)
-	return plan, err
-}
+		var bundleRef string
+		bundleDir := p.ResolveRelative(p.EnvironmentDirectory)
+		bundlePaths, _ := filepath.Glob(filepath.Join(bundleDir, "*.bundle"))
+		if len(args) == 1 {
+			bundleRef = args[0]
+		} else {
+			bundleRef = cli.RequestChoice("Choose a bundle", bundlePaths...)
+		}
+
+		var bundleCandidates []string
+		for _, bundlePath := range bundlePaths {
+			if strings.Contains(bundlePath, bundleRef) {
+				bundleCandidates = append(bundleCandidates, bundlePath)
+			}
+		}
+		if len(bundleCandidates) > 1 {
+			return errors.Errorf("Multiple bundles matched name %q: %v (from %v)", bundleRef, bundleCandidates, bundlePaths)
+		}
+
+		bundleRef = bundlePaths[0]
+
+		bundleContent, err := ioutil.ReadFile(bundleRef)
+		if err != nil {
+			return err
+		}
+		bundleHash := util.HashBytesToString(bundleContent)[0:63]
+
+		k, err := kube.GetKubeClient()
+		if err != nil {
+			return err
+		}
+
+		namespace := viper.GetString(argBundlePushNamespace)
+		configMapClient := k.CoreV1().ConfigMaps(namespace)
+
+		bundleName := "bosun-bundle-" + strings.TrimSuffix(filepath.Base(bundleRef), ".bundle")
+
+		bundleConfigMap := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:bundleName,
+				Labels: map[string]string{
+					LabelBundleConfigMapHash: bundleHash,
+				},
+			},
+			BinaryData: map[string][]byte{
+				"bundle": bundleContent,
+			},
+		}
+
+		_, err = configMapClient.Create(bundleConfigMap)
+		if kerrors.IsAlreadyExists(err) {
+			_, err = configMapClient.Update(bundleConfigMap)
+		}
+		if err != nil {
+			return errors.Wrapf(err, "create config map named %q", bundleConfigMap.Name)
+		}
+
+		fmt.Printf("Pushed to current cluster, namespace %q, configmap name %q", namespace, bundleConfigMap.Name)
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(argBundlePushNamespace, "default", "The namespace to place the bundle in.")
+})
+
+const (
+	argBundlePushNamespace = "namespace"
+	LabelBundleConfigMapHash = "naveego.com/bosun-bundle-hash"
+)
+
