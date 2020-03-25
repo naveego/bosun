@@ -322,6 +322,10 @@ func (a *App) BuildImages(ctx BosunContext) error {
 			}
 		}
 
+		for i := 0; i < len(image.BuildArgs); i++ {
+			buildCommand = append(buildCommand, os.ExpandEnv(image.BuildArgs[i]))
+		}
+
 		ctx.Log().Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
 		_, err := pkg.NewShellExe(buildCommand[0], buildCommand[1:]...).
 			WithEnvValue("VERSION_NUMBER", a.Version.String()).
