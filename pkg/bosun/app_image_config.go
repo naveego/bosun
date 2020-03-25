@@ -9,6 +9,7 @@ type AppImageConfig struct {
 	Dockerfile   string   `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
 	ContextPath  string   `yaml:"contextPath,omitempty" json:"contextPath,omitempty"`
 	BuildCommand []string `yaml:"buildCommand,omitempty" json:"buildCommand,omitempty"`
+	BuildArgs 	 []string `yaml:"buildArgs,omitempty" json:"buildArgs,omitempty"`
 }
 
 func (a AppImageConfig) GetFullName() string {
