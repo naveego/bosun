@@ -372,7 +372,7 @@ func (a *App) PublishImages(ctx BosunContext) error {
 			ctx.Log().WithField("branch", branch).Warnf(`Non-standard branch format, pushing "unstable" tag only.`)
 			tags = []string{"unstable"}
 		} else {
-			return errors.Errorf("branch %q matches no patterns; use --force flag to publish with 'unstable' tag anyway")
+			return errors.Errorf("branch %q matches no patterns; use --force flag to publish with 'unstable' tag anyway", branch)
 		}
 	}
 
