@@ -10,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/helm"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/slack"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -361,7 +362,7 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	if a.Branching.IsFeature(branch) {
 		tag := "unstable-" + featureBranchTagRE.ReplaceAllString(strings.ToLower(branch.String()), "-")
 		ctx.Log().WithField("branch", branch).Warnf(`Publishing from feature branch, pushing "unstable" and %q tag only.`, tag)
-		tags = []string { "unstable", tag }
+		tags = []string{"unstable", tag}
 	} else if a.Branching.IsDevelop(branch) {
 		tags = append(tags, "develop")
 	} else if a.Branching.IsMaster(branch) {
@@ -400,6 +401,20 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	for _, line := range report {
 		color.Green("%s\n", line)
 	}
+
+	g, _ := a.Repo.LocalRepo.Git()
+	changes, _ := g.ExecLines("log", "--pretty=oneline", "-n", "5", "--no-color")
+
+	slack.Notification{}.WithMessage(`Pushed images for %s from branch %s:
+%s
+
+Recent commits: 
+%s`,
+		a.Name,
+		branch,
+		strings.Join(report, "\n"),
+		strings.Join(changes, "\n"),
+	).Send()
 
 	return nil
 }
