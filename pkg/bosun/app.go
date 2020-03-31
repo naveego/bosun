@@ -405,7 +405,9 @@ func (a *App) PublishImages(ctx BosunContext) error {
 	g, _ := a.Repo.LocalRepo.Git()
 	changes, _ := g.ExecLines("log", "--pretty=oneline", "-n", "5", "--no-color")
 
-	slack.Notification{}.WithMessage(`Pushed images for %s from branch %s:
+	slack.Notification{
+		IconEmoji:":frame_with_picture:",
+	}.WithMessage(`Pushed images for %s from branch %s:
 %s
 
 Recent commits: 

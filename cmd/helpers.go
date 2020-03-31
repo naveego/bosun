@@ -38,22 +38,13 @@ func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 		log.Fatal(err)
 	}
 
-	envFromEnv := os.Getenv(core.EnvEnvironment)
-	envFromConfig := b.GetCurrentEnvironment().Name
-	if envFromConfig != envFromEnv {
-		_, _ = colorError.Printf("Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env use %[1]s)\n\n",
-			envFromConfig,
-			core.EnvEnvironment,
-			envFromEnv)
-	}
-
 	return b
 }
 
 func MustGetPlatform(optionalParams ...cli.Parameters) (*bosun.Bosun, *bosun.Platform) {
 	b := MustGetBosun()
 	p, err := b.GetCurrentPlatform()
-	if err != nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 	return b, p
@@ -141,7 +132,23 @@ func getBosun(optionalParams ...cli.Parameters) (*bosun.Bosun, error) {
 		params.ValueOverrides[segs[0]] = segs[1]
 	}
 
-	return bosun.New(params, config)
+	b, err := bosun.New(params, config)
+	if err != nil {
+		return nil, err
+	}
+	if !params.NoEnvironment {
+
+		envFromEnv := os.Getenv(core.EnvEnvironment)
+		envFromConfig := b.GetCurrentEnvironment().Name
+		if envFromConfig != envFromEnv {
+			_, _ = colorError.Fprintf(os.Stderr, "Bosun config indicates environment should be %[1]q, but the environment var %[2]s is %[3]q. You may want to run $(bosun env use %[1]s)\n\n",
+				envFromConfig,
+				core.EnvEnvironment,
+				envFromEnv)
+		}
+	}
+
+	return b, err
 }
 
 func mustGetApp(b *bosun.Bosun, names []string) *bosun.App {

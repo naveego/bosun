@@ -16,6 +16,8 @@ import (
 type Notification struct {
 	WebhookURL string
 	Message string
+	IconURL string
+	IconEmoji string
 }
 
 func (s Notification) WithMessage(format string, args ...interface{}) Notification {
@@ -25,6 +27,9 @@ func (s Notification) WithMessage(format string, args ...interface{}) Notificati
 
 type slackRequestBody struct {
 	Text string `json:"text"`
+	Username string `json:"username,omitempty"`
+	IconURL string `json:"icon_url,omitempty"`
+	IconEmoji string `json:"icon_emoji,omitempty"`
 }
 
 func (s Notification) Send() {
@@ -38,7 +43,14 @@ func (s Notification) Send() {
 		return
 	}
 
-	slackBody, _ := json.Marshal(slackRequestBody{Text: s.Message})
+	body := slackRequestBody{
+		Text: s.Message,
+		Username: os.Getenv("USER"),
+		IconURL:s.IconURL,
+		IconEmoji:s.IconEmoji,
+	}
+
+	slackBody, _ := json.Marshal(body)
 
 	req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(slackBody))
 	if err != nil {

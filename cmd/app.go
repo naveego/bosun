@@ -22,6 +22,7 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	script2 "github.com/naveego/bosun/pkg/script"
@@ -101,7 +102,7 @@ var appVersionCmd = &cobra.Command{
 	Args:    cobra.RangeArgs(0, 1),
 	Short:   "Outputs the version of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 		app := mustGetApp(b, args)
 		fmt.Println(app.Version)
 		return nil
@@ -113,7 +114,7 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 	Args:  cobra.RangeArgs(0, 1),
 	Short: "Outputs the path where the app is cloned on the local system.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 		app := mustGetApp(b, args)
 		if !app.IsRepoCloned() {
 			return errors.New("repo is not cloned")
@@ -130,7 +131,7 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 	Short: "Updates the version of an app. If bump argument is not provided, it will be computed from the diff from the default branch.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 		app := mustGetApp(b, args[:1])
 
 		if app.Repo.CheckCloned() != nil {
@@ -411,7 +412,7 @@ var appStatusCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 		env := b.GetCurrentEnvironment()
 		f := getFilterParams(b, args)
 		chain := f.Chain().Then().Including(filter.FilterMatchAll())
@@ -711,7 +712,7 @@ as "version-release".
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			b := MustGetBosun()
+			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 			app := mustGetApp(b, args)
 			ctx := b.NewContext()
 			err := app.PublishImages(ctx)
@@ -730,7 +731,7 @@ var appBuildImageCmd = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := MustGetBosun()
+			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 			app := mustGetApp(b, args)
 			ctx := b.NewContext().WithApp(app)
 			err := app.BuildImages(ctx)
@@ -747,7 +748,7 @@ var appPullCmd = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := MustGetBosun()
+			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
 			ctx := b.NewContext()
 			apps, err := getAppsIncludeCurrent(b, args)
 			if err != nil {
