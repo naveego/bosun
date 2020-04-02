@@ -88,13 +88,13 @@ func deployApp(cmd *cobra.Command, args []string) error {
 		valueSets = append(valueSets, values.ValueSet{Static: map[string]interface{}{"tag": "latest"}})
 	}
 
-	err = deployApps(b, p, apps, valueSets)
+	err = deployApps(b, p, apps, valueSets, args)
 
 	return err
 }
 
 // deployApps deploys the provided app names from the specified platform with the provided value sets
-func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets values.ValueSets) error {
+func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets values.ValueSets, forceAppNames []string) error {
 	var req = bosun.CreateDeploymentPlanRequest{
 		Apps:                  appNames,
 		ProviderPriority:      viper.GetStringSlice(argDeployPlanProviderPriority),
@@ -119,6 +119,7 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 
 	executeRequest := bosun.ExecuteDeploymentPlanRequest{
 		Plan:        plan,
+		IncludeApps: forceAppNames,
 		ValueSets:   valueSets,
 		Recycle:     viper.GetBool(argDeployAppRecycle),
 		PreviewOnly: viper.GetBool(argAppDeployPreview),

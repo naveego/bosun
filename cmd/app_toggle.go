@@ -75,7 +75,7 @@ var appToggleCmd = &cobra.Command{
 			} else {
 				// force upgrade the app to restore it to its normal state.
 				ctx.Log().Info("Re-deploying app.")
-				err = deployApps(b, p, []string{app.Name}, nil)
+				err = deployApps(b, p, []string{app.Name}, nil, []string{app.Name})
 
 				if err != nil {
 					return err
