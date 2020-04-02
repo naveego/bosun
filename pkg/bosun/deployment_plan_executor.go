@@ -99,6 +99,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 			continue
 		}
 
+
 		if !deployRequested {
 			if len(deploymentPlan.DeployApps) > 0 && !deploymentPlan.DeployApps[appPlan.Name] {
 				appCtx.Log().Infof("Skipping app because it is false in plan.deployApps.")
@@ -107,6 +108,11 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 
 			if stringsn.Contains(appPlan.Name, deploymentPlan.EnvironmentDeployProgress[env.Name]) {
 				appCtx.Log().Infof("Skipping app because it has already been deployed from this plan to this environment (delete from environmentDeployProgress list to reset).")
+				continue
+			}
+
+			if stringsn.Contains(appPlan.Name, env.AppBlacklist) {
+				appCtx.Log().Infof("Skipping app because it is in the blacklist for the environment (request it explicitly to force deployment).")
 				continue
 			}
 		}

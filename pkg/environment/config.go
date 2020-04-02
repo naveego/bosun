@@ -12,10 +12,10 @@ import (
 
 type Config struct {
 	core.ConfigShared `yaml:",inline"`
-	Role           core.EnvironmentRole   `yaml:"role" json:"role"`
-	DefaultCluster string                 `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
-	Clusters       kube.ConfigDefinitions `yaml:"clusters,omitempty"`
-	PullSecrets    []kube.PullSecret      `yaml:"pullSecrets,omitempty"`
+	Role              core.EnvironmentRole   `yaml:"role" json:"role"`
+	DefaultCluster    string                 `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
+	Clusters          kube.ConfigDefinitions `yaml:"clusters,omitempty"`
+	PullSecrets       []kube.PullSecret      `yaml:"pullSecrets,omitempty"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool                             `yaml:"protected" json:"protected"`
@@ -29,6 +29,8 @@ type Config struct {
 	ValueSetNames     []string                             `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 	ValueOverrides    *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
 	AppValueOverrides map[string]values.ValueSetCollection `yaml:"appValueOverrides,omitempty"`
+	// Apps which should not be deployed to this environment.
+	AppBlacklist         []string          `yaml:"appBlacklist,omitempty"`
 	SecretGroupFilePaths map[string]string `yaml:"secretFiles"`
 }
 
