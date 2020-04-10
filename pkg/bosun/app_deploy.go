@@ -636,6 +636,7 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 
 		svc.Spec.ClusterIP = ""
 		svc.Spec.Type = "ExternalName"
+		svc.Spec.Selector = nil
 		svc.Spec.Ports = []v1.ServicePort{
 			{
 				Port:       int32(internalPort),
