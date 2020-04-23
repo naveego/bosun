@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
@@ -18,7 +20,8 @@ var appToggleCmd = &cobra.Command{
 
 		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun()
+		// Set force to true so toggling back to minikube forces a deploy
+		b := MustGetBosun(cli.Parameters{Force: true})
 		p, err := b.GetCurrentPlatform()
 		check(err)
 
@@ -75,9 +78,15 @@ var appToggleCmd = &cobra.Command{
 			} else {
 				// force upgrade the app to restore it to its normal state.
 				ctx.Log().Info("Re-deploying app.")
+
 				err = deployApps(b, p, []string{app.Name}, nil, []string{app.Name})
 
 				if err != nil {
+					color.Yellow("-------------------------\n")
+					color.Blue("-------------------------\n")
+					color.Red("Got an error, but toggling is fragile so you should try running this at least twice to see if it works.\n")
+					color.Blue("-------------------------\n")
+					color.Yellow("-------------------------\n")
 					return err
 				}
 				appServiceChanged = true

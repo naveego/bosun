@@ -112,11 +112,11 @@ func getBosun(optionalParams ...cli.Parameters) (*bosun.Bosun, error) {
 		params = optionalParams[0]
 	}
 
-	params.Sudo = viper.GetBool(ArgGlobalSudo)
-	params.Verbose = viper.GetBool(ArgGlobalVerbose)
-	params.DryRun = viper.GetBool(ArgGlobalDryRun)
-	params.NoReport = viper.GetBool(ArgGlobalNoReport)
-	params.Force = viper.GetBool(ArgGlobalForce)
+	params.Sudo = params.Sudo || viper.GetBool(ArgGlobalSudo)
+	params.Verbose = params.Verbose || viper.GetBool(ArgGlobalVerbose)
+	params.DryRun = params.DryRun || viper.GetBool(ArgGlobalDryRun)
+	params.NoReport = params.NoReport || viper.GetBool(ArgGlobalNoReport)
+	params.Force = params.Force || viper.GetBool(ArgGlobalForce)
 	params.ConfirmedEnv = viper.GetString(ArgGlobalConfirmedEnv)
 	params.ProviderPriority = viper.GetStringSlice(ArgAppProviderPriority)
 

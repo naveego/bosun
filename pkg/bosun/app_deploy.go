@@ -621,8 +621,11 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 
 		svcClient := client.CoreV1().Services(namespace)
 		svc, err := svcClient.Get(routableService.Name, metav1.GetOptions{})
-		if err != nil {
-			return errors.Wrap(err, "get service if it exists")
+		if err == nil {
+			err = svcClient.Delete(svc.Name, nil)
+			if err != nil {
+				log.WithError(err).Error("Could not delete service.")
+			}
 		}
 
 		localhostPort := routableService.LocalhostPort
@@ -634,13 +637,24 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 			internalPort = routableService.LocalhostPort
 		}
 
-		svc.Spec.ClusterIP = ""
-		svc.Spec.Type = "ExternalName"
+		svc = &v1.Service{
+			ObjectMeta:metav1.ObjectMeta{
+				Name:routableService.Name,
+				Namespace:namespace,
+			},
+			Spec:v1.ServiceSpec{
+
+			},
+		}
+
+		svc.Spec.ClusterIP = "None"
+		svc.Spec.Type = v1.ServiceTypeClusterIP
+		svc.Spec.ExternalName = hostIP
 		svc.Spec.Selector = nil
 		svc.Spec.Ports = []v1.ServicePort{
 			{
 				Port:       int32(internalPort),
-				TargetPort: intstr.IntOrString{},
+				TargetPort: intstr.IntOrString{IntVal: int32(localhostPort)},
 				Name:       routableService.PortName,
 				Protocol:   v1.ProtocolTCP,
 			},
@@ -648,25 +662,30 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		svc.Spec.Selector = nil
 
 		log.Info("Updating service...")
-		svc, err = svcClient.Update(svc)
 
-		log.Info("Updated service.")
+		svc.ResourceVersion = ""
+		svc, err = svcClient.Create(svc)
+		if err != nil {
+			return errors.Wrap(err, "Could not replace service")
+		}
+
+		log.WithField("updated", svc).Info("Updated service.")
 
 		endpointClient := client.CoreV1().Endpoints(namespace)
 
+		endpointExists := false
 		endpoint, err := endpointClient.Get(routableService.Name, metav1.GetOptions{})
-		if err != nil && !kerrors.IsNotFound(err) {
-			return errors.Wrap(err, "get endpoint if it exists")
-		}
-
-		endpointExists := true
-		if endpoint == nil {
+		if kerrors.IsNotFound(err) {
 			endpointExists = false
 			endpoint = &v1.Endpoints{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: routableService.Name,
 				},
 			}
+		} else if err != nil {
+			return errors.Wrap(err, "get endpoint if it exists")
+		} else {
+			endpointExists = true
 		}
 
 		endpoint.Subsets = []v1.EndpointSubset{
@@ -684,7 +703,7 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		}
 
 		if endpointExists {
-			log.Info("Creating endpoint...")
+			log.WithField("endpoint", endpoint).Info("Creating endpoint...")
 			endpoint, err = endpointClient.Update(endpoint)
 			log.Info("Created endpoint.")
 		} else {
@@ -802,7 +821,6 @@ func getTagFromImage(image string) string {
 		return segs[1]
 	}
 }
-
 
 func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
