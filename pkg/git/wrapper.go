@@ -142,8 +142,11 @@ func (g GitWrapper) Push() error {
 	return err
 }
 
-func (g GitWrapper) CheckOutBranch(branch string) error {
-	_, err := g.Exec("checkout", branch)
+func (g GitWrapper) CheckOutOrCreateBranch(branch string) error {
+	_, err := g.Exec("checkout", "-b", branch)
+	if err != nil {
+		_, err = g.Exec("checkout", branch)
+	}
 	return err
 }
 

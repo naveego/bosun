@@ -53,6 +53,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		var msg string
+		squashAgainstBranch := viper.GetString(ArgGitCommitSquash)
 		if retryFlag && tmpFileExists {
 
 			var bytes []byte
@@ -148,14 +149,37 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 			}
 
 			msg = builder.String()
+
+
 		}
+
+		wantsSquash := squashAgainstBranch != ""
+		if !wantsSquash {
+			check(survey.AskOne(&survey.Confirm{
+				Message: "Do you want to squash your changes to this branch into a single commit?",
+			}, &wantsSquash))
+		}
+		if wantsSquash {
+			if squashAgainstBranch == "" {
+				check(survey.AskOne(&survey.Input{
+					Message: "Enter the parent branch you want to compare against to detect changes",
+				}, &squashAgainstBranch))
+			}
+		}
+
+
+		commit := func () error {
 
 		commitArgs := []string{"commit", "-m", msg}
 		if viper.GetBool(ArgGitCommitNoVerify) {
 			commitArgs = append(commitArgs, "--no-verify")
 		}
 
-		out, err = g.ExecVerbose(commitArgs...)
+		_, commitErr := g.ExecVerbose(commitArgs...)
+		return commitErr
+		}
+
+		err = commit()
 
 		if err != nil {
 			tmpErr := saveCommitTmpFile(msg)
@@ -163,10 +187,33 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 				return errors.Errorf("could not write tmp file\noriginal error: %s\ntmp file error: %s", err, tmpErr)
 			}
 
-			color.Red("GetCurrentCommit failed:\n")
+			color.Red("commit failed:\n")
 			color.Yellow("%s\n", err.Error())
 			color.Blue("You can retry this commit using the --retry flag.")
 			os.Exit(1)
+		}
+
+		if squashAgainstBranch != "" {
+			currentBranch := g.Branch()
+			backupBranch := fmt.Sprintf("%s-unsquashed", currentBranch)
+			_ = g.CheckOutOrCreateBranch(backupBranch)
+			color.Blue("Unsquashed branch backed up as %s", backupBranch)
+
+			_ = g.CheckOutOrCreateBranch(currentBranch)
+			mergeBase, _ := g.Exec("merge-base", squashAgainstBranch, currentBranch)
+			color.Blue("Got merge base %q by comparing current branch %q to %q", mergeBase, currentBranch, squashAgainstBranch)
+			_, err = g.Exec("reset", mergeBase )
+			if err != nil {
+				return errors.Wrapf(err, "couldn't reset to %s", mergeBase)
+			}
+			_, err = g.Exec("add", "-A")
+			check(err)
+			err = commit()
+			if err != nil {
+				color.Red("Squash failed:\n")
+				color.Yellow("%s\n", err.Error())
+				os.Exit(1)
+			}
 		}
 
 		// color.Green("GetCurrentCommit succeeded.\n")
@@ -174,7 +221,8 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().BoolP(GitRetry, "r", false, "commits with the previously failed commit message")
+	cmd.Flags().BoolP(GitRetry, "r", false, "Commits with the previously failed commit message.")
+	cmd.Flags().String(ArgGitCommitSquash, "",  "Squash all commits since branching off the provided branch.")
 })
 
 func exists(path string) (bool, error) {
@@ -206,5 +254,6 @@ func saveCommitTmpFile(msg string) error {
 const (
 	GitRetry             = "retry"
 	ArgGitCommitNoVerify = "no-verify"
+	ArgGitCommitSquash = "squash-against"
 	TempFileGitCommit    = "/tmp/bosun_git_commit"
 )

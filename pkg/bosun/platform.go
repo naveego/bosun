@@ -1436,7 +1436,7 @@ func (p *Platform) makeCurrentReleaseStable(ctx BosunContext, branch string) err
 	log := ctx.WithLogField("branch", branch).Log()
 
 	g, _ := git.NewGitWrapper(p.FromPath)
-	err := g.CheckOutBranch(branch)
+	err := g.CheckOutOrCreateBranch(branch)
 	if err != nil {
 		return err
 	}

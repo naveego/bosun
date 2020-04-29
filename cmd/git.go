@@ -105,6 +105,13 @@ type GitPullRequestCommand struct {
 	LocalRepoPath string
 }
 
+const (
+	ArgPullRequestReviewers = "reviewer"
+	ArgPullRequestTitle     = "title"
+	ArgPullRequestBody      = "body"
+	ArgPullRequestBase      = "base"
+)
+
 func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 	client := mustGetGithubClient()
 
@@ -193,10 +200,3 @@ func (c GitPullRequestCommand) rebase() error {
 
 	return nil
 }
-
-const (
-	ArgPullRequestReviewers = "reviewer"
-	ArgPullRequestTitle     = "title"
-	ArgPullRequestBody      = "body"
-	ArgPullRequestBase      = "base"
-)
