@@ -215,7 +215,7 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 	req.Name = k.Name
 
 	if contextIsDefined(req.Name) && !req.Force {
-		req.Log.Debugf("Kubernetes context %q already exists (use --force to configure anyway).", req.Name)
+		req.Log.Warnf("Kubernetes context %q already exists (use --force to configure anyway).", req.Name)
 		return nil
 	}
 

@@ -71,6 +71,8 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 			return errors.New("no kube config named minikube found in workspace or current environment")
 		}
 
+		fmt.Println(konfig)
+
 		konfigs := kube.ConfigDefinitions{
 			&kube.ClusterConfig{
 				Minikube:     konfig,
@@ -84,6 +86,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 			Log:              ctx.Log(),
 			ExecutionContext: ctx,
 			PullSecrets:      env.PullSecrets,
+			Force: b.NewContext().GetParameters().Force,
 		})
 		if err != nil {
 			return err

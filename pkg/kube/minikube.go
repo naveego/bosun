@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"os"
 	"runtime"
@@ -10,6 +11,8 @@ type MinikubeConfig struct {
 	HostIP   string `yaml:"hostIP" json:"hostIP"`
 	Driver   string `yaml:"driver" json:"driver"`
 	DiskSize string `yaml:"diskSize" json:"diskSize"`
+	MemoryMB int `yaml:"memoryMB,omitempty"`
+	CPUs int `yaml:"cpus,omitempty"`
 	Version  string `yaml:"version" json:"version"`
 }
 
@@ -24,6 +27,14 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 	if c.Driver == "" {
 		c.Driver = "virtualbox"
 	}
+	if c.CPUs == 0 {
+		c.CPUs = 2
+	}
+	if c.MemoryMB == 0 {
+		c.MemoryMB = 16000
+	}
+
+	fmt.Println(c)
 
 	err := pkg.NewShellExe("minikube", "ip").RunE()
 	if err == nil {
@@ -64,8 +75,8 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 		if runtime.GOOS == "windows" {
 			err = pkg.NewShellExe("minikube",
 				"start",
-				"--memory=16000",
-				"--cpus=2",
+				fmt.Sprintf("--memory=%d", c.MemoryMB),
+				fmt.Sprintf("--cpus=%d", c.CPUs),
 				"--kubernetes-version=v"+c.Version,
 				"--vm-driver", c.Driver,
 				"--hyperv-virtual-switch", "Default Switch",
@@ -75,8 +86,8 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 		} else {
 			err = pkg.NewShellExe("minikube",
 				"start",
-				"--memory=16000",
-				"--cpus=2",
+				fmt.Sprintf("--memory=%d", c.MemoryMB),
+				fmt.Sprintf("--cpus=%d", c.CPUs),
 				"--kubernetes-version=v"+c.Version,
 				"--vm-driver", c.Driver,
 				"--extra-config=apiserver.service-node-port-range=80-32000",
