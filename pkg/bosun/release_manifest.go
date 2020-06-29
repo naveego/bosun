@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/templating"
@@ -139,6 +140,8 @@ func (r *ReleaseManifest) GetPlan() (*ReleasePlan, error) {
 
 func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 
+	pkg.Log.Debugf("Getting app manifests...")
+
 	if r.appManifests == nil {
 		appManifests := map[string]*AppManifest{}
 
@@ -156,6 +159,7 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 
 		r.appManifests = appManifests
 	}
+	pkg.Log.Debugf("Got %d app manifests.", len(r.appManifests))
 	return r.appManifests, nil
 }
 
@@ -324,11 +328,9 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 			// only update if app was requested or no apps were requested
 			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
 				// only update this app has a release branch:
-				if app.PinnedReleaseVersion != nil && *app.PinnedReleaseVersion == r.Version {
-					err = r.RefreshApp(ctx, app.Name, app.Branch)
-					if err != nil {
-						ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
-					}
+				err = r.RefreshApp(ctx, app.Name, app.Branch)
+				if err != nil {
+					ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
 				}
 			}
 		}
@@ -454,7 +456,7 @@ func (r *ReleaseManifest) AddApp(manifest *AppManifest, addToDefaultDeploys bool
 	}
 
 	err = manifest.MakePortable()
-	if err != nil{
+	if err != nil {
 		return err
 	}
 

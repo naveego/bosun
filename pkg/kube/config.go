@@ -121,6 +121,7 @@ type ClusterConfig struct {
 	ValueOverrides    *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
 	Oracle            *OracleClusterConfig             `yaml:"oracle,omitempty"`
 	Minikube          *MinikubeConfig                  `yaml:"minikube,omitempty"`
+	Microk8s          *Microk8sConfig                  `yaml:"microk8s,omitempty"`
 	Amazon            *AmazonClusterConfig             `yaml:"amazon,omitempty"`
 	Rancher           *RancherClusterConfig            `yaml:"rancher,omitempty"`
 	Namespaces        NamespaceConfigs                 `yaml:"namespaces"`
@@ -178,6 +179,9 @@ func (f *ClusterConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if f.Rancher != nil {
 			f.Provider = "rancher"
 		}
+		if f.Microk8s != nil {
+			f.Provider = "microk8s"
+		}
 	}
 
 	return err
@@ -229,6 +233,12 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 		req.Log.Infof("Configuring minikube cluster %q...", k.Name)
 
 		if err := k.Minikube.configureKubernetes(req); err != nil {
+			return err
+		}
+	} else if k.Microk8s != nil {
+		req.Log.Infof("Configuring microk8s cluster %q...", k.Name)
+
+		if err := k.Microk8s.configureKubernetes(req); err != nil {
 			return err
 		}
 	} else if k.Amazon != nil {

@@ -31,8 +31,8 @@ var appToggleCmd = &cobra.Command{
 			return err
 		}
 
-		if c.Name != "red" {
-			return errors.New("Environment must be set to 'red' to toggle services.")
+		if !c.IsLocal {
+			return errors.New("Environment must have `isLocal: true` to toggle services.")
 		}
 
 		repos, err := getAppsIncludeCurrent(b, args)

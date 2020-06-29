@@ -145,7 +145,11 @@ func (c *ShellExe) RunE() error {
 		err = c.cmd.Run()
 	})
 
-	return err
+	return errors.Wrapf(err, "command failed: %s", c.String())
+}
+
+func (c *ShellExe) String() string {
+	return fmt.Sprintf("%s %s", to.String(c.Exe), strings.Join(c.Args, " "))
 }
 
 // RunOut runs the command and returns the output or an error.

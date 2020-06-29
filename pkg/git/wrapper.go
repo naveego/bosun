@@ -138,6 +138,7 @@ func (g GitWrapper) CreateBranch(branch string) error {
 }
 
 func (g GitWrapper) Push() error {
+	pkg.Log.Info("Pushing current branch.")
 	_, err := g.Exec("push")
 	return err
 }
