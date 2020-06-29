@@ -161,7 +161,7 @@ require (
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 	gopkg.in/ory-am/dockertest.v2 v2.2.3 // indirect
 	gopkg.in/square/go-jose.v2 v2.3.0 // indirect
-	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
+	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	gopkg.in/yaml.v2 v2.2.2
 	gopkg.in/yaml.v3 v3.0.0-20191120175047-4206685974f2
 	k8s.io/api v0.0.0-20190918155943-95b840bb6a1f

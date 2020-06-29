@@ -135,7 +135,7 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 
 	executor := bosun.NewDeploymentPlanExecutor(b, p)
 
-	err = executor.Execute(executeRequest)
+	_, err = executor.Execute(executeRequest)
 
 	return err
 }

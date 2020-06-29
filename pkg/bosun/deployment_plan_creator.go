@@ -20,6 +20,7 @@ type CreateDeploymentPlanRequest struct {
 	IgnoreDependencies    bool
 	AutomaticDependencies bool
 	ReleaseVersion        *semver.Version
+	BasedOnHash           string
 }
 
 func NewDeploymentPlanCreator(bosun *Bosun, platform *Platform) DeploymentPlanCreator {
@@ -48,6 +49,7 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 		SkipDependencyValidation: req.IgnoreDependencies,
 		DeployApps:               map[string]bool{},
 		ReleaseVersion:           req.ReleaseVersion,
+		BasedOnHash:              req.BasedOnHash,
 	}
 	apps := map[string]*App{}
 	dependencies := map[string][]string{}

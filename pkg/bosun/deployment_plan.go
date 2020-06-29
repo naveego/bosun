@@ -14,6 +14,8 @@ import (
 type DeploymentPlan struct {
 	core.ConfigShared         `yaml:",inline"`
 	ReleaseVersion            *semver.Version      `yaml:"releaseVersion"`
+	// Hash of the release this plan was based on, if any - used to detect that the plan is out of date
+	BasedOnHash string `yaml:"basedOnHash"`
 	DirectoryPath             string               `yaml:"-"`
 	ProviderPriority          []string             `yaml:"providerPriority"`
 	SkipDependencyValidation  bool                 `yaml:"skipDependencyValidation"`

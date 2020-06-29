@@ -60,10 +60,11 @@ type Deploy struct {
 
 // SharedDeploySettings are copied from the DeploySettings to the AppDeploySettings
 type SharedDeploySettings struct {
-	Environment        *environment.Environment
-	PreviewOnly bool
-	UseLocalContent    bool
-	Recycle            bool
+	Environment     *environment.Environment
+	PreviewOnly     bool
+	UseLocalContent bool
+	Recycle         bool
+	DiffOnly        bool
 }
 
 type DeploySettings struct {
@@ -489,19 +490,27 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 
 		err = app.Reconcile(appCtx)
 
-		if d.AfterDeploy != nil {
-			d.AfterDeploy(app, err)
-		}
 
 		if err != nil {
 			return err
 		}
+
+		if d.DiffOnly || d.PreviewOnly{
+			return nil
+		}
+
 		if d.Recycle {
 			err = app.Recycle(ctx)
 			if err != nil {
 				return err
 			}
 		}
+
+
+		if d.AfterDeploy != nil {
+			d.AfterDeploy(app, err)
+		}
+
 
 	}
 

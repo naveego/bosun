@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -33,7 +34,7 @@ func init() {
 var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 	Use:          "plan [release]",
 	Short:        "Plans a deployment, optionally of an existing release.",
-	Args:cobra.RangeArgs(0, 1),
+	Args:         cobra.RangeArgs(0, 1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -175,14 +176,16 @@ func releaseDeployPlan() error {
 	deploymentPlanPath := filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
 
 	previousPlan, _ := bosun.LoadDeploymentPlanFromFile(deploymentPlanPath)
-
+	basedOnHash, _ := util.HashToStringViaYaml(r)
 	var req = bosun.CreateDeploymentPlanRequest{
 		Path:                  deploymentPlanPath,
 		ProviderPriority:      []string{r.Slot},
 		IgnoreDependencies:    true,
 		AutomaticDependencies: false,
-		ReleaseVersion: &r.Version,
+		ReleaseVersion:        &r.Version,
+		BasedOnHash:           basedOnHash,
 	}
+
 	for name, included := range r.UpgradedApps {
 		if included {
 			req.Apps = append(req.Apps, name)
@@ -210,4 +213,3 @@ func releaseDeployPlan() error {
 
 	return nil
 }
-

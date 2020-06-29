@@ -16,8 +16,12 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"path/filepath"
 )
 
@@ -38,15 +42,34 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			return err
 		}
 		req := bosun.ExecuteDeploymentPlanRequest{
+			Validate: !viper.GetBool(argDeployExecuteSkipValidate),
+			DiffOnly: viper.GetBool(argDeployExecuteDiffOnly),
+			UseSudo:viper.GetBool(ArgGlobalSudo),
 		}
 
 		pathOrSlot := args[0]
 		if pathOrSlot == "release" {
-			r, err := p.GetCurrentRelease()
+			r, getReleaseErr := p.GetCurrentRelease()
+			if getReleaseErr != nil {
+				return getReleaseErr
+			}
+			expectedReleaseHash, _ :=  util.HashToStringViaYaml(r)
+
+			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
+			req.Plan, err = bosun.LoadDeploymentPlanFromFile(req.Path)
 			if err != nil {
 				return err
 			}
-			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
+
+			if req.Plan.BasedOnHash != "" && req.Plan.BasedOnHash != expectedReleaseHash {
+				confirmed := cli.RequestConfirmFromUser("The release has changed since this plan was created, are you sure you want to continue?")
+				if !confirmed{
+
+					color.Yellow("You may want to run `bosun deploy plan release` to update the deployment plan\n")
+					return nil
+				}
+			}
+
 		} else {
 			req.Path = pathOrSlot
 		}
@@ -57,11 +80,17 @@ var _ = addCommand(deployCmd, &cobra.Command{
 
 		executor := bosun.NewDeploymentPlanExecutor(b, p)
 
-		err = executor.Execute(req)
+		_, err = executor.Execute(req)
 
 
 		return err
 	},
 }, func(cmd *cobra.Command) {
-
+	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation" )
+	cmd.Flags().Bool(argDeployExecuteDiffOnly, false, "Display the diffs for the deploy, but do not actually execute." )
 })
+
+const (
+	argDeployExecuteSkipValidate = "skip-validation"
+	argDeployExecuteDiffOnly = "diff-only"
+)

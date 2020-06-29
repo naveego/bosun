@@ -308,6 +308,8 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		return nil
 	}
 
+
+
 	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
 	_, err = resolvedValues.PersistValues()
@@ -322,6 +324,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	defer func() { a.helmRelease = nil }()
 
 	err = a.LoadActualState(ctx, true)
+
 	if err != nil {
 		return errors.Errorf("error checking actual state for %q: %s", a.AppManifest.Name, err)
 	}
@@ -346,6 +349,20 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	if len(plan) == 0 {
 		log.Info("No actions needed to reconcile state.")
+		return nil
+	}
+
+	if a.AppDeploySettings.DiffOnly {
+		log.Infof("Running in diff-only mode..")
+
+
+		log.Infof("Here are the steps that would have been run:")
+		for _, step := range plan {
+			fmt.Println(step.Name + ": " + step.Description)
+		}
+
+		log.Infof("here are the changes that would have been inflicted:")
+		fmt.Println(a.ActualState.Diff)
 		return nil
 	}
 
