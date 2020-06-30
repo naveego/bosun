@@ -549,3 +549,25 @@ func (r *ReleaseManifest) Clone() *ReleaseManifest {
 
 	return out
 }
+
+func (r *ReleaseManifest) GetChangeDetectionHash() (string, error) {
+	apps, err := r.GetAppManifests()
+	if err != nil {
+		return "", err
+	}
+
+	releaseHash, err := util.HashToStringViaYaml(r)
+	if err != nil {
+		return "", err
+	}
+
+	appHash, err := util.HashToStringViaYaml(apps)
+	if err != nil {
+		return "", err
+	}
+
+	hash := util.HashBytesToString([]byte(releaseHash + appHash))
+
+	return hash, nil
+
+}

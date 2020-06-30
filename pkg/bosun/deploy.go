@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
@@ -282,7 +283,9 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 
 
 				if len(settings.Clusters) > 0 && !settings.Clusters[cluster.Name] {
-					log.Infof("Skipping deploy to cluster %s because it was excluded.")
+					clusterJSON, _ := json.Marshal(settings.Clusters)
+					log.Infof("Skipping deploy to cluster %s because it was excluded. Included: %s", cluster.Name, string(clusterJSON))
+
 					continue
 				}
 

@@ -19,7 +19,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
-	"github.com/naveego/bosun/pkg/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
@@ -37,6 +36,9 @@ var _ = addCommand(deployCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
+
+		check(b.ConfirmEnvironment())
+
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -53,7 +55,10 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			if getReleaseErr != nil {
 				return getReleaseErr
 			}
-			expectedReleaseHash, _ :=  util.HashToStringViaYaml(r)
+			expectedReleaseHash, hashErr := r.GetChangeDetectionHash()
+			if hashErr != nil {
+				return hashErr
+			}
 
 			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
 			req.Plan, err = bosun.LoadDeploymentPlanFromFile(req.Path)
@@ -78,6 +83,14 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			req.IncludeApps = args[1:]
 		}
 
+		clusters := viper.GetStringSlice(argDeployExecuteClusters)
+		if len(clusters) > 0 {
+			req.Clusters = map[string]bool{}
+			for _, cluster := range clusters {
+				req.Clusters[cluster] = true
+			}
+		}
+
 		executor := bosun.NewDeploymentPlanExecutor(b, p)
 
 		_, err = executor.Execute(req)
@@ -88,9 +101,11 @@ var _ = addCommand(deployCmd, &cobra.Command{
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation" )
 	cmd.Flags().Bool(argDeployExecuteDiffOnly, false, "Display the diffs for the deploy, but do not actually execute." )
+	cmd.Flags().StringSlice(argDeployExecuteClusters, []string{}, "Clusters to deploy to, defaults to all." )
 })
 
 const (
 	argDeployExecuteSkipValidate = "skip-validation"
 	argDeployExecuteDiffOnly = "diff-only"
+	argDeployExecuteClusters = "clusters"
 )

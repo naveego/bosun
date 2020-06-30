@@ -59,6 +59,8 @@ func deployAppFlags(cmd *cobra.Command) {
 
 func deployApp(cmd *cobra.Command, args []string) error {
 	b := MustGetBosun()
+	check(b.ConfirmEnvironment())
+
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return err

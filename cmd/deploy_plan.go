@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
-	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -176,7 +175,10 @@ func releaseDeployPlan() error {
 	deploymentPlanPath := filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
 
 	previousPlan, _ := bosun.LoadDeploymentPlanFromFile(deploymentPlanPath)
-	basedOnHash, _ := util.HashToStringViaYaml(r)
+	basedOnHash, err := r.GetChangeDetectionHash()
+	if err != nil {
+		return err
+	}
 	var req = bosun.CreateDeploymentPlanRequest{
 		Path:                  deploymentPlanPath,
 		ProviderPriority:      []string{r.Slot},

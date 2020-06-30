@@ -3,12 +3,14 @@ package bosun
 import (
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
+	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type DeploymentPlan struct {
@@ -80,6 +82,11 @@ func (d DeploymentPlan) Save() error {
 
 func (d DeploymentPlan) SavePlanFileOnly() error {
 
+
+	mirror.Sort(d.Apps, func(a,b *AppDeploymentPlan) bool {
+		return strings.Compare(a.Name, b.Name) < 0
+	})
+
 	planPath := d.FromPath
 	if planPath == "" {
 		if d.DirectoryPath == "" {
@@ -100,3 +107,4 @@ type AppDeploymentPlan struct {
 	ManifestPath   string          `yaml:"manifestPath"`
 	Manifest       *AppManifest    `yaml:"-"`
 }
+
