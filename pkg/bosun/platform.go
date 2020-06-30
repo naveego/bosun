@@ -1387,6 +1387,7 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 			_, err = g.Exec("merge", "-m", fmt.Sprintf("Merge %s into %s to commit release %s", target.fromBranch, target.toBranch, release.Version), target.fromBranch)
 			if err != nil {
 				warnings.Collect(errors.Errorf("Merge for %s from %s to %s failed (you'll need to complete the merge yourself): %s", targetLabel, target.fromBranch, target.toBranch, err))
+				log.Warn("Merge conflict detected, you will need to fix it.")
 				continue
 			}
 		}
