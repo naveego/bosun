@@ -199,19 +199,13 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 		return err
 	}
 
-	_ = os.Setenv(core.EnvCluster, e.Cluster.Name)
-
 	for _, v := range e.Cluster.Variables {
 		if err = v.Ensure(ctx); err != nil {
 			return err
 		}
 	}
 
-	previouslySetCluster := os.Getenv(core.EnvCluster)
-	if previouslySetCluster == e.Cluster.Name {
-		return nil
-	}
-
+	_ = os.Setenv(core.EnvCluster, e.Cluster.Name)
 
 	currentContext, _ := pkg.NewShellExe("kubectl config current-context ").RunOut()
 	if currentContext != e.Cluster.Name {
