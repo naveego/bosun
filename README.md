@@ -33,8 +33,11 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
     - vault
     - mkcert
     - awscli
-    - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/ and `sudo chmod 777 .docker && sudo chmod 777 .docker/config`)
-7. Add docker login for our private repo: `sudo docker login docker.n5o.black`. Get username/password from your mentor.
+    - docker (must be installed manually right now, following instructions from https://docs.docker.com/install/linux/docker-ce/ubuntu/)
+7. Add docker logins:
+    - For our private repo: `sudo docker login docker.n5o.black`. Get username/password from your mentor.
+    - For github: `sudo docker login docker.pkg.github.com` - The username is anything, the password is a github token with read:packages and write:packages.
+    - After adding docker logins, make the docker config readable by bosun using `sudo chmod 700 ~/.docker && sudo chmod 600 .docker/config`
 8. Add aws login for CLI: `aws configure --profile black`. Get key/secret from your mentor.
 8. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
    - You may need to run this a few times if things are slow to come up and subsequent steps time out.
