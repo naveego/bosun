@@ -53,16 +53,16 @@ type Platform struct {
 	MasterBranch_OBSOLETE        string                           `yaml:"masterBranch,omitempty"`
 	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
 	AppConfigDirectory           string                           `yaml:"appConfigDirectory,omitempty"`
-	EnvironmentDirectory           string                         `yaml:"environmentDirectory,omitempty" json:"environmentPaths"`
-	BundleDirectory           string                         `yaml:"bundleDirectory,omitempty" json:"bundleDirectory"`
-	EnvironmentPaths             []string                         `yaml:"environmentPaths" json:"environmentPaths"`
+	EnvironmentDirectory         string                           `yaml:"environmentDirectory,omitempty" json:"environmentPaths"`
+	BundleDirectory              string                           `yaml:"bundleDirectory,omitempty" json:"bundleDirectory"`
+	EnvironmentPaths             []string                         `yaml:"environmentPaths,omitempty" json:"environmentPaths"`
 	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
 	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
 	NamespaceRoles               []core.NamespaceRoleDefinition   `yaml:"namespaceRoles"`
 	ValueOverrides               *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
 	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
-	Apps                         PlatformAppConfigs               `yaml:"apps"`
-	ZenHubConfig                 *zenhub.Config                   `yaml:"zenHubConfig"`
+	Apps                         PlatformAppConfigs               `yaml:"apps,omitempty"`
+	ZenHubConfig                 *zenhub.Config                   `yaml:"zenHubConfig,omitempty"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 	bosun                        *Bosun                           `yaml:"-"`
@@ -146,6 +146,11 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 	if p.environmentConfigs == nil {
+
+		var envVarImport = os.Getenv("BOSUN_BUNDLE_ENV")
+		if len(p.EnvironmentPaths) == 0 && envVarImport != "" {
+			p.EnvironmentPaths = append(p.EnvironmentPaths, envVarImport)
+		}
 
 		for _, path := range p.EnvironmentPaths {
 

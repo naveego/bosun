@@ -13,6 +13,7 @@ import (
 type Config struct {
 	core.ConfigShared `yaml:",inline"`
 	Role              core.EnvironmentRole   `yaml:"role" json:"role"`
+	ClusterRoles      []string               `yaml:"clusterRoles,omitempty" json:"clusterRoles,omitempty"`
 	DefaultCluster    string                 `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
 	Clusters          kube.ConfigDefinitions `yaml:"clusters,omitempty"`
 	PullSecrets       []kube.PullSecret      `yaml:"pullSecrets,omitempty"`

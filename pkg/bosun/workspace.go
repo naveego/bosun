@@ -132,8 +132,42 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 
 }
 
-func LoadWorkspace(path string) (*Workspace, error) {
+func LoadWorkspaceWithStaticImports(path string, imports []string) (*Workspace, error) {
+	path, _ = filepath.Abs(os.ExpandEnv(path))
 
+	c, err := LoadWorkspaceNoImports(path)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.importFromPaths(path, imports)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "loading imports")
+	}
+
+	var syntheticPaths []string
+	for _, app := range c.MergedBosunFile.AppRefs {
+		if app.Repo != "" {
+			for _, root := range c.GitRoots {
+				dir := filepath.Join(root, app.Repo)
+				bosunFile := filepath.Join(dir, "b.yaml")
+				if _, err := os.Stat(bosunFile); err == nil {
+					syntheticPaths = append(syntheticPaths, bosunFile)
+				}
+			}
+		}
+	}
+
+	// err = c.importFromPaths(path, syntheticPaths)
+	if err != nil {
+		return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
+	}
+
+	return c, err
+}
+
+func LoadWorkspace(path string) (*Workspace, error) {
 	path, _ = filepath.Abs(os.ExpandEnv(path))
 
 	c, err := LoadWorkspaceNoImports(path)

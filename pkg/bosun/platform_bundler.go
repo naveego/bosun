@@ -2,11 +2,14 @@ package bosun
 
 import (
 	"archive/zip"
+	"fmt"
 	"github.com/mattn/go-zglob"
 	"github.com/otiai10/copy"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,37 +54,54 @@ func (d PlatformBundler) Execute() (BundlePlatformResult, error) {
 	d.log = d.b.NewContext().Log()
 
 	fromDir := filepath.Dir(d.p.FromPath)
-	fromDir = filepath.Join(fromDir, "releases", "current")
+	releaseSrcDir := filepath.Join(fromDir, "releases", "current")
+	appsSrcDir := filepath.Join(fromDir, "apps")
 
 	tmpDir := filepath.Join(os.TempDir(), "bosun", "bundle")
-
-	_ = os.RemoveAll(tmpDir)
-	err := os.MkdirAll(tmpDir, 0700)
-	if err != nil {
-		return result, errors.WithStack(err)
-	}
+	releaseDestDir := filepath.Join(tmpDir, "releases", "current")
+	appsDestDir := filepath.Join(tmpDir, "apps")
 
 	d.log.Infof("Using temp directory at %q", tmpDir)
 
-	err = copy.Copy(fromDir, tmpDir)
+	_ = os.RemoveAll(tmpDir)
+
+	// copy charts
+	err := os.MkdirAll(releaseSrcDir, 0700)
 	if err != nil {
-		return result, errors.Wrap(err, "making copying release files")
+		return result, fmt.Errorf("could not create charts folder '%s': %w", releaseSrcDir, err)
+	}
+	err = copy.Copy(releaseSrcDir, releaseDestDir)
+	if err != nil {
+		return result, fmt.Errorf("could not copy charts: %w", err)
 	}
 
-	//// remove releases not requested
-	//releaseDirs, _ := filepath.Glob(filepath.Join(tmpDir , "*"))
-	//for _, releaseDir := range releaseDirs {
-	//	slot := filepath.Base(releaseDir)
-	//	for _, requestedSlot := range req.Releases {
-	//		if slot == requestedSlot {
-	//			d.log.Infof("Keeping release %q because it was requested", slot)
-	//			goto FoundSlot
-	//		}
-	//	}
-	//	d.log.Warnf("Discarding release %q because it was not requested", slot)
-	//	_ = os.RemoveAll(releaseDir)
-	//FoundSlot:
-	//}
+	// copy apps
+	err = os.MkdirAll(appsDestDir, 0700)
+	if err != nil {
+		return result, fmt.Errorf("could not create apps folder '%s': %w", appsDestDir, err)
+	}
+	err = copy.Copy(appsSrcDir, appsDestDir)
+	if err != nil {
+		return result, fmt.Errorf("could not copy apps: %w", err)
+	}
+
+	// we need to clear out the stuff before saving
+	d.p.EnvironmentPaths = nil
+	d.p.Apps = nil
+	d.p.ZenHubConfig = nil
+
+	platforms := map[string][]*Platform {
+		"platforms": {d.p},
+	}
+	pBytes, err := yaml.Marshal(platforms)
+	if err != nil {
+		return result, fmt.Errorf("could not serialize platform: %w")
+	}
+
+	err = ioutil.WriteFile(filepath.Join(tmpDir, "platform.yaml"), pBytes, 0700)
+	if err != nil {
+		return result, fmt.Errorf("could not copy '%s' to '%s': %w", d.p.FromPath, tmpDir, err)
+	}
 
 	outPath := filepath.Join(req.Dir, "bundle.zip")
 

@@ -36,8 +36,9 @@ const (
 	StatusDeleted        = "DELETED"
 	StatusFailed         = "FAILED"
 	StatusPendingUpgrade = "PENDING-UPGRADE"
+	StatusPendingInstall = "PENDING-INSTALL"
 	StatusUnchanged      = "UNCHANGED"
-)
+	 )
 
 var KnownHelmChartStatuses = map[string]bool{
 	StatusDeployed:       true,
@@ -45,6 +46,7 @@ var KnownHelmChartStatuses = map[string]bool{
 	StatusDeleted:        true,
 	StatusFailed:         true,
 	StatusPendingUpgrade: true,
+	StatusPendingInstall: true,
 	StatusUnchanged:      true,
 }
 

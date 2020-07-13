@@ -46,7 +46,7 @@ func (v VaultInitializer) installPlugin() error {
 
 	Log.Debug("Getting hash for JOSE...")
 
-	joseSHA, err := NewShellExe("kubectl exec -n default vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
+	joseSHA, err := NewShellExe("kubectl exec vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
 	if err != nil {
 		return err
 	}

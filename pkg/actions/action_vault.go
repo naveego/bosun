@@ -51,7 +51,15 @@ func (a *VaultAction) Execute(ctx ActionContext) error {
 
 	err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, vaultClient)
 	if err != nil {
-		return err
+		ctx.Log().Info("Vault action failed... trying again with local vault client")
+
+		localClient, err := vault.NewClient(&vault.Config{
+			Address: "http://127.0.0.1:8200",
+		})
+		err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, localClient)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

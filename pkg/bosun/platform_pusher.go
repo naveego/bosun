@@ -1,7 +1,11 @@
 package bosun
 
 import (
+	"fmt"
+	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/sirupsen/logrus"
+	"path/filepath"
 )
 
 type PlatformPusher struct {
@@ -12,7 +16,11 @@ type PlatformPusher struct {
 
 type PlatformPushRequest struct {
 	BundleDir string
+	ManifestDir string
+	PushAllApps bool
+	PushApp string
 	EnvironmentPath string
+
 }
 
 func NewPlatformPusher(bosun *Bosun, platform *Platform) PlatformPusher {
@@ -24,9 +32,51 @@ func NewPlatformPusher(bosun *Bosun, platform *Platform) PlatformPusher {
 
 func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 
+	relManifestFile := filepath.Join(req.ManifestDir, "manifest.yaml")
+	var relManifest ReleaseManifest
+	err := yaml.LoadYaml(relManifestFile, &relManifest)
+	if err != nil {
+		return fmt.Errorf("could not read release manifest file '%s': %w", relManifestFile, err)
+	}
+
+	var apps []string
+	if req.PushApp != "" {
+		apps = []string{req.PushApp}
+	} else if req.PushAllApps {
+		for appName, _ := range relManifest.AppMetadata {
+			apps = append(apps, appName)
+		}
+	} else {
+		for appName, upgrade := range relManifest.UpgradedApps {
+			if upgrade {
+				apps = append(apps, appName)
+			}
+		}
+	}
+
 	planReq := CreateDeploymentPlanRequest{
 		Path: req.BundleDir,
-		Apps: []string{"dq-ui"},
+		ManifestDirPath: req.ManifestDir,
+		Apps: apps,
+	}
+
+	ctx := p.b.NewContext()
+	for _, cluster := range p.b.GetCurrentEnvironment().Clusters {
+		createPullSecretNamespaces := map[string]bool{}
+		for _, ns := range cluster.Namespaces {
+			createPullSecretNamespaces[ns.Name] = ns.Name != "kube-system"
+		}
+
+		for ns, shouldCreate := range createPullSecretNamespaces {
+			if shouldCreate {
+				for _, ps := range p.b.GetCurrentEnvironment().PullSecrets {
+					err = kube.CreateOrUpdatePullSecret(ctx, cluster.Name, ns, ps)
+					if err != nil {
+						return fmt.Errorf("could not create pull secret '%s' in cluster '%s' and namespace '%s': %w", ps.Name, cluster.Name, ns, err)
+					}
+				}
+			}
+		}
 	}
 
 	creator := NewDeploymentPlanCreator(p.b, p.p)
@@ -36,9 +86,9 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 	}
 
 	executor := NewDeploymentPlanExecutor(p.b, p.p)
-	executor.Execute(ExecuteDeploymentPlanRequest{
+	err = executor.Execute(ExecuteDeploymentPlanRequest{
 		Plan: plan,
-		PreviewOnly: true,
+		Clusters: map[string]bool{ "cluster": true },
 	})
 
 	return err

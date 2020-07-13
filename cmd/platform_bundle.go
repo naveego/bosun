@@ -17,8 +17,13 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/environment"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"os"
+	"path/filepath"
 )
 
 func init() {
@@ -61,30 +66,75 @@ var _ = addCommand(bundleCmd, &cobra.Command{
 	Long:         "By default, pushes to the current cluster selected in the kubeconfig",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		bundleDir := viper.GetString(argBundleDir)
+		bundleEnvPath := viper.GetString(argBundleEnv)
+		bundlePushAllApps := viper.GetBool(argBundlePushAll)
+
+		envConfig, err := environment.LoadConfig(bundleEnvPath)
+		if err != nil {
+			return err
+		}
+
+		bundleImports := []string{ filepath.Join(bundleDir, "platform.yaml") }
+
+		if os.Getenv("BOSUN_ENVIRONMENT") == "" {
+			os.Setenv("BOSUN_ENVIRONMENT", envConfig.Name)
+		}
+
+		workspace, err := bosun.LoadWorkspaceWithStaticImports(bundleEnvPath, bundleImports)
+		if err != nil {
+			return err
+		}
+
+		workspace.CurrentEnvironment = envConfig.Name
+
+		var params cli.Parameters
+		b, err := bosun.New(params, workspace)
+		if err != nil {
+			return err
+		}
+
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
 		}
 
-		bundleDir := os.Getenv("BOSUN_BUNDLE_DIR")
-		bundleEnvPath := os.Getenv("BOSUN_BUNDLE_ENV")
+		pushApp := ""
+		if len(args) > 0 {
+			pushApp = args[0]
+		}
 
 		pusher := bosun.NewPlatformPusher(b, p)
 
 		err = pusher.Push(bosun.PlatformPushRequest{
 			BundleDir: bundleDir,
+			ManifestDir: filepath.Join(bundleDir, "releases", "current"),
 			EnvironmentPath: bundleEnvPath,
+			PushApp: pushApp,
+			PushAllApps: bundlePushAllApps,
 		})
 
+		if err != nil {
+			logrus.Errorf("Could not push deployment: %v", err)
+		}
 		return err
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(argBundlePushNamespace, "default", "The namespace to place the bundle in.")
+	cmd.Flags().String(argBundleDir, os.Getenv("BOSUN_BUNDLE_DIR"), "The directory of the unzipped bundle")
+	cmd.Flags().String(argBundleEnv, os.Getenv("BOSUN_BUNDLE_ENV"), "The path to the environment file")
+	cmd.Flags().Bool(argBundlePushAll, os.Getenv("BOSUN_BUNDLE_PUSH_ALL") != "", "Whether or not to push all apps or only upgraded apps")
+
 })
 
 const (
 	argBundlePushNamespace = "namespace"
+	argBundleDir = "bundle-dir"
+	argBundleEnv = "bundle-env"
+	argBundlePushAll = "bundle-push-all"
+
 	LabelBundleConfigMapHash = "naveego.com/bosun-bundle-hash"
 )
+
+
 

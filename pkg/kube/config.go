@@ -123,6 +123,7 @@ type ClusterConfig struct {
 	Minikube          *MinikubeConfig                  `yaml:"minikube,omitempty"`
 	Amazon            *AmazonClusterConfig             `yaml:"amazon,omitempty"`
 	Rancher           *RancherClusterConfig            `yaml:"rancher,omitempty"`
+	ExternalCluster   *ExternalClusterConfig           `yaml:"externalCluster,omitempty"`
 	Namespaces        NamespaceConfigs                 `yaml:"namespaces"`
 }
 
@@ -243,6 +244,12 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 		if err := k.Rancher.configureKubernetes(req); err != nil {
 			return err
 		}
+	} else if k.ExternalCluster != nil {
+		req.Log.Infof("Configuring external cluster %q...", k.Name)
+
+		if err := k.ExternalCluster.configureKubernetes(req); err != nil {
+			return err
+		}
 	} else {
 		return errors.Errorf("no recognized kube vendor found on %q", k.Name)
 	}
@@ -278,94 +285,104 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 				continue
 			}
 
-			req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
-
-			var password string
-			var username string
-
-			if pullSecret.FromDockerConfig {
-				var dockerConfig map[string]interface{}
-				dockerConfigPath, ok := os.LookupEnv("DOCKER_CONFIG")
-				if !ok {
-					dockerConfigPath = os.ExpandEnv("$HOME/.docker/config.json")
-				}
-				data, err := ioutil.ReadFile(dockerConfigPath)
-				if err != nil {
-					return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, err)
-				}
-
-				err = json.Unmarshal(data, &dockerConfig)
-				if err != nil {
-					return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
-				}
-
-				auths, ok := dockerConfig["auths"].(map[string]interface{})
-
-				entry, ok := auths[pullSecret.Domain].(map[string]interface{})
-				if !ok {
-					return errors.Errorf("no %q entry in docker config, you should docker login first", pullSecret.Domain)
-				}
-				authBase64, _ := entry["auth"].(string)
-				auth, err := base64.StdEncoding.DecodeString(authBase64)
-				if err != nil {
-					return errors.Errorf("invalid %q entry in docker config, you should docker login first: %s", pullSecret.Domain, err)
-				}
-				segs := strings.Split(string(auth), ":")
-				username, password = segs[0], segs[1]
-			} else {
-
-				username = pullSecret.Username
-				password, err = pullSecret.Password.Resolve(req.ExecutionContext)
-				if err != nil {
-					req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
-					continue
-				}
-			}
-
-			auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
-
-			dockerConfig := map[string]interface{}{
-				"auths": map[string]interface{}{
-					pullSecret.Domain: map[string]interface{}{
-						"username": username,
-						"password": password,
-						"email":    username,
-						"auth":     auth,
-					},
-				},
-			}
-
-			dockerConfigJSON, err := json.Marshal(dockerConfig)
-
+			err = CreateOrUpdatePullSecret(req.ExecutionContext, k.Name, namespace.Name, pullSecret)
 			if err != nil {
-				return errors.Wrap(err, "marshall dockerconfigjson")
+				return err
 			}
-
-			secret := &v1.Secret{
-				Type: v1.SecretTypeDockerConfigJson,
-				ObjectMeta: metav1.ObjectMeta{
-					Name: pullSecret.Name,
-				},
-				StringData: map[string]string{
-					".dockerconfigjson": string(dockerConfigJSON),
-				},
-			}
-			_, err = client.CoreV1().Secrets(namespace.Name).Create(secret)
-			if kerrors.IsAlreadyExists(err) {
-				req.Log.Infof("Pull secret already exists, updating...")
-				_, err = client.CoreV1().Secrets(namespace.Name).Update(secret)
-			}
-			if err != nil {
-				return errors.Wrapf(err, "create or update pull secret %q in namespace %q", pullSecret.Name, namespace.Name)
-			}
-
-			req.Log.Infof("Done creating or updating pull secret %q in namespace %q.", pullSecret.Name, ns.Name)
-
 		}
 
 		req.Log.Infof("Done creating or updating namespace %q.", ns.Name)
 	}
 
+	return nil
+}
+
+func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespaceName string, pullSecret PullSecret) error {
+	//req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
+
+	var password string
+	var username string
+	var err error
+
+	client, err := GetKubeClientWithContext(clusterName)
+
+	if pullSecret.FromDockerConfig {
+		var dockerConfig map[string]interface{}
+		dockerConfigPath, ok := os.LookupEnv("DOCKER_CONFIG")
+		if !ok {
+			dockerConfigPath = os.ExpandEnv("$HOME/.docker/config.json")
+		}
+		data, err := ioutil.ReadFile(dockerConfigPath)
+		if err != nil {
+			return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, err)
+		}
+
+		err = json.Unmarshal(data, &dockerConfig)
+		if err != nil {
+			return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
+		}
+
+		auths, ok := dockerConfig["auths"].(map[string]interface{})
+
+		entry, ok := auths[pullSecret.Domain].(map[string]interface{})
+		if !ok {
+			return errors.Errorf("no %q entry in docker config, you should docker login first", pullSecret.Domain)
+		}
+		authBase64, _ := entry["auth"].(string)
+		auth, err := base64.StdEncoding.DecodeString(authBase64)
+		if err != nil {
+			return errors.Errorf("invalid %q entry in docker config, you should docker login first: %s", pullSecret.Domain, err)
+		}
+		segs := strings.Split(string(auth), ":")
+		username, password = segs[0], segs[1]
+	} else {
+
+		username = pullSecret.Username
+		password, err = pullSecret.Password.Resolve(ctx)
+		if err != nil {
+			//req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
+			return err
+		}
+	}
+
+	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
+
+	dockerConfig := map[string]interface{}{
+		"auths": map[string]interface{}{
+			pullSecret.Domain: map[string]interface{}{
+				"username": username,
+				"password": password,
+				"email":    username,
+				"auth":     auth,
+			},
+		},
+	}
+
+	dockerConfigJSON, err := json.Marshal(dockerConfig)
+
+	if err != nil {
+		return errors.Wrap(err, "marshall dockerconfigjson")
+	}
+
+	secret := &v1.Secret{
+		Type: v1.SecretTypeDockerConfigJson,
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pullSecret.Name,
+		},
+		StringData: map[string]string{
+			".dockerconfigjson": string(dockerConfigJSON),
+		},
+	}
+	_, err = client.CoreV1().Secrets(namespaceName).Create(secret)
+	if kerrors.IsAlreadyExists(err) {
+		//req.Log.Infof("Pull secret already exists, updating...")
+		_, err = client.CoreV1().Secrets(namespaceName).Update(secret)
+	}
+	if err != nil {
+		return errors.Wrapf(err, "create or update pull secret %q in namespace %q", pullSecret.Name, namespaceName)
+	}
+
+	//req.Log.Infof("Done creating or updating pull secret %q in namespace %q.", pullSecret.Name, ns.Name)
 	return nil
 }
 
