@@ -17,6 +17,7 @@ type Config struct {
 	DefaultCluster    string                 `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
 	Clusters          kube.ConfigDefinitions `yaml:"clusters,omitempty"`
 	PullSecrets       []kube.PullSecret      `yaml:"pullSecrets,omitempty"`
+	VaultNamespace    string                 `yaml:"vaultNamespace,omitempty" json:"vaultNamespace,omitempty"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool                             `yaml:"protected" json:"protected"`

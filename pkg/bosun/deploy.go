@@ -289,7 +289,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			for _, cluster := range clusters {
 
 				if len(settings.Clusters) > 0 && !settings.Clusters[cluster.Name] {
-					log.Infof("Skipping deploy to cluster %s because it was excluded.")
+					log.Infof("Skipping deploy to cluster %s because it was excluded.", cluster.Name)
 					continue
 				}
 

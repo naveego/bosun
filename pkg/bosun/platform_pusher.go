@@ -20,6 +20,7 @@ type PlatformPushRequest struct {
 	PushAllApps bool
 	PushApp string
 	EnvironmentPath string
+	Cluster string
 
 }
 
@@ -38,6 +39,8 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 	if err != nil {
 		return fmt.Errorf("could not read release manifest file '%s': %w", relManifestFile, err)
 	}
+
+
 
 	var apps []string
 	if req.PushApp != "" {
@@ -60,8 +63,9 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 		Apps: apps,
 	}
 
+	env := p.b.GetCurrentEnvironment()
 	ctx := p.b.NewContext()
-	for _, cluster := range p.b.GetCurrentEnvironment().Clusters {
+	for _, cluster := range env.Clusters {
 		createPullSecretNamespaces := map[string]bool{}
 		for _, ns := range cluster.Namespaces {
 			createPullSecretNamespaces[ns.Name] = ns.Name != "kube-system"
@@ -79,6 +83,9 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 		}
 	}
 
+	stopPF := kube.PortForward("vault-dev-0", env.VaultNamespace, 8200)
+	defer stopPF()
+
 	creator := NewDeploymentPlanCreator(p.b, p.p)
 	plan, err := creator.CreateDeploymentPlan(planReq)
 	if err != nil {
@@ -88,7 +95,7 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 	executor := NewDeploymentPlanExecutor(p.b, p.p)
 	err = executor.Execute(ExecuteDeploymentPlanRequest{
 		Plan: plan,
-		Clusters: map[string]bool{ "cluster": true },
+		Clusters: map[string]bool{ req.Cluster: true },
 	})
 
 	return err

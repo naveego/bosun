@@ -81,6 +81,10 @@ var _ = addCommand(bundleCmd, &cobra.Command{
 			os.Setenv("BOSUN_ENVIRONMENT", envConfig.Name)
 		}
 
+		if os.Getenv("BOSUN_BUNDLE_ENV") == "" {
+			os.Setenv("BOSUN_BUNDLE_ENV", bundleEnvPath)
+		}
+
 		workspace, err := bosun.LoadWorkspaceWithStaticImports(bundleEnvPath, bundleImports)
 		if err != nil {
 			return err
@@ -112,6 +116,7 @@ var _ = addCommand(bundleCmd, &cobra.Command{
 			EnvironmentPath: bundleEnvPath,
 			PushApp: pushApp,
 			PushAllApps: bundlePushAllApps,
+			Cluster: envConfig.Clusters[0].Name,
 		})
 
 		if err != nil {

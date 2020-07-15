@@ -12,6 +12,7 @@ import (
 
 type VaultInitializer struct {
 	Client *api.Client
+	VaultNamespace string
 }
 
 func (v VaultInitializer) InitNonProd() error {
@@ -44,9 +45,14 @@ func (v VaultInitializer) InitNonProd() error {
 func (v VaultInitializer) installPlugin() error {
 	vaultClient := v.Client
 
+	vaultNS := v.VaultNamespace
+	if vaultNS == ""{
+		vaultNS = "kube-system"
+	}
+
 	Log.Debug("Getting hash for JOSE...")
 
-	joseSHA, err := NewShellExe("kubectl exec vault-dev-0 cat /vault/plugins/jose-plugin.sha").RunOut()
+	joseSHA, err := NewShellExe(fmt.Sprintf("kubectl exec -n %s vault-dev-0 cat /vault/plugins/jose-plugin.sha", vaultNS)).RunOut()
 	if err != nil {
 		return err
 	}

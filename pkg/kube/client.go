@@ -6,6 +6,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"os"
 	"path/filepath"
 	config2 "sigs.k8s.io/controller-runtime/pkg/client/config"
 )
@@ -16,7 +17,11 @@ func GetKubeClient() (*kubernetes.Clientset, error) {
 	if err != nil {
 		// not running in kubernetes...
 		home := util.HomeDir()
-		configPath := filepath.Join(home, ".kube", "config")
+
+		configPath := os.Getenv("KUBECONFIG")
+		if configPath == "" {
+			configPath = filepath.Join(home, ".kube", "config")
+		}
 		config, err = clientcmd.BuildConfigFromFlags("", configPath)
 
 		if err != nil {

@@ -203,7 +203,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				return "", err
 			}
 
-			o, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.server}`, cluster)).RunOut()
+			o, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath="{.clusters[?(@.name=='%s')].cluster.server}"`, cluster)).RunOut()
 			return o, err
 		},
 		"kube_ca_cert": func(context string) (string, error) {
@@ -216,7 +216,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 				return "", err
 			}
 
-			data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.certificate-authority-data}`, cluster)).RunOut()
+			data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath="{.clusters[?(@.name=='%s')].cluster.certificate-authority-data}"`, cluster)).RunOut()
 
 			if err != nil {
 				return "", err
@@ -254,7 +254,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 
 			o, err := NewShellExe("kubectl", "--namespace", namespace, "--context", context, "get", "serviceaccounts", serviceAccount, "-o", "jsonpath={.secrets[0].name}").RunOut()
 			if err != nil {
-				return "", errors.Errorf("getting service account data for account %q in context %q: %s", serviceAccount, context, err)
+				return "", errors.Errorf("getting service account data for account %q in context %q and namespace %q: %s", serviceAccount, context, namespace, err)
 			}
 
 			o, err = NewShellExe(fmt.Sprintf(`kubectl --namespace %s  --context=%s get secrets %s -o jsonpath={.data.token}'`, namespace, context, o)).RunOut()
@@ -281,7 +281,7 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 }
 
 func getClusterForContext(context string) (string, error) {
-	data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.contexts[?(@.name=="%s")].context.cluster}`, context)).RunOut()
+	data, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath="{.contexts[?(@.name=='%s')].context.cluster}"`, context)).RunOut()
 	return data, err
 }
 
