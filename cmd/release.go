@@ -143,8 +143,12 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 		rm := mustGetRelease(p, bosun.SlotCurrent, bosun.SlotCurrent)
-		if err != nil {
-			return err
+
+		previousRelease := mustGetRelease(p, bosun.SlotStable, bosun.SlotStable )
+		for _, app := range rm.AppMetadata {
+			if previousApp, ok := previousRelease.AppMetadata[app.Name]; ok {
+				app.PreviousVersion = &previousApp.Version
+			}
 		}
 
 		err = printOutput(rm)
@@ -283,7 +287,7 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "add {current|unstable} [apps...]",
+	Use:   "add {current|stable|unstable} [apps...]",
 	Args:  cobra.MinimumNArgs(1),
 	Short: "Adds an app to the release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -294,7 +298,7 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotCurrent)
+		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotCurrent, bosun.SlotStable)
 
 		apps := mustGetKnownApps(b, args[1:])
 		bump := viper.GetString(ArgReleaseAddBump)

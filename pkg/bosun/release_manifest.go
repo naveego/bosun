@@ -171,7 +171,7 @@ func (r *ReleaseManifest) init() {
 }
 
 func (r *ReleaseManifest) Headers() []string {
-	return []string{"Name", "Version", "From Release", "GetCurrentCommit Hash", "Deploying"}
+	return []string{"Name", "Deploying", "Version", "Previous Version", "Commit Hash"}
 }
 
 func (r *ReleaseManifest) Rows() [][]string {
@@ -179,11 +179,11 @@ func (r *ReleaseManifest) Rows() [][]string {
 	for _, name := range util.SortedKeys(r.AppMetadata) {
 		deploy := r.UpgradedApps[name]
 		app := r.AppMetadata[name]
-		fromReleaseText := ""
-		if app.PinnedReleaseVersion != nil {
-			fromReleaseText = app.PinnedReleaseVersion.String()
-			if *app.PinnedReleaseVersion == r.Version {
-				fromReleaseText = color.GreenString(fromReleaseText)
+		previousVersion := ""
+		if app.PreviousVersion != nil {
+			previousVersion = app.PreviousVersion.String()
+			if *app.PreviousVersion == app.Version {
+				previousVersion = previousVersion + " (unchanged)"
 			}
 		}
 
@@ -191,7 +191,7 @@ func (r *ReleaseManifest) Rows() [][]string {
 		if deploy {
 			deploying = color.GreenString("YES")
 		}
-		out = append(out, []string{app.Name, app.Version.String(), fromReleaseText, app.Hashes.Commit, deploying})
+		out = append(out, []string{app.Name, deploying, app.Version.String(), previousVersion, app.Hashes.Commit})
 	}
 	return out
 }
