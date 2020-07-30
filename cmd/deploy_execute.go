@@ -46,6 +46,7 @@ var _ = addCommand(deployCmd, &cobra.Command{
 		req := bosun.ExecuteDeploymentPlanRequest{
 			Validate: !viper.GetBool(argDeployExecuteSkipValidate),
 			DiffOnly: viper.GetBool(argDeployExecuteDiffOnly),
+			PreviewOnly: viper.GetBool(argDeployExecuteValuesOnly),
 			UseSudo:viper.GetBool(ArgGlobalSudo),
 		}
 
@@ -101,11 +102,13 @@ var _ = addCommand(deployCmd, &cobra.Command{
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation" )
 	cmd.Flags().Bool(argDeployExecuteDiffOnly, false, "Display the diffs for the deploy, but do not actually execute." )
+	cmd.Flags().Bool(argDeployExecuteValuesOnly, false, "Display the values which would be used for the deploy, but do not actually execute." )
 	cmd.Flags().StringSlice(argDeployExecuteClusters, []string{}, "Clusters to deploy to, defaults to all." )
 })
 
 const (
 	argDeployExecuteSkipValidate = "skip-validation"
 	argDeployExecuteDiffOnly = "diff-only"
+	argDeployExecuteValuesOnly = "values-only"
 	argDeployExecuteClusters = "clusters"
 )
