@@ -235,9 +235,6 @@ func (a *AppConfig) GetImages() []AppImageConfig {
 	if a.HarborProject != "" {
 		defaultProjectName = a.HarborProject
 	}
-	if len(images) == 0 {
-		images = []AppImageConfig{{ImageName: a.Name}}
-	}
 
 	var formattedImages []AppImageConfig
 	for _, i := range images {

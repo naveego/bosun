@@ -1,6 +1,7 @@
 package values
 
 import (
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/util/stringsn"
@@ -176,6 +177,7 @@ func (v ValueSetCollection) ExtractValueSet(args ExtractValueSetArgs) ValueSet {
 	for _, candidate := range v.ValueSets {
 		if len(args.Names) > 0 {
 			if !stringsn.Contains(candidate.Name, args.Names) {
+				pkg.Log.WithField("@value_set", candidate.Name).WithField("name", candidate.Name).WithField("requested_names", args.Names).Trace("ExtractValueSet: Skipping because name was not requested.")
 				continue
 			}
 		}
@@ -189,11 +191,13 @@ func (v ValueSetCollection) ExtractValueSet(args ExtractValueSetArgs) ValueSet {
 				}
 			}
 			if !matchedRole {
+			pkg.Log.WithField("@value_set", candidate.Name).WithField("roles", candidate.Roles).WithField("requested_roles", args.Roles).Trace("ExtractValueSet: Skipping because role was not requested.")
 				continue
 			}
 		}
 
 		if !candidate.ExactMatchFilters.Matches(args.ExactMatch) {
+			pkg.Log.WithField("@value_set", candidate.Name).WithField("filter", candidate.ExactMatchFilters).WithField("filter_args", args.ExactMatch).Trace("ExtractValueSet: Skipping because filters did not match.")
 			continue
 		}
 

@@ -34,7 +34,6 @@ var cfgFile string
 
 var step int
 
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = TraverseRunHooks(&cobra.Command{
 	Use:           "bosun",
@@ -55,13 +54,16 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 
 		logrus.SetFormatter(&logrus.TextFormatter{
 			DisableTimestamp: true,
-			ForceColors:   true,
+			ForceColors:      true,
 		})
 
 		pkg.Log = logrus.NewEntry(logrus.StandardLogger())
 
-		verbose := viper.GetBool("verbose")
-		if verbose {
+		verbose := viper.GetBool(ArgGlobalVerbose)
+		if viper.GetBool(ArgGlobalTrace) {
+			logrus.SetLevel(logrus.TraceLevel)
+			pkg.Log.Debug("Logging at trace level.")
+		} else if verbose {
 			logrus.SetLevel(logrus.DebugLevel)
 			pkg.Log.Debug("Logging at debug level.")
 		} else {
@@ -117,6 +119,7 @@ func Execute() {
 const (
 	ArgGlobalSudo          = "sudo"
 	ArgGlobalVerbose       = "verbose"
+	ArgGlobalTrace         = "trace"
 	ArgGlobalVerboseErrors = "verbose-errors"
 	ArgGlobalDryRun        = "dry-run"
 	ArgGlobalCluster       = "cluster"
@@ -133,26 +136,27 @@ const (
 func init() {
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", configPath, "The config file for bosun.")
 	rootCmd.PersistentFlags().IntVar(&step, "step", -1, "The step we are on.")
-	rootCmd.PersistentFlags().MarkHidden("step")
+	_ = rootCmd.PersistentFlags().MarkHidden("step")
 
 	bosunConfigFile := os.Getenv("BOSUN_CONFIG")
 	if bosunConfigFile == "" {
 		bosunConfigFile = os.ExpandEnv("$HOME/.bosun/bosun.yaml")
 	}
 
-
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, bosunConfigFile, "Config file for Bosun. You can also set BOSUN_CONFIG.")
 	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "yaml", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
+	rootCmd.PersistentFlags().Bool(ArgGlobalTrace, false, "Enable trace logging.")
+	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalTrace)
 	rootCmd.PersistentFlags().BoolP(ArgGlobalVerboseErrors, "V", false, "Enable verbose errors with stack traces.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalSudo, false, "Use sudo when running commands like docker.")
 	rootCmd.PersistentFlags().String(ArgGlobalConfirmedEnv, "", "Set to confirm that the environment is correct when targeting a protected environment.")
-	rootCmd.PersistentFlags().MarkHidden(ArgGlobalConfirmedEnv)
+	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalConfirmedEnv)
 	rootCmd.PersistentFlags().Bool(ArgGlobalProfile, false, "Dump profiling info.")
-	rootCmd.PersistentFlags().MarkHidden(ArgGlobalProfile)
+	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalProfile)
 
 	defaultCluster := ""
 	defaultDomain := ""
