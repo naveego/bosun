@@ -30,3 +30,13 @@ func (r *Registry) Create(typ string) (wfcontracts.Workflow, error){
 		return factory(), nil
 	}
 }
+
+func (r *Registry) GetConfigTemplates() []wfcontracts.Config {
+	var configs []wfcontracts.Config
+	for _, factory := range r.workflows {
+		instance := factory()
+		template, _ := instance.Templates()
+		configs = append(configs, template)
+	}
+	return configs
+}

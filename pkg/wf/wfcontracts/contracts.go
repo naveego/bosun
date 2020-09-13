@@ -1,6 +1,7 @@
 package wfcontracts
 
 import (
+	"context"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/ioc"
 	"github.com/naveego/bosun/pkg/values"
@@ -32,10 +33,12 @@ type Command struct {
 type Services struct {
 	Log *logrus.Entry
 	Environment *environment.Environment
+	Provider ioc.Provider
 }
 
 type State struct {
 	Name string
+	Current string
 	Values values.Values
 }
 
@@ -47,12 +50,13 @@ type Config struct {
 
 type StartParameters struct {
 	Services Services
-	Provider ioc.Provider
-	Config values.Values
-	State values.Values
+	Config Config
+	State State
 }
 
 type Event struct {
+	// Message to log or display when this event happens
+	Message string
 	// UpdatedState is the latest state for the workflow, which should be persisted if not nil.
 	UpdatedState values.Values
 	// Commands contains the commands which the user should be prompted with, if not empty.
@@ -62,9 +66,9 @@ type Event struct {
 }
 
 type Workflow interface {
- 	Name() string
- 	Start(parameters StartParameters) (<-chan Event, error)
+ 	Start(ctx context.Context, parameters StartParameters) (<-chan Event, error)
 	Commands() []CommandTemplate
  	Execute(command Command) error
+	Templates() (Config, State)
  }
 

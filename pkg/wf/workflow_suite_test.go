@@ -1,11 +1,10 @@
 package wf_test
 
 import (
-	"github.com/naveego/bosun/pkg/ioc"
+	"context"
+	"github.com/naveego/bosun/pkg/wf/wfcontracts"
 	"testing"
 
-
-	. "github.com/naveego/bosun/pkg/wf/wfcontracts"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -16,33 +15,29 @@ func TestWorkflow(t *testing.T) {
 }
 
 type MockWorkflow struct {
+	n string
+	events chan wfcontracts.Event
 
 }
 
-func (t MockWorkflow) Name() string {
+func (m *MockWorkflow) Name() string {
+	return m.n
+}
+
+func (m *MockWorkflow) Start(ctx context.Context, parameters wfcontracts.StartParameters) (<-chan wfcontracts.Event, error) {
+
+	m.events = make(chan wfcontracts.Event)
+	return m.events, nil
+}
+
+func (m *MockWorkflow) Commands() []wfcontracts.CommandTemplate {
 	panic("implement me")
 }
 
-func (t MockWorkflow) Init(services Services, container ioc.Container, config []byte) error {
+func (m *MockWorkflow) Execute(command wfcontracts.Command) error {
 	panic("implement me")
 }
 
-func (t MockWorkflow) LoadState(state []byte) error {
-	panic("implement me")
-}
-
-func (t MockWorkflow) SaveState() ([]byte, error) {
-	panic("implement me")
-}
-
-func (t MockWorkflow) Commands() []CommandTemplate {
-	panic("implement me")
-}
-
-func (t MockWorkflow) Execute(command Command) error {
-	panic("implement me")
-}
-
-func (t MockWorkflow) Update() error {
+func (m *MockWorkflow) Config() wfcontracts.Config {
 	panic("implement me")
 }
