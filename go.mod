@@ -181,4 +181,6 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v10.0.0+incompatible
 )
 
+replace github.com/census-instrumentation/opencensus-proto v0.1.0-0.20181214143942-ba49f56771b8 => github.com/census-instrumentation/opencensus-proto v0.0.3-0.20181214143942-ba49f56771b8
+
 go 1.13
