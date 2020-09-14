@@ -38,6 +38,7 @@ const (
 	argDeployAppClusters = "clusters"
 	argDeployAppRecycle  = "recycle"
 	argDeployAppTag      = "tag"
+	argDeployAppDiffOnly = "diff-only"
 )
 
 func deployAppFlags(cmd *cobra.Command) {
@@ -51,12 +52,15 @@ func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(argAppDeployPreview, false, "Just dump the values which would be used to deploy, then exit.")
 	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().Bool(argDeployAppRecycle, false, "Recycle the app after deploying it.")
+	cmd.Flags().Bool(argDeployAppDiffOnly, false, "Display the impact of running the deploy but don't actually run it.")
 	cmd.Flags().StringSliceP(ArgAppValueSet, "v", []string{}, "Additional value sets to include in this deploy.")
 	cmd.Flags().StringSliceP(ArgAppSet, "s", []string{}, "Value overrides to set in this deploy, as key=value pairs.")
 }
 
 func deployApp(cmd *cobra.Command, args []string) error {
 	b := MustGetBosun()
+	check(b.ConfirmEnvironment())
+
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return err
@@ -123,6 +127,7 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 		ValueSets:   valueSets,
 		Recycle:     viper.GetBool(argDeployAppRecycle),
 		PreviewOnly: viper.GetBool(argAppDeployPreview),
+		DiffOnly:    viper.GetBool(argDeployAppDiffOnly),
 	}
 
 	clustersWhitelist := viper.GetStringSlice(argDeployAppClusters)
@@ -135,7 +140,7 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 
 	executor := bosun.NewDeploymentPlanExecutor(b, p)
 
-	err = executor.Execute(executeRequest)
+	_, err = executor.Execute(executeRequest)
 
 	return err
 }

@@ -398,6 +398,31 @@ func (v Values) Clone() Values {
 	return out
 }
 
+func (v Values) Unmarshal(out interface{}) error {
+	y, err := v.YAML()
+	if err != nil {
+		return err
+	}
+
+	err = yaml.UnmarshalString(y, out)
+	return err
+}
+
+func (v Values) Marshal(in interface{}) error {
+	y, err := yaml.Marshal(in)
+	if err != nil {
+		return err
+	}
+
+	var v2 Values
+	err = yaml.Unmarshal(y, &v2)
+	if err != nil {
+		return err
+	}
+	v.Merge(v2)
+	return nil
+}
+
 // istable is a special-purpose function to see if the present thing matches the definition of a YAML table.
 func istable(v interface{}) bool {
 	_, ok := v.(map[string]interface{})

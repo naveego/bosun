@@ -13,6 +13,21 @@ import (
 	"strings"
 )
 
+var conventionalCommitTypeOptions = []string{
+	"feat:     A new feature",
+	"fix:      A bug fix",
+	"docs:     Documentation only changes",
+	"style:    Changes that do not affect the meaning of the code",
+	"refactor: A code change that neither fixes a bug nor adds a feature",
+	"perf:     A code change that improves performance",
+	"test:     Adding missing tests or correcting existing tests",
+	"build:    Changes that affect the build system or external dependencies",
+	"ci:       Changes to our CI configuration files and scripts",
+	"deploy:   Changes to the chart or bosun deploy configuration",
+	"chore:    Other changes that don't modify src or test files",
+	"revert:   Reverts a previous commit",
+}
+
 var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 	Use:     "commit",
 	Aliases: []string{"cz"},
@@ -75,20 +90,7 @@ var gitCommitCmd = addCommand(gitCmd, &cobra.Command{
 
 			typeQues := &survey.Select{
 				Message: "Select the type of change that you're committing:",
-				Options: []string{
-					"feat:     A new feature",
-					"fix:      A bug fix",
-					"docs:     Documentation only changes",
-					"style:    Changes that do not affect the meaning of the code",
-					"refactor: A code change that neither fixes a bug nor adds a feature",
-					"perf:     A code change that improves performance",
-					"test:     Adding missing tests or correcting existing tests",
-					"build:    Changes that affect the build system or external dependencies",
-					"ci:       Changes to our CI configuration files and scripts",
-					"deploy:   Changes to the chart or bosun deploy configuration",
-					"chore:    Other changes that don't modify src or test files",
-					"revert:   Reverts a previous commit",
-				},
+				Options: conventionalCommitTypeOptions,
 			}
 
 			scopeQues := &survey.Input{

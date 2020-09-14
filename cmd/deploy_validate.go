@@ -16,8 +16,13 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/olekukonko/tablewriter"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"os"
 	"path/filepath"
 )
 
@@ -37,7 +42,6 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			return err
 		}
 
-
 		deploymentPlanPath := args[0]
 		if deploymentPlanPath == "release" {
 			release, err := p.GetCurrentRelease()
@@ -53,10 +57,44 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			return err
 		}
 
-		fmt.Println(plan)
+		executor := bosun.NewDeploymentPlanExecutor(b, p)
+		req := bosun.ExecuteDeploymentPlanRequest{
+			Plan:plan,
+			Validate:true,
+			ValidateOnly:true,
+			UseSudo:viper.GetBool(ArgGlobalSudo),
+		}
 
-		return err
+		result, err := executor.Execute(req)
+
+		if err != nil {
+			return err
+		}
+
+		errCount := 0
+		t := tablewriter.NewWriter(os.Stdout)
+		t.SetHeader([]string{"app", "result"})
+		for _, app := range plan.Apps {
+			validationError := result.ValidationErrors[app.Name]
+
+			resultText := ""
+			if validationError == nil {
+				resultText = color.GreenString("OK")
+			} else {
+				resultText = color.RedString(validationError.Error())
+				errCount++
+			}
+			t.Append([]string{app.Name, resultText})
+		}
+
+		t.Render()
+
+		if errCount > 0 {
+			return errors.New("one or more apps were invalid")
+		}
+
+		return nil
 	},
 }, func(cmd *cobra.Command) {
+	})
 
-})

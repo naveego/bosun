@@ -54,6 +54,25 @@ type IssueRef struct {
 	Number int
 }
 
+func (f *IssueRef) MarshalYAML() (interface{}, error) {
+	if f == nil {
+		return nil, nil
+	}
+	return f.String(), nil
+}
+
+func (f *IssueRef) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var raw string
+
+	err := unmarshal(&raw)
+	if err != nil {
+		return err
+	}
+
+	*f, err = ParseIssueRef(raw)
+	return err
+}
+
 func NewIssueRef(org, repo string, number int) IssueRef {
 	return IssueRef{
 		RepoRef: RepoRef{

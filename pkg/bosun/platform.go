@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
@@ -1390,9 +1391,16 @@ func (p *Platform) CommitCurrentRelease(ctx BosunContext) error {
 			log.Infof("Merging into branch %s...", target.toBranch)
 
 			_, err = g.Exec("merge", "-m", fmt.Sprintf("Merge %s into %s to commit release %s", target.fromBranch, target.toBranch, release.Version), target.fromBranch)
-			if err != nil {
-				warnings.Collect(errors.Errorf("Merge for %s from %s to %s failed (you'll need to complete the merge yourself): %s", targetLabel, target.fromBranch, target.toBranch, err))
-				continue
+			for err != nil {
+
+				confirmed := cli.RequestConfirmFromUser("Merge for %s from %s to %s in %s failed, you'll need to complete the merge yourself: %s\nEnter 'y' when you have completed the merge in another terminal, 'n' to abort release commit", targetLabel, target.fromBranch, target.toBranch, repoDir, err)
+				if !confirmed {
+					_, err = g.Exec("merge", "--abort")
+					break
+				}
+
+				_, err = g.Exec("merge", "--continue")
+
 			}
 		}
 

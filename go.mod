@@ -126,6 +126,7 @@ require (
 	github.com/pquerna/cachecontrol v0.0.0-20180517163645-1555304b9b35 // indirect
 	github.com/pquerna/otp v1.1.0 // indirect
 	github.com/prometheus/common v0.2.0
+	github.com/rapidloop/mybot v0.0.0-20160205033900-2777401b233f
 	github.com/rs/xid v1.2.1
 	github.com/ryanuber/go-glob v0.0.0-20170128012129-256dc444b735 // indirect
 	github.com/samuel/go-zookeeper v0.0.0-20180130194729-c4fab1ac1bec // indirect
@@ -149,7 +150,6 @@ require (
 	go.mongodb.org/mongo-driver v1.0.0
 	go.opencensus.io v0.19.1 // indirect
 	go4.org v0.0.0-20180809161055-417644f6feb5
-	golang.org/x/build v0.0.0-20190111050920-041ab4dc3f9d
 	golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8
 	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890
 	gopkg.in/alecthomas/kingpin.v3-unstable v3.0.0-20180810215634-df19058c872c // indirect
@@ -160,7 +160,7 @@ require (
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 	gopkg.in/ory-am/dockertest.v2 v2.2.3 // indirect
 	gopkg.in/square/go-jose.v2 v2.3.0 // indirect
-	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
+	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	gopkg.in/yaml.v2 v2.2.2
 	gopkg.in/yaml.v3 v3.0.0-20191120175047-4206685974f2
 	k8s.io/api v0.0.0-20190918155943-95b840bb6a1f

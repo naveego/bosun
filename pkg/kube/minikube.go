@@ -100,9 +100,6 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 	if err != nil {
 		return err
 	}
-	pkg.NewShellExe("minikube addons enable dashboard").MustRun()
-	pkg.NewShellExe("minikube addons enable heapster").MustRun()
-	pkg.NewShellExe("minikube addons enable kube-dns").MustRun()
 
 	return nil
 }

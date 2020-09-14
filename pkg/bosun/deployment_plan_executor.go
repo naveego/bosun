@@ -1,11 +1,14 @@
 package bosun
 
 import (
+	"github.com/naveego/bosun/pkg/docker"
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/tomb.v2"
 	"path/filepath"
+	"sync"
 )
 
 type DeploymentPlanExecutor struct {
@@ -23,6 +26,13 @@ type ExecuteDeploymentPlanRequest struct {
 	Validate     bool
 	ValidateOnly bool
 	PreviewOnly  bool
+	DiffOnly     bool
+	UseSudo      bool
+}
+
+
+type ExecuteDeploymentPlanResponse struct {
+	ValidationErrors map[string]error
 }
 
 func NewDeploymentPlanExecutor(bosun *Bosun, platform *Platform) DeploymentPlanExecutor {
@@ -32,27 +42,42 @@ func NewDeploymentPlanExecutor(bosun *Bosun, platform *Platform) DeploymentPlanE
 	}
 }
 
-func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error {
+func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (ExecuteDeploymentPlanResponse, error) {
+
+	response := ExecuteDeploymentPlanResponse{}
 
 	var err error
-	deploymentPlan := req.Plan
-	if deploymentPlan == nil {
+	if req.Plan == nil {
 		if req.Path == "" {
 			req.Path = filepath.Join(filepath.Dir(d.Platform.FromPath), "deployments/default/plan.yaml")
 		}
 
-		deploymentPlan, err = LoadDeploymentPlanFromFile(req.Path)
+		req.Plan, err = LoadDeploymentPlanFromFile(req.Path)
 		if err != nil {
-			return err
+			return response, err
 		}
 	}
 	ctx := d.Bosun.NewContext()
 
+	if req.Validate {
+		response.ValidationErrors, err = d.validateDeploymentPlan(req)
+	}
+
+	if req.ValidateOnly  {
+		return response, nil
+	}
+
+	if len(response.ValidationErrors) > 0 {
+		return response, errors.New("one or more apps are invalid")
+	}
+
+	deploymentPlan := req.Plan
 	deploySettings := DeploySettings{
 		SharedDeploySettings: SharedDeploySettings{
 			Environment: d.Bosun.GetCurrentEnvironment(),
 			Recycle:     req.Recycle,
 			PreviewOnly: req.PreviewOnly,
+			DiffOnly: req.DiffOnly,
 		},
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
@@ -147,19 +172,80 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) error 
 
 	if len(deploySettings.AppOrder) == 0 {
 		ctx.Log().Info("All apps excluded or deployed already.")
-		return nil
+		return response, nil
 	}
 
 	deploy, err := NewDeploy(ctx, deploySettings)
 	if err != nil {
-		return err
+		return response, err
 	}
 
 	err = deploy.Deploy(ctx)
 
 	if err != nil {
-		return errors.Wrapf(err, "execute deployment plan from %s", req.Path)
+		return response, errors.Wrapf(err, "execute deployment plan from %s", req.Path)
 	}
 
-	return nil
+	return response, nil
 }
+
+
+func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlanRequest) (map[string]error, error) {
+
+	plan := req.Plan
+
+	ctx := d.Bosun.NewContext()
+
+	apps := plan.Apps
+
+	response :=  map[string]error{}
+
+	t := new(tomb.Tomb)
+
+	mu := new(sync.Mutex)
+
+	for appIndex := range apps {
+
+		app := apps[appIndex]
+		included := len(req.IncludeApps) == 0
+		for _,  includedName := range req.IncludeApps {
+			if includedName == app.Name {
+				included = true
+			}
+		}
+		if !included {
+			continue
+		}
+
+		imageConfigs := app.Manifest.AppConfig.GetImages()
+		appLog := ctx.Log().WithField("app", app.Name)
+
+		appLog.Infof("Verifying images...")
+		for i := range imageConfigs {
+			imageConfig := imageConfigs[i]
+			t.Go(func() error {
+
+				imageName := imageConfig.GetFullNameWithTag(app.Tag)
+				imageLog := appLog.WithField("image", imageName)
+
+				imageLog.Infof("Verifying image...")
+
+				err := docker.CheckImageExists(imageName, req.UseSudo)
+				mu.Lock()
+				if err != nil {
+					imageLog.WithError(err).Warnf("Image invalid")
+					response[app.Name] = err
+				} else {
+					imageLog.Info("Image OK")
+				}
+				mu.Unlock()
+				return nil
+			})
+		}
+	}
+
+	_ = t.Wait()
+
+	return response, nil
+}
+

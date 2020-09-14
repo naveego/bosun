@@ -2,13 +2,19 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/AlecAivazis/survey/v2"
+	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"strings"
+
 	// "os"
 )
 
@@ -56,7 +62,8 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.New("get issue service")
 		}
 
-		var parent *issues.IssueRef
+		var parentRef *issues.IssueRef
+		var parent *issues.Issue
 
 		storyNumber := viper.GetInt(ArgGitTaskStory)
 		if storyNumber > 0 {
@@ -65,8 +72,20 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			parentRepo := viper.GetString(ArgGitTaskParentRepo)
 
 			tmp := issues.NewIssueRef(parentOrg, parentRepo, storyNumber)
-			parent = &tmp
+			parentRef = &tmp
 
+			parentTemp, parentErr := svc.GetIssue(*parentRef)
+			if parentErr != nil {
+				pkg.Log.WithError(parentErr).Error("Could not get parent issue " + parentRef.String())
+			} else {
+				parent = &parentTemp
+				body = fmt.Sprintf(`%s
+
+## Parent Issue (as of when this issue was created) %s
+
+%s
+`, body, parentRef, parent.Body)
+			}
 		}
 
 		issue := issues.Issue{
@@ -78,7 +97,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			BranchPattern: app.Branching.Feature,
 		}
 
-		number, err := svc.Create(issue, parent)
+		number, err := svc.Create(issue, parentRef)
 		if err != nil {
 			return err
 		}
@@ -90,13 +109,27 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
+		currentBranch := g.Branch()
+
 		branch, err := app.Branching.RenderFeature(issue.Slug(), number)
 		if err != nil {
 			return errors.Wrap(err, "could not create branch")
 		}
 
 		err = g.CreateBranch(branch)
-		return err
+		if err != nil {
+			return err
+		}
+
+		if parent != nil {
+			err = createStoryCommit(g, currentBranch, branch, *parent, issue)
+			if err != nil {
+				return errors.Wrap(err, "creating story commit")
+			}
+			check(g.Push())
+		}
+
+		return nil
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringP(ArgGitTitle, "n", "", "Issue title.")
@@ -106,6 +139,60 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().Int(ArgGitTaskStory, 0, "Number of the story to use as a parent.")
 })
 
+func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story issues.Issue, task issues.Issue) error {
+
+	color.Blue("Bosun can create an initial commit on this branch which will help to document the purpose of the branch and tie it back to the story.")
+
+	const skipOption = "Skip initial commit"
+	typeOptions := append([]string{skipOption}, conventionalCommitTypeOptions...)
+
+	var selectedType string
+	var selectedScope string
+
+	typeQues := &survey.Select{
+		Message: "Select the type of change needed to complete this task:",
+		Options: typeOptions,
+	}
+
+	check(survey.AskOne(typeQues, &selectedType))
+	if selectedType == skipOption {
+		return nil
+	}
+
+	selectedType = strings.Split(selectedType, ":")[0]
+
+	scopeQues := &survey.Input{
+		Message: "What is the scope of this change (e.g. component or file name)? (press enter to skip if you don't know yet)",
+	}
+	check(survey.AskOne(scopeQues, &selectedScope))
+
+	message := fmt.Sprintf(`%s`, selectedType)
+	if selectedScope != "" {
+		message = fmt.Sprintf("%s(%s)", message, selectedScope)
+	}
+
+	message = fmt.Sprintf("%s: %s", message, strings.ToLower(task.Title))
+	issueMetadata := BosunIssueMetadata{
+		BaseBranch:baseBranch,
+		Branch:branch,
+		Story:story.Ref().String(),
+		Task:task.Ref().String(),
+	}
+	message = fmt.Sprintf(`%s
+
+%s
+
+%s
+`,message, issueMetadata.String(), task.Body)
+
+	_, err := g.Exec("commit", "-m", message, "--allow-empty")
+
+	pkg.Log.Info("Created initial commit.")
+	color.Green("%s\n", message)
+
+	return err
+}
+
 const (
 	ArgGitTitle          = "title"
 	ArgGitBody           = "body"
@@ -113,6 +200,17 @@ const (
 	ArgGitTaskParentOrg  = "parent-org"
 	ArgGitTaskParentRepo = "parent-repo"
 )
+
+type BosunIssueMetadata struct {
+	BaseBranch string `yaml:"baseBranch"`
+	Branch string `yaml:"branch"`
+	Story string `yaml:"story"`
+	Task string `yaml:"task"`
+}
+func (b BosunIssueMetadata) String() string {
+	y, _ := yaml.MarshalString(b)
+	return fmt.Sprintf("```bosun\n%s\n```", y)
+}
 
 var gitTaskShow = addCommand(gitTaskCmd, &cobra.Command{
 	Use:   "issue [app]",

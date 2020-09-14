@@ -33,7 +33,7 @@ func init() {
 var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 	Use:          "plan [release]",
 	Short:        "Plans a deployment, optionally of an existing release.",
-	Args:cobra.RangeArgs(0, 1),
+	Args:         cobra.RangeArgs(0, 1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -175,14 +175,19 @@ func releaseDeployPlan() error {
 	deploymentPlanPath := filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
 
 	previousPlan, _ := bosun.LoadDeploymentPlanFromFile(deploymentPlanPath)
-
+	basedOnHash, err := r.GetChangeDetectionHash()
+	if err != nil {
+		return err
+	}
 	var req = bosun.CreateDeploymentPlanRequest{
 		Path:                  deploymentPlanPath,
 		ProviderPriority:      []string{r.Slot},
 		IgnoreDependencies:    true,
 		AutomaticDependencies: false,
-		ReleaseVersion: &r.Version,
+		ReleaseVersion:        &r.Version,
+		BasedOnHash:           basedOnHash,
 	}
+
 	for name, included := range r.UpgradedApps {
 		if included {
 			req.Apps = append(req.Apps, name)
@@ -210,4 +215,3 @@ func releaseDeployPlan() error {
 
 	return nil
 }
-

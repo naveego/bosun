@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
@@ -60,10 +61,11 @@ type Deploy struct {
 
 // SharedDeploySettings are copied from the DeploySettings to the AppDeploySettings
 type SharedDeploySettings struct {
-	Environment        *environment.Environment
-	PreviewOnly bool
-	UseLocalContent    bool
-	Recycle            bool
+	Environment     *environment.Environment
+	PreviewOnly     bool
+	UseLocalContent bool
+	Recycle         bool
+	DiffOnly        bool
 }
 
 type DeploySettings struct {
@@ -289,7 +291,8 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			for _, cluster := range clusters {
 
 				if len(settings.Clusters) > 0 && !settings.Clusters[cluster.Name] {
-					log.Infof("Skipping deploy to cluster %s because it was excluded.", cluster.Name)
+					clusterJSON, _ := json.Marshal(settings.Clusters)
+					log.Infof("Skipping deploy to cluster %s because it was excluded. Included: %s", cluster.Name, string(clusterJSON))
 					continue
 				}
 
@@ -500,19 +503,27 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 
 		err = app.Reconcile(appCtx)
 
-		if d.AfterDeploy != nil {
-			d.AfterDeploy(app, err)
-		}
 
 		if err != nil {
 			return err
 		}
+
+		if d.DiffOnly || d.PreviewOnly{
+			return nil
+		}
+
 		if d.Recycle {
 			err = app.Recycle(ctx)
 			if err != nil {
 				return err
 			}
 		}
+
+
+		if d.AfterDeploy != nil {
+			d.AfterDeploy(app, err)
+		}
+
 
 	}
 
