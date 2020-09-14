@@ -22,6 +22,7 @@ type AppMetadata struct {
 	PinnedReleaseVersion *semver.Version `yaml:"pinnedReleaseVersion,omitempty"`
 	Hashes               AppHashes       `yaml:"hashes"`
 	Branch               string          `yaml:"branch" json:"branch"`
+	Tag	string `yaml:"tag" json:"tag"`
 }
 
 func (a *AppMetadata) RepoRef() issues.RepoRef {
@@ -213,6 +214,10 @@ func (a *AppManifest) MakePortable() error {
 }
 
 func (a *AppManifest) GetTagBasedOnVersionAndBranch() string {
+	if a.Tag != "" {
+		return a.Tag
+	}
+
 	branch := git.BranchName(a.Branch)
 	if a.AppConfig.Branching.IsFeature(branch) {
 		return "unstable-" + featureBranchTagRE.ReplaceAllString(strings.ToLower(branch.String()), "-")

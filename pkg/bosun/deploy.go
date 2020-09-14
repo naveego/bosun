@@ -271,21 +271,28 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			namespaceRoles = app.AppDeploySettings.PlatformAppConfig.NamespaceRoles
 		}
 
+		if len(env.ClusterRoles) > 0 {
+			clusterRoles = core.ClusterRolesFromStrings(env.ClusterRoles)
+		}
+
 		deployedToClusterForRole := map[string]core.ClusterRole{}
 
 		for _, clusterRole := range clusterRoles {
+			if !env.ClusterForRoleExists(clusterRole) {
+				log.Debugf("no clusters exist that target role %q", clusterRole)
+				continue
+			}
+
 			clusters, err := env.GetClustersForRole(clusterRole)
 			if err != nil {
 				return nil, errors.Wrapf(err, "find cluster to deploy %q with role %q", app.Name, clusterRole)
 			}
+
 			for _, cluster := range clusters {
-
-
 
 				if len(settings.Clusters) > 0 && !settings.Clusters[cluster.Name] {
 					clusterJSON, _ := json.Marshal(settings.Clusters)
 					log.Infof("Skipping deploy to cluster %s because it was excluded. Included: %s", cluster.Name, string(clusterJSON))
-
 					continue
 				}
 
@@ -319,6 +326,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 
 				deployedToNamespaceForRole := map[string]core.NamespaceRole{}
 				for _, namespaceRole := range namespaceRoles {
+
 
 					var namespace kube.NamespaceConfig
 					namespace, err = cluster.GetNamespace(namespaceRole)
@@ -421,6 +429,8 @@ func (a AppDeployMap) GetAppsSortedByName() AppReleasesSortedByName {
 	sort.Sort(out)
 	return out
 }
+
+
 
 
 //

@@ -127,7 +127,8 @@ Otherwise, this will do nothing.
 		}
 
 		initializer := pkg.VaultInitializer{
-			Client: vaultClient,
+			Client:         vaultClient,
+			VaultNamespace: viper.GetString(ArgVaultNamespace),
 		}
 
 		err = initializer.InitNonProd()
@@ -157,7 +158,8 @@ var vaultUnsealCmd = &cobra.Command{
 		}
 
 		initializer := pkg.VaultInitializer{
-			Client: vaultClient,
+			Client:         vaultClient,
+			VaultNamespace: viper.GetString(ArgVaultNamespace),
 		}
 
 		err = initializer.Unseal(args[0])
@@ -281,6 +283,7 @@ const (
 	ArgVaultSecretGenerate  = "generate"
 	ArgVaultSecretOverwrite = "overwrite"
 	ArgVaultSecretDefault   = "default"
+	ArgVaultNamespace       = "vault-namespace"
 )
 
 func init() {
@@ -319,4 +322,5 @@ func init() {
 func addVaultFlags(cmd *cobra.Command) {
 	cmd.Flags().String(ArgVaultAddr, "", "URL to Vault. Or set VAULT_ADDR.")
 	cmd.Flags().String(ArgVaultToken, "", "Vault token. Or set VAULT_TOKEN.")
+	cmd.Flags().String(ArgVaultNamespace, "kube-system", "Namespace of the vault pod (default: kube-system)")
 }

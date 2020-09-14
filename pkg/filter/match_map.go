@@ -25,6 +25,7 @@ func (e MatchMapArgs) String() string {
 	return fmt.Sprintf("%#v", map[string]string(e))
 }
 
+
 func (e MatchMapConfig) Matches(args MatchMapArgs) bool {
 	if len(e) == 0 {
 		return true

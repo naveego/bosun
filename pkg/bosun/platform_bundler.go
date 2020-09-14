@@ -7,12 +7,12 @@ import (
 	"github.com/otiai10/copy"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 )
 
 type PlatformBundler struct {
@@ -23,9 +23,6 @@ type PlatformBundler struct {
 
 type BundlePlatformRequest struct {
 	Dir          string
-	Prefix       string
-	Environments []string
-	Releases     []string
 }
 
 type BundlePlatformResult struct {
@@ -40,116 +37,73 @@ func NewPlatformBundler(bosun *Bosun, platform *Platform) PlatformBundler {
 	}
 }
 
-func (d PlatformBundler) Execute(req BundlePlatformRequest) (BundlePlatformResult, error) {
+
+func (d PlatformBundler) Execute() (BundlePlatformResult, error) {
+	req := BundlePlatformRequest{}
 
 	result := BundlePlatformResult{
 		Request: &req,
 	}
 
-	if len(req.Environments) == 0 {
-		return result, errors.New("at least one environment must be included in bundle")
-	}
-	if len(req.Releases) == 0 {
-		return result, errors.New("at least one release must be included in bundle")
-	}
-
 	if req.Dir == "" {
 		req.Dir = d.p.FromPath
-		req.Dir = filepath.Join(getDirIfFile(req.Dir), "bundles")
+		req.Dir = filepath.Join(getDirIfFile(req.Dir))
 		_ = os.MkdirAll(req.Dir, 0700)
-	}
-
-	if req.Prefix == "" {
-		req.Prefix = fmt.Sprint(time.Now().UTC().Unix())
 	}
 
 	d.log = d.b.NewContext().Log()
 
 	fromDir := filepath.Dir(d.p.FromPath)
+	releaseSrcDir := filepath.Join(fromDir, "releases", "current")
+	appsSrcDir := filepath.Join(fromDir, "apps")
 
-	tmpDir := filepath.Join(os.TempDir(), "bosun/bundle", req.Prefix)
-
-	_ = os.RemoveAll(tmpDir)
-	err := os.MkdirAll(tmpDir, 0700)
-	if err != nil {
-		return result, errors.WithStack(err)
-	}
+	tmpDir := filepath.Join(os.TempDir(), "bosun", "bundle")
+	releaseDestDir := filepath.Join(tmpDir, "releases", "current")
+	appsDestDir := filepath.Join(tmpDir, "apps")
 
 	d.log.Infof("Using temp directory at %q", tmpDir)
 
-	err = copy.Copy(fromDir, tmpDir)
+	_ = os.RemoveAll(tmpDir)
+
+	// copy charts
+	err := os.MkdirAll(releaseSrcDir, 0700)
 	if err != nil {
-		return result, errors.Wrap(err, "making copy of platform")
+		return result, fmt.Errorf("could not create charts folder '%s': %w", releaseSrcDir, err)
 	}
-
-	sort.Strings(req.Environments)
-
-	platformFilepath := filepath.Join(tmpDir, filepath.Base(d.p.FromPath))
-	platformFile, err := LoadFile(platformFilepath)
+	err = copy.Copy(releaseSrcDir, releaseDestDir)
 	if err != nil {
-		return result, err
+		return result, fmt.Errorf("could not copy charts: %w", err)
 	}
 
-	p := platformFile.Platforms[0]
-	err = p.LoadChildren()
+	// copy apps
+	err = os.MkdirAll(appsDestDir, 0700)
 	if err != nil {
-		return result, err
+		return result, fmt.Errorf("could not create apps folder '%s': %w", appsDestDir, err)
 	}
-
-	// remove environments not requested
-	var environmentPaths []string
-	for _, envConfig := range p.environmentConfigs {
-		for _, envName := range req.Environments {
-			if envConfig.Name == envName {
-				environmentPaths = append(environmentPaths, strings.Trim(strings.TrimPrefix(tmpDir, envConfig.FromPath), "/"))
-				d.log.Infof("Keeping environment %q because it was requested", envName)
-				goto FoundEnvironment
-			}
-		}
-		d.log.Warnf("Discarding environment %q because it was not requested", envConfig.Name)
-		_ = os.RemoveAll(filepath.Dir(envConfig.FromPath))
-	FoundEnvironment:
-	}
-	p.EnvironmentPaths = environmentPaths
-
-	// remove releases not requested
-	releaseDirs, _ := filepath.Glob(filepath.Join(tmpDir, p.ReleaseDirectory, "*"))
-	for _, releaseDir := range releaseDirs {
-		slot := filepath.Base(releaseDir)
-		for _, requestedSlot := range req.Releases {
-			if slot == requestedSlot {
-				d.log.Infof("Keeping release %q because it was requested", slot)
-				goto FoundSlot
-			}
-		}
-		d.log.Warnf("Discarding release %q because it was not requested", slot)
-		_ = os.RemoveAll(releaseDir)
-	FoundSlot:
-	}
-
-	// discard deployments:
-	deploymentPath := p.GetDeploymentsDir()
-	_ = os.RemoveAll(deploymentPath)
-
-	// discard other bundles:
-	_ = os.RemoveAll(p.ResolveRelative("bundles"))
-
-	defer func() {
-		// e := os.RemoveAll(tmpDir)
-		// if e != nil {
-		// 	d.log.WithError(err).Errorf("Could not delete tmp copy at %q", tmpDir)
-		// } else{
-		// 	d.log.Infof("Deleted tmp copy at %q", tmpDir)
-		//
-		// }
-	}()
-
-	err = p.Save(d.b.NewContext())
+	err = copy.Copy(appsSrcDir, appsDestDir)
 	if err != nil {
-		return result, errors.Wrapf(err, "saving platform to temp directory %q", tmpDir)
+		return result, fmt.Errorf("could not copy apps: %w", err)
 	}
 
-	outPath := filepath.Join(req.Dir, fmt.Sprintf("%s_%s.bundle", req.Prefix, strings.Join(req.Environments, "_")))
+	// we need to clear out the stuff before saving
+	d.p.EnvironmentPaths = nil
+	d.p.Apps = nil
+	d.p.ZenHubConfig = nil
+
+	platforms := map[string][]*Platform {
+		"platforms": {d.p},
+	}
+	pBytes, err := yaml.Marshal(platforms)
+	if err != nil {
+		return result, fmt.Errorf("could not serialize platform: %w")
+	}
+
+	err = ioutil.WriteFile(filepath.Join(tmpDir, "platform.yaml"), pBytes, 0700)
+	if err != nil {
+		return result, fmt.Errorf("could not copy '%s' to '%s': %w", d.p.FromPath, tmpDir, err)
+	}
+
+	outPath := filepath.Join(req.Dir, "bundle.zip")
 
 	tmpFiles, err := zglob.Glob(filepath.Join(tmpDir, "**/*"))
 	if err != nil {

@@ -132,6 +132,16 @@ func (e *Environment) GetClustersForRole(role core.ClusterRole) ([]*kube.Cluster
 	return clusters, err
 }
 
+func (e *Environment) ClusterForRoleExists(role core.ClusterRole) bool  {
+	for _, c := range e.Clusters {
+		if c.Roles.Contains(role) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (e *Environment) GetClusterByName(name string) (*kube.ClusterConfig, error) {
 	cluster, err := e.Clusters.GetKubeConfigDefinitionByName(name)
 	return cluster, err
