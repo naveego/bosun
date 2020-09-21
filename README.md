@@ -9,7 +9,7 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
 ## Quick Start
 
 1. Install Go 1.11.9 from https://golang.org/doc/install
-2. In the root of this repo, run `go install`
+2. In the root of this repo, run `go install` (you might need to add `export GO11MODULES='on' in your .zshrc`)
 3. Get the latest version of https://github.com/naveegoinc/devops (recommendation: clone to `$HOME/src/github.com/naveegoinc/devops`).
 4. In the root of the devops repo, run `bosun workspace add bosun.yaml`
     - Run `bosun app list` to check if bosun has added all the imports to your workspace. It should list a bunch of apps.
