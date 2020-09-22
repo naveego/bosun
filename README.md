@@ -39,7 +39,8 @@ A commented example bosun.yaml file is here: [./examples/bosun.yaml](./examples/
     - For github: `sudo docker login docker.pkg.github.com` - The username is anything, the password is a github token with read:packages and write:packages.
     - After adding docker logins, make the docker config readable by bosun using `sudo chmod 700 ~/.docker && sudo chmod 600 ~/.docker/config.json`
 8. Add aws login for CLI: `aws configure --profile black`. Get key/secret from your mentor.
-8. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
+9. Run `mkcert --install` if you haven't already
+10. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
    - You may need to run this a few times if things are slow to come up and subsequent steps time out.
    - After minikube has started you can run `minikube dashboard` to open the dashboard and see what things have been deployed.
    - After traefik is up (in the kube-system namespace) you can browse to http://traefik.n5o.red to see its dashboard.
