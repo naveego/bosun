@@ -6,6 +6,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"io/ioutil"
@@ -100,6 +101,7 @@ func (a AppMetadata) DiffersFrom(other *AppMetadata) bool {
 	return a.Version != other.Version || a.Hashes != other.Hashes
 }
 
+
 func LoadAppManifestFromPathAndName(fileOrDir string, name string) (*AppManifest, error) {
 
 	paths := []string{
@@ -134,6 +136,25 @@ func LoadAppManifestFromPathAndName(fileOrDir string, name string) (*AppManifest
 
 	return nil, errors.Errorf("could not find bosun file for %q (tried paths %v)", name, paths)
 }
+
+func (a *AppManifest) UpdateHashes() error {
+
+	hashes := AppHashes{}
+
+	var err error
+	hashes.AppConfig, err = util.HashToStringViaYaml(a.AppConfig)
+	if err != nil {
+		return err
+	}
+
+	hashes.Files, err = util.HashToStringViaYaml(a.Files)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 
 // Save saves the app manifest in the provided directory. It return the path to the bosun file which was saved and contains the manifest.
 func (a *AppManifest) Save(dir string) (string, error) {

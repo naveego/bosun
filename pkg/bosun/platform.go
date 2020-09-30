@@ -30,7 +30,6 @@ import (
 )
 
 const (
-	SlotCurrent      = "current"
 	SlotStable       = "stable"
 	SlotUnstable     = "unstable"
 	SlotPrevious     = "previous"
@@ -69,6 +68,7 @@ type Platform struct {
 	bosun                        *Bosun                           `yaml:"-"`
 	// set to true if this platform is a dummy created for automation purposes
 	isAutomationDummy bool `yaml:"-"`
+
 }
 
 func (p *Platform) MarshalYAML() (interface{}, error) {
@@ -145,6 +145,14 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
+func (p *Platform) GetCurrentBranch() git.BranchName {
+	g, err := git.NewGitWrapper(p.FromPath)
+	if err != nil {
+		panic(err)
+	}
+	return git.BranchName(g.Branch())
+}
+
 func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 	if p.environmentConfigs == nil {
 
@@ -183,23 +191,23 @@ func (p *Platform) GetClusterByName(name string) (*kube.ClusterConfig, error) {
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
-	return p.GetReleaseManifestBySlot(SlotCurrent)
+	g, err := git.NewGitWrapper(p.FromPath)
+	if err != nil {
+		return nil, err
+	}
+	if !p.Branching.IsRelease(git.BranchName(g.Branch())) {
+		return nil, errors.Errorf("not on a release branch (on %s, release branches look like %s)", g.Branch(), p.Branching.Release)
+	}
+
+	return p.GetReleaseManifestBySlot(SlotStable)
 }
 
 func (p *Platform) GetStableRelease() (*ReleaseManifest, error) {
 	return p.GetReleaseManifestBySlot(SlotStable)
 }
 
-func (p *Platform) GetPreviousRelease() (*ReleaseManifest, error) {
-	return p.GetReleaseManifestBySlot(SlotPrevious)
-}
-
 func (p *Platform) GetUnstableRelease() (*ReleaseManifest, error) {
 	return p.GetReleaseManifestBySlot(SlotUnstable)
-}
-
-func (p *Platform) MustGetNextRelease() *ReleaseManifest {
-	return p.MustGetReleaseManifestBySlot(SlotCurrent)
 }
 
 func (p *Platform) MustGetStableRelease() *ReleaseManifest {
@@ -351,7 +359,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 
 	manifest.plan = plan
 
-	p.SetReleaseManifest(SlotCurrent, manifest)
+	p.SetReleaseManifest(SlotStable, manifest)
 
 	return plan, nil
 }
@@ -372,19 +380,16 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 
 	currentManifest, err := p.GetCurrentRelease()
 	if err != nil {
-		currentManifest = &ReleaseManifest{
-			ReleaseMetadata: plan.ReleaseMetadata,
-			Slot:            SlotCurrent,
-		}
+		return err
 	}
 	err = currentManifest.RefreshApps(ctx, apps...)
 	if err != nil {
 		return err
 	}
 
-	stableManifest, err := p.GetStableRelease()
+	previousManifest, err := p.GetReleaseManifestBySlotAndBranch(SlotStable, git.BranchName(plan.ReleaseMetadata.PreferredParentBranch))
 	if err != nil {
-		stableManifest = &ReleaseManifest{
+		previousManifest = &ReleaseManifest{
 			Slot: SlotStable,
 		}
 	}
@@ -401,8 +406,8 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 		return errors.Wrap(err, "get current apps")
 	}
 
-	stableAppProvider := NewReleaseManifestAppProvider(stableManifest)
-	stableApps, err := stableAppProvider.GetAllApps()
+	previousAppProvider := NewReleaseManifestAppProvider(previousManifest)
+	previousApps, err := previousAppProvider.GetAllApps()
 	if err != nil {
 		return errors.Wrap(err, "get stable apps")
 	}
@@ -430,37 +435,37 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 			}
 		}
 
-		var stableVersion *App
+		var previousVersion *App
 		var unstableVersion *App
 		var currentVersion *App
 		var diffVersion *App
 		var diffSlot string
 
-		if stableVersion, ok = stableApps[appName]; ok {
+		if previousVersion, ok = previousApps[appName]; ok {
 
 			appPlan.Providers[SlotStable] = AppProviderPlan{
-				Version:        stableVersion.Version.String(),
-				Branch:         stableVersion.AppManifest.Branch,
-				Commit:         stableVersion.AppManifest.Hashes.Commit,
-				ReleaseVersion: stableVersion.GetMostRecentReleaseVersion(),
+				Version:        previousVersion.Version.String(),
+				Branch:         previousVersion.AppManifest.Branch,
+				Commit:         previousVersion.AppManifest.Hashes.Commit,
+				ReleaseVersion: previousVersion.GetMostRecentReleaseVersion(),
 			}
 
-			log.Infof("Found stable version of app (%s)", appPlan.Providers[SlotStable])
+			log.Infof("Found previous version of app (%s)", appPlan.Providers[SlotPrevious])
 		}
 
 		log.Info("Finding current version or unstable version for app...")
 
 		if currentVersion, ok = currentApps[appName]; ok && currentVersion.AppManifest.PinnedReleaseVersion.EqualSafe(currentManifest.Version) {
-			diffSlot = SlotCurrent
+			diffSlot = SlotStable
 			diffVersion = currentVersion
-			appPlan.Providers[SlotCurrent] = AppProviderPlan{
+			appPlan.Providers[SlotStable] = AppProviderPlan{
 				Version: currentVersion.Version.String(),
 				Branch:  currentVersion.AppManifest.Branch,
 				Commit:  currentVersion.AppManifest.Hashes.Commit,
 			}
-			log.Infof("Found current version of app (%s)", appPlan.Providers[SlotCurrent])
+			log.Infof("Found current version of app (%s)", appPlan.Providers[SlotStable])
 		} else if unstableVersion, ok = unstableApps[appName]; ok {
-			if stableVersion == nil || stableVersion.AppManifest.Hashes.Commit != unstableVersion.AppManifest.Hashes.Commit {
+			if previousVersion == nil || previousVersion.AppManifest.Hashes.Commit != unstableVersion.AppManifest.Hashes.Commit {
 				// If the unstable version is different from the stable version, make it available as an option
 				diffSlot = SlotUnstable
 				diffVersion = unstableVersion
@@ -475,7 +480,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 			return errors.Errorf("mysterious app %q does not come from any release", appName)
 		}
 
-		if stableVersion != nil {
+		if previousVersion != nil {
 
 			localVersion, localVersionErr := workspaceAppProvider.GetApp(appName)
 			if localVersionErr != nil {
@@ -500,7 +505,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 					return errors.Wrapf(changeLogErr, "could not get most recent tag for %q", appName)
 				}
 
-				changeLog, changeLogErr := g.ChangeLog(diffVersion.AppManifest.Hashes.Commit, stableVersion.AppManifest.Hashes.Commit, nil, git.GitChangeLogOptions{})
+				changeLog, changeLogErr := g.ChangeLog(diffVersion.AppManifest.Hashes.Commit, previousVersion.AppManifest.Hashes.Commit, nil, git.GitChangeLogOptions{})
 				if changeLogErr != nil {
 					return errors.Wrapf(changeLogErr, "could not get changelog for %q", appName)
 				}
@@ -553,7 +558,7 @@ func (p *Platform) RePlanRelease(ctx BosunContext, apps ...*App) (*ReleasePlan, 
 
 	current.plan = plan
 
-	p.SetReleaseManifest(SlotCurrent, current)
+	p.SetReleaseManifest(SlotStable, current)
 
 	ctx.Log().Infof("Prepared new release plan for %s.", current)
 
@@ -615,7 +620,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		return nil, err
 	}
 
-	stable, err := p.GetStableRelease()
+	previous, err := p.GetPreviousReleaseMetadata(currentRelease.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -667,11 +672,11 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				}
 
 				switch appPlan.ChosenProvider {
-				case SlotStable:
+				case SlotPrevious:
 					log.Infof("App %q will not be upgraded in this release; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
 
 					app, getAppErr = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
-					return stable.PrepareAppManifest(ctx, app, semver.BumpNone, "")
+					return previous.PrepareAppManifest(ctx, app, semver.BumpNone, "")
 
 				case SlotUnstable:
 					// we pass the expected version here to avoid multiple bumps
@@ -694,7 +699,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 					appManifest, prepareErr := currentRelease.PrepareAppManifest(ctx, originalApp, bump, "")
 					return appManifest, prepareErr
 
-				case SlotCurrent:
+				case SlotStable:
 					log.Infof("App %q has already been added to this release.", appName)
 
 					app, getAppErr = ctx.Bosun.GetAppFromProvider(appName, appPlan.ChosenProvider)
@@ -731,7 +736,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 		}
 	}
 
-	p.SetReleaseManifest(SlotCurrent, releaseManifest)
+	p.SetReleaseManifest(SlotStable, releaseManifest)
 
 	ctx.Log().Infof("Added release %q to releases for platform.", releaseManifest.Name)
 
@@ -914,7 +919,7 @@ func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest
 
 func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
 	switch name {
-	case SlotCurrent, SlotUnstable, SlotStable:
+	case SlotUnstable, SlotStable:
 		r, err := p.GetReleaseManifestBySlot(name)
 		if err != nil {
 			return nil, err
@@ -972,16 +977,35 @@ func (p *Platform) MustGetReleaseManifestBySlot(name string) *ReleaseManifest {
 }
 
 func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, error) {
-	if manifest, ok := p.releaseManifests[slot]; ok {
+	return p.GetReleaseManifestBySlotAndBranch(slot, p.GetCurrentBranch())
+}
+
+func (p *Platform) GetReleaseManifestBySlotAndBranch(slot string, branch git.BranchName) (*ReleaseManifest, error) {
+
+	key := slot + "|" + branch.String()
+
+	if manifest, ok := p.releaseManifests[key]; ok {
 		return manifest, nil
 	}
 
-	dir := p.GetManifestDirectoryPath(slot)
+	g, err := git.NewGitWrapper(p.FromPath)
+	if err != nil {
+		return nil, err
+	}
+	err = g.Fetch()
+	if err != nil {
+		return nil, err
+	}
+	worktree, err := g.Worktree(branch)
+	if err != nil {
+		return nil, err
+	}
 
-	if _, err := os.Stat(dir); err != nil {
-		if slot == SlotCurrent {
-			return nil, errors.Wrap(err, "error getting directory, you may not be on a release branch")
-		}
+	defer worktree.Dispose()
+
+	dir := worktree.ResolvePath(p.GetManifestDirectoryPath(slot))
+
+	if _, err = os.Stat(dir); err != nil {
 		return nil, err
 	}
 
@@ -1002,11 +1026,13 @@ func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, erro
 
 	manifest.Platform = p
 
+	_, manifest.repoName = git.GetOrgAndRepoFromPath(p.FromPath)
+
 	if p.releaseManifests == nil {
 		p.releaseManifests = map[string]*ReleaseManifest{}
 	}
-	p.releaseManifests[slot] = manifest
-	manifest.Slot = slot
+	p.releaseManifests[key] = manifest
+	manifest.Slot = key
 	return manifest, err
 }
 
@@ -1128,6 +1154,10 @@ func (p *Platform) GetStableAppMetadata(name string) (*AppMetadata, error) {
 }
 
 func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
+
+	if slot == SlotPrevious {
+		panic("cannot change previous releases")
+	}
 
 	manifest.Slot = slot
 	p.releaseManifests[slot] = manifest.MarkDirty()
@@ -1619,4 +1649,5 @@ type AppHashes struct {
 	Commit    string `yaml:"commit,omitempty"`
 	Chart     string `yaml:"chart,omitempty"`
 	AppConfig string `yaml:"appConfig,omitempty"`
+	Files     string `yaml:"files,omitempty"`
 }

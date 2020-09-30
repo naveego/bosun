@@ -688,17 +688,7 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 
 		appConfig := a.AppConfig
 
-		hashes := AppHashes{}
 
-		if a.Repo.CheckCloned() == nil {
-			hashes.Commit = a.Repo.LocalRepo.GetCurrentCommit()
-		}
-
-		var err error
-		hashes.AppConfig, err = util.HashToStringViaYaml(appConfig)
-		if err != nil {
-			return err
-		}
 
 		appManifest = &AppManifest{
 			AppConfig: appConfig,
@@ -707,11 +697,15 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 				Repo:    appConfig.RepoName,
 				Version: a.Version,
 				Branch:  a.GetBranchName().String(),
-				Hashes:  hashes,
 			},
 		}
 
-		return nil
+		err := appManifest.UpdateHashes()
+		if a.Repo.CheckCloned() == nil {
+			appManifest.Hashes.Commit = a.Repo.LocalRepo.GetCurrentCommit()
+		}
+
+		return err
 	})
 
 	return appManifest, err

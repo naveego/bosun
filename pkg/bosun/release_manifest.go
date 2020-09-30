@@ -62,6 +62,7 @@ type ReleaseManifest struct {
 	appManifests               map[string]*AppManifest    `yaml:"-" json:"-"`
 	deleted                    bool                       `yaml:"-"`
 	Slot                       string                     `yaml:"-"`
+	repoName                   string                     `yaml:"-"`
 }
 
 func (r *ReleaseManifest) MarshalYAML() (interface{}, error) {
@@ -155,6 +156,7 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 			appManifest.AppMetadata = appMetadata
 
 			appManifests[appName] = appManifest
+			r.setReleaseBasedFields(appManifest.AppConfig)
 		}
 
 		r.appManifests = appManifests
@@ -292,19 +294,8 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 	}
 
 	switch r.Slot {
-	case SlotStable:
-		allAppManifests, err := r.GetAppManifests()
-		if err != nil {
-			return err
-		}
-		for _, app := range allAppManifests {
-			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
-				err = r.RefreshApp(ctx, app.Name, app.AppConfig.Branching.Master)
-				if err != nil {
-					ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
-				}
-			}
-		}
+	case SlotPrevious:
+		return errors.New("cannot refresh apps for previous release")
 	case SlotUnstable:
 		allAppManifests, err := r.GetAppManifests()
 		if err != nil {
@@ -318,7 +309,7 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 				}
 			}
 		}
-	case SlotCurrent:
+	case SlotStable:
 
 		allAppManifests, err := r.GetAppManifests()
 		if err != nil {
@@ -327,7 +318,7 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 		for _, app := range allAppManifests {
 			// only update if app was requested or no apps were requested
 			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
-				// only update this app has a release branch:
+				// only update this app on the release branch:
 				err = r.RefreshApp(ctx, app.Name, app.Branch)
 				if err != nil {
 					ctx.Log().WithError(err).Errorf("Unable to refresh %q", app.Name)
@@ -344,6 +335,7 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 
 	b := ctx.Bosun
 	app, err := b.workspaceAppProvider.GetApp(name)
+
 	if err != nil {
 		return errors.Wrapf(err, "get local version of app %s to refresh", name)
 	}
@@ -351,13 +343,14 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 
 	currentAppManifest, err := r.GetAppManifest(name)
 	if err != nil {
-		ctx.Log().Warnf("Could not get previous manifest for %q from release %q: %s", r.String(), name, err)
+		ctx.Log().Warnf("Could not get current manifest for %q from release %q: %s", r.String(), name, err)
 	}
 
 	if currentAppManifest != nil && !ctx.GetParameters().Force {
-		latestCommitHash, err := app.GetMostRecentCommitFromBranch(ctx, branch)
-		if err != nil {
-			return err
+
+		latestCommitHash, commitErr := app.GetMostRecentCommitFromBranch(ctx, branch)
+		if commitErr != nil {
+			return commitErr
 		}
 		if strings.HasPrefix(latestCommitHash, currentAppManifest.Hashes.Commit) {
 			ctx.Log().Infof("No changes detected, keeping app at %s@%s (most recent commit to %s is %s), use --force to override.", currentAppManifest.Version, currentAppManifest.Hashes.Commit, branch, latestCommitHash)
@@ -570,4 +563,10 @@ func (r *ReleaseManifest) GetChangeDetectionHash() (string, error) {
 
 	return hash, nil
 
+}
+
+func (r *ReleaseManifest) setReleaseBasedFields(app *AppConfig) {
+	if app.RepoName == r.repoName {
+		app.FilesOnly = true
+	}
 }

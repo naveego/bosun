@@ -23,6 +23,8 @@ type AppConfig struct {
 	Branching               git.BranchSpec           `yaml:"branching,omitempty" json:"branching"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
 	ContractsOnly    bool           `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
+	// FilesOnly means the app consists only of the files referenced in the bosun file, with no compiled code.
+	FilesOnly bool `yaml:"filesOnly,omitempty" json:"filesOnly,omitempty"`
 	ReportDeployment bool           `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
 	RepoName         string         `yaml:"repo,omitempty" json:"repo,omitempty"`
 	HarborProject    string         `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`

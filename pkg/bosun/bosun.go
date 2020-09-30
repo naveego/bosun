@@ -85,9 +85,9 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 	// }
 
 	if !params.NoEnvironment {
-		err := b.configureCurrentEnv()
-		if err != nil {
-			return nil, err
+		envErr := b.configureCurrentEnv()
+		if envErr != nil {
+			return nil, envErr
 		}
 	}
 
@@ -106,7 +106,7 @@ func (b *Bosun) initializeAppProviders() error {
 	if err != nil {
 		return err
 	}
-	for _, slot := range []string{SlotUnstable, SlotCurrent, SlotStable} {
+	for _, slot := range []string{SlotUnstable, SlotStable} {
 		if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
 			b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 		}
@@ -209,9 +209,9 @@ func (b *Bosun) getAppDependencies(name string, visited map[string]bool) ([]stri
 		visited[dep.Name] = true
 		out = append(out, dep.Name)
 
-		children, err := b.getAppDependencies(dep.Name, visited)
-		if err != nil {
-			return nil, errors.Errorf("%s:%s", name, err)
+		children, appErrs := b.getAppDependencies(dep.Name, visited)
+		if appErrs != nil {
+			return nil, errors.Errorf("%s:%s", name, appErrs)
 		}
 		out = append(out, children...)
 	}
@@ -389,9 +389,9 @@ func (b *Bosun) getActiveEnvironmentAndClusterNames() (environmentName string, c
 			env = envs[0]
 		default:
 			var envNames []string
-			for _, env := range envs {
-				envNames = append(envNames, env.Name)
-				for _, cluster := range env.Clusters {
+			for _, config := range envs {
+				envNames = append(envNames, config.Name)
+				for _, cluster := range config.Clusters {
 					envNames = append(envNames, cluster.EnvironmentAlias+"(alias)")
 				}
 			}
@@ -861,9 +861,9 @@ func (b *Bosun) TidyWorkspace() {
 			repo, err := b.GetRepo(app.RepoName)
 			if err != nil || repo.LocalRepo == nil {
 				log.Infof("App %s is cloned but its repo is not registered. Registering repo %s...", app.Name, app.RepoName)
-				path, err := app.GetLocalRepoPath()
-				if err != nil {
-					log.WithError(err).Errorf("Error getting local repo path for %s.", app.Name)
+				path, repoErr := app.GetLocalRepoPath()
+				if repoErr != nil {
+					log.WithError(repoErr).Errorf("Error getting local repo path for %s.", app.Name)
 				}
 				b.AddLocalRepo(&vcs.LocalRepo{
 					Name: app.RepoName,
@@ -981,8 +981,8 @@ func (b *Bosun) RequireTool(name string) error {
 		return err
 	}
 
-	if _, err := tool.GetExecutable(); err != nil {
-		return errors.Wrapf(err, "required tool %q is not installed", name)
+	if _, execErr := tool.GetExecutable(); execErr != nil {
+		return errors.Wrapf(execErr, "required tool %q is not installed", name)
 	}
 	return nil
 }
@@ -993,7 +993,7 @@ func (b *Bosun) EnsureTool(name string) error {
 		return err
 	}
 
-	if _, err := tool.GetExecutable(); err == nil {
+	if _, execErr := tool.GetExecutable(); execErr == nil {
 		return nil
 	}
 
@@ -1049,7 +1049,7 @@ func (b *Bosun) GetRepos() []*Repo {
 							RepoConfig: *repoConfig,
 							Apps:       map[string]*AppConfig{},
 						}
-						if lr, ok := b.ws.LocalRepos[repo.Name]; ok {
+						if lr, repoFound := b.ws.LocalRepos[repo.Name]; repoFound {
 							repo.LocalRepo = lr
 						}
 						b.repos[repo.Name] = repo
@@ -1203,17 +1203,17 @@ func (b *Bosun) GetGithubToken() (string, error) {
 			fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
 			fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
 			fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-			script := pkg.RequestStringFromUser("ShellExe")
+			scriptContent := pkg.RequestStringFromUser("ShellExe")
 
 			ws.GithubToken = &command.CommandValue{
 				Command: command.Command{
-					Script: script,
+					Script: scriptContent,
 				},
 			}
 
 			_, err := ws.GithubToken.Resolve(ctx)
 			if err != nil {
-				return "", errors.Errorf("script failed: %s\nscript:\n%s", err, script)
+				return "", errors.Errorf("script failed: %s\nscript:\n%s", err, scriptContent)
 			}
 
 			err = b.Save()
