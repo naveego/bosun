@@ -23,6 +23,7 @@ const (
 	AppListColDirty   = "dirty"
 	AppListColStale   = "stale"
 	AppListColPath    = "path"
+	AppListColImages    = "images"
 	AppListColLabels    = "meta-labels"
 )
 
@@ -39,6 +40,7 @@ var appListOptionalColumns = []string{
 	AppListColStale,
 	AppListColPath,
 	AppListColLabels,
+	AppListColImages,
 }
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
@@ -106,6 +108,14 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 					labelLines = append(labelLines, fmt.Sprintf("%s: %s", k, app.Labels[k]))
 				}
 				row[AppListColLabels] = strings.Join(labelLines, "\n")
+			}
+			if colsMap[AppListColImages] {
+				var imageLines []string
+				images := app.GetImages()
+				for _, image := range images {
+					imageLines = append(imageLines, image.GetFullName())
+				}
+				row[AppListColImages] = strings.Join(imageLines, "\n")
 			}
 			out = append(out, row)
 		}

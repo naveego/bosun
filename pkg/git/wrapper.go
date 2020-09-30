@@ -3,6 +3,7 @@ package git
 import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/pkg/errors"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -19,6 +20,10 @@ func NewGitWrapper(pathHint string) (GitWrapper, error) {
 	return GitWrapper{
 		dir: dir,
 	}, nil
+}
+
+func (g GitWrapper) Dir() string {
+	return g.dir
 }
 
 func (g GitWrapper) ExecLines(args ...string) ([]string, error) {
@@ -160,4 +165,22 @@ func (g GitWrapper) AddAndCommit(message string, files ...string) error {
 
 	_, err = g.Exec("commit", "-m", message)
 	return err
+}
+
+func (g GitWrapper) Worktree(branch BranchName) (Worktree, error) {
+	return NewWorktree(g, branch)
+}
+
+var slugRE = regexp.MustCompile(`\W+`)
+
+func Slug(in string) string {
+	slug := slugRE.ReplaceAllString(strings.ToLower(in), "-")
+	for len(slug) > 30 {
+		cutoff := strings.LastIndex(slug, "-")
+		if cutoff < 0 || cutoff > 30 {
+			return slug
+		}
+		slug = slug[:cutoff]
+	}
+	return slug
 }

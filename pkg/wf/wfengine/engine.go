@@ -115,7 +115,7 @@ func (e *Engine) Run(name string) error {
 		return err
 	}
 	if state == nil {
-		
+
 	}
 
 	parameters := wfcontracts.StartParameters{

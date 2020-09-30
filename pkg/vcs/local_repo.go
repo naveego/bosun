@@ -156,7 +156,7 @@ func (r *LocalRepo) DoesBranchExist(ctx util.Logger, name string) (bool, error) 
 		return false, err
 	}
 
-	_, err = g.Exec("fetch")
+	_, err = g.Exec("fetch", "-p")
 	if err != nil {
 		return false, err
 	}

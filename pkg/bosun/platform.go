@@ -239,7 +239,7 @@ func (p *Platform) checkPlanningOngoing() error {
 	return nil
 }
 
-func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error {
+func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, release *ReleaseMetadata) error {
 	log := ctx.Log()
 
 	platformRepoPath, err := git.GetRepoPath(p.FromPath)
@@ -248,8 +248,8 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 	}
 
 	localRepo := &vcs.LocalRepo{Path: platformRepoPath}
-	if localRepo.GetCurrentBranch() == git.BranchName(branch) {
-		log.Debugf("Repo at %s is already on branch %s.", platformRepoPath, branch)
+	if localRepo.GetCurrentBranch() == git.BranchName(release.Branch) {
+		log.Debugf("Repo at %s is already on branch %s.", platformRepoPath, release.Branch)
 		return nil
 	}
 
@@ -259,19 +259,24 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 
 	log.Debug("Checking if release branch exists...")
 
-	branchExists, err := localRepo.DoesBranchExist(ctx, branch)
+	parentBranch := localRepo.GetCurrentBranch().String()
+	if release.PreferredParentBranch != "" {
+		parentBranch = release.PreferredParentBranch
+	}
+
+	branchExists, err := localRepo.DoesBranchExist(ctx, release.Branch)
 	if err != nil {
 		return err
 	}
 	if branchExists {
 		log.Info("Release branch already exists, switching to it.")
-		err = localRepo.SwitchToBranchAndPull(ctx.Services(), branch)
+		err = localRepo.SwitchToBranchAndPull(ctx.Services(), release.Branch)
 		if err != nil {
 			return errors.Wrap(err, "switching to release branch")
 		}
 	} else {
 		log.Info("Creating release branch...")
-		err = localRepo.SwitchToNewBranch(ctx, "master", branch)
+		err = localRepo.SwitchToNewBranch(ctx, parentBranch, release.Branch)
 		if err != nil {
 			return errors.Wrap(err, "creating release branch")
 		}
@@ -293,7 +298,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 		Branch:  p.MakeReleaseBranchName(settings.Version),
 	}
 
-	if err := p.SwitchToReleaseBranch(ctx, metadata.Branch); err != nil {
+	if err := p.SwitchToReleaseBranch(ctx, metadata); err != nil {
 		return nil, err
 	}
 
@@ -314,11 +319,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	}
 
 	if settings.BranchParent != "" {
-		branchParentMetadata, err := p.GetReleaseMetadataByNameOrVersion(settings.BranchParent)
-		if err != nil {
-			return nil, errors.Wrapf(err, "getting patch parent")
-		}
-		metadata.PreferredParentBranch = branchParentMetadata.Branch
+		metadata.PreferredParentBranch = settings.BranchParent
 	}
 
 	existing, _ := p.GetReleaseMetadataByNameOrVersion(metadata.Name)

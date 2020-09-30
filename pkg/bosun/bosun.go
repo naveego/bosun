@@ -774,7 +774,7 @@ func (b *Bosun) UseRelease(name string) error {
 
 	b.ws.CurrentRelease = name
 
-	err = p.SwitchToReleaseBranch(b.NewContext(), release.Branch)
+	err = p.SwitchToReleaseBranch(b.NewContext(), release)
 	return err
 }
 
