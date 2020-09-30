@@ -24,7 +24,6 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	Short: "Creates a task in the current repo, and a branch for that task. Optionally attaches task to a story, if flags are set.",
 	Long:  `Requires github hub tool to be installed (https://hub.github.com/).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-
 		var err error
 
 		err = viper.BindPFlags(cmd.Flags())
@@ -33,103 +32,20 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		}
 
 		taskName := args[0]
-		org, repo := git.GetCurrentOrgAndRepo()
-		title := viper.GetString(ArgGitTitle)
-		if title == "" {
-			if len(taskName) > 50 {
-				title = taskName[:50] + "..."
-			} else {
-				title = taskName
-			}
-		}
+
 		body := viper.GetString(ArgGitBody)
-		if body == "" {
-			body = taskName
-		}
-		repoPath, err := git.GetCurrentRepoPath()
-		if err != nil {
-			return err
-		}
-		b := MustGetBosun(cli.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
-
-		app, err := getCurrentApp(b)
-		if err != nil {
-			return err
-		}
-
-		svc, err := b.GetIssueService()
-		if err != nil {
-			return errors.New("get issue service")
-		}
-
-		var parentRef *issues.IssueRef
-		var parent *issues.Issue
-
 		storyNumber := viper.GetInt(ArgGitTaskStory)
+
+		parentOrg := viper.GetString(ArgGitTaskParentOrg)
+		parentRepo := viper.GetString(ArgGitTaskParentRepo)
+		var parent *issues.IssueRef
 		if storyNumber > 0 {
 
-			parentOrg := viper.GetString(ArgGitTaskParentOrg)
-			parentRepo := viper.GetString(ArgGitTaskParentRepo)
-
 			tmp := issues.NewIssueRef(parentOrg, parentRepo, storyNumber)
-			parentRef = &tmp
-
-			parentTemp, parentErr := svc.GetIssue(*parentRef)
-			if parentErr != nil {
-				pkg.Log.WithError(parentErr).Error("Could not get parent issue " + parentRef.String())
-			} else {
-				parent = &parentTemp
-				body = fmt.Sprintf(`%s
-
-## Parent Issue (as of when this issue was created) %s
-
-%s
-`, body, parentRef, parent.Body)
-			}
+			parent = &tmp
 		}
 
-		issue := issues.Issue{
-			Title:         title,
-			Body:          body,
-			Org:           org,
-			Repo:          repo,
-			IsClosed:      false,
-			BranchPattern: app.Branching.Feature,
-		}
-
-		number, err := svc.Create(issue, parentRef)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(number)
-
-		g, err := git.NewGitWrapper(repoPath)
-		if err != nil {
-			return err
-		}
-
-		currentBranch := g.Branch()
-
-		branch, err := app.Branching.RenderFeature(issue.Slug(), number)
-		if err != nil {
-			return errors.Wrap(err, "could not create branch")
-		}
-
-		err = g.CreateBranch(branch)
-		if err != nil {
-			return err
-		}
-
-		if parent != nil {
-			err = createStoryCommit(g, currentBranch, branch, *parent, issue)
-			if err != nil {
-				return errors.Wrap(err, "creating story commit")
-			}
-			check(g.Push())
-		}
-
-		return nil
+		return StartFeatureDevelopment(taskName, body, parent)
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringP(ArgGitTitle, "n", "", "Issue title.")
@@ -138,6 +54,99 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	cmd.Flags().String(ArgGitTaskParentRepo, "stories", "Issue repo.")
 	cmd.Flags().Int(ArgGitTaskStory, 0, "Number of the story to use as a parent.")
 })
+
+func StartFeatureDevelopment(taskName string, body string, parentRef *issues.IssueRef) error {
+	var err error
+
+	org, repo := git.GetCurrentOrgAndRepo()
+	var title string
+	if len(taskName) > 50 {
+		title = taskName[:50] + "..."
+	} else {
+		title = taskName
+	}
+
+	if body == "" {
+		body = taskName
+	}
+	repoPath, err := git.GetCurrentRepoPath()
+	if err != nil {
+		return err
+	}
+	b := MustGetBosun(cli.Parameters{ProviderPriority: []string{bosun.WorkspaceProviderName}})
+
+	app, err := getCurrentApp(b)
+	if err != nil {
+		return err
+	}
+
+	svc, err := b.GetIssueService()
+	if err != nil {
+		return errors.New("get issue service")
+	}
+
+	var parent *issues.Issue
+
+	if parentRef != nil {
+
+		parentTemp, parentErr := svc.GetIssue(*parentRef)
+		if parentErr != nil {
+			pkg.Log.WithError(parentErr).Error("Could not get parent issue " + parentRef.String())
+		} else {
+			parent = &parentTemp
+			body = fmt.Sprintf(`%s
+
+## Parent Issue (as of when this issue was created) %s
+
+%s
+`, body, parentRef, parent.Body)
+		}
+	}
+
+	issue := issues.Issue{
+		Title:         title,
+		Body:          body,
+		Org:           org,
+		Repo:          repo,
+		IsClosed:      false,
+		BranchPattern: app.Branching.Feature,
+	}
+
+	number, err := svc.Create(issue, parentRef)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(number)
+
+	g, err := git.NewGitWrapper(repoPath)
+	if err != nil {
+		return err
+	}
+
+	currentBranch := g.Branch()
+
+	branch, err := app.Branching.RenderFeature(issue.Slug(), number)
+	if err != nil {
+		return errors.Wrap(err, "could not create branch")
+	}
+
+	err = g.CreateBranch(branch)
+	if err != nil {
+		return err
+	}
+
+	if parent != nil {
+		err = createStoryCommit(g, currentBranch, branch, *parent, issue)
+		if err != nil {
+			return errors.Wrap(err, "creating story commit")
+		}
+		check(g.Push())
+
+	}
+
+	return nil
+}
 
 func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story issues.Issue, task issues.Issue) error {
 
@@ -173,17 +182,17 @@ func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story
 
 	message = fmt.Sprintf("%s: %s", message, strings.ToLower(task.Title))
 	issueMetadata := BosunIssueMetadata{
-		BaseBranch:baseBranch,
-		Branch:branch,
-		Story:story.Ref().String(),
-		Task:task.Ref().String(),
+		BaseBranch: baseBranch,
+		Branch:     branch,
+		Story:      story.Ref().String(),
+		Task:       task.Ref().String(),
 	}
 	message = fmt.Sprintf(`%s
 
 %s
 
 %s
-`,message, issueMetadata.String(), task.Body)
+`, message, issueMetadata.String(), task.Body)
 
 	_, err := g.Exec("commit", "-m", message, "--allow-empty")
 
@@ -203,10 +212,11 @@ const (
 
 type BosunIssueMetadata struct {
 	BaseBranch string `yaml:"baseBranch"`
-	Branch string `yaml:"branch"`
-	Story string `yaml:"story"`
-	Task string `yaml:"task"`
+	Branch     string `yaml:"branch"`
+	Story      string `yaml:"story"`
+	Task       string `yaml:"task"`
 }
+
 func (b BosunIssueMetadata) String() string {
 	y, _ := yaml.MarshalString(b)
 	return fmt.Sprintf("```bosun\n%s\n```", y)
