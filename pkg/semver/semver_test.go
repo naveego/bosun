@@ -20,12 +20,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"math/rand"
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/naveego/bosun/pkg/yaml"
 )
 
 type fixture struct {

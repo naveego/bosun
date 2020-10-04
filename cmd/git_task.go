@@ -58,7 +58,7 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 func StartFeatureDevelopment(taskName string, body string, parentRef *issues.IssueRef) error {
 	var err error
 
-	org, repo := git.GetCurrentOrgAndRepo()
+	org, repo := git.GetCurrentOrgAndRepo().OrgAndRepo()
 	var title string
 	if len(taskName) > 50 {
 		title = taskName[:50] + "..."
@@ -248,7 +248,7 @@ var gitTaskShow = addCommand(gitTaskCmd, &cobra.Command{
 			return err
 		}
 
-		org, repo := git.GetOrgAndRepoFromPath(localRepo.Path)
+		org, repo := git.GetRepoRefFromPath(localRepo.Path).OrgAndRepo()
 
 		ref := issues.NewIssueRef(org, repo, issueNumber)
 

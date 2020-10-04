@@ -80,7 +80,7 @@ func userChooseProvider(provider string) string {
 	}
 	prompt := &survey.Select{
 		Message: "Choose a provider",
-		Options: []string{bosun.SlotStable, bosun.SlotUnstable, bosun.SlotCurrent, bosun.WorkspaceProviderName},
+		Options: []string{bosun.SlotStable, bosun.SlotUnstable, bosun.WorkspaceProviderName},
 	}
 	check(survey.AskOne(prompt, &provider))
 	return provider

@@ -74,7 +74,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 const ArgGitAcceptPRAppVersion = "app"
 
 func getOrgAndRepo() (string, string) {
-	return git.GetCurrentOrgAndRepo()
+	return git.GetCurrentOrgAndRepo().OrgAndRepo()
 }
 
 func dumpJSON(label string, data interface{}) {

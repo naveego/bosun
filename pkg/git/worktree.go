@@ -87,6 +87,8 @@ func NewWorktree(g GitWrapper, branch BranchName) (Worktree, error) {
 		return worktree, errors.Wrapf(err, "checking out worktree for %s", branch)
 	}
 
+	_, _ = g.Exec("worktree", "remove", worktree.dir)
+
 	_, err = g.Exec("worktree", "add", worktree.dir, worktree.WorktreeBranch)
 	if err != nil {
 		return worktree, errors.Wrapf(err, "create work tree for checking out branch %q", branch)

@@ -5,25 +5,28 @@ import (
 	"sync"
 )
 
-type Dispatcher struct {
+type KeyedWorkQueue struct {
 	buffer  int
 	mu      *sync.Mutex
 	done    chan struct{}
 	workers map[string]chan Work
 	log     *logrus.Entry
+	wg 		*sync.WaitGroup
 }
 
-func NewDispatcher(log *logrus.Entry, buffer int) Dispatcher {
-	return Dispatcher{
+func NewKeyedWorkQueue(log *logrus.Entry, buffer int) KeyedWorkQueue {
+	return KeyedWorkQueue{
 		log:     log.WithField("cmp", "dispatcher"),
 		buffer:  buffer,
 		mu:      new(sync.Mutex),
 		done:    make(chan struct{}),
+		wg:      new(sync.WaitGroup),
 		workers: map[string]chan Work{},
 	}
 }
 
-func (d Dispatcher) Dispatch(key string, work Work) {
+func (d KeyedWorkQueue) Dispatch(key string, work Work) {
+	d.wg.Add(1)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	// log := d.log.WithField("key", key)
@@ -37,6 +40,7 @@ func (d Dispatcher) Dispatch(key string, work Work) {
 				// id := xid.New().String()
 				// log.Infof("Running work item with id %q.", id)
 				w()
+				d.wg.Done()
 				// log.Infof("Completed work item with id %q.", id)
 			}
 		}()
@@ -50,7 +54,11 @@ func (d Dispatcher) Dispatch(key string, work Work) {
 	}
 }
 
-func (d Dispatcher) Close() {
+func (d KeyedWorkQueue) Wait() {
+	d.wg.Wait()
+}
+
+func (d KeyedWorkQueue) Close() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

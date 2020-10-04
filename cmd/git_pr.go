@@ -40,7 +40,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 
 		//taskName := args[0]
 
-		org0, repo0 := git.GetCurrentOrgAndRepo()
+		org0, repo0 := git.GetCurrentOrgAndRepo().OrgAndRepo()
 
 		prCmd := GitPullRequestCommand{
 			LocalRepoPath: repoPath,

@@ -142,9 +142,9 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		rm := mustGetRelease(p, bosun.SlotCurrent, bosun.SlotCurrent)
+		rm := mustGetRelease(p, bosun.SlotStable)
 
-		previousRelease := mustGetRelease(p, bosun.SlotStable, bosun.SlotStable )
+		previousRelease := mustGetRelease(p, bosun.SlotStable, bosun.SlotStable)
 		for _, app := range rm.AppMetadata {
 			if previousApp, ok := previousRelease.AppMetadata[app.Name]; ok {
 				app.PreviousVersion = &previousApp.Version
@@ -155,6 +155,28 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 		return err
 	},
 })
+
+var releaseShowPreviousCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "show-previous",
+	Short: "Shows information about the previous release.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+		r, err := p.GetPreviousRelease()
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Name: %s\n", r.Name)
+		fmt.Printf("Version: %s\n", r.Version)
+
+		return err
+	},
+})
+
 
 var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "dot",
@@ -287,9 +309,9 @@ var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "add {current|stable|unstable} [apps...]",
+	Use:   "add {stable|unstable} [apps...]",
 	Args:  cobra.MinimumNArgs(1),
-	Short: "Adds an app to the release.",
+	Short: "Adds an app to a release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
 
@@ -298,7 +320,7 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotCurrent, bosun.SlotStable)
+		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotStable)
 
 		apps := mustGetKnownApps(b, args[1:])
 		bump := viper.GetString(ArgReleaseAddBump)
@@ -310,14 +332,74 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 
 			branch := viper.GetString(ArgReleaseAddBranch)
 
-			appManifest, err := r.PrepareAppManifest(ctx, app, semver.Bump(bump), branch)
-			if err != nil {
-				return err
+			appManifest, prepareErr := r.PrepareAppForRelease(ctx, app, semver.Bump(bump), branch)
+			if prepareErr != nil {
+				return prepareErr
 			}
 
-			err = r.AddApp(appManifest, true)
-			if err != nil {
-				return err
+			addErr := r.AddOrReplaceApp(appManifest, true)
+			if addErr != nil {
+				return addErr
+			}
+		}
+
+		err = p.Save(b.NewContext())
+		return err
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
+	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
+}, withFilteringFlags)
+
+var releaseHotfixCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "hotfix [apps...]",
+	Args:  cobra.MinimumNArgs(1),
+	Short: "Adds an app to a release as a hotfix.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		release, err := p.GetCurrentRelease()
+		if err != nil {
+			return err
+		}
+
+		previousRelease, err := p.GetPreviousRelease()
+		if err != nil {
+			return err
+		}
+
+		bump := viper.GetString(ArgReleaseAddBump)
+		apps := mustGetKnownApps(b, args)
+		for _, app := range apps {
+
+			ctx := b.NewContext().WithApp(app)
+
+			branch := viper.GetString(ArgReleaseAddBranch)
+			if branch == "" {
+
+				previousApp, appErr := previousRelease.GetAppManifest(app.Name)
+				if appErr != nil {
+					return errors.Wrapf(appErr, "previous release %s did not contain app %s", previousRelease.Version, app.Name)
+				}
+
+				branch = previousApp.Branch
+			}
+
+			ctx.Log().Infof("Adding app to release from branch %s with bump %q", branch, bump)
+
+			appManifest, prepareErr := release.PrepareAppForRelease(ctx, app, semver.Bump(bump), branch)
+			if prepareErr != nil {
+				return prepareErr
+			}
+
+			addErr := release.AddOrReplaceApp(appManifest, true)
+			if addErr != nil {
+				return addErr
 			}
 		}
 
@@ -333,34 +415,6 @@ const (
 	ArgReleaseAddBranch = "branch"
 	ArgReleaseAddBump   = "bump"
 )
-
-//
-// var releaseExcludeCmd = addCommand(releaseCmd, &cobra.ShellExe{
-// 	Use:   "exclude [names...]",
-// 	Short: "Excludes and removes one or more apps from a release.",
-// 	Long: "Provide app names or use labels. The matched apps will be removed " +
-// 		"from the release and will not be re-added even if apps which depend on " +
-// 		"them are added or synced. If the app is explicitly added it will be " +
-// 		"removed from the exclude list.",
-// 	RunE: func(cmd *cobra.ShellExe, args []string) error {
-// 		viper.BindPFlags(cmd.Flags())
-// 		b := MustGetBosun()
-// 		release := mustGetCurrentRelease(b)
-//
-// 		apps, err := getAppsIncludeCurrent(b, args)
-// 		if err != nil {
-// 			return err
-// 		}
-//
-// 		for _, app := range apps {
-// 			delete(release.AppReleaseConfigs, app.Name)
-// 			release.Exclude[app.Name] = true
-// 		}
-//
-// 		err = release.Parent.Save()
-// 		return err
-// 	},
-// }, withFilteringFlags)
 
 var releaseValidateCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "validate [names...]",
@@ -445,11 +499,11 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 		}
 
 		go func() {
-			err := app.Validate(ctx)
-			if err != nil {
+			validateErr := app.Validate(ctx)
+			if validateErr != nil {
 				errmu.Lock()
 				defer errmu.Unlock()
-				errs[app.Name] = err
+				errs[app.Name] = validateErr
 			}
 			if showProgress {
 				bar.IncrBy(100, time.Since(start))
@@ -622,7 +676,7 @@ var releaseCommitCmd = addCommand(releaseCmd, &cobra.Command{
 }, withFilteringFlags)
 
 var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:           "update {stable|unstable|current} [apps...]",
+	Use:           "update {stable|unstable} [apps...]",
 	Short:         "Updates the release with the correct values from the apps in it.",
 	Args:          cobra.MinimumNArgs(1),
 	SilenceErrors: true,
@@ -642,6 +696,11 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
+		err = release.IsMutable()
+		if err != nil {
+			return err
+		}
+
 		apps, err := getKnownApps(b, args[1:])
 		if err != nil {
 			return err
@@ -649,13 +708,15 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 
 		confirmMsg := "OK to refresh all apps"
 		if len(apps) > 0 {
-			appNames := []string{}
+			var appNames []string
 			for _, app := range apps {
 				appNames = append(appNames, app.Name)
 			}
 			confirmMsg = fmt.Sprintf("OK to refresh release %s for these apps: %s", release, strings.Join(appNames, ", "))
 		}
-		confirm(confirmMsg)
+		if len(apps) > 1 {
+			confirm(confirmMsg)
+		}
 
 		err = release.RefreshApps(ctx, apps...)
 		if err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
@@ -64,31 +65,6 @@ var releasePlanEditCmd = addCommand(releasePlanCmd, &cobra.Command{
 	},
 })
 
-//
-// var releasePlanAddCmd = addCommand(releasePlanCmd, &cobra.ShellExe{
-// 	Use:          "add {name}",
-// 	Args:         cobra.ExactArgs(1),
-// 	Short:        "Adds an app to the release plan.",
-// 	SilenceUsage: true,
-// 	RunE: func(cmd *cobra.ShellExe, args []string) error {
-// 		b, p := getReleaseCmdDeps()
-//
-// 		if p.Plan == nil {
-// 			return errors.New("no release plan active")
-// 		}
-//
-// 		ctx := b.NewContext()
-// 		err := p.CreateReleasePlan().IncludeApp(ctx, args[0])
-// 		if err != nil {
-// 			return err
-// 		}
-//
-// 		err = p.Save(ctx)
-//
-// 		return err
-// 	},
-// })
-
 var releasePlanStartCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"create"},
@@ -111,7 +87,6 @@ var releasePlanStartCmd = addCommand(releasePlanCmd, &cobra.Command{
 			Name:         viper.GetString(ArgReleasePlanStartName),
 			Version:      version,
 			Bump:         viper.GetString(ArgReleasePlanStartBump),
-			BranchParent: viper.GetString(ArgReleasePlanStartPatchParent),
 		}
 
 		_, err = p.CreateReleasePlan(ctx, settings)
@@ -127,14 +102,12 @@ var releasePlanStartCmd = addCommand(releasePlanCmd, &cobra.Command{
 	cmd.Flags().String(ArgReleasePlanStartName, "", "The name of the release (defaults to the version if not provided).")
 	cmd.Flags().String(ArgReleasePlanStartVersion, "", "The version of the release.")
 	cmd.Flags().String(ArgReleasePlanStartBump, "", "The version bump of the release.")
-	cmd.Flags().String(ArgReleasePlanStartPatchParent, "", "The release the plan will prefer to create branches from.")
 })
 
 const (
 	ArgReleasePlanStartName        = "name"
 	ArgReleasePlanStartVersion     = "version"
 	ArgReleasePlanStartBump        = "bump"
-	ArgReleasePlanStartPatchParent = "patch-parent"
 )
 
 var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
@@ -142,16 +115,32 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 	Args:  cobra.NoArgs,
 	Short: "Discard the current release plan.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b, p := getReleaseCmdDeps()
+		_, p := getReleaseCmdDeps()
 		plan, err := p.GetCurrentRelease()
 		if err != nil {
 			return err
 		}
-		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
-			plan.MarkDeleted()
-			err = p.Save(b.NewContext())
+
+		err = plan.IsMutable()
+		if err != nil {
 			return err
 		}
+		branch := p.GetCurrentBranch()
+		g, err := git.NewGitWrapper(p.FromPath)
+		if err != nil {
+			return err
+		}
+
+		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
+			_, err = g.Exec("reset", "--hard")
+			if err != nil {
+				return err
+			}
+        	check(g.CheckOutOrCreateBranch(p.Branching.Develop))
+			_, err = g.Exec("branch", "-D", branch.String())
+			return err
+		}
+
 		return nil
 	},
 })
@@ -212,7 +201,7 @@ var releasePlanCommitCmd = addCommand(releasePlanCmd, &cobra.Command{
 			return err
 		}
 
-		err = b.UseRelease(bosun.SlotCurrent)
+		err = b.UseRelease(bosun.SlotStable)
 		if err != nil {
 			return err
 		}
@@ -264,9 +253,9 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 				StartInSearchMode: true,
 				Templates:         editStatusTemplates,
 			}
-			index, _, err := selectAppUI.Run()
-			if err != nil {
-				return err
+			index, _, runErr := selectAppUI.Run()
+			if runErr != nil {
+				return runErr
 			}
 
 			selectedAppPlan := appPlanList[index]
@@ -287,9 +276,9 @@ var releasePlanAppCmd = addCommand(releasePlanCmd, &cobra.Command{
 					Label: fmt.Sprintf("Do you want to deploy %q? [y/N] ", appPlan.Name),
 				}
 
-				deployResult, err := deployUI.Run()
-				if err != nil {
-					return err
+				deployResult, deployErr := deployUI.Run()
+				if deployErr != nil {
+					return deployErr
 				}
 
 				deploy = strings.HasPrefix(strings.ToLower(deployResult), "y")

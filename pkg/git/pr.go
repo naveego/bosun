@@ -25,7 +25,7 @@ func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 	client := c.Client
 
 	repoPath := c.LocalRepoPath
-	org, repo := GetOrgAndRepoFromPath(repoPath)
+	org, repo := GetRepoRefFromPath(repoPath).OrgAndRepo()
 
 	branch := c.FromBranch
 	m := issueNumberRE.FindStringSubmatch(branch)

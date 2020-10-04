@@ -171,6 +171,11 @@ func (g GitWrapper) Worktree(branch BranchName) (Worktree, error) {
 	return NewWorktree(g, branch)
 }
 
+func (g GitWrapper) Branches() []string {
+	branches, _ := g.ExecLines("branch", "--list")
+	return branches
+}
+
 var slugRE = regexp.MustCompile(`\W+`)
 
 func Slug(in string) string {

@@ -21,7 +21,7 @@ import (
 const WorkspaceProviderName = "workspace"
 const FileProviderName = "file"
 
-var DefaultAppProviderPriority = []string{WorkspaceProviderName, SlotCurrent, SlotUnstable, SlotStable, FileProviderName}
+var DefaultAppProviderPriority = []string{WorkspaceProviderName, SlotUnstable, SlotStable, FileProviderName}
 
 type AppProvider interface {
 	fmt.Stringer
@@ -33,6 +33,7 @@ type AppConfigAppProvider struct {
 	appConfigs map[string]*AppConfig
 	apps       map[string]*App
 	ws         *Workspace
+	mu         *sync.Mutex
 }
 
 func NewAppConfigAppProvider(ws *Workspace) AppConfigAppProvider {
@@ -41,6 +42,7 @@ func NewAppConfigAppProvider(ws *Workspace) AppConfigAppProvider {
 		ws:         ws,
 		appConfigs: map[string]*AppConfig{},
 		apps:       map[string]*App{},
+		mu:         new(sync.Mutex),
 	}
 
 	for _, appConfig := range ws.MergedBosunFile.Apps {
@@ -58,7 +60,9 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 	var app *App
 	var appConfig *AppConfig
 	var ok bool
+	a.mu.Lock()
 	app, ok = a.apps[name]
+	a.mu.Unlock()
 	if ok {
 		return app, nil
 	}
@@ -74,8 +78,7 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 	if app.RepoName == "" {
 		repoDir, err := git.GetRepoPath(app.FromPath)
 		if err == nil {
-			org, repo := git.GetOrgAndRepoFromPath(repoDir)
-			app.RepoName = org + "/" + repo
+			app.RepoName = git.GetRepoRefFromPath(repoDir).String()
 		}
 	}
 
@@ -102,7 +105,10 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 		}
 	}
 
+	a.mu.Lock()
 	a.apps[name] = app
+	a.mu.Unlock()
+
 	return app, nil
 }
 
@@ -255,7 +261,7 @@ func (a ChainAppProvider) GetAllApps(providerPriority []string) (map[string]*App
 			}
 			for name, app := range apps {
 				// use the earliest version returned
-				if _, ok := out[name]; !ok {
+				if _, foundApp := out[name]; !foundApp {
 					out[name] = app
 				}
 			}

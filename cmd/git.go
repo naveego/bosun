@@ -85,7 +85,7 @@ var gitRepoCommand = addCommand(gitCmd, &cobra.Command{
 
 		fmt.Println(repoPath)
 
-		org, repo := git.GetOrgAndRepoFromPath(repoPath)
+		org, repo := git.GetRepoRefFromPath(repoPath).OrgAndRepo()
 
 		fmt.Printf("org : %s\n", org)
 		fmt.Printf("repo: %s\n", repo)
@@ -116,7 +116,7 @@ func (c GitPullRequestCommand) Execute() (issueNmb, prNumber int, err error) {
 	client := mustGetGithubClient()
 
 	repoPath := c.LocalRepoPath
-	org, repo := git.GetOrgAndRepoFromPath(repoPath)
+	org, repo := git.GetRepoRefFromPath(repoPath).OrgAndRepo()
 
 	branch := c.FromBranch
 	m := issueNumberRE.FindStringSubmatch(branch)

@@ -25,8 +25,8 @@ func (r *RepoRef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err := unmarshal(&p)
 
 	if err == nil {
-		out, err := ParseRepoRef(p)
-		if err == nil {
+		out, parseErr := ParseRepoRef(p)
+		if parseErr == nil {
 			*r = out
 		}
 	}
@@ -36,6 +36,10 @@ func (r *RepoRef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (r RepoRef) String() string {
 	return fmt.Sprintf("%s/%s", r.Org, r.Repo)
+}
+
+func (r RepoRef) OrgAndRepo() (string, string) {
+	return r.Org, r.Repo
 }
 
 func ParseRepoRef(raw string) (RepoRef, error) {

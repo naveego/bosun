@@ -347,7 +347,6 @@ func (a *App) BuildImages(ctx BosunContext) error {
 
 var featureBranchTagRE = regexp.MustCompile(`\W+`)
 
-
 func GetDependenciesInTopologicalOrder(apps map[string][]string, roots ...string) (DependenciesSortedByTopology, error) {
 
 	const target = "__TARGET__"
@@ -688,8 +687,6 @@ func (a *App) GetManifest(ctx BosunContext) (*AppManifest, error) {
 
 		appConfig := a.AppConfig
 
-
-
 		appManifest = &AppManifest{
 			AppConfig: appConfig,
 			AppMetadata: &AppMetadata{
@@ -753,8 +750,10 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortabl
 	useWorktreeCheckout := false
 	forced := ctx.GetParameters().Force
 	onBranch := currentBranch == branch
-	if forced && onBranch {
-		ctx.Log().Warn("Skipping worktree checkout because --force parameter was provided.")
+	if onBranch {
+		if g.IsDirty() {
+			ctx.Log().Warn("Getting manifest from dirty branch %s, make sure you commit changes eventually.", branch)
+		}
 		useWorktreeCheckout = false
 	} else if forced {
 		return nil, errors.Errorf("--force provided but branch %q is not checked out (current branch is %s)", branch, currentBranch)

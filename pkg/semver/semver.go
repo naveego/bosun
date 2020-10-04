@@ -57,6 +57,18 @@ func splitOff(input *string, delim string) (val string) {
 	return val
 }
 
+func Parse(version string) (Version, error) {
+	return NewVersion(version)
+}
+
+func MustParse(version string) Version {
+	v, err := NewVersion(version)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
 func New(version string) Version {
 	return Must(NewVersion(version))
 }

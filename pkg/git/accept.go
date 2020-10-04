@@ -29,8 +29,7 @@ func (c GitAcceptPRCommand) Execute() error {
 	if err != nil {
 		return err
 	}
-	org, repo := GetOrgAndRepoFromPath(repoPath)
-	//g, _ := NewGitWrapper(repoPath)
+	org, repo := GetRepoRefFromPath(repoPath).OrgAndRepo()
 
 	number := c.PRNumber
 

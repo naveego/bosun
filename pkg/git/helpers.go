@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/google/go-github/v20/github"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 	"os"
@@ -11,13 +12,13 @@ import (
 	"strings"
 )
 
-func GetCurrentOrgAndRepo() (string, string) {
+func GetCurrentOrgAndRepo() issues.RepoRef {
 	currentDir, _ := os.Getwd()
 	repoDir, err := GetRepoPath(currentDir)
 	if err != nil {
 		panic(err)
 	}
-	return GetOrgAndRepoFromPath(repoDir)
+	return GetRepoRefFromPath(repoDir)
 }
 
 func GetCurrentRepoPath() (string, error) {
@@ -51,7 +52,7 @@ func GetRepoPath(path string) (string, error) {
 	return repoPath, nil
 }
 
-func GetOrgAndRepoFromPath(path string) (string, string) {
+func GetRepoRefFromPath(path string) issues.RepoRef {
 
 	g, _ := NewGitWrapper(path)
 	out, _ := g.Exec("config", "--get", "remote.origin.url")
@@ -60,9 +61,10 @@ func GetOrgAndRepoFromPath(path string) (string, string) {
 		path = strings.TrimSuffix(repoURL[1], ".git")
 	}
 
-	repo := filepath.Base(path)
-	org := filepath.Base(filepath.Dir(path))
-	return org, repo
+	return issues.RepoRef{
+		Repo: filepath.Base(path),
+		Org: filepath.Base(filepath.Dir(path)),
+	}
 }
 
 func mustGetGitClient(token string) *github.Client {

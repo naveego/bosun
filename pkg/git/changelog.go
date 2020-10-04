@@ -82,7 +82,7 @@ const MalformedCommitFlag = "malformed"
 func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueService, options GitChangeLogOptions) (GitChangeLog, error) {
 	out, err := g.Exec("log", "--no-merges", fmt.Sprintf("%s..%s", inBranch, notInBranch))
 
-	org, repo := GetOrgAndRepoFromPath(g.dir)
+	org, repo := GetRepoRefFromPath(g.dir).OrgAndRepo()
 	var allChanges = GitChanges{}
 	var committer string
 	var commitId string

@@ -703,6 +703,8 @@ func (b *Bosun) setCurrentPlatform(platform *Platform) (*Platform, error) {
 			return nil, err
 		}
 	}
+	platform.log = b.log.WithField("cmd", "Platform:" + platform.Name)
+	platform.RepoName = git.GetRepoRefFromPath(platform.FromPath).String()
 	return platform, nil
 }
 
@@ -774,7 +776,7 @@ func (b *Bosun) UseRelease(name string) error {
 
 	b.ws.CurrentRelease = name
 
-	err = p.SwitchToReleaseBranch(b.NewContext(), release)
+	err = p.SwitchToReleaseBranch(b.NewContext(), release.Branch)
 	return err
 }
 
@@ -1211,7 +1213,7 @@ func (b *Bosun) GetGithubToken() (string, error) {
 				},
 			}
 
-			_, err := ws.GithubToken.Resolve(ctx)
+			_, err = ws.GithubToken.Resolve(ctx)
 			if err != nil {
 				return "", errors.Errorf("script failed: %s\nscript:\n%s", err, scriptContent)
 			}

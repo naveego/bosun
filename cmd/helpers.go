@@ -64,7 +64,7 @@ func getActiveRelease(b *bosun.Bosun) (*bosun.ReleaseManifest, error) {
 		return nil, err
 	}
 
-	r, err := p.GetReleaseManifestBySlot(bosun.SlotCurrent)
+	r, err := p.GetReleaseManifestBySlot(bosun.SlotStable)
 
 	return r, err
 }
@@ -80,7 +80,7 @@ func mustGetRelease(p *bosun.Platform, requestedSlot string, allowedSlots ...str
 
 func getRelease(p *bosun.Platform, requestedSlot string, allowedSlots ...string) (*bosun.ReleaseManifest, error) {
 	if len(allowedSlots) == 0 {
-		allowedSlots = []string{bosun.SlotCurrent, bosun.SlotUnstable, bosun.SlotStable}
+		allowedSlots = []string{bosun.SlotUnstable, bosun.SlotStable}
 	}
 	allowed := false
 	for _, slot := range allowedSlots {

@@ -139,15 +139,30 @@ func LoadAppManifestFromPathAndName(fileOrDir string, name string) (*AppManifest
 
 func (a *AppManifest) UpdateHashes() error {
 
-	hashes := AppHashes{}
+	if err := 	a.UpdateBosunfileHash(); err != nil {
+		return err
+	}
+	if err := a.UpdateFilesHash(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *AppManifest) UpdateBosunfileHash() error {
 
 	var err error
-	hashes.AppConfig, err = util.HashToStringViaYaml(a.AppConfig)
+	a.Hashes.AppConfig, err = util.HashToStringViaYaml(a.AppConfig)
 	if err != nil {
 		return err
 	}
 
-	hashes.Files, err = util.HashToStringViaYaml(a.Files)
+	return nil
+}
+
+func (a *AppManifest) UpdateFilesHash() error {
+
+	var err error
+	a.Hashes.Files, err = util.HashToStringViaYaml(a.Files)
 	if err != nil {
 		return err
 	}
