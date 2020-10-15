@@ -28,9 +28,13 @@ type Config struct {
 	AppValues         *values.ValueSet                     `yaml:"appValues,omitempty" json:"appValues"`
 	ValueSetNames     []string                             `yaml:"valueSets,omitempty" json:"valueSets,omitempty"`
 	ValueOverrides    *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
+	// Deprecated
 	AppValueOverrides map[string]values.ValueSetCollection `yaml:"appValueOverrides,omitempty"`
 	// Apps which should not be deployed to this environment.
+	// Deprecated
 	AppBlacklist         []string          `yaml:"appBlacklist,omitempty"`
+	// Apps which should be deployed to this environment, and any value overrides for them. If empty, all apps will be included except ones on AppBlacklist.
+	Apps  map[string]values.ValueSetCollection `yaml:"apps"`
 	SecretGroupFilePaths map[string]string `yaml:"secretFiles"`
 }
 
@@ -55,6 +59,10 @@ func (e *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if err == nil {
 		*e = Config(p)
+	}
+
+	if len(e.AppValueOverrides) > 0 && len(e.Apps) == 0 {
+		e.Apps = e.AppValueOverrides
 	}
 
 	return err

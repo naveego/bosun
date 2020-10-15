@@ -2,6 +2,7 @@ package bosun
 
 import (
 	"github.com/naveego/bosun/pkg/docker"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
@@ -136,7 +137,12 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 				continue
 			}
 
-			if stringsn.Contains(appPlan.Name, env.AppBlacklist) {
+			if len(env.Apps) > 0 {
+				if _, ok := env.Apps[appPlan.Name]; !ok {
+					appCtx.Log().Infof("Skipping app because it is not included in the apps list for the environment (request it explicitly to force deployment) (environment apps: %v).", util.SortedKeys(env.Apps))
+					continue
+				}
+			} else if stringsn.Contains(appPlan.Name, env.AppBlacklist) {
 				appCtx.Log().Infof("Skipping app because it is in the blacklist for the environment (request it explicitly to force deployment).")
 				continue
 			}
