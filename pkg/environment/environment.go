@@ -34,7 +34,7 @@ func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
 // defined in this environment for a specific app. If none is defined, an instance that does nothing will be returned.
 func (e *Environment) GetAppValueSetCollectionProvider(appName string) values.ValueSetCollectionProvider {
 
-	if appValueOverride, ok := e.AppValueOverrides[appName]; ok {
+	if appValueOverride, ok := e.Apps[appName]; ok {
 		return appValueSetCollectionProvider{
 			valueSetCollection: appValueOverride,
 		}
