@@ -106,9 +106,12 @@ func (b *Bosun) initializeAppProviders() error {
 	if err != nil {
 		return err
 	}
-	for _, slot := range []string{SlotUnstable, SlotStable} {
-		if release, releaseErr := p.GetReleaseManifestBySlot(slot); release != nil && releaseErr == nil {
-			b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
+	if !p.isAutomationDummy {
+
+		for _, slot := range []string{SlotUnstable, SlotStable} {
+			if release, releaseErr := p.GetReleaseManifestBySlot(slot); release != nil && releaseErr == nil {
+				b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
+			}
 		}
 	}
 
@@ -703,7 +706,7 @@ func (b *Bosun) setCurrentPlatform(platform *Platform) (*Platform, error) {
 			return nil, err
 		}
 	}
-	platform.log = b.log.WithField("cmd", "Platform:" + platform.Name)
+	platform.log = b.log.WithField("cmd", "Platform:"+platform.Name)
 	platform.RepoName = git.GetRepoRefFromPath(platform.FromPath).String()
 	return platform, nil
 }
