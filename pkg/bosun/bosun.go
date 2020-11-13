@@ -107,7 +107,7 @@ func (b *Bosun) initializeAppProviders() error {
 		return err
 	}
 	for _, slot := range []string{SlotUnstable, SlotStable} {
-		if release, _ := p.GetReleaseManifestBySlot(slot); release != nil {
+		if release, releaseErr := p.GetReleaseManifestBySlot(slot); release != nil && releaseErr == nil {
 			b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 		}
 	}
