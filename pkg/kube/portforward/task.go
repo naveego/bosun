@@ -7,7 +7,6 @@ import (
 	"gopkg.in/tomb.v2"
 	"io"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -88,11 +87,6 @@ func (t *portForwardTask) Start() {
 
 			stderr, _ := cmd.StderrPipe()
 			go pipeToLog(fmt.Sprintf("STDERR: %s: ", t.name), t.log, stderr)
-
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Setpgid:   true,
-				Pdeathsig: syscall.SIGKILL,
-			}
 
 			cmdErr := cmd.Start()
 			if cmdErr != nil {
