@@ -144,7 +144,7 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().String(ArgBosunConfigFile, bosunConfigFile, "Config file for Bosun. You can also set BOSUN_CONFIG.")
-	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "yaml", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
+	rootCmd.PersistentFlags().StringP(ArgGlobalOutput, "o", "", "Output format. Options are `table`, `json`, or `yaml`. Only respected by a some commands.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalVerbose, false, "Enable verbose logging.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalTrace, false, "Enable trace logging.")
 	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalTrace)

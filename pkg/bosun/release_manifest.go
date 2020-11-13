@@ -211,6 +211,7 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 	r.init()
 	r.MarkDirty()
 
+	var err error
 	name := app.Name
 
 	appConfig := app.AppConfig
@@ -218,7 +219,11 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 	if appConfig.BranchForRelease {
 		log := ctx.Log().WithField("app", appConfig.Name)
 		if !app.IsRepoCloned() {
-			return nil, errors.New("repo is not cloned but must be branched for release; what is going on?")
+
+			app, err = ctx.Bosun.workspaceAppProvider.GetApp(name)
+			if err != nil {
+				return nil, errors.New("app to bump %q could not be acquired from workspace provider")
+			}
 		}
 
 		localRepo := app.Repo.LocalRepo
@@ -542,10 +547,6 @@ func (r *ReleaseManifest) updateAppHashes(manifest *AppManifest) error {
 
 func (r *ReleaseManifest) PrepareAppForRelease(ctx BosunContext, app *App, bump semver.Bump, branch string) (*AppManifest, error) {
 
-	if _, ok := r.AppMetadata[app.Name]; ok {
-		return nil, errors.Errorf("app %q is already part of the release, use an update command to update it", app.Name)
-	}
-
 	if branch == "" {
 		branch = app.AppConfig.Branching.Develop
 	}
@@ -565,7 +566,7 @@ func (r *ReleaseManifest) PrepareAppForRelease(ctx BosunContext, app *App, bump 
 			return nil, errors.Wrapf(err, "get latest version of manifest from app")
 		}
 		return appManifest, err
-	} else if r.Slot == SlotStable {
+	} else if r.Slot == SlotUnstable {
 
 		appManifest, err := app.GetManifestFromBranch(ctx, branch, true)
 		if err != nil {

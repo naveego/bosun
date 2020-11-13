@@ -52,6 +52,7 @@ func init() {
 // kubeCmd represents the kube command
 var kubeCmd = &cobra.Command{
 	Use:   "kube {kube-layout}",
+	Aliases: []string{"k"},
 	Args:  cobra.ExactArgs(1),
 	Short: "Group of commands wrapping kubectl.",
 	Long:  `You must have the cluster set in kubectl.`,

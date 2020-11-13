@@ -328,7 +328,7 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 	}
 
 	if localRepo.IsDirty() {
-		return errors.Errorf("repo at %s is dirty, commit or stash your changes before adding it to the release")
+		return errors.Errorf("repo at %s is dirty, commit or stash your changes before adding it to the release", localRepo.Path)
 	}
 
 	log.Debug("Checking if release branch exists...")
