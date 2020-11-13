@@ -145,12 +145,12 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-func (p *Platform) GetCurrentBranch() git.BranchName {
+func (p *Platform) GetCurrentBranch() (git.BranchName, error) {
 	g, err := git.NewGitWrapper(p.FromPath)
 	if err != nil {
-		panic(err)
+		return git.BranchName(""), err
 	}
-	return git.BranchName(g.Branch())
+	return git.BranchName(g.Branch()), nil
 }
 
 func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
@@ -1075,7 +1075,11 @@ func (p *Platform) MustGetReleaseManifestBySlot(name string) *ReleaseManifest {
 }
 
 func (p *Platform) GetReleaseManifestBySlot(slot string) (*ReleaseManifest, error) {
-	return p.GetReleaseManifestBySlotAndBranch(slot, slot, p.GetCurrentBranch())
+	branch, err := p.GetCurrentBranch()
+	if err != nil {
+		return nil, err
+	}
+	return p.GetReleaseManifestBySlotAndBranch(slot, slot, branch)
 }
 
 func (p *Platform) GetReleaseManifestBySlotAndBranch(fromSlot string, asSlot string, branch git.BranchName) (*ReleaseManifest, error) {
@@ -1132,9 +1136,14 @@ func (p *Platform) GetReleaseManifestBySlotAndBranch(fromSlot string, asSlot str
 	p.releaseManifests[key] = manifest
 	manifest.Slot = asSlot
 
-	p.log.Debugf("loading release from slot %s into slot %s on branch %s", fromSlot, asSlot, p.GetCurrentBranch())
+	currentBranch, err := p.GetCurrentBranch()
+	if err != nil {
+		return nil, err
+	}
 
-	if p.Branching.IsRelease(p.GetCurrentBranch()) && asSlot == SlotStable {
+	p.log.Debugf("loading release from slot %s into slot %s on branch %s", fromSlot, asSlot, currentBranch)
+
+	if p.Branching.IsRelease(currentBranch) && asSlot == SlotStable {
 		p.log.Debugf("marking release as current")
 		manifest.isCurrentRelease = true
 	}

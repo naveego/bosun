@@ -125,7 +125,10 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		branch := p.GetCurrentBranch()
+		branch, err := p.GetCurrentBranch()
+		if err != nil {
+			return err
+		}
 		g, err := git.NewGitWrapper(p.FromPath)
 		if err != nil {
 			return err
