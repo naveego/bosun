@@ -279,7 +279,25 @@ func (a *App) GetTaggedImageNames(versionAndRelease ...string) []string {
 	return taggedNames
 }
 
-func (a *App) BuildImages(ctx BosunContext) error {
+type BuildImageRequest struct {
+	Pattern string
+	Ctx BosunContext
+}
+
+func (a *App) BuildImages(req BuildImageRequest) error {
+
+	ctx := req.Ctx
+
+	var err error
+	var re *regexp.Regexp
+
+	if req.Pattern != "" {
+		re, err = regexp.Compile(req.Pattern)
+		if err != nil {
+			return err
+		}
+	}
+
 
 	var report []string
 	for _, image := range a.GetImages() {
@@ -299,6 +317,13 @@ func (a *App) BuildImages(ctx BosunContext) error {
 			contextPath = ctx.ResolvePath(contextPath)
 		}
 
+		fullName := image.GetFullName()
+
+		if re != nil && !re.MatchString(fullName){
+			ctx.Log().Infof("Skipping image %s because it did not match pattern %q", fullName, req.Pattern)
+			continue
+		}
+
 		var buildCommand []string
 		if len(image.BuildCommand) > 0 {
 			buildCommand = image.BuildCommand
@@ -310,7 +335,7 @@ func (a *App) BuildImages(ctx BosunContext) error {
 				"--build-arg", fmt.Sprintf("VERSION_NUMBER=%s", a.Version),
 				"--build-arg", fmt.Sprintf("COMMIT=%s", a.GetCommit()),
 				"--build-arg", fmt.Sprintf("BUILD_NUMBER=%s", os.Getenv("BUILD_NUMBER")),
-				"--tag", image.GetFullName(),
+				"--tag", fullName,
 				contextPath,
 			}
 
@@ -505,6 +530,8 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 	log := ctx.WithApp(a).Log()
 	wasDirty := a.Repo.LocalRepo.IsDirty()
 
+	originalVersion := a.Version
+
 	version, err := NewVersion(bumpOrVersion)
 	if err == nil {
 		a.Version = version
@@ -561,7 +588,7 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 	if wasDirty {
 		log.Warn("Repo was dirty, will not commit bumped files.")
 	} else {
-		commitMsg := fmt.Sprintf("chore(version): %s bump to %s", bumpOrVersion, a.Version)
+		commitMsg := fmt.Sprintf("chore(version): bumped version from %s to %s", originalVersion, a.Version)
 		err = a.Repo.LocalRepo.Commit(commitMsg, ".")
 		if err != nil {
 			return errors.Wrap(err, "commit bumped files")

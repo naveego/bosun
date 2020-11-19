@@ -650,30 +650,7 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 	withFilteringFlags,
 	withValueSetFlags)
 
-var releaseCommitCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:           "commit",
-	Short:         "Merges the release branch back to master for each app in the release, and the platform repository.",
-	SilenceErrors: true,
-	SilenceUsage:  true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun()
-		ctx := b.NewContext()
-
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-
-		err = p.CommitCurrentRelease(ctx)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	},
-}, withFilteringFlags)
 
 var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "update {stable|unstable} [apps...]",
@@ -735,7 +712,9 @@ var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		viper.BindPFlags(cmd.Flags())
+
+		return errors.New("not implemented")
+/*		viper.BindPFlags(cmd.Flags())
 
 		b := MustGetBosun()
 		ctx := b.NewContext()
@@ -750,7 +729,7 @@ var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		return nil
+		return nil*/
 	},
 }, withFilteringFlags)
 

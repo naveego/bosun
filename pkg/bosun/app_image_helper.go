@@ -6,11 +6,12 @@ import (
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/slack"
 	"github.com/pkg/errors"
+	"regexp"
 	"strings"
 )
 
 func NewAppImageHelper(b *Bosun) AppImageHelper {
-	return AppImageHelper{Bosun:b}
+	return AppImageHelper{Bosun: b}
 }
 
 type AppImageHelper struct {
@@ -18,7 +19,8 @@ type AppImageHelper struct {
 }
 
 type PublishImagesRequest struct {
-	App *App
+	App     *App
+	Pattern string
 }
 
 func (x AppImageHelper) PublishImages(req PublishImagesRequest) error {
@@ -26,6 +28,16 @@ func (x AppImageHelper) PublishImages(req PublishImagesRequest) error {
 	a := req.App
 
 	ctx := x.Bosun.NewContext()
+
+	var err error
+	var re *regexp.Regexp
+
+	if req.Pattern != "" {
+		re, err = regexp.Compile(req.Pattern)
+		if err != nil {
+			return err
+		}
+	}
 
 	var report []string
 
@@ -57,9 +69,15 @@ func (x AppImageHelper) PublishImages(req PublishImagesRequest) error {
 
 	for _, tag := range tags {
 		for _, taggedName := range a.GetTaggedImageNames(tag) {
+
+			if re != nil && !re.MatchString(taggedName) {
+				ctx.Log().Infof("Skipping %s because it didn't match pattern %q", taggedName, req.Pattern)
+				continue
+			}
+
 			ctx.Log().Infof("Tagging and pushing %q", taggedName)
 			untaggedName := strings.Split(taggedName, ":")[0]
-			_, err := pkg.NewShellExe("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err = pkg.NewShellExe("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
@@ -80,7 +98,7 @@ func (x AppImageHelper) PublishImages(req PublishImagesRequest) error {
 	changes, _ := g.ExecLines("log", "--pretty=oneline", "-n", "5", "--no-color")
 
 	slack.Notification{
-		IconEmoji:":frame_with_picture:",
+		IconEmoji: ":frame_with_picture:",
 	}.WithMessage(`Pushed images for %s from branch %s:
 %s
 

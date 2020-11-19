@@ -698,24 +698,6 @@ var appPublishChartCmd = addCommand(
 
 
 
-var appBuildImageCmd = addCommand(
-	appCmd,
-	&cobra.Command{
-		Use:           "build-image [app]",
-		Aliases:       []string{"build-images"},
-		Args:          cobra.MaximumNArgs(1),
-		Short:         "Builds the image(s) for an app.",
-		Long:          `If app is not provided, the current directory is used. The image(s) will be built with the "latest" tag.`,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
-			app := mustGetApp(b, args)
-			ctx := b.NewContext().WithApp(app)
-			err := app.BuildImages(ctx)
-			return err
-		},
-	})
 
 var appPullCmd = addCommand(
 	appCmd,

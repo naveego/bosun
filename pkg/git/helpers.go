@@ -52,6 +52,21 @@ func GetRepoPath(path string) (string, error) {
 	return repoPath, nil
 }
 
+func GetOrgAndRepoFromPath(path string) (string, string) {
+
+	g, _ := NewGitWrapper(path)
+	out, _ := g.Exec("config", "--get", "remote.origin.url")
+	repoURL := strings.Split(out, ":")
+	if len(repoURL) > 1 {
+		path = strings.TrimSuffix(repoURL[1], ".git")
+	}
+
+	repo := filepath.Base(path)
+	org := filepath.Base(filepath.Dir(path))
+	return org, repo
+}
+
+
 func GetRepoRefFromPath(path string) issues.RepoRef {
 
 	g, _ := NewGitWrapper(path)

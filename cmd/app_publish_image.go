@@ -4,6 +4,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var appPublishImageCmd = addCommand(
@@ -26,9 +27,41 @@ as "version-release".
 			app := mustGetApp(b, args)
 
 			helper := bosun.NewAppImageHelper(b)
-			req := bosun.PublishImagesRequest{App:app}
+			req := bosun.PublishImagesRequest{App:app, Pattern: viper.GetString(ArgImagePattern)}
 
 			err := helper.PublishImages(req)
 			return err
 		},
+	}, func(cmd *cobra.Command) {
+		cmd.Flags().String(ArgImagePattern, "", "filter pattern for images to actually process")
 	})
+
+
+var appBuildImageCmd = addCommand(
+	appCmd,
+	&cobra.Command{
+		Use:           "build-image [app]",
+		Aliases:       []string{"build-images"},
+		Args:          cobra.MaximumNArgs(1),
+		Short:         "Builds the image(s) for an app.",
+		Long:          `If app is not provided, the current directory is used. The image(s) will be built with the "latest" tag.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+			app := mustGetApp(b, args)
+			ctx := b.NewContext().WithApp(app)
+			req := bosun.BuildImageRequest{
+				Ctx: ctx,
+				Pattern: viper.GetString(ArgImagePattern),
+			}
+			err := app.BuildImages(req)
+			return err
+		},
+	}, func(cmd *cobra.Command) {
+		cmd.Flags().String(ArgImagePattern, "", "filter pattern for images to actually process")
+	})
+
+const (
+	ArgImagePattern = "pattern"
+)
