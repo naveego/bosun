@@ -3,6 +3,7 @@
 The release commands will work from any location, but they all operate on the current platform
 and manipulate files under `platform/releases` and `platform/deploys` in devops.
 
+> Discussion: https://github.com/naveegoinc/developers/issues/121
 
 ## Folders
 
