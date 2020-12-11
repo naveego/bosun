@@ -296,6 +296,14 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 					continue
 				}
 
+				clusterAppOverrides, hasClusterAppOverrides := cluster.Apps[app.Name]
+				if hasClusterAppOverrides{
+					if clusterAppOverrides.Disabled {
+						log.Infof("Skipping deploy to cluster %s because the cluster apps list marks this app as disabled.", cluster.Name)
+						continue
+					}
+				}
+
 				log = log.WithField("cluster", cluster.Name)
 
 				if deployedForClusterRole, ok := deployedToClusterForRole[cluster.Name]; ok {
@@ -407,11 +415,17 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 						app = app.WithValueSet(envOverrides)
 					}
 
+					if hasClusterAppOverrides {
+						clusterAppOverridesValueSet := clusterAppOverrides.ExtractValueSet(values.ExtractValueSetArgs{
+							ExactMatch: appCtx.GetMatchMapArgs(),
+						})
+						app = app.WithValueSet(clusterAppOverridesValueSet)
+					}
+
 					deploy.AppDeploys = append(deploy.AppDeploys, app)
 				}
 			}
 		}
-
 	}
 
 	return deploy, nil

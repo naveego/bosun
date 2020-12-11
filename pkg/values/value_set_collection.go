@@ -16,6 +16,7 @@ import (
 // Use ExtractValueSetByName to get a merged ValueSet
 // comprising the ValueSets under each key which contains that name.
 type ValueSetCollection struct {
+	Disabled      bool      `yaml:"disabled"`
 	DefaultValues ValueSet  `yaml:"defaults"`
 	ValueSets     ValueSets `yaml:"custom"`
 }
@@ -33,6 +34,10 @@ func NewValueSetCollection() ValueSetCollection {
 }
 
 func (v ValueSetCollection) MarshalYAML() (interface{}, error) {
+
+	if v.Disabled {
+		return v.Disabled, nil
+	}
 
 	v.DefaultValues.Name = "default"
 	m := append([]ValueSet{v.DefaultValues}, v.ValueSets...)
@@ -55,12 +60,12 @@ func (v *ValueSetCollection) UnmarshalYAML(unmarshal func(interface{}) error) er
 
 		var out ValueSets
 
-		for k, v := range m {
+		for k, valueSet := range m {
 			keys := strings.Split(k, ",")
 			for _, key := range keys {
-				v.Roles = append(v.Roles, core.EnvironmentRole(key))
+				valueSet.Roles = append(valueSet.Roles, core.EnvironmentRole(key))
 			}
-			out = append(out, v)
+			out = append(out, valueSet)
 		}
 
 		sort.Sort(out)
@@ -84,6 +89,9 @@ func (v *ValueSetCollection) UnmarshalYAML(unmarshal func(interface{}) error) er
 			}
 		}
 		return nil
+	case bool:
+		*v = ValueSetCollection{Disabled: true}
+		return nil
 	default:
 		return errors.Errorf("unrecognized type %T", raw)
 	}
@@ -99,9 +107,9 @@ func (v ValueSetCollection) ExtractValueSetByName(name string) ValueSet {
 
 	out := ValueSet{}
 
-	for _, v := range v.ValueSets {
-		if v.Name == name {
-			return v
+	for _, valueSet := range v.ValueSets {
+		if valueSet.Name == name {
+			return valueSet
 		}
 	}
 
@@ -112,10 +120,10 @@ func (v ValueSetCollection) ExtractValueSetByRole(role core.EnvironmentRole) Val
 
 	out := ValueSet{}
 
-	for _, v := range v.ValueSets {
-		for _, r := range v.Roles {
+	for _, valueSet := range v.ValueSets {
+		for _, r := range valueSet.Roles {
 			if r == role {
-				out = out.WithValues(v)
+				out = out.WithValues(valueSet)
 			}
 		}
 	}
@@ -191,7 +199,7 @@ func (v ValueSetCollection) ExtractValueSet(args ExtractValueSetArgs) ValueSet {
 				}
 			}
 			if !matchedRole {
-			pkg.Log.WithField("@value_set", candidate.Name).WithField("roles", candidate.Roles).WithField("requested_roles", args.Roles).Trace("ExtractValueSet: Skipping because role was not requested.")
+				pkg.Log.WithField("@value_set", candidate.Name).WithField("roles", candidate.Roles).WithField("requested_roles", args.Roles).Trace("ExtractValueSet: Skipping because role was not requested.")
 				continue
 			}
 		}
@@ -225,8 +233,8 @@ func (v ValueSetCollection) CanonicalizedCopy() ValueSetCollection {
 
 	var order []string
 
-	for _, v := range v.ValueSets {
-		for _, role := range v.Roles {
+	for _, valueSet := range v.ValueSets {
+		for _, role := range valueSet.Roles {
 			order = stringsn.AppendIfNotPresent(order, string(role))
 			var c ValueSet
 			var ok bool
@@ -237,7 +245,7 @@ func (v ValueSetCollection) CanonicalizedCopy() ValueSetCollection {
 					Dynamic: map[string]*command.CommandValue{},
 				}
 			}
-			c = c.WithValues(v)
+			c = c.WithValues(valueSet)
 			canonical[string(role)] = c
 		}
 	}

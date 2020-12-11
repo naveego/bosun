@@ -31,14 +31,17 @@ func init() {
 }
 
 var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
-	Use:          "plan [release]",
+	Use:          "plan [release|stable|unstable]",
 	Short:        "Plans a deployment, optionally of an existing release.",
 	Args:         cobra.RangeArgs(0, 1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		if len(args) > 0 && args[0] == "release" {
-			return releaseDeployPlan()
+		if len(args) > 0  {
+			switch args[0] {
+			case "release", "current", "stable", "unstable":
+				return releaseDeployPlan(args[0])
+			}
 		}
 
 		b := MustGetBosun()
@@ -156,23 +159,57 @@ var deployReleasePlanCmd = addCommand(deployPlanCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		return releaseDeployPlan()
+		return releaseDeployPlan("release")
 	},
 })
 
-func releaseDeployPlan() error {
+func getReleaseAndPlanFolderName(b *bosun.Bosun, slotDescription string) (*bosun.ReleaseManifest, string, error){
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return nil, "", err
+	}
+
+	var folder string
+
+	var r *bosun.ReleaseManifest
+	switch slotDescription {
+	case "release":
+	case "current":
+		r, err = p.GetCurrentRelease()
+		if err == nil {
+			folder = r.Version.String()
+		}
+		break
+	case bosun.SlotStable:
+		r, err = p.GetStableRelease()
+		folder = bosun.SlotStable
+		break
+	case bosun.SlotUnstable:
+		r, err = p.GetUnstableRelease()
+		folder = bosun.SlotUnstable
+		break
+	default:
+		err = errors.Errorf("unsupported release slot description %q", slotDescription)
+	}
+	return r, folder, nil
+}
+
+func releaseDeployPlan(slotDescription string) error {
 
 	b := MustGetBosun()
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return err
 	}
-	r, err := p.GetCurrentRelease()
+
+
+	r, folder, err := getReleaseAndPlanFolderName(b, slotDescription)
 	if err != nil {
 		return err
 	}
 
-	deploymentPlanPath := filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
+	deploymentPlanPath := filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", folder))
 
 	previousPlan, _ := bosun.LoadDeploymentPlanFromFile(deploymentPlanPath)
 	basedOnHash, err := r.GetChangeDetectionHash()
