@@ -58,9 +58,9 @@ func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeCo
 	var konfigs []*ClusterConfig
 
 	if req.Name != "" {
-		konfig, err := k.GetKubeConfigDefinitionByName(req.Name)
-		if err != nil {
-			return err
+		konfig, kubeConfigErr := k.GetKubeConfigDefinitionByName(req.Name)
+		if kubeConfigErr != nil {
+			return kubeConfigErr
 		}
 		konfigs = []*ClusterConfig{konfig}
 	} else {
@@ -114,18 +114,20 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionsByRole(role core.ClusterRole)
 
 type ClusterConfig struct {
 	core.ConfigShared `yaml:",inline"`
-	Provider          string                           `yaml:"-"`
-	EnvironmentAlias  string                           `yaml:"environmentAlias,omitempty"`
-	Roles             core.ClusterRoles                `yaml:"roles,flow"`
-	Variables         []*environmentvariables.Variable `yaml:"variables,omitempty"`
-	ValueOverrides    *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
-	Oracle            *OracleClusterConfig             `yaml:"oracle,omitempty"`
-	Minikube          *MinikubeConfig                  `yaml:"minikube,omitempty"`
-	Microk8s          *Microk8sConfig                  `yaml:"microk8s,omitempty"`
-	Amazon            *AmazonClusterConfig             `yaml:"amazon,omitempty"`
-	Rancher           *RancherClusterConfig            `yaml:"rancher,omitempty"`
-	ExternalCluster   *ExternalClusterConfig           `yaml:"externalCluster,omitempty"`
-	Namespaces        NamespaceConfigs                 `yaml:"namespaces"`
+	Provider          string                               `yaml:"-"`
+	EnvironmentAlias  string                               `yaml:"environmentAlias,omitempty"`
+	Roles             core.ClusterRoles                    `yaml:"roles,flow"`
+	Protected         bool                                 `yaml:"protected"`
+	Variables         []*environmentvariables.Variable     `yaml:"variables,omitempty"`
+	ValueOverrides    *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
+	Oracle            *OracleClusterConfig                 `yaml:"oracle,omitempty"`
+	Minikube          *MinikubeConfig                      `yaml:"minikube,omitempty"`
+	Microk8s          *Microk8sConfig                      `yaml:"microk8s,omitempty"`
+	Amazon            *AmazonClusterConfig                 `yaml:"amazon,omitempty"`
+	Rancher           *RancherClusterConfig                `yaml:"rancher,omitempty"`
+	ExternalCluster   *ExternalClusterConfig               `yaml:"externalCluster,omitempty"`
+	Namespaces        NamespaceConfigs                     `yaml:"namespaces"`
+	Apps              map[string]values.ValueSetCollection `yaml:"apps"`
 }
 
 type PullSecret struct {
@@ -308,7 +310,7 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 }
 
 func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespaceName string, pullSecret PullSecret) error {
-	//req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
+	// req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
 
 	var password string
 	var username string
@@ -322,14 +324,14 @@ func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespa
 		if !ok {
 			dockerConfigPath = os.ExpandEnv("$HOME/.docker/config.json")
 		}
-		data, err := ioutil.ReadFile(dockerConfigPath)
-		if err != nil {
-			return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, err)
+		data, dockerFileErr := ioutil.ReadFile(dockerConfigPath)
+		if dockerFileErr != nil {
+			return errors.Errorf("error reading docker config from %q: %s", dockerConfigPath, dockerFileErr)
 		}
 
-		err = json.Unmarshal(data, &dockerConfig)
-		if err != nil {
-			return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, err)
+		dockerFileErr = json.Unmarshal(data, &dockerConfig)
+		if dockerFileErr != nil {
+			return errors.Errorf("error docker config from %q, file was invalid: %s", dockerConfigPath, dockerFileErr)
 		}
 
 		auths, ok := dockerConfig["auths"].(map[string]interface{})
@@ -339,9 +341,9 @@ func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespa
 			return errors.Errorf("no %q entry in docker config, you should docker login first", pullSecret.Domain)
 		}
 		authBase64, _ := entry["auth"].(string)
-		auth, err := base64.StdEncoding.DecodeString(authBase64)
-		if err != nil {
-			return errors.Errorf("invalid %q entry in docker config, you should docker login first: %s", pullSecret.Domain, err)
+		auth, dockerFileErr := base64.StdEncoding.DecodeString(authBase64)
+		if dockerFileErr != nil {
+			return errors.Errorf("invalid %q entry in docker config, you should docker login first: %s", pullSecret.Domain, dockerFileErr)
 		}
 		segs := strings.Split(string(auth), ":")
 		username, password = segs[0], segs[1]
@@ -350,7 +352,7 @@ func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespa
 		username = pullSecret.Username
 		password, err = pullSecret.Password.Resolve(ctx)
 		if err != nil {
-			//req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
+			// req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
 			return err
 		}
 	}
@@ -385,14 +387,14 @@ func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespa
 	}
 	_, err = client.CoreV1().Secrets(namespaceName).Create(secret)
 	if kerrors.IsAlreadyExists(err) {
-		//req.Log.Infof("Pull secret already exists, updating...")
+		// req.Log.Infof("Pull secret already exists, updating...")
 		_, err = client.CoreV1().Secrets(namespaceName).Update(secret)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "create or update pull secret %q in namespace %q", pullSecret.Name, namespaceName)
 	}
 
-	//req.Log.Infof("Done creating or updating pull secret %q in namespace %q.", pullSecret.Name, ns.Name)
+	// req.Log.Infof("Done creating or updating pull secret %q in namespace %q.", pullSecret.Name, ns.Name)
 	return nil
 }
 

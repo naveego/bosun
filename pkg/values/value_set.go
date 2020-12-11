@@ -270,10 +270,10 @@ func (v ValueSet) WithDynamicValuesResolved(ctx command.ExecutionContext) (Value
 	// Merge the existing values into it so they can be used to format themselves
 	templateValues.Values = Values(templateValues.Values).Merge(v.Static).ToMapStringInterface()
 
-    rendered, err := templateValues.RenderInto(y)
-if err != nil {
-	return v, err
-}
+	rendered, err := templateValues.RenderInto(y)
+	if err != nil {
+		return v, err
+	}
 
 	var out ValueSet
 	err = yaml.UnmarshalString(rendered, &out)

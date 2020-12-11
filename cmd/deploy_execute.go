@@ -19,6 +19,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
@@ -29,10 +30,10 @@ func init() {
 }
 
 var _ = addCommand(deployCmd, &cobra.Command{
-	Use:          "execute {path | release} [apps...]",
+	Use:          "execute {path | {release|stable|unstable}} [apps...]",
 	Args:         cobra.MinimumNArgs(1),
 	Short:        "Executes a deployment against the current environment.",
-	Long:"If apps are provided, only those apps will be deployed.",
+	Long:         "If apps are provided, only those apps will be deployed.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosun()
@@ -44,39 +45,42 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			return err
 		}
 		req := bosun.ExecuteDeploymentPlanRequest{
-			Validate: !viper.GetBool(argDeployExecuteSkipValidate),
-			DiffOnly: viper.GetBool(argDeployExecuteDiffOnly),
+			Validate:    !viper.GetBool(argDeployExecuteSkipValidate),
+			DiffOnly:    viper.GetBool(argDeployExecuteDiffOnly),
 			PreviewOnly: viper.GetBool(argDeployExecuteValuesOnly),
-			UseSudo:viper.GetBool(ArgGlobalSudo),
+			UseSudo:     viper.GetBool(ArgGlobalSudo),
+			Clusters: map[string]bool{},
 		}
 
 		pathOrSlot := args[0]
-		if pathOrSlot == "release" {
-			r, getReleaseErr := p.GetCurrentRelease()
-			if getReleaseErr != nil {
-				return getReleaseErr
+		switch pathOrSlot{
+		case "release","current", bosun.SlotStable, bosun.SlotUnstable:
+			r, folder, resolveReleaseErr := getReleaseAndPlanFolderName(b, pathOrSlot)
+			if resolveReleaseErr != nil {
+				return resolveReleaseErr
 			}
 			expectedReleaseHash, hashErr := r.GetChangeDetectionHash()
+
 			if hashErr != nil {
 				return hashErr
 			}
 
-			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", r.Version.String()))
-			req.Plan, err = bosun.LoadDeploymentPlanFromFile(req.Path)
-			if err != nil {
-				return err
+			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", folder))
+			req.Plan, resolveReleaseErr = bosun.LoadDeploymentPlanFromFile(req.Path)
+			if resolveReleaseErr != nil {
+				return resolveReleaseErr
 			}
 
 			if req.Plan.BasedOnHash != "" && req.Plan.BasedOnHash != expectedReleaseHash {
 				confirmed := cli.RequestConfirmFromUser("The release has changed since this plan was created, are you sure you want to continue?")
-				if !confirmed{
+				if !confirmed {
 
 					color.Yellow("You may want to run `bosun deploy plan release` to update the deployment plan\n")
 					return nil
 				}
 			}
-
-		} else {
+			break
+		default:
 			req.Path = pathOrSlot
 		}
 
@@ -86,29 +90,46 @@ var _ = addCommand(deployCmd, &cobra.Command{
 
 		clusters := viper.GetStringSlice(argDeployExecuteClusters)
 		if len(clusters) > 0 {
-			req.Clusters = map[string]bool{}
 			for _, cluster := range clusters {
 				req.Clusters[cluster] = true
 			}
+		} else {
+			for _, cluster := range b.GetCurrentEnvironment().Clusters {
+				if cluster.Protected {
+					req.Clusters[cluster.Name] = cli.RequestConfirmFromUser("This deployment will affect protected cluster %s, are you sure you want to do this?", cluster.Name)
+				} else {
+					req.Clusters[cluster.Name] = true
+				}
+			}
+		}
+
+		var atLeastOneCluster = false
+		for _, enabled := range req.Clusters {
+			if enabled {
+				atLeastOneCluster = true
+				break
+			}
+		}
+		if !atLeastOneCluster {
+			return errors.Errorf("no clusters confirmed")
 		}
 
 		executor := bosun.NewDeploymentPlanExecutor(b, p)
 
 		_, err = executor.Execute(req)
 
-
 		return err
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation" )
-	cmd.Flags().Bool(argDeployExecuteDiffOnly, false, "Display the diffs for the deploy, but do not actually execute." )
-	cmd.Flags().Bool(argDeployExecuteValuesOnly, false, "Display the values which would be used for the deploy, but do not actually execute." )
-	cmd.Flags().StringSlice(argDeployExecuteClusters, []string{}, "Clusters to deploy to, defaults to all." )
+	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation")
+	cmd.Flags().Bool(argDeployExecuteDiffOnly, false, "Display the diffs for the deploy, but do not actually execute.")
+	cmd.Flags().Bool(argDeployExecuteValuesOnly, false, "Display the values which would be used for the deploy, but do not actually execute.")
+	cmd.Flags().StringSlice(argDeployExecuteClusters, []string{}, "Clusters to deploy to, defaults to all.")
 })
 
 const (
 	argDeployExecuteSkipValidate = "skip-validation"
-	argDeployExecuteDiffOnly = "diff-only"
-	argDeployExecuteValuesOnly = "values-only"
-	argDeployExecuteClusters = "clusters"
+	argDeployExecuteDiffOnly     = "diff-only"
+	argDeployExecuteValuesOnly   = "values-only"
+	argDeployExecuteClusters     = "clusters"
 )
