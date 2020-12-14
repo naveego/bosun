@@ -9,7 +9,7 @@ apps:
     release: ""
     feature: issue/{{.Number}}/{{.Slug}}
   repo: naveego/bosun
-  version: 2.13.0
+  version: 2.14.0
   labels:
     category: tool
     repo-kind: own
