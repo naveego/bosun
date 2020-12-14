@@ -512,27 +512,10 @@ func checkMsg(msg string, err error) {
 
 var marketingReleaseFormat = regexp.MustCompile(`\d\d\d\d\.\d+\.\d+`)
 
-func getMarketingRelease() (string, error) {
-	var err error
-	marketingRelease := viper.GetString(ArgHelmsmanMarketingRelease)
-	if marketingRelease == "" {
-		marketingRelease, err = pkg.NewShellExe("git", "rev-parse", "--abbrev-ref", "HEAD").RunOut()
-		if err != nil {
-			return "", errors.WithMessage(err, "could not get current branch")
-		}
-	}
-
-	for !marketingReleaseFormat.MatchString(marketingRelease) {
-		marketingRelease = pkg.RequestStringFromUser("%q is not a marketing release. Provide a release number like 2018.2.1", marketingRelease)
-	}
-
-	return marketingRelease, nil
-}
 
 type globalParameters struct {
 	vaultToken string
 	vaultAddr  string
-	cluster    string
 	domain     string
 }
 
@@ -544,18 +527,10 @@ func (p *globalParameters) init() error {
 	if p.domain == "" {
 		return errors.New("domain not set")
 	}
-
-	if p.cluster == "" {
-		p.cluster = viper.GetString(ArgGlobalCluster)
-	}
-	if p.cluster == "" {
-		return errors.New("cluster not set")
-	}
-
 	if p.vaultToken == "" {
 		p.vaultToken = viper.GetString(ArgVaultToken)
 	}
-	if p.vaultToken == "" && p.cluster != "blue" {
+	if p.vaultToken == ""  {
 		p.vaultToken = "root"
 	}
 	if p.vaultToken == "" {

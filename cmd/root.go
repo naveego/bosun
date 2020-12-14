@@ -122,7 +122,6 @@ const (
 	ArgGlobalTrace         = "trace"
 	ArgGlobalVerboseErrors = "verbose-errors"
 	ArgGlobalDryRun        = "dry-run"
-	ArgGlobalCluster       = "cluster"
 	ArgGlobalDomain        = "domain"
 	ArgGlobalValues        = "values"
 	ArgBosunConfigFile     = "config-file"
@@ -158,18 +157,14 @@ func init() {
 	rootCmd.PersistentFlags().Bool(ArgGlobalProfile, false, "Dump profiling info.")
 	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalProfile)
 
-	defaultCluster := ""
 	defaultDomain := ""
 	vaultAddr, ok := os.LookupEnv("VAULT_ADDR")
 	if ok {
 		segs := strings.Split(vaultAddr, ".")
 		tld := segs[len(segs)-1]
-		defaultCluster = tld
 		defaultDomain = "n5o." + tld
 	}
 
-	rootCmd.PersistentFlags().String(ArgGlobalCluster, defaultCluster, "The cluster to use when getting kube config data, and as the .Cluster value in templates.")
-	rootCmd.PersistentFlags().MarkHidden(ArgGlobalCluster)
 	rootCmd.PersistentFlags().String(ArgGlobalDomain, defaultDomain, "The domain to use when connecting, and as the .Domain value in templates.")
 	rootCmd.PersistentFlags().MarkHidden(ArgGlobalDomain)
 	rootCmd.PersistentFlags().StringSlice(ArgGlobalValues, []string{}, "Any number of key=value values which will be available under the .Values token in templates.")

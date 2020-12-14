@@ -19,6 +19,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -31,9 +32,15 @@ import (
 
 // vaultCmd represents the vault command
 var vaultCmd = &cobra.Command{
-	Use:   "vault {vault-layouts...}",
+	Use:   "vault",
 	Args:  cobra.MinimumNArgs(1),
-	Short: "Updates VaultClient using layout files. Supports --dry-run flag.",
+	Short: "Contains vault-related commands.",
+}
+
+var vaultApplyCmd = addCommand(vaultCmd, &cobra.Command{
+	Use:   "apply {app} {file}",
+	Args:  cobra.ExactArgs(2),
+	Short: "Applies a vault layout for an app, without doing the full deploy.",
 	Long: `This command has environmental pre-reqs:
 - You must be authenticated to vault (with VAULT_ADDR set and either VAULT_TOKEN set or a ~/.vault-token file created by logging in to vault).
 
@@ -59,13 +66,38 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			return err
 		}
 
-		templateArgs := templating.TemplateValues{
-			Cluster: viper.GetString(ArgGlobalCluster),
-			Domain:  viper.GetString(ArgGlobalDomain),
-			Values: map[string]interface{}{
-				"cluster": viper.GetString(ArgGlobalCluster),
-				"domain":  viper.GetString(ArgGlobalDomain),
+		b := MustGetBosun()
+
+		ctx := b.NewContext()
+
+		if err = b.ConfirmEnvironment(); err != nil {
+			return err
+		}
+
+		app := mustGetApp(b, args[0:1])
+
+		appManifest, err := app.GetManifest(ctx)
+		if err != nil {
+			return err
+		}
+
+		appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{
+			Apps: map[string]*bosun.App{
+				app.Name: app,
 			},
+		}, appManifest)
+
+		if err != nil {
+			return err
+		}
+
+		templateValues, err := appDeploy.GetResolvedValues(ctx)
+		if err != nil {
+			return err
+		}
+
+		templateArgs := templating.TemplateValues{
+			Values: templateValues.Values,
 		}
 
 		for _, kv := range viper.GetStringSlice(ArgGlobalValues) {
@@ -82,9 +114,9 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		}
 
 		if viper.GetBool(ArgGlobalDryRun) {
-			out, err := yaml.Marshal(vaultLayout)
-			if err != nil {
-				return err
+			out, err2 := yaml.Marshal(vaultLayout)
+			if err2 != nil {
+				return err2
 			}
 			color.Yellow("Dry run. This is the rendered template that would be applied:")
 			fmt.Println(string(out))
@@ -97,7 +129,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		return err
 	},
-}
+})
 
 var vaultInitCmd = &cobra.Command{
 	Use:   "bootstrap-dev",

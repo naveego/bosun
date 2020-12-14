@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/naveego/bosun/pkg"
 	"io/ioutil"
 	"strings"
@@ -30,39 +29,6 @@ var dockerCmd = &cobra.Command{
 	Short: "Group of docker-related commands.",
 }
 
-// tagImageCmd represents the tagImage command
-var tagImageCmd = &cobra.Command{
-	Use:   "choose-release-image {service-name}:{version-tag}",
-	Args:  cobra.ExactArgs(1),
-	Short: "Tags an image for release.",
-	Long:  `The image must be on docker.n5o.black/private. If the current branch is a marketing release number it will be used, otherwise you will be prompted.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-
-		marketingRelease, err := getMarketingRelease()
-		if err != nil {
-			return err
-		}
-
-		imageTag := args[0]
-
-		segs := strings.Split(imageTag, ":")
-		if len(segs) != 2 {
-			return errors.Errorf("invalid image:tag %q", imageTag)
-		}
-
-		src := fmt.Sprintf("docker.n5o.black/private/%s", imageTag)
-		dst := fmt.Sprintf("docker.n5o.black/private/%s-%s", imageTag, marketingRelease)
-
-		fmt.Printf("tagging image %q for release %q\n", src, marketingRelease)
-
-		new(pkg.ShellExe).WithExe("docker").WithArgs("pull", src).MustRun()
-		new(pkg.ShellExe).WithExe("docker").WithArgs("tag", src, dst).MustRun()
-		new(pkg.ShellExe).WithExe("docker").WithArgs("push", dst).MustRun()
-
-		return nil
-
-	},
-}
 
 var mapImagesCmd = &cobra.Command{
 	Use:   "map-images {map file}",
@@ -102,9 +68,6 @@ x/imageB:0.5.0 x/imageB:0.5.0-rc
 
 func init() {
 
-	tagImageCmd.Flags().String(ArgHelmsmanMarketingRelease, "", "The value of {{ .MarketingRelease }} in the template. If not set, will default to the current branch.")
-
-	dockerCmd.AddCommand(tagImageCmd)
 	dockerCmd.AddCommand(mapImagesCmd)
 
 	rootCmd.AddCommand(dockerCmd)

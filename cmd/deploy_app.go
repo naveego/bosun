@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -48,7 +49,7 @@ func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployAppTag, "", "Tag to use when deploying the app or apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
-	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "Whitelist of specific clusters to deploy to.")
+	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "List of specific clusters to deploy to.")
 	cmd.Flags().Bool(argAppDeployPreview, false, "Just dump the values which would be used to deploy, then exit.")
 	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().Bool(argDeployAppRecycle, false, "Recycle the app after deploying it.")
@@ -128,6 +129,22 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 		Recycle:     viper.GetBool(argDeployAppRecycle),
 		PreviewOnly: viper.GetBool(argAppDeployPreview),
 		DiffOnly:    viper.GetBool(argDeployAppDiffOnly),
+		Clusters: map[string]bool{},
+	}
+
+	clusters := viper.GetStringSlice(argDeployExecuteClusters)
+	if len(clusters) > 0 {
+		for _, cluster := range clusters {
+			executeRequest.Clusters[cluster] = true
+		}
+	} else {
+		for _, cluster := range b.GetCurrentEnvironment().Clusters {
+			if cluster.Protected {
+				executeRequest.Clusters[cluster.Name] = cli.RequestConfirmFromUser("This deployment will affect protected cluster %s, are you sure you want to do this?", cluster.Name)
+			} else {
+				executeRequest.Clusters[cluster.Name] = true
+			}
+		}
 	}
 
 	clustersWhitelist := viper.GetStringSlice(argDeployAppClusters)
