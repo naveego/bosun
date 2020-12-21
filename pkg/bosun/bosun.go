@@ -109,7 +109,10 @@ func (b *Bosun) initializeAppProviders() error {
 	if !p.isAutomationDummy {
 
 		for _, slot := range []string{SlotUnstable, SlotStable} {
-			if release, releaseErr := p.GetReleaseManifestBySlot(slot); release != nil && releaseErr == nil {
+			release, releaseErr := p.GetReleaseManifestBySlot(slot)
+			if releaseErr != nil {
+				b.log.WithError(releaseErr).Errorf("Error loading release manifest for slot %q", slot)
+			} else {
 				b.appProviders = append(b.appProviders, NewReleaseManifestAppProvider(release))
 			}
 		}

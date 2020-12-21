@@ -599,7 +599,10 @@ func (r *ReleaseManifest) Clone() *ReleaseManifest {
 	_ = yaml.Unmarshal(y, &out)
 	out.appManifests = map[string]*AppManifest{}
 
-	appManifests, _ := r.GetAppManifests()
+	appManifests, err := r.GetAppManifests()
+	if err != nil {
+		panic(err)
+	}
 
 	for name, appManifest := range appManifests {
 		y, _ = yaml.Marshal(appManifest)
