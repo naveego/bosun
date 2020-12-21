@@ -147,7 +147,7 @@ const (
 	argDeployPlanPath             = "path"
 	argDeployPlanApps             = "apps"
 	argDeployPlanAll              = "all"
-	argDeployPlanProviderPriority = "provider"
+	argDeployPlanProviderPriority = "providers"
 	argDeployPlanIgnoreDeps       = "ignore-deps"
 	argDeployPlanAutoDeps         = "auto-deps"
 	argDeployPlanUpdate           = "update"
