@@ -27,6 +27,7 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	script2 "github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/workspace"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/schollz/progressbar"
 	"github.com/spf13/cobra"
@@ -102,7 +103,7 @@ var appVersionCmd = &cobra.Command{
 	Args:    cobra.RangeArgs(0, 1),
 	Short:   "Outputs the version of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 		app := mustGetApp(b, args)
 		fmt.Println(app.Version)
 		return nil
@@ -114,7 +115,7 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 	Args:  cobra.RangeArgs(0, 1),
 	Short: "Outputs the path where the app is cloned on the local system.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 		app := mustGetApp(b, args)
 		if !app.IsRepoCloned() {
 			return errors.New("repo is not cloned")
@@ -125,13 +126,52 @@ var appRepoPathCmd = addCommand(appCmd, &cobra.Command{
 	},
 })
 
+var appValuesCmd = addCommand(appCmd, &cobra.Command{
+	Use:   "values [name]",
+	Args:  cobra.RangeArgs(0, 1),
+	Short: "Outputs the values the app would use to deploy to the current target.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+
+		app := mustGetApp(b, args)
+
+		env := b.GetCurrentEnvironment()
+
+		clusters := viper.GetStringSlice(argDeployAppClusters)
+		if len(clusters) == 0 {
+			clusters = []string{env.DefaultCluster}
+		}
+
+		for _, cluster := range clusters {
+			ctx := b.NewContext()
+			ctx.Log().Infof("Values for cluster %s", cluster)
+			appDeploy, err := getAppDeploy(b, cluster, app)
+			if err != nil {
+				return err
+			}
+			values, err := appDeploy.GetResolvedValues(ctx)
+			if err != nil {
+				return err
+			}
+
+			y, _ := yaml.MarshalString(values)
+
+			fmt.Println(y)
+		}
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "Clusters to target (defaults to default cluster for environment)")
+})
+
 var appBumpCmd = addCommand(appCmd, &cobra.Command{
 	Use:   "bump {name} [major|minor|patch|major.minor.patch]",
 	Args:  cobra.RangeArgs(1, 2),
 	Short: "Updates the version of an app. If bump argument is not provided, it will be computed from the diff from the default branch.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 		app := mustGetApp(b, args[:1])
 
 		if app.Repo.CheckCloned() != nil {
@@ -366,7 +406,7 @@ var appAcceptActualCmd = &cobra.Command{
 		ctx := b.NewContext()
 
 		deploySettings := bosun.DeploySettings{
-			SharedDeploySettings:bosun.SharedDeploySettings{
+			SharedDeploySettings: bosun.SharedDeploySettings{
 				Environment: ctx.Environment(),
 			},
 		}
@@ -412,7 +452,7 @@ var appStatusCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 		env := b.GetCurrentEnvironment()
 		f := getFilterParams(b, args)
 		chain := f.Chain().Then().Including(filter.FilterMatchAll())
@@ -696,9 +736,6 @@ var appPublishChartCmd = addCommand(
 		cmd.Flags().Bool(ArgGlobalForce, false, "Force publish even if version exists.")
 	})
 
-
-
-
 var appPullCmd = addCommand(
 	appCmd,
 	&cobra.Command{
@@ -708,7 +745,7 @@ var appPullCmd = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+			b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 			ctx := b.NewContext()
 			apps, err := getAppsIncludeCurrent(b, args)
 			if err != nil {

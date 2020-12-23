@@ -19,7 +19,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -83,21 +82,11 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		app := mustGetApp(b, args[0:1])
 
-		appManifest, err := app.GetManifest(ctx)
+
+		appDeploy, err := getAppDeploy(b, cluster, app)
 		if err != nil {
 			return err
 		}
-
-		appDeploy, err := bosun.NewAppDeploy(ctx, bosun.DeploySettings{
-			Apps: map[string]*bosun.App{
-				app.Name: app,
-			},
-		}, appManifest)
-
-		if err != nil {
-			return err
-		}
-
 		templateValues, err := appDeploy.GetResolvedValues(ctx)
 		if err != nil {
 			return err

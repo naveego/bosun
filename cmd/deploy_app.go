@@ -18,6 +18,7 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"sort"
@@ -96,6 +97,35 @@ func deployApp(cmd *cobra.Command, args []string) error {
 	err = deployApps(b, p, apps, valueSets, args)
 
 	return err
+}
+
+func getAppDeploy(b *bosun.Bosun, clusters string, app *bosun.App) (*bosun.AppDeploy, error){
+
+	var deploySettings = bosun.DeploySettings{
+		SharedDeploySettings: bosun.SharedDeploySettings{},
+		Apps: map[string]*bosun.App{app.Name:app},
+		AppOrder:             []string{app.Name},
+		Clusters:             map[string]bool{clusters: true},
+		Filter:               nil,
+		IgnoreDependencies:   true,
+		ForceDeployApps:      nil,
+		AfterDeploy:          nil,
+	}
+
+	deploy, err := bosun.NewDeploy(b.NewContext(), deploySettings)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, appDeploy := range deploy.AppDeploys {
+		if appDeploy.Name == app.Name {
+			return appDeploy, nil
+		}
+	}
+
+	return nil, errors.Errorf("deploy did not contain app named %q", app.Name)
+
 }
 
 // deployApps deploys the provided app names from the specified platform with the provided value sets
