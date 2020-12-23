@@ -61,10 +61,6 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			return err
 		}
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
-		if err != nil {
-			return err
-		}
 
 		b := MustGetBosun()
 
@@ -79,6 +75,10 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			if err = b.UseEnvironmentAndCluster(b.GetCurrentEnvironment().Name, cluster); err != nil {
 				return err
 			}
+		}
+		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		if err != nil {
+			return err
 		}
 
 		app := mustGetApp(b, args[0:1])
