@@ -55,12 +55,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		g := globalParameters{}
-		err := g.init()
-		if err != nil {
-			return err
-		}
-
+		var err error
 
 		b := MustGetBosun()
 
@@ -75,6 +70,11 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			if err = b.UseEnvironmentAndCluster(b.GetCurrentEnvironment().Name, cluster); err != nil {
 				return err
 			}
+		}
+		g := globalParameters{}
+		err = g.init()
+		if err != nil {
+			return err
 		}
 		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
@@ -133,6 +133,10 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		key := strings.Join(args, "-")
 		force := viper.GetBool(ArgGlobalForce)
 		err = vaultLayout.Apply(key, force, vaultClient)
+
+		if err != nil {
+			ctx.Log().Warnf("Error applying layout. Vault URL was %s, token was %s...", vaultClient.Address(), vaultClient.Token()[0:3])
+		}
 
 		return err
 	},
@@ -325,7 +329,7 @@ const (
 	ArgVaultSecretOverwrite = "overwrite"
 	ArgVaultSecretDefault   = "default"
 	ArgVaultNamespace       = "vault-namespace"
-	ArgVaultCluster = "cluster"
+	ArgVaultCluster         = "cluster"
 )
 
 func init() {
