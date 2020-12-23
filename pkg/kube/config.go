@@ -309,6 +309,30 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 	return nil
 }
 
+// GetAppValueSetCollectionProvider returns a ValuesSetCollectionProvider that will provide any values set collection
+// defined in this cluster for a specific app. If none is defined, an instance that does nothing will be returned.
+
+func (c *ClusterConfig) GetAppValueSetCollectionProvider(appName string) values.ValueSetCollectionProvider {
+
+	if appValueOverride, ok := c.Apps[appName]; ok {
+		return appValueSetCollectionProvider{
+			valueSetCollection: appValueOverride,
+		}
+	}
+
+	return appValueSetCollectionProvider{
+		valueSetCollection: values.NewValueSetCollection(),
+	}
+}
+
+type appValueSetCollectionProvider struct {
+	valueSetCollection values.ValueSetCollection
+}
+
+func (a appValueSetCollectionProvider) GetValueSetCollection() values.ValueSetCollection {
+	return a.valueSetCollection
+}
+
 func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespaceName string, pullSecret PullSecret) error {
 	// req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
 
