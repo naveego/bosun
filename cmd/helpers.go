@@ -530,9 +530,6 @@ func (p *globalParameters) init() error {
 	if p.vaultToken == "" {
 		p.vaultToken = viper.GetString(ArgVaultToken)
 	}
-	if p.vaultToken == ""  {
-		p.vaultToken = "root"
-	}
 	if p.vaultToken == "" {
 		p.vaultToken = os.Getenv("VAULT_TOKEN")
 	}
