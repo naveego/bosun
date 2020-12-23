@@ -578,7 +578,7 @@ func (a *AppDeploy) Install(ctx BosunContext) error {
 }
 
 func (a *AppDeploy) Upgrade(ctx BosunContext) error {
-	args := append([]string{"upgrade", a.AppManifest.Name, "--history-max", "2", a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
+	args := append([]string{"upgrade", a.AppManifest.Name, "--history-max", "5", a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}

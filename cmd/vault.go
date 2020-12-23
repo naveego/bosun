@@ -74,6 +74,13 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			return err
 		}
 
+		cluster := viper.GetString(ArgVaultCluster)
+		if cluster != "" {
+			if err = b.UseEnvironmentAndCluster(b.GetCurrentEnvironment().Name, cluster); err != nil {
+				return err
+			}
+		}
+
 		app := mustGetApp(b, args[0:1])
 
 		appManifest, err := app.GetManifest(ctx)
@@ -129,6 +136,8 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		return err
 	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(ArgVaultCluster, "", "Cluster to target")
 })
 
 var vaultInitCmd = &cobra.Command{
@@ -316,6 +325,7 @@ const (
 	ArgVaultSecretOverwrite = "overwrite"
 	ArgVaultSecretDefault   = "default"
 	ArgVaultNamespace       = "vault-namespace"
+	ArgVaultCluster = "cluster"
 )
 
 func init() {

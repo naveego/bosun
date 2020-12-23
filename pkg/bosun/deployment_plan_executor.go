@@ -189,7 +189,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 	err = deploy.Deploy(ctx)
 
 	if err != nil {
-		return response, errors.Wrapf(err, "execute deployment plan from %s", req.Path)
+		return response, errors.Wrapf(err, "execute deployment plan from %q", req.Path)
 	}
 
 	return response, nil
