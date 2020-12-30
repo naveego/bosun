@@ -174,8 +174,7 @@ func getReleaseAndPlanFolderName(b *bosun.Bosun, slotDescription string) (*bosun
 
 	var r *bosun.ReleaseManifest
 	switch slotDescription {
-	case "release":
-	case "current":
+	case "release", "current":
 		r, err = p.GetCurrentRelease()
 		if err == nil {
 			folder = r.Version.String()
@@ -192,7 +191,11 @@ func getReleaseAndPlanFolderName(b *bosun.Bosun, slotDescription string) (*bosun
 	default:
 		err = errors.Errorf("unsupported release slot description %q", slotDescription)
 	}
-	return r, folder, nil
+	if r == nil {
+		return nil, "", errors.Errorf("no release loaded for slotDescription %q", slotDescription)
+	}
+
+	return r, folder, err
 }
 
 func releaseDeployPlan(slotDescription string) error {
