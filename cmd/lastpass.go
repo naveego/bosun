@@ -16,12 +16,13 @@ package cmd
 
 import (
 	"fmt"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/naveego/bosun/pkg"
 	"github.com/spf13/cobra"
 )
 
 // lpassCmd represents the lpass command
-var lpassCmd = addCommand(rootCmd,&cobra.Command{
+var lpassCmd = addCommand(rootCmd, &cobra.Command{
 	Use:     "lpass",
 	Aliases: []string{"lastpass"},
 	Args:    cobra.ExactArgs(1),
@@ -52,6 +53,34 @@ var lpassPasswordCmd = addCommand(lpassCmd, &cobra.Command{
 		}
 
 		return err
+	},
+})
+
+var lpassExecCred = addCommand(lpassCmd, &cobra.Command{
+	Use:   "execcred {path}",
+	Short: "Gets a password from LastPass and returns it in kubeconfig ExecCredential format.",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		name := args[0]
+		password, err := pkg.NewShellExe("lpass", "show", "--sync=now", "-p", name).RunOut()
+		if err != nil {
+			return err
+		}
+
+		execCred := map[string]interface{}{
+			"apiVersion": "client.authentication.k8s.io/v1beta1",
+			"kind":       "ExecCredential",
+			"status": map[string]interface{}{
+				"token": password,
+			},
+		}
+
+		json, _ := jsoniter.Marshal(execCred)
+
+		fmt.Println(string(json))
+
+		return nil
 	},
 })
 

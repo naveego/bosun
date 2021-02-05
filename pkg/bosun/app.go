@@ -779,7 +779,7 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortabl
 	onBranch := currentBranch == branch
 	if onBranch {
 		if g.IsDirty() {
-			ctx.Log().Warn("Getting manifest from dirty branch %s, make sure you commit changes eventually.", branch)
+			ctx.Log().Warnf("Getting manifest from dirty branch %s, make sure you commit changes eventually.", branch)
 		}
 		useWorktreeCheckout = false
 	} else if forced {

@@ -527,7 +527,7 @@ func getLastSuccessfulDeploymentTime(rs *github.RepositoriesService, ctx context
 
 func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
-	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run", "--debug")
+	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run")
 
 	msg, err := pkg.NewShellExe("helm", "diff", "upgrade", a.AppManifest.Name, a.Chart(ctx)).
 		WithArgs(args...).
