@@ -20,7 +20,6 @@ import (
 	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/naveego/bosun/pkg/yaml"
-	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -1112,26 +1111,10 @@ func (b *Bosun) AddLocalRepo(localRepo *vcs.LocalRepo) {
 
 func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
-	p, err := b.GetCurrentPlatform()
-	if err != nil {
-		return nil, errors.Wrap(err, "get current platform")
-	}
-	if p.ZenHubConfig == nil {
-		p.ZenHubConfig = &zenhub.Config{
-			StoryBoardName: "Release Planning",
-			TaskBoardName:  "Development",
-		}
-	}
-	zc := *p.ZenHubConfig
-
-	zc.GithubToken, err = b.GetGithubToken()
-	if err != nil {
-		return nil, err
-	}
-
 	gc := &git.Config{
-		GithubToken: zc.GithubToken,
 	}
+	var err error
+	gc.GithubToken, err = b.GetGithubToken()
 
 	// zc.ZenhubToken, err = b.GetZenhubToken()
 	// if err != nil {
@@ -1140,61 +1123,16 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
 	gis, err := git.NewIssueService(*gc, pkg.Log.WithField("cmp", "github"))
 	if err != nil {
-		return nil, errors.Wrapf(err, "get github issue service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
+		return nil, errors.Wrapf(err, "get github issue service with tokens %q", gc.GithubToken)
 	}
 
-	svc, err := zenhub.NewIssueService(gis, zc, pkg.Log.WithField("cmp", "zenhub"))
-	if err != nil {
-		return nil, errors.Wrapf(err, "get zenhub issue service with tokens %q, %q", zc.GithubToken, zc.ZenhubToken)
-	}
-	return svc, nil
+	return gis, nil
 
 }
 
-func (b *Bosun) GetZenhubToken() (string, error) {
-	// b := cmd.MustGetBosun()
-	ws := b.GetWorkspace()
-	ctx := b.NewContext().WithDir(ws.Path)
-	if ws.ZenhubToken == nil {
-		fmt.Println("Zenhub token was not found. Please generate a new Zenhub token. https://app.zenhub.com/dashboard/tokens")
-		fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
-		fmt.Println(`Better example: cat $HOME/.tokens/zenhub.token"`)
-		fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-		script := pkg.RequestStringFromUser("ShellExe")
-
-		ws.ZenhubToken = &command.CommandValue{
-			Command: command.Command{
-				Script: script,
-			},
-		}
-
-		_, err := ws.ZenhubToken.Resolve(ctx)
-		if err != nil {
-			return "", errors.Errorf("script failed: %s\nscript:\n%s", err, script)
-		}
-
-		err = b.Save()
-		if err != nil {
-			return "", errors.Errorf("save failed: %s", err)
-		}
-	}
-
-	token, err := ws.ZenhubToken.Resolve(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	err = os.Setenv("ZENHUB_TOKEN", token)
-	if err != nil {
-		return "", err
-	}
-
-	token, ok := os.LookupEnv("ZENHUB_TOKEN")
-	if !ok {
-		return "", errors.Errorf("ZENHUB_TOKEN must be set")
-	}
-
-	return token, nil
+func (b  *Bosun) GetStoryHandlerConfiguration() []values.Values {
+	w := b.GetWorkspace()
+	return w.StoryHandlers
 }
 
 func (b *Bosun) GetGithubToken() (string, error) {

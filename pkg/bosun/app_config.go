@@ -10,7 +10,6 @@ import (
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
-	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"path/filepath"
 	"strings"
@@ -122,7 +121,7 @@ func (a *AppConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		a.Branching.IsDefaulted = true
 	}
 	if a.Branching.Feature == "" {
-		a.Branching.Feature = "issue/{{.Number}}/{{.Slug}}"
+		a.Branching.Feature = "issue/{{.ID}}/{{.Slug}}"
 		a.Branching.IsDefaulted = true
 	}
 
@@ -138,7 +137,6 @@ func (a *AppConfig) ErrIfFromManifest(msg string, args ...interface{}) error {
 
 type ProjectManagementPlugin struct {
 	Name   string             `yaml:"name" json:"name"`
-	ZenHub *zenhub.RepoConfig `yaml:"zenHub,omitempty" json:"zenHub"`
 }
 
 type AppMinikubeConfig struct {

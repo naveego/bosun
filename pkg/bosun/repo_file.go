@@ -44,7 +44,7 @@ func (f *RepoFile) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		f.Branching.Release = "release/{{.Version}}"
 	}
 	if f.Branching.Feature == "" {
-		f.Branching.Feature = "issue/{{.Number}}/{{.Slug}}"
+		f.Branching.Feature = "issue/{{.ID}}/{{.Slug}}"
 	}
 
 	return err

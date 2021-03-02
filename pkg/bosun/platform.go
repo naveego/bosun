@@ -7,7 +7,6 @@ import (
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
-	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
@@ -17,7 +16,6 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/yaml"
-	"github.com/naveego/bosun/pkg/zenhub"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -61,7 +59,6 @@ type Platform struct {
 	ValueOverrides               *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
 	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
 	Apps                         PlatformAppConfigs               `yaml:"apps,omitempty"`
-	ZenHubConfig                 *zenhub.Config                   `yaml:"zenHubConfig,omitempty"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 	bosun                        *Bosun                           `yaml:"-"`
@@ -116,24 +113,6 @@ func (p *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if p.releaseManifests == nil {
 		p.releaseManifests = map[string]*ReleaseManifest{}
-	}
-	if p.ZenHubConfig == nil {
-		p.ZenHubConfig = &zenhub.Config{
-			StoryBoardName: "Stories",
-			TaskBoardName:  "Tasks",
-			StoryColumnMapping: issues.ColumnMapping{
-				issues.ColumnInDevelopment: "In Development",
-				issues.ColumnWaitingForUAT: "UAT",
-				issues.ColumnDone:          "Done",
-				issues.ColumnClosed:        "Closed",
-			},
-			TaskColumnMapping: issues.ColumnMapping{
-				issues.ColumnInDevelopment:    "In Progress",
-				issues.ColumnWaitingForMerge:  "Ready for Merge",
-				issues.ColumnWaitingForDeploy: "Done",
-				issues.ColumnClosed:           "Closed",
-			},
-		}
 	}
 
 	if versionErr := core.CheckCompatibility(p.BosunVersion); versionErr != nil {

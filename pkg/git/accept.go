@@ -97,7 +97,7 @@ GetPR:
 
 		parent := parents[0]
 
-		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.Number)
+		parentIssueRef := issues.NewIssueRef(parent.Org, parent.Repo, parent.ID)
 
 		allChildren, err := svc.GetChildRefs(parentIssueRef)
 		if err != nil {

@@ -47,13 +47,18 @@ func (i Issue) Ref() IssueRef {
 	return NewIssueRef(i.Org, i.Repo, i.Number)
 }
 
+func (i Issue) RefPtr() *IssueRef {
+	r := NewIssueRef(i.Org, i.Repo, i.Number)
+	return &r
+}
+
 type Estimate struct {
 	Value int
 }
 
 type IssueService interface {
 	// Assign the user who created the task, attach body and milestone
-	Create(issue Issue, parent *IssueRef) (int, error)
+	Create(issue Issue) (int, error)
 	// Add dependency relationship : the newly created task should be a dependency of the issue issue on the ZenHub board
 	AddDependency(from, to IssueRef, parentIssueNum int) error
 	RemoveDependency(from, to IssueRef) error

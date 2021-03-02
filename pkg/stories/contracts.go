@@ -3,6 +3,7 @@ package stories
 type Story struct {
 	// Identifier string which the provider can understand
 	ID            string   `yaml:"id,omitempty"`
+	Title         string   `yaml:"title,omitempty"`
 	// URL link which can be shown to users
 	URL           string   `yaml:"url,omitempty"`
 	// Reference string which can be embedded in an issue
@@ -14,12 +15,11 @@ type Story struct {
 	Milestone     string   `yaml:"milestone,omitempty"`
 	Estimate      string   `yaml:"estimate,omitempty"`
 	Epics         []string `yaml:"epics,omitempty"`
-	Title         string   `yaml:"title,omitempty"`
 	ProgressState string   `yaml:"progressState,omitempty"`
 	Labels        []string `yaml:"labels,omitempty"`
 	IsClosed      bool     `yaml:"isClosed,omitempty"`
 	// Metadata about the story that is provider specific
-	ProviderState interface{} `yaml:"providerState,omitempty"`
+	ProviderState interface{} `yaml:"-"`
 }
 
 type Dependency struct {
@@ -34,11 +34,10 @@ type Dependency struct {
 }
 
 
-type StoryClient interface {
+
+
+type StoryHandler interface {
 
 	GetStory(id string) (*Story, error)
-	AssignStory(story *Story, users []string) (*Story, error)
-	AddDependency(story *Story, dependency Dependency) (*Story, error)
-	SetStoryProgress(story *Story, progress string) (*Story, error)
-
+	HandleEvent(event *ValidatedEvent) error
 }

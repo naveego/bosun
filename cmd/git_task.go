@@ -9,6 +9,8 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
+	"github.com/naveego/bosun/pkg/jira"
+	"github.com/naveego/bosun/pkg/stories"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -17,6 +19,10 @@ import (
 
 	// "os"
 )
+
+func init() {
+	stories.RegisterFactory(jira.Factory)
+}
 
 var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 	Use:   "task {task name}",
@@ -34,28 +40,19 @@ var gitTaskCmd = addCommand(gitCmd, &cobra.Command{
 		taskName := args[0]
 
 		body := viper.GetString(ArgGitBody)
-		storyNumber := viper.GetInt(ArgGitTaskStory)
+		story := viper.GetString(ArgGitTaskStory)
 
-		parentOrg := viper.GetString(ArgGitTaskParentOrg)
-		parentRepo := viper.GetString(ArgGitTaskParentRepo)
-		var parent *issues.IssueRef
-		if storyNumber > 0 {
-
-			tmp := issues.NewIssueRef(parentOrg, parentRepo, storyNumber)
-			parent = &tmp
-		}
-
-		return StartFeatureDevelopment(taskName, body, parent)
+		return StartFeatureDevelopment(taskName, body, story)
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().StringP(ArgGitTitle, "n", "", "Issue title.")
 	cmd.Flags().StringP(ArgGitBody, "m", "", "Issue body.")
 	cmd.Flags().String(ArgGitTaskParentOrg, "naveegoinc", "Issue org.")
 	cmd.Flags().String(ArgGitTaskParentRepo, "stories", "Issue repo.")
-	cmd.Flags().Int(ArgGitTaskStory, 0, "Number of the story to use as a parent.")
+	cmd.Flags().Int(ArgGitTaskStory, 0, "ID of the story to use as a parent.")
 })
 
-func StartFeatureDevelopment(taskName string, body string, parentRef *issues.IssueRef) error {
+func StartFeatureDevelopment(taskName string, body string, storyID string) error {
 	var err error
 
 	org, repo := git.GetCurrentOrgAndRepo().OrgAndRepo()
@@ -85,21 +82,28 @@ func StartFeatureDevelopment(taskName string, body string, parentRef *issues.Iss
 		return errors.New("get issue service")
 	}
 
-	var parent *issues.Issue
+	var story *stories.Story
 
-	if parentRef != nil {
+	var storyHandler stories.StoryHandler
 
-		parentTemp, parentErr := svc.GetIssue(*parentRef)
-		if parentErr != nil {
-			pkg.Log.WithError(parentErr).Error("Could not get parent issue " + parentRef.String())
-		} else {
-			parent = &parentTemp
+	if storyID != "" {
+
+		storyHandler, err = GetStoryHandler(b, storyID)
+		if err != nil {
+			return err
+		}
+
+		storyTmp, storyErr := storyHandler.GetStory(storyID)
+		if storyErr != nil {
+			pkg.Log.WithError(storyErr).Errorf("Could not get story with ID %q", storyID)
+		} else if storyTmp != nil {
+			story = storyTmp
 			body = fmt.Sprintf(`%s
 
 ## Parent Issue (as of when this issue was created) %s
 
 %s
-`, body, parentRef, parent.Body)
+`, body, story.URL, story.Body)
 		}
 	}
 
@@ -112,7 +116,7 @@ func StartFeatureDevelopment(taskName string, body string, parentRef *issues.Iss
 		BranchPattern: app.Branching.Feature,
 	}
 
-	number, err := svc.Create(issue, parentRef)
+	number, err := svc.Create(issue)
 	if err != nil {
 		return err
 	}
@@ -136,19 +140,35 @@ func StartFeatureDevelopment(taskName string, body string, parentRef *issues.Iss
 		return err
 	}
 
-	if parent != nil {
-		err = createStoryCommit(g, currentBranch, branch, *parent, issue)
+	if story != nil {
+		err = createStoryCommit(g, currentBranch, branch, *story, issue)
 		if err != nil {
 			return errors.Wrap(err, "creating story commit")
 		}
 		check(g.Push())
 
+		if storyHandler != nil {
+
+			event, validationErr := stories.Event{
+				Payload: stories.EventBranchCreated{},
+				StoryID: storyID,
+				Story:   story,
+				Issue:   issue.RefPtr(),
+			}.Validated()
+			if validationErr != nil {
+				return validationErr
+			}
+			err = storyHandler.HandleEvent(event)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
 }
 
-func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story issues.Issue, task issues.Issue) error {
+func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story stories.Story, task issues.Issue) error {
 
 	color.Blue("Bosun can create an initial commit on this branch which will help to document the purpose of the branch and tie it back to the story.")
 
@@ -184,7 +204,7 @@ func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story
 	issueMetadata := BosunIssueMetadata{
 		BaseBranch: baseBranch,
 		Branch:     branch,
-		Story:      story.Ref().String(),
+		Story:      story.ID,
 		Task:       task.Ref().String(),
 	}
 	message = fmt.Sprintf(`%s
@@ -260,3 +280,8 @@ var gitTaskShow = addCommand(gitTaskCmd, &cobra.Command{
 		return renderOutput(issue)
 	},
 })
+
+func GetStoryHandler(b *bosun.Bosun, storyID string) (stories.StoryHandler, error) {
+	stories.Configure(b.GetStoryHandlerConfiguration())
+	return stories.GetStoryHandler(b.NewContext(), storyID)
+}

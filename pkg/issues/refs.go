@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"regexp"
-	"strconv"
 )
 
 var issueRefRE = regexp.MustCompile(`([A-z0-9\-._]+)/([A-z0-9\-._]+)#(\d+)`)
@@ -55,7 +54,7 @@ func ParseRepoRef(raw string) (RepoRef, error) {
 
 type IssueRef struct {
 	RepoRef
-	Number int
+	ID string
 }
 
 func (f *IssueRef) MarshalYAML() (interface{}, error) {
@@ -77,13 +76,13 @@ func (f *IssueRef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-func NewIssueRef(org, repo string, number int) IssueRef {
+func NewIssueRef(org, repo string, id string) IssueRef {
 	return IssueRef{
 		RepoRef: RepoRef{
 			Org:  org,
 			Repo: repo,
 		},
-		Number: number,
+		ID: id,
 	}
 }
 
@@ -94,15 +93,11 @@ func ParseIssueRef(raw string) (IssueRef, error) {
 		return IssueRef{}, errors.Errorf(`invalid issue ref (want 'org/repo#number', got %q)`, raw)
 	}
 
-	number, err := strconv.Atoi(matches[3])
-	if err != nil {
-		return IssueRef{}, errors.Errorf(`invalid issue number (want 'org/repo#number', got %q): %s`, raw, err)
-	}
-	return NewIssueRef(matches[1], matches[2], number), nil
+	return NewIssueRef(matches[1], matches[2], matches[3]), nil
 }
 
-func (s IssueRef) String() string { return fmt.Sprintf("%s/%s#%d", s.Org, s.Repo, s.Number) }
+func (s IssueRef) String() string { return fmt.Sprintf("%s/%s#%d", s.Org, s.Repo, s.ID) }
 
 func (s IssueRef) Parts() (org string, repo string, number int, err error) {
-	return s.Org, s.Repo, s.Number, nil
+	return s.Org, s.Repo, s.ID, nil
 }

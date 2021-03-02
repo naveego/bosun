@@ -148,7 +148,7 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 		appManifests := map[string]*AppManifest{}
 
 		allAppMetadata := r.GetAllAppMetadata()
-		for appName, _ := range allAppMetadata {
+		for appName := range allAppMetadata {
 			appManifest, err := LoadAppManifestFromPathAndName(r.dir, appName)
 			if err != nil {
 				return nil, errors.Wrapf(err, "load app manifest for app  %q", appName)

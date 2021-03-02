@@ -16,6 +16,7 @@ require (
 	github.com/SermoDigital/jose v0.9.1 // indirect
 	github.com/alecthomas/gometalinter v2.0.12+incompatible // indirect
 	github.com/aliyun/alibaba-cloud-sdk-go v0.0.0-20190305070855-888454a6064a // indirect
+	github.com/andygrunwald/go-jira v1.13.0
 	github.com/aokoli/goutils v1.1.0 // indirect
 	github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
@@ -36,7 +37,6 @@ require (
 	github.com/dancannon/gorethink v4.0.0+incompatible // indirect
 	github.com/denisenkom/go-mssqldb v0.0.0-20181014144952-4e0d7dc8888f // indirect
 	github.com/dghubble/sling v1.2.0
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dimchansky/utfbom v1.1.0 // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/duosecurity/duo_api_golang v0.0.0-20181210160733-61e0defebf22 // indirect
@@ -156,7 +156,6 @@ require (
 	go4.org v0.0.0-20180809161055-417644f6feb5
 	golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8
 	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890
-	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/alecthomas/kingpin.v3-unstable v3.0.0-20180810215634-df19058c872c // indirect
 	gopkg.in/asn1-ber.v1 v1.0.0-20181015200546-f715ec2f112d // indirect
 	gopkg.in/gorethink/gorethink.v4 v4.1.0 // indirect

@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-
 	// "github.com/naveego/bosun/pkg/git"
 
 	// "github.com/coreos/etcd/client"
@@ -49,7 +47,7 @@ func (s IssueService) ChangeLabels(ref issues.IssueRef, add []string, remove []s
 	return nil
 }
 
-func NewIssueService(config Config, log *logrus.Entry) (issues.IssueService, error) {
+func NewIssueService(config Config, log *logrus.Entry) (IssueService, error) {
 
 	s := IssueService{
 		Config: config,
@@ -75,12 +73,9 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 	return nil
 }
 
-func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, error) {
+func (s IssueService) Create(issue issues.Issue) (int, error) {
 
 	log := s.log.WithField("title", issue.Title)
-
-	var parentOrg, parentRepo string
-	var parentIssueNumber int
 
 	user, _, err := s.github.Users.Get(s.ctx(), "")
 	if err != nil {
@@ -91,58 +86,10 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 		Title:    github.String(issue.Title),
 		Assignee: user.Login,
 	}
-	// dumpJSON("assignee", issueRequest.Assignee)
 
-	//var parentIssue *issues.Issue
-	if parent != nil {
-
-		issue.Body = fmt.Sprintf("%s\n\n required by %s", issue.Body, parent.String())
-
-		// Need to figure out where to get the title
-		//issue.Title = "tempTitle"
-
-		dumpJSON("issue", issue)
-
-		pOrg, pRepo, pIssueNumber, _ := parent.Parts()
-		parentOrg = pOrg
-		parentRepo = pRepo
-		parentIssueNumber = pIssueNumber
-
-		parentIssue, _, err := s.github.Issues.Get(s.ctx(), parentOrg, parentRepo, parentIssueNumber)
-		if err != nil {
-			return -1, errors.Wrap(err, "get issue")
-		}
-
-		//issue.Org = parentOrg
-		//issue.Repo = parentRepo
-
-		if parentIssue.Milestone != nil {
-			milestones, _, err := s.github.Issues.ListMilestones(s.ctx(), issue.Org, issue.Repo, nil)
-			//dumpJSON("milestones", milestones)
-
-			if err != nil {
-				return -1, errors.Wrap(err, "get milestones for new issue")
-			}
-			for _, m := range milestones {
-				if m.GetTitle() == parentIssue.Milestone.GetTitle() {
-					log.WithField("milestone", m.GetTitle()).Info("Attaching milestone.")
-					issueRequest.Milestone = m.Number
-					break
-				}
-			}
-		}
-
-	}
-
-	/*if &issue.Assignee != nil {
-		issueRequest.Assignee = &issue.Assignee
-		s.log.WithField("title", issue.Title).Info("Setting assignee")
-	} */
 	s.log.WithField("title", issue.Title).Info("Setting assignee")
 
 	issueRequest.Body = &issue.Body
-
-	//dumpJSON("creating issue", issueRequest)
 
 	issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
 	if err != nil {
@@ -156,56 +103,7 @@ func (s IssueService) Create(issue issues.Issue, parent *issues.IssueRef) (int, 
 
 	log.Info("Created issue.")
 
-	// update parent issue body
-	if parent != nil {
-
-
-		parentIssue, _, err := s.github.Issues.Get(s.ctx(), parentOrg, parentRepo, parentIssueNumber)
-		if err != nil {
-			return -1, errors.Wrap(err, "get issue")
-		}
-		issueString := issues.NewIssueRef(issue.Org, issue.Repo, issue.Number)
-		parentNewChild := fmt.Sprintf("\n- [ ] requires %s", issueString)
-		parentNewBody := *parentIssue.Body
-		parentNewBody += parentNewChild
-
-		log.Infof("Annotating issue %s with 'requires %s'", parent, issueString)
-
-		newParentRequest := &github.IssueRequest{
-			Title: parentIssue.Title,
-			Body:  &parentNewBody,
-		}
-		if issueRequest.Assignee != nil {
-
-			if parentIssue.Assignee == nil {
-				newParentRequest.Assignee = issueRequest.Assignee
-			} else if len(parentIssue.Assignees) > 0 {
-				assigneeName := *issueRequest.Assignee
-				assignees := []string{
-					assigneeName,
-				}
-
-				for _, assignedUser := range parentIssue.Assignees {
-					if assignedUser.GetName() != assigneeName {
-						assignees = append(assignees, assignedUser.GetName())
-					}
-				}
-				newParentRequest.Assignees = &assignees
-			}
-		}
-
-		editedParent, response, err := s.github.Issues.Edit(context.Background(), parentOrg, parentRepo, parentIssueNumber, newParentRequest)
-		if err != nil {
-			return -1, errors.Wrap(err, "edit parent story")
-		}
-		if response.StatusCode != http.StatusOK {
-			return -1, fmt.Errorf("the edit issue endpoint returned %v", response.StatusCode)
-		}
-		s.log.WithField("new body", editedParent.Body)
-	}
-
 	return issue.Number, nil
-
 }
 
 // Helper function to split IssueRef

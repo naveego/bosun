@@ -88,7 +88,6 @@ func (d PlatformBundler) Execute() (BundlePlatformResult, error) {
 	// we need to clear out the stuff before saving
 	d.p.EnvironmentPaths = nil
 	d.p.Apps = nil
-	d.p.ZenHubConfig = nil
 
 	platforms := map[string][]*Platform {
 		"platforms": {d.p},

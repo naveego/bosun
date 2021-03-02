@@ -5,7 +5,6 @@ import (
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/pkg/errors"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -25,7 +24,7 @@ type BranchSpec struct {
 		  Feature is the template for feature branches.
 		  The template parameter is:
 		  {
-			"Number":int,
+			"ID":int,
 			"Slug":string,
 		  }
 	*/
@@ -78,7 +77,7 @@ const (
 	BranchTypeFeature = BranchType("feature")
 	BranchPartSlug    = BranchPart("Slug")
 	BranchPartVersion = BranchPart("Version")
-	BranchPartNumber  = BranchPart("Number")
+	BranchPartNumber  = BranchPart("ID")
 	BranchPartName    = BranchPart("Name")
 )
 
@@ -93,7 +92,7 @@ func (b BranchSpec) WithDefaults() BranchSpec {
 		b.Release = "release/{{.Version}}"
 	}
 	if b.Feature == "" {
-		b.Feature = "issue/{{.Number}}/{{.Slug}}"
+		b.Feature = "issue/{{.ID}}/{{.Slug}}"
 	}
 	return b
 }
@@ -191,24 +190,19 @@ func (b BranchSpec) RenderFeature(name string, number interface{}) (string, erro
 	return template, err
 }
 
-func (b BranchSpec) GetIssueNumber(branch BranchName) (int, error) {
+func (b BranchSpec) GetIssueNumber(branch BranchName) (string, error) {
 	parts, err := decomposeBranch(b.Feature, branch)
 
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	rawNumber, ok := parts[BranchPartNumber]
 	if !ok {
-		return 0, errors.Errorf("no number in branch %q based on template %q", branch, b.Feature)
+		return "", errors.Errorf("no number in branch %q based on template %q", branch, b.Feature)
 	}
 
-	number, err := strconv.Atoi(rawNumber)
-	if err != nil {
-		return 0, errors.Wrapf(err, "invalid number %q", rawNumber)
-	}
-
-	return number, nil
+	return rawNumber, nil
 }
 
 func decomposeBranch(template string, branch BranchName) (BranchParts, error) {

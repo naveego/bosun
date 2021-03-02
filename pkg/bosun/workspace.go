@@ -7,6 +7,7 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -36,6 +37,7 @@ type Workspace struct {
 	Minikube            *kube.MinikubeConfig             `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	LocalRepos          map[string]*vcs.LocalRepo        `yaml:"localRepos" json:"localRepos"`
 	GithubCloneProtocol string                           `yaml:"githubCloneProtocol"`
+	StoryHandlers       []values.Values                  `yaml:"storyHandlers"`
 }
 
 func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {
