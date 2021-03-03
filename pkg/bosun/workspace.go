@@ -202,7 +202,7 @@ func LoadWorkspace(path string) (*Workspace, error) {
 	return c, err
 }
 
-func (w *Workspace) GetWorkspaceCommand(key string) *command.CommandValue {
+func (w *Workspace) GetWorkspaceCommand(key string, hint string) *command.CommandValue {
 
 	if c, ok := w.WorkspaceCommands[key]; ok {
 		return c
@@ -215,6 +215,9 @@ func (w *Workspace) GetWorkspaceCommand(key string) *command.CommandValue {
 		os.Exit(0)
 	}
 
+	if hint != "" {
+		color.Yellow("Workspace command hint:\n%s\n", hint)
+	}
 	create := cli.RequestConfirmFromUser("Your workspace contains no command to generate value %q, do you want to create one", key)
 	if !create {
 		color.Red("You need to update your workspace with a command to generate value %q.", key)
@@ -224,6 +227,7 @@ func (w *Workspace) GetWorkspaceCommand(key string) *command.CommandValue {
 	script := cli.RequestStringFromUser("Enter script")
 
 	commandValue := &command.CommandValue{
+		Comment: hint,
 		Command: command.Command{
 			Script: script,
 		},

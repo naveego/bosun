@@ -7,6 +7,7 @@ import (
 )
 
 type CommandValue struct {
+	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
 	Value   string `yaml:"value" json:"value"`
 	Command `yaml:"-" json:"-"`
 	OS      map[string]*CommandValue `yaml:"os,omitempty" json:"os,omitempty"`

@@ -87,15 +87,31 @@ func (b BranchSpec) WithDefaults() BranchSpec {
 		b.Master = "master"
 	}
 	if b.Develop == "" {
-		// default behavior is trunk based development
-		b.Develop = "master"
+		b.Develop = "develop"
 	}
 	if b.Release == "" {
-		// migrate BranchForRelease to p.Branching.Release pattern.
 		b.Release = "release/{{.Version}}"
 	}
 	if b.Feature == "" {
 		b.Feature = "issue/{{.Number}}/{{.Slug}}"
+	}
+	return b
+}
+
+func (b BranchSpec) WithDefaultsFrom(d BranchSpec) BranchSpec {
+	if b.Master == "" {
+		b.Master = d.Master
+	}
+	if b.Develop == "" {
+		// default behavior is trunk based development
+		b.Develop = d.Develop
+	}
+	if b.Release == "" {
+		// migrate BranchForRelease to p.Branching.Release pattern.
+		b.Release = d.Release
+	}
+	if b.Feature == "" {
+		b.Feature = b.Feature
 	}
 	return b
 }

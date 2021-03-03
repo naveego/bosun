@@ -11,6 +11,7 @@ type Variable struct {
 	FromPath         string                `yaml:"fromPath,omitempty" json:"fromPath,omitempty"`
 	Name             string                `yaml:"name" json:"name"`
 	WorkspaceCommand string                `yaml:"workspaceCommand,omitempty"`
+	WorkspaceCommandHint string                `yaml:"workspaceCommandHint,omitempty"`
 	From             *command.CommandValue `yaml:"from" json:"from"`
 	Value            string                `yaml:"-" json:"-"`
 }
@@ -18,14 +19,14 @@ type Variable struct {
 type EnsureContext interface {
 	command.ExecutionContext
 	workspace.Contexter
-	GetWorkspaceCommand(name string) *command.CommandValue
+	GetWorkspaceCommand(name string, hint string) *command.CommandValue
 }
 
 // Ensure sets Value using the From CommandValue.
 func (e *Variable) Ensure(ctx EnsureContext) error {
 
 	if e.WorkspaceCommand != "" {
-		e.From = ctx.GetWorkspaceCommand(e.WorkspaceCommand)
+		e.From = ctx.GetWorkspaceCommand(e.WorkspaceCommand, e.WorkspaceCommandHint)
 	}
 
 	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)

@@ -22,36 +22,36 @@ type AppConfig struct {
 	BranchForRelease        bool                     `yaml:"branchForRelease,omitempty" json:"branchForRelease,omitempty"`
 	Branching               git.BranchSpec           `yaml:"branching,omitempty" json:"branching"`
 	// ContractsOnly means that the app doesn't have any compiled/deployed code, it just defines contracts or documentation.
-	ContractsOnly    bool           `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
+	ContractsOnly bool `yaml:"contractsOnly,omitempty" json:"contractsOnly,omitempty"`
 	// FilesOnly means the app consists only of the files referenced in the bosun file, with no compiled code.
-	FilesOnly bool `yaml:"filesOnly,omitempty" json:"filesOnly,omitempty"`
+	FilesOnly        bool           `yaml:"filesOnly,omitempty" json:"filesOnly,omitempty"`
 	ReportDeployment bool           `yaml:"reportDeployment,omitempty" json:"reportDeployment,omitempty"`
 	RepoName         string         `yaml:"repo,omitempty" json:"repo,omitempty"`
 	HarborProject    string         `yaml:"harborProject,omitempty" json:"harborProject,omitempty"`
 	Version          semver.Version `yaml:"version,omitempty" json:"version,omitempty"`
 	// The location of a standard go version file for this app.
-	GoVersionFile  string                    `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
-	Chart          string                    `yaml:"chart,omitempty" json:"chart,omitempty"`
-	ChartPath      string                    `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
-	RunCommand     []string                  `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
-	DependsOn      []Dependency              `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
-	Labels         filter.Labels             `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Minikube       *AppMinikubeConfig        `yaml:"minikube,omitempty" json:"minikube,omitempty"`
-	Images         []AppImageConfig          `yaml:"images" json:"images"`
-	ValueMappings  values.ValueMappings      `yaml:"valueMappings,omitempty"`
-	Values         values.ValueSetCollection `yaml:"values,omitempty" json:"values,omitempty"`
-	Scripts        []*script.Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
-	Actions        []*actions.AppAction      `yaml:"actions,omitempty" json:"actions,omitempty"`
+	GoVersionFile string                    `yaml:"goVersionFile,omitempty" json:"goVersionFile,omitempty"`
+	Chart         string                    `yaml:"chart,omitempty" json:"chart,omitempty"`
+	ChartPath     string                    `yaml:"chartPath,omitempty" json:"chartPath,omitempty"`
+	RunCommand    []string                  `yaml:"runCommand,omitempty,flow" json:"runCommand,omitempty,flow"`
+	DependsOn     []Dependency              `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	Labels        filter.Labels             `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Minikube      *AppMinikubeConfig        `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	Images        []AppImageConfig          `yaml:"images" json:"images"`
+	ValueMappings values.ValueMappings      `yaml:"valueMappings,omitempty"`
+	Values        values.ValueSetCollection `yaml:"values,omitempty" json:"values,omitempty"`
+	Scripts       []*script.Script          `yaml:"scripts,omitempty" json:"scripts,omitempty"`
+	Actions       []*actions.AppAction      `yaml:"actions,omitempty" json:"actions,omitempty"`
 	// Glob paths (relative to the file containing the app config)
 	// to files and folders  which should be included when the app is packaged for a release or a deployment.
 	// In particular, the path to the chart should be included.
-	Files []string `yaml:"files"`
-	ReleaseHistory AppReleaseHistory         `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
+	Files          []string          `yaml:"files"`
+	ReleaseHistory AppReleaseHistory `yaml:"releaseHistory" json:"releaseHistory,omitempty"`
 
 	// If true, this app repo is only a ref, not a real cloned repo.
 	IsRef          bool         `yaml:"-" json:"-"`
-	IsFromManifest bool         `yaml:"-"`          // Will be true if this config was embedded in an AppManifest.
-	manifest       *AppManifest `yaml:"-" json:"-"` // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
+	IsFromManifest bool         `yaml:"-"` // Will be true if this config was embedded in an AppManifest.
+	manifest       *AppManifest // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
 }
 
 func (p *AppConfig) GetValueSetCollection() values.ValueSetCollection {
@@ -117,8 +117,7 @@ func (a *AppConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		a.Branching.Develop = "master"
 		a.Branching.IsDefaulted = true
 	}
-	if a.Branching.Release == "" && p.BranchForRelease {
-		// migrate BranchForRelease to p.Branching.Release pattern.
+	if a.Branching.Release == ""  {
 		a.Branching.Release = "release/{{.Version}}"
 		a.Branching.IsDefaulted = true
 	}
@@ -157,9 +156,9 @@ type AppRoutableService struct {
 	// Deprecated, use localhostPort instead
 	ExternalPort int `yaml:"externalPort,omitempty" json:"externalPort,omitempty"`
 	// The port the service should advertise within the cluster.
-	InternalPort  int `yaml:"internalPort" json:"internalPort"`
-	LocalhostPort int `yaml:"localhostPort" json:"localhostPort,omitempty"`
-	Namespace string `yaml:"namespace"`
+	InternalPort  int    `yaml:"internalPort" json:"internalPort"`
+	LocalhostPort int    `yaml:"localhostPort" json:"localhostPort,omitempty"`
+	Namespace     string `yaml:"namespace"`
 }
 
 type Dependency struct {

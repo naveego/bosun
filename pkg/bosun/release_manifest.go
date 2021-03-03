@@ -143,9 +143,8 @@ func (r *ReleaseManifest) GetPlan() (*ReleasePlan, error) {
 
 func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 
-	pkg.Log.Debugf("Getting app manifests...")
-
 	if r.appManifests == nil {
+		pkg.Log.Debugf("Getting app manifests...")
 		appManifests := map[string]*AppManifest{}
 
 		allAppMetadata := r.GetAllAppMetadata()
@@ -162,8 +161,8 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 		}
 
 		r.appManifests = appManifests
+		pkg.Log.Debugf("Got %d app manifests.", len(r.appManifests))
 	}
-	pkg.Log.Debugf("Got %d app manifests.", len(r.appManifests))
 	return r.appManifests, nil
 }
 
@@ -233,21 +232,21 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 
 		log.Infof("Ensuring release branch and version correct for app %q...", name)
 
-		branchExists, err := localRepo.DoesBranchExist(ctx, toBranch)
-		if err != nil {
-			return nil, err
+		branchExists, branchingErr := localRepo.DoesBranchExist(ctx, toBranch)
+		if branchingErr != nil {
+			return nil, branchingErr
 		}
 		if branchExists {
 			log.Info("Release branch already exists, switching to it.")
-			err = localRepo.SwitchToBranchAndPull(ctx.Services(), toBranch)
-			if err != nil {
-				return nil, errors.Wrap(err, "switching to release branch")
+			branchingErr = localRepo.SwitchToBranchAndPull(ctx.Services(), toBranch)
+			if branchingErr != nil {
+				return nil, errors.Wrap(branchingErr, "switching to release branch")
 			}
 		} else {
 			log.Info("Creating release branch...")
-			err = localRepo.SwitchToNewBranch(ctx, fromBranch, toBranch)
-			if err != nil {
-				return nil, errors.Wrap(err, "creating release branch")
+			branchingErr = localRepo.SwitchToNewBranch(ctx, fromBranch, toBranch)
+			if branchingErr != nil {
+				return nil, errors.Wrap(branchingErr, "creating release branch")
 			}
 		}
 
@@ -257,36 +256,36 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 			} else {
 				log.Infof("Applying version bump %q to source branch version %s.", bump, app.Version)
 
-				err = app.BumpVersion(ctx, string(bump))
-				if err != nil {
-					return nil, errors.Wrap(err, "bumping version")
+				branchingErr = app.BumpVersion(ctx, string(bump))
+				if branchingErr != nil {
+					return nil, errors.Wrap(branchingErr, "bumping version")
 				}
 			}
 		}
 
 		app.AddReleaseToHistory(r.Version.String())
-		err = app.FileSaver.Save()
-		if err != nil {
-			return nil, errors.Wrap(err, "saving after adding release to app history")
+		branchingErr = app.FileSaver.Save()
+		if branchingErr != nil {
+			return nil, errors.Wrap(branchingErr, "saving after adding release to app history")
 		}
 
-		err = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.FromPath)
-		if err != nil &&
-			!strings.Contains(err.Error(), "no changes added to commit") &&
-			!strings.Contains(err.Error(), "nothing to commit") {
-			return nil, err
+		branchingErr = app.Repo.LocalRepo.Commit("chore(release): add release to history", app.FromPath)
+		if branchingErr != nil &&
+			!strings.Contains(branchingErr.Error(), "no changes added to commit") &&
+			!strings.Contains(branchingErr.Error(), "nothing to commit") {
+			return nil, branchingErr
 		}
 
-		err = localRepo.Push()
-		if err != nil {
-			return nil, errors.Wrap(err, "pushing branch")
+		branchingErr = localRepo.Push()
+		if branchingErr != nil {
+			return nil, errors.Wrap(branchingErr, "pushing branch")
 		}
 
 		log.Info("App has been branched and bumped correctly.")
 
-		app, err = ctx.Bosun.ReloadApp(app.Name)
-		if err != nil {
-			return nil, errors.Wrap(err, "reload app after switching to new branch")
+		app, branchingErr = ctx.Bosun.ReloadApp(app.Name)
+		if branchingErr != nil {
+			return nil, errors.Wrap(branchingErr, "reload app after switching to new branch")
 		}
 	}
 
@@ -313,9 +312,9 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 		return err
 	}
 
-	requestedApps := map[string]bool{}
+	requestedApps := map[string]*App{}
 	for _, app := range apps {
-		requestedApps[app.Name] = true
+		requestedApps[app.Name] = app
 	}
 
 	switch r.Slot {
@@ -348,34 +347,41 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 		}
 		queue := worker.NewKeyedWorkQueue(ctx.Log(), 10)
 
-		for k := range allAppManifests {
-			app := allAppManifests[k]
+		if len(requestedApps) == 0 {
+			for appName := range allAppManifests {
+				wsApp, wsErr := ctx.Bosun.GetAppFromWorkspace(appName)
+				if wsErr != nil {
+					ctx.Log().WithError(wsErr).Warnf("Could not get app %q from workspace, it will not be refreshed", appName)
+				} else {
+					requestedApps[appName] = wsApp
+				}
+			}
+		}
+
+		for _, app := range requestedApps {
+
+			// app := allAppManifests[appName]
 			log := ctx.Log().WithField("app", app.Name)
 
-			// only update if app was requested or no apps were requested
+			releaseBranchForApp, appErr := r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
 
-			releaseBranchForApp, appErr := r.GetReleaseBranchName(app.AppConfig.Branching)
+			log.Infof("Refreshing on stable slot from branch %q", releaseBranchForApp)
+
 			if appErr != nil {
 				return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
 			}
-			if app.Branch != releaseBranchForApp {
-				// don't refresh apps that aren't in this release
-				continue
-			}
 
-			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
-				// only update this app on the release branch:
-				queue.Dispatch(app.Repo, func() {
+			queue.Dispatch(app.Repo.Name, func() {
 
-					appErr = r.RefreshApp(ctx, app.Name, app.Branch)
-					if appErr != nil {
-						log.WithError(appErr).Errorf("Unable to refresh %q", app.Name)
-					}
-				})
-			}
+				appErr = r.RefreshApp(ctx, app.Name, releaseBranchForApp)
+				if appErr != nil {
+					log.WithError(appErr).Errorf("Unable to refresh %q", app.Name)
+				}
+			})
+
 		}
 		queue.Wait()
-		
+
 	default:
 		return errors.Errorf("unsupported slot %q", r.Slot)
 	}
@@ -552,7 +558,7 @@ func (r *ReleaseManifest) PrepareAppForRelease(ctx BosunContext, app *App, bump 
 	}
 
 	if r.isCurrentRelease {
-		releaseBranch, err := r.ReleaseMetadata.GetReleaseBranchName(app.AppConfig.Branching)
+		releaseBranch, err := r.ReleaseMetadata.GetReleaseBranchName(app.AppConfig.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
 		if err != nil {
 			return nil, errors.Wrap(err, "create release branch name")
 		}

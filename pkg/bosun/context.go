@@ -410,8 +410,8 @@ func (c BosunContext) GetReleaseValues() *values.PersistableValues {
 	return c.Values
 }
 
-func (c BosunContext) GetWorkspaceCommand(name string) *command.CommandValue {
-	return c.Bosun.ws.GetWorkspaceCommand(name)
+func (c BosunContext) GetWorkspaceCommand(name string, hint string) *command.CommandValue {
+	return c.Bosun.ws.GetWorkspaceCommand(name, hint)
 }
 
 func (c BosunContext) GetMatchMapArgs() filter.MatchMapArgs {

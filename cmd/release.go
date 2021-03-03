@@ -622,7 +622,7 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 
 		color.Yellow("About to deploy the following apps:")
 		for _, app := range deploy.AppDeploys {
-			fmt.Printf("- %s: %s (tag %s) => %s.%s \n", app, app.AppConfig.Version, deploySettings.GetImageTag(app.AppManifest.AppMetadata), app.Cluster, app.Namespace)
+			fmt.Printf("- %s: %s (tag %s) => %s.%s \n", app.Name, app.AppConfig.Version, deploySettings.GetImageTag(app.AppManifest.AppMetadata), app.Cluster, app.Namespace)
 		}
 
 		if !confirm("Is this what you expected") {
@@ -690,9 +690,20 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 				appNames = append(appNames, app.Name)
 			}
 			confirmMsg = fmt.Sprintf("OK to refresh release %s for these apps: %s", release, strings.Join(appNames, ", "))
+		} else {
+			return errors.Errorf("no apps matched %+v", args[1:])
 		}
 		if len(apps) > 1 {
 			confirm(confirmMsg)
+		}
+
+		fmt.Printf("Refreshing %d apps: %+v\n", len(apps), args[1:])
+
+		fromBranch := viper.GetString(argReleaseUpdateBranch)
+		if fromBranch != "" {
+			for _, app := range apps {
+				app.Branching.Release = fromBranch
+			}
 		}
 
 		err = release.RefreshApps(ctx, apps...)
@@ -704,7 +715,15 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 
 		return err
 	},
-}, withFilteringFlags)
+}, withFilteringFlags,
+
+	func(cmd *cobra.Command) {
+		cmd.Flags().String(argReleaseUpdateBranch, "", "The branch to pull the app from (defaults to using the release branch for the app).")
+	})
+
+const (
+	argReleaseUpdateBranch = "branch"
+)
 
 var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "change-log",

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/oliveagle/jsonpath"
 	"github.com/pkg/errors"
@@ -101,6 +102,20 @@ var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
 			return err
 		}
 		err = printOutput(result)
+		return err
+	},
+})
+
+var configEditCmd = addCommand(workspaceCmd, &cobra.Command{
+	Use:   "edit",
+	Args:  cobra.ExactArgs(0),
+	Short: "Edits your workspace in your default editor.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+		ws := b.GetWorkspace()
+
+		err := cli.Edit(ws.Path)
+
 		return err
 	},
 })

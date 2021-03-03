@@ -394,7 +394,6 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 
 		appConfig = c.Apps[index]
 	}
-	appConfig.Branching = appConfig.Branching.WithDefaults()
 	appConfig.SetFileSaver(c)
 	appConfig.SetFromPath(c.FromPath)
 
