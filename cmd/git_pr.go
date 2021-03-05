@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	// "github.com/naveego/bosun/pkg/zenhub"
@@ -60,7 +61,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return errors.Wrap(err, "execute pr")
 		}
 
-		issueRf := issues.NewIssueRef(org0, repo0, issueNmb)
+		issueRf := issues.NewIssueRef(org0, repo0, fmt.Sprint(issueNmb))
 
 		column := issues.ColumnWaitingForMerge
 		err = issueSvc.SetProgress(issueRf, column)

@@ -96,8 +96,8 @@ func ParseIssueRef(raw string) (IssueRef, error) {
 	return NewIssueRef(matches[1], matches[2], matches[3]), nil
 }
 
-func (s IssueRef) String() string { return fmt.Sprintf("%s/%s#%d", s.Org, s.Repo, s.ID) }
+func (s IssueRef) String() string { return fmt.Sprintf("%s/%s#%v", s.Org, s.Repo, s.ID) }
 
-func (s IssueRef) Parts() (org string, repo string, number int, err error) {
+func (s IssueRef) Parts() (org string, repo string, id string, err error) {
 	return s.Org, s.Repo, s.ID, nil
 }

@@ -206,7 +206,12 @@ func (t *TemplateBuilder) WithKubeFunctions() *TemplateBuilder {
 			o, err := NewShellExe(fmt.Sprintf(`kubectl config view --raw -o jsonpath={.clusters[?(@.name=="%s")].cluster.server}`, cluster)).RunOut()
 			return o, err
 		},
-		"kube_ca_cert": func(context string) (string, error) {
+		"kube_ca_cert": func(context string, optionalOverride ...string) (string, error) {
+
+			if len(optionalOverride) > 0 && optionalOverride[0] != "" {
+				return optionalOverride[0], nil
+			}
+
 			if context == "" {
 				return "", errors.New("context parameter was not set")
 			}

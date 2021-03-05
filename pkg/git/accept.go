@@ -8,7 +8,6 @@ import (
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"regexp"
-	"strconv"
 	"time"
 )
 
@@ -75,7 +74,7 @@ GetPR:
 		return nil
 	}
 
-	issNum, err := strconv.Atoi(segs[2])
+	issNum := segs[2]
 	if err != nil {
 		return errors.New("get issue number from branch name")
 	}

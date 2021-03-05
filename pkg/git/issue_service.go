@@ -29,18 +29,22 @@ type IssueService struct {
 
 func (s IssueService) ChangeLabels(ref issues.IssueRef, add []string, remove []string) error {
 
-	org, repo, number, _ := ref.Parts()
+	org, repo, id, _ := ref.Parts()
+	number, err := strconv.Atoi(id)
+	if err != nil {
+		return err
+	}
 	if len(add) > 0 {
-		_, _, err := s.github.Issues.AddLabelsToIssue(stdctx(), org, repo, number, add)
-		if err != nil {
-			return err
+		_, _, addError := s.github.Issues.AddLabelsToIssue(stdctx(), org, repo, number, add)
+		if addError != nil {
+			return addError
 		}
 	}
 
 	for _, label := range remove {
-		_, err := s.github.Issues.RemoveLabelForIssue(stdctx(), org, repo, number, label)
-		if err != nil {
-			return err
+		_, removeErr := s.github.Issues.RemoveLabelForIssue(stdctx(), org, repo, number, label)
+		if removeErr != nil {
+			return removeErr
 		}
 	}
 
@@ -73,13 +77,13 @@ func (s IssueService) SetProgress(issue issues.IssueRef, column string) error {
 	return nil
 }
 
-func (s IssueService) Create(issue issues.Issue) (int, error) {
+func (s IssueService) Create(issue issues.Issue) (string, error) {
 
 	log := s.log.WithField("title", issue.Title)
 
 	user, _, err := s.github.Users.Get(s.ctx(), "")
 	if err != nil {
-		return -1, err
+		return "unknown", err
 	}
 
 	issueRequest := &github.IssueRequest{
@@ -93,17 +97,17 @@ func (s IssueService) Create(issue issues.Issue) (int, error) {
 
 	issueResponse, _, err := s.github.Issues.Create(s.ctx(), issue.Org, issue.Repo, issueRequest)
 	if err != nil {
-		return -1, errors.Wrap(err, "creating issue")
+		return "unknown", errors.Wrap(err, "creating issue")
 	}
 
 	issueResponse.Repository.GetID()
 
-	issue.Number = issueResponse.GetNumber()
-	log = log.WithField("issue", issue.Number)
+	issue.ID = fmt.Sprint(issueResponse.GetNumber())
+	log = log.WithField("issue", issue.ID)
 
 	log.Info("Created issue.")
 
-	return issue.Number, nil
+	return issue.ID, nil
 }
 
 // Helper function to split IssueRef
@@ -111,7 +115,7 @@ func Split(r rune) bool {
 	return r == '#' || r == '/'
 }
 
-func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum int) error {
+func (s IssueService) AddDependency(from, to issues.IssueRef, parentIssueNum string) error {
 
 	panic("implement me")
 }
@@ -165,8 +169,13 @@ func (s IssueService) GetIssueState(issue issues.IssueRef) (string, error) {
 
 func (s IssueService) GetParentRefs(issue issues.IssueRef) ([]issues.IssueRef, error) {
 
-	org, repo, number, err := issue.Parts()
+	org, repo, id, err := issue.Parts()
 	//repoId, err := s.getRepoID(org, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	number, err := strconv.Atoi(id)
 	if err != nil {
 		return nil, err
 	}
@@ -184,11 +193,14 @@ func (s IssueService) GetParentRefs(issue issues.IssueRef) ([]issues.IssueRef, e
 
 func (s IssueService) GetChildRefs(issue issues.IssueRef) ([]issues.IssueRef, error) {
 
-	org, repo, number, err := issue.Parts()
+	org, repo, id, err := issue.Parts()
 	if err != nil {
 		return nil, errors.Wrap(err, "parts of issue")
 	}
-
+	number, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, err
+	}
 	// find children from an issue's body
 	githubIssuePointer, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
 	if err != nil {
@@ -202,18 +214,23 @@ func (s IssueService) GetChildRefs(issue issues.IssueRef) ([]issues.IssueRef, er
 
 func (s IssueService) GetIssue(ref issues.IssueRef) (issues.Issue, error) {
 
-	org, repo, number, err := ref.Parts()
+	org, repo, id, err := ref.Parts()
+	number, err := strconv.Atoi(id)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
 	issue, _, err := s.github.Issues.Get(s.ctx(), org, repo, number)
 	if err != nil {
 		return issues.Issue{}, errors.Wrap(err, "parts of issue")
 	}
 
 	out := issues.Issue{
-		Repo:   repo,
-		Org:    org,
-		Number: number,
-		Title:  issue.GetTitle(),
-		Body:   issue.GetBody(),
+		Repo:  repo,
+		Org:   org,
+		ID:    id,
+		Title: issue.GetTitle(),
+		Body:  issue.GetBody(),
 	}
 
 	for _, label := range issue.Labels {

@@ -7,17 +7,17 @@ import (
 )
 
 type Issue struct {
-	Number          int      `yaml:"number,omitempty"`
-	Org             string   `yaml:"org,omitempty"`
-	Repo            string   `yaml:"repo,omitempty"`
-	Body            string   `yaml:"body,omitempty"`
-	Assignee        string   `yaml:"assignee,omitempty"`
-	Assignees       []string `yaml:"assignees,omitempty"`
-	Milestone       *int     `yaml:"milestone,omitempty"`
-	Estimate        int      `yaml:"estimate,omitempty"`
-	Epics           []string `yaml:"epics,omitempty"`
-	Releases        []string `yaml:"releases,omitempty"`
-	Title           string   `yaml:"title,omitempty"`
+	ID        string      `yaml:"number,omitempty"`
+	Org       string   `yaml:"org,omitempty"`
+	Repo      string   `yaml:"repo,omitempty"`
+	Body      string   `yaml:"body,omitempty"`
+	Assignee  string   `yaml:"assignee,omitempty"`
+	Assignees []string `yaml:"assignees,omitempty"`
+	Milestone *int     `yaml:"milestone,omitempty"`
+	Estimate  int      `yaml:"estimate,omitempty"`
+	Epics     []string `yaml:"epics,omitempty"`
+	Releases  []string `yaml:"releases,omitempty"`
+	Title     string   `yaml:"title,omitempty"`
 	ProgressState   string   `yaml:"progressState,omitempty"`
 	ProgressStateID int      `yaml:"progressStateId,omitempty"`
 	BranchPattern   string   `yaml:"branchPattern,omitempty"`
@@ -44,11 +44,11 @@ func (i Issue) Slug() string {
 }
 
 func (i Issue) Ref() IssueRef {
-	return NewIssueRef(i.Org, i.Repo, i.Number)
+	return NewIssueRef(i.Org, i.Repo, i.ID)
 }
 
 func (i Issue) RefPtr() *IssueRef {
-	r := NewIssueRef(i.Org, i.Repo, i.Number)
+	r := NewIssueRef(i.Org, i.Repo, i.ID)
 	return &r
 }
 
@@ -58,9 +58,9 @@ type Estimate struct {
 
 type IssueService interface {
 	// Assign the user who created the task, attach body and milestone
-	Create(issue Issue) (int, error)
+	Create(issue Issue) (string, error)
 	// Add dependency relationship : the newly created task should be a dependency of the issue issue on the ZenHub board
-	AddDependency(from, to IssueRef, parentIssueNum int) error
+	AddDependency(from, to IssueRef, parentIssueNum string) error
 	RemoveDependency(from, to IssueRef) error
 	// Put the task and depending issue into In Progress column on the ZenHub board
 	SetProgress(issue IssueRef, column string) error

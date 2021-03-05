@@ -5,7 +5,6 @@ import (
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -171,7 +170,7 @@ func (g GitWrapper) ChangeLog(notInBranch, inBranch string, svc issues.IssueServ
 
 			} else if issueMatch {
 
-				issueNumber, _ := strconv.Atoi(RegexGetIssue.FindString(line))
+				issueNumber := RegexGetIssue.FindString(line)
 				issue := issues.NewIssueRef(org, repo, issueNumber)
 				issueLink := GetIssueLink(g.dir, issue.String())
 
@@ -274,8 +273,8 @@ func GetIssueLink(dir string, issue string) string {
 	return builder.String()
 }
 
-func GetChangeLogOutputMessage(bump semver.Bump, changes GitChanges, options GitChangeLogOptions) string {
-	allChanges := changes.GetSeparatedChanges()
+func GetChangeLogOutputMessage(bump semver.Bump, c GitChanges, options GitChangeLogOptions) string {
+	allChanges := c.GetSeparatedChanges()
 	output := new(strings.Builder)
 	_, _ = fmt.Fprintf(output, "Recommended Version bump: %s\n\n", bump)
 	_, _ = fmt.Fprintf(output, "Major: %d\n", len(allChanges[semver.BumpMajor]))

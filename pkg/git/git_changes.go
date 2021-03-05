@@ -93,7 +93,7 @@ func (g GitChanges) MapToStories(svc issues.IssueService) ([]*GitChangeStory, er
 		changeStory = &GitChangeStory{
 			Changes:    GitChanges{change},
 			StoryRef:   parentRef,
-			Link:       fmt.Sprintf("https://github.com/%s/%s/issues/%d", parent.Org, parent.Repo, parent.Number),
+			Link:       fmt.Sprintf("https://github.com/%s/%s/issues/%s", parent.Org, parent.Repo, parent.ID),
 			StoryTitle: parent.Title,
 			StoryBody:  parent.Body,
 		}

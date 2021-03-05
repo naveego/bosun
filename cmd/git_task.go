@@ -63,6 +63,10 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 		title = taskName
 	}
 
+	if storyID == "" {
+		return errors.New("story ID is required")
+	}
+
 	if body == "" {
 		body = taskName
 	}
@@ -77,34 +81,26 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 		return err
 	}
 
-	svc, err := b.GetIssueService()
-	if err != nil {
-		return errors.New("get issue service")
-	}
-
 	var story *stories.Story
 
 	var storyHandler stories.StoryHandler
 
-	if storyID != "" {
+	storyHandler, err = GetStoryHandler(b, storyID)
+	if err != nil {
+		return err
+	}
 
-		storyHandler, err = GetStoryHandler(b, storyID)
-		if err != nil {
-			return err
-		}
-
-		storyTmp, storyErr := storyHandler.GetStory(storyID)
-		if storyErr != nil {
-			pkg.Log.WithError(storyErr).Errorf("Could not get story with ID %q", storyID)
-		} else if storyTmp != nil {
-			story = storyTmp
-			body = fmt.Sprintf(`%s
+	storyTmp, storyErr := storyHandler.GetStory(storyID)
+	if storyErr != nil {
+		pkg.Log.WithError(storyErr).Errorf("Could not get story with ID %q", storyID)
+	} else if storyTmp != nil {
+		story = storyTmp
+		body = fmt.Sprintf(`%s
 
 ## Parent Issue (as of when this issue was created) %s
 
 %s
 `, body, story.URL, story.Body)
-		}
 	}
 
 	issue := issues.Issue{
@@ -116,13 +112,6 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 		BranchPattern: app.Branching.Feature,
 	}
 
-	number, err := svc.Create(issue)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(number)
-
 	g, err := git.NewGitWrapper(repoPath)
 	if err != nil {
 		return err
@@ -130,7 +119,7 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 
 	currentBranch := g.Branch()
 
-	branch, err := app.Branching.RenderFeature(issue.Slug(), number)
+	branch, err := app.Branching.RenderFeature(issue.Slug(), storyID)
 	if err != nil {
 		return errors.Wrap(err, "could not create branch")
 	}
@@ -147,22 +136,22 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 		}
 		check(g.Push())
 
-		if storyHandler != nil {
-
-			event, validationErr := stories.Event{
-				Payload: stories.EventBranchCreated{},
-				StoryID: storyID,
-				Story:   story,
-				Issue:   issue.RefPtr(),
-			}.Validated()
-			if validationErr != nil {
-				return validationErr
-			}
-			err = storyHandler.HandleEvent(event)
-			if err != nil {
-				return err
-			}
-		}
+		//if storyHandler != nil {
+//
+		//	event, validationErr := stories.Event{
+		//		Payload: stories.EventBranchCreated{},
+		//		StoryID: storyID,
+		//		Story:   story,
+		//		Issue:   issue.RefPtr(),
+		//	}.Validated()
+		//	if validationErr != nil {
+		//		return validationErr
+		//	}
+		//	err = storyHandler.HandleEvent(event)
+		//	if err != nil {
+		//		return err
+		//	}
+		// }
 	}
 
 	return nil

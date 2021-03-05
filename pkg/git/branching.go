@@ -77,7 +77,7 @@ const (
 	BranchTypeFeature = BranchType("feature")
 	BranchPartSlug    = BranchPart("Slug")
 	BranchPartVersion = BranchPart("Version")
-	BranchPartNumber  = BranchPart("ID")
+	BranchPartNumber  = BranchPart("Number")
 	BranchPartName    = BranchPart("Name")
 )
 
