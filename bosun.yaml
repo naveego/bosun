@@ -3,13 +3,9 @@ imports:
 - integration/testdata/e2e/mongo-test/suite.yaml
 apps:
 - name: bosun
-  branching:
-    master: master
-    develop: master
-    release: ""
-    feature: issue/{{.Number}}/{{.Slug}}
+  branching: null
   repo: naveego/bosun
-  version: 2.15.0
+  version: 2.16.0
   labels:
     category: tool
     repo-kind: own
