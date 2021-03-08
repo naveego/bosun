@@ -42,11 +42,10 @@ func (c Microk8sConfig) configureKubernetes(ctx ConfigureRequest) error {
 	ctx.Log.Info("Modified groups to support microk8s commands, you can use microk8s after your next login or run `su - $USER` and try again.")
 
 	apiserverArgsPath := "/var/snap/microk8s/current/args/kube-apiserver"
-	apiserverArgsBytes, err := ioutil.ReadFile(apiserverArgsPath)
+	apiserverArgs, err := pkg.NewShellExe("sudo", "cat", apiserverArgsPath).RunOut()
 	if err != nil {
 		return errors.Wrap(err, "trying to check args for apiserver: you probably need to run `su - $USER` to update your creds")
 	}
-	apiserverArgs := string(apiserverArgsBytes)
 
 	if !strings.Contains(apiserverArgs, "service-node-port-range") {
 		ctx.Log.Info("Expanding port range available to services")
