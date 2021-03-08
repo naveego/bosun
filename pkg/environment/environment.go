@@ -230,6 +230,7 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 
 			pkg.Log.Warnf("No context configured for cluster %q, I will try to configure it...", e.Cluster.Name)
 			err = e.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
+				Action: kube.ConfigureContextAction{},
 				Log:              ctx.Log(),
 				Name:             e.Cluster.Name,
 				Force:            ctx.GetParameters().Force,

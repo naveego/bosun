@@ -82,6 +82,7 @@ var minikubeUpCmd = addCommand(minikubeCmd, &cobra.Command{
 
 		env := b.GetCurrentEnvironment()
 		err := konfigs.HandleConfigureRequest(kube.ConfigureRequest{
+			Action: kube.ConfigureContextAction{},
 			Name:             "minikube",
 			Log:              ctx.Log(),
 			ExecutionContext: ctx,
