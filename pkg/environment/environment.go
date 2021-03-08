@@ -18,9 +18,9 @@ import (
 type Environment struct {
 	Config
 
-	ClusterName    string
-	Cluster        *kube.ClusterConfig
-	secretGroups   map[string]*SecretGroup
+	ClusterName  string
+	Cluster      *kube.ClusterConfig
+	secretGroups map[string]*SecretGroup
 }
 
 func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
@@ -60,8 +60,8 @@ type Options struct {
 func New(config Config, options Options) (*Environment, error) {
 
 	env := &Environment{
-		Config:      config,
-		ClusterName: options.Cluster,
+		Config:       config,
+		ClusterName:  options.Cluster,
 		secretGroups: map[string]*SecretGroup{},
 	}
 
@@ -132,7 +132,7 @@ func (e *Environment) GetClustersForRole(role core.ClusterRole) ([]*kube.Cluster
 	return clusters, err
 }
 
-func (e *Environment) ClusterForRoleExists(role core.ClusterRole) bool  {
+func (e *Environment) ClusterForRoleExists(role core.ClusterRole) bool {
 	for _, c := range e.Clusters {
 		if c.Roles.Contains(role) {
 			return true
@@ -229,7 +229,7 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 		if err != nil && strings.Contains(err.Error(), "no context exists with the name") {
 
 			pkg.Log.Warnf("No context configured for cluster %q, I will try to configure it...", e.Cluster.Name)
-			err = e.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+			err = e.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
 				Log:              ctx.Log(),
 				Name:             e.Cluster.Name,
 				Force:            ctx.GetParameters().Force,
@@ -285,7 +285,19 @@ func (e *Environment) Render(ctx environmentvariables.EnsureContext) (string, er
 		return "", err
 	}
 
-	s := command.RenderEnvironmentSettingScript(vars)
+	aliases := map[string]string{}
+	cluster, err := e.GetClusterByName(e.ClusterName)
+	if err != nil {
+		return "", err
+	}
+
+	vars["BOSUN_CLUSTER"] = e.ClusterName
+
+	for role, namespace := range cluster.Namespaces {
+		vars["BOSUN_NAMESPACE_" + strings.ToUpper(string(role))] = namespace.Name
+	}
+
+	s := command.RenderEnvironmentSettingScript(vars, aliases)
 
 	return s, nil
 }
@@ -450,12 +462,10 @@ func (e *Environment) AddOrUpdateSecretValue(groupName string, secretName string
 
 func (e *Environment) ResolveSecretPath(secretPath string) (string, error) {
 
-
 	sp, err := ParseSecretPath(secretPath)
 	if err != nil {
 		return "", err
 	}
-
 
 	group, err := e.getSecretGroup(sp.GroupName)
 	if err != nil {
@@ -466,7 +476,7 @@ func (e *Environment) ResolveSecretPath(secretPath string) (string, error) {
 
 }
 
-func (e *Environment) ValidateSecrets(secretPaths ...string) error{
+func (e *Environment) ValidateSecrets(secretPaths ...string) error {
 	for _, secretPath := range secretPaths {
 
 		_, err := e.ResolveSecretPath(secretPath)

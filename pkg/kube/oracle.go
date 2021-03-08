@@ -10,7 +10,7 @@ type OracleClusterConfig struct {
 	Region string `yaml:"region"`
 }
 
-func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureKubeContextRequest) error {
+func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	kubeConfigPath := os.ExpandEnv("$HOME/.kube/config")
 	if ctx.KubeConfigPath != "" {

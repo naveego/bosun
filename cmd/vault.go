@@ -82,7 +82,6 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		app := mustGetApp(b, args[0:1])
 
-
 		appDeploy, err := getAppDeploy(b, cluster, app)
 		if err != nil {
 			return err
@@ -146,9 +145,10 @@ Otherwise, this will do nothing.
 	Example: "vault bootstrap-dev",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
+		var err error
 
 		g := globalParameters{}
-		err := g.init()
+		err = g.init()
 		if err != nil {
 			return err
 		}
@@ -160,14 +160,46 @@ Otherwise, this will do nothing.
 			return err
 		}
 
-		initializer := pkg.VaultInitializer{
-			Client:         vaultClient,
-			VaultNamespace: viper.GetString(ArgVaultNamespace),
+		b := MustGetBosun()
+
+		env := b.GetCurrentEnvironment()
+
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
 		}
 
-		err = initializer.InitNonProd()
+		platformApps := p.GetKnownAppMap()
 
-		return err
+		vaultPlatformApp, ok := platformApps["vault"]
+
+		if !ok {
+			return errors.New("vault not found in platform apps")
+		}
+
+		cluster, err := env.GetClusterByName(env.ClusterName)
+		if err != nil {
+			return err
+		}
+
+		for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
+			for namespaceRole, namespaceConfig := range cluster.Namespaces {
+				if namespaceRole == requestedNamespaceRole {
+
+					initializer := pkg.VaultInitializer{
+						Client:         vaultClient,
+						VaultNamespace: namespaceConfig.Name,
+					}
+
+					err = initializer.InitNonProd()
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		return nil
 	},
 }
 

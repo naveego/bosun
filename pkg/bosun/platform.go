@@ -1273,11 +1273,13 @@ func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
 	p.ReleaseMetadata = updatedMetadata
 }
 
-func (p *Platform) GetApps(ctx filter.MatchMapArgContainer) []*PlatformAppConfig {
+func (p *Platform) GetApps(ctx filter.MatchMapArgContainer) PlatformAppConfigs {
 
 	var out []*PlatformAppConfig
 	for _, app := range p.Apps {
 		if app.TargetFilters.Matches(ctx.GetMatchMapArgs()) {
+
+
 			out = append(out, app)
 		}
 	}

@@ -6,7 +6,7 @@ package kube
 type ExternalClusterConfig struct {
 }
 
-func (c ExternalClusterConfig) configureKubernetes(ctx ConfigureKubeContextRequest) error {
+func (c ExternalClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	ctx.Log.Infof("Bosun cannot configure an external cluster, you must do it yourself.")
 

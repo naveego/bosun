@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg/stories"
 	"github.com/pkg/errors"
 	"io/ioutil"
+	"path"
 	"regexp"
 )
 
@@ -68,7 +69,7 @@ func (c *Client) GetStory(id string) (*stories.Story, error) {
 
 	story := &stories.Story{
 		ID:            id,
-		URL:           jiraStory.Self,
+		URL:           path.Join(c.Config.JiraUrl, "browse", id),
 		Reference:     id,
 		Body:          fields.Description,
 		Estimate:      fmt.Sprint(fields.TimeEstimate),

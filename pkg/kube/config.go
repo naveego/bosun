@@ -32,7 +32,12 @@ func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ClusterC
 	return nil, errors.Errorf("no cluster definition with name %q", name)
 }
 
-type ConfigureKubeContextRequest struct {
+type ConfigureContextAction struct{}
+type ConfigureNamespacesAction struct{}
+type ConfigurePullSecretsAction struct{}
+
+type ConfigureRequest struct {
+	Action           interface{}
 	Name             string
 	Role             core.ClusterRole
 	KubeConfigPath   string
@@ -45,7 +50,7 @@ type ConfigureKubeContextRequest struct {
 // cache of clusters configured this run, no need to configure theme again
 var configuredClusters = map[string]bool{}
 
-func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeContextRequest) error {
+func (k ConfigDefinitions) HandleConfigureRequest(req ConfigureRequest) error {
 	if req.Log == nil {
 		req.Log = logrus.NewEntry(logrus.StandardLogger())
 	}
@@ -81,7 +86,16 @@ func (k ConfigDefinitions) HandleConfigureKubeContextRequest(req ConfigureKubeCo
 			return nil
 		}
 
-		err = konfig.configureKubernetes(req)
+		switch req.Action.(type) {
+		case ConfigureContextAction:
+			err = konfig.configureKubernetes(req)
+		case ConfigureNamespacesAction:
+			err = konfig.configureNamespaces(req)
+		case ConfigurePullSecretsAction:
+			err = konfig.configurePullSecrets(req)
+
+		}
+
 		if err != nil {
 			return err
 		}
@@ -218,7 +232,7 @@ func (k ClusterConfig) GetNamespace(role core.NamespaceRole) (NamespaceConfig, e
 	return NamespaceConfig{}, errors.Errorf("kubernetes cluster config %q does not have a namespace for the role %q", k.Namespaces, role)
 }
 
-func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) error {
+func (k ClusterConfig) configureKubernetes(req ConfigureRequest) error {
 	req.Name = k.Name
 
 	if contextIsDefined(req.Name) && !req.Force {
@@ -266,13 +280,27 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 		return errors.Errorf("no recognized kube vendor found on %q", k.Name)
 	}
 
+	err := k.configureNamespaces(req)
+	if err != nil {
+		return errors.Wrap(err, "could not configure namespaces")
+	}
+	err = k.configurePullSecrets(req)
+	if err != nil {
+		return errors.Wrap(err, "could not configure pull secrets")
+	}
+
+	return err
+}
+
+func (k ClusterConfig) configureNamespaces(req ConfigureRequest) error {
+
 	client, err := GetKubeClientWithContext(k.Name)
 	if err != nil {
 		return err
 	}
 
 	for role, ns := range k.Namespaces {
-		req.Log.Infof("Creating namespace %q with role %q.", ns.Name, role)
+		log := req.Log.WithField("namespace", ns.Name).WithField("namespace-role", role)
 		namespace := &v1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ns.Name,
@@ -283,12 +311,25 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 		}
 		_, err = client.CoreV1().Namespaces().Create(namespace)
 		if kerrors.IsAlreadyExists(err) {
-			req.Log.Infof("Namespace already exists, updating...")
 			_, err = client.CoreV1().Namespaces().Update(namespace)
-		}
-		if err != nil {
+			if err != nil {
+				return errors.Wrapf(err, "update namespace %q with role %q", ns.Name, role)
+
+			}
+			log.Infof("Updated namespace.")
+		} else if err != nil {
 			return errors.Wrapf(err, "create or update namespace %q with role %q", ns.Name, role)
+		} else {
+			log.Info("Created namespace")
 		}
+	}
+
+	return nil
+}
+
+func (k ClusterConfig) configurePullSecrets(req ConfigureRequest) error {
+
+	for _, ns := range k.Namespaces {
 
 		for _, pullSecret := range req.PullSecrets {
 
@@ -297,13 +338,12 @@ func (k ClusterConfig) configureKubernetes(req ConfigureKubeContextRequest) erro
 				continue
 			}
 
-			err = CreateOrUpdatePullSecret(req.ExecutionContext, k.Name, namespace.Name, pullSecret)
+			err := createOrUpdatePullSecret(req, k.Name, ns.Name, pullSecret)
 			if err != nil {
 				return err
 			}
 		}
 
-		req.Log.Infof("Done creating or updating namespace %q.", ns.Name)
 	}
 
 	return nil
@@ -333,8 +373,9 @@ func (a appValueSetCollectionProvider) GetValueSetCollection() values.ValueSetCo
 	return a.valueSetCollection
 }
 
-func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespaceName string, pullSecret PullSecret) error {
-	// req.Log.Infof("Creating or updating pull secret %q in namespace %q...", pullSecret.Name, ns.Name)
+func createOrUpdatePullSecret(req ConfigureRequest, clusterName, namespaceName string, pullSecret PullSecret) error {
+
+	log := req.Log.WithField("pull-secret", pullSecret.Name).WithField("namespace", namespaceName)
 
 	var password string
 	var username string
@@ -374,7 +415,7 @@ func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespa
 	} else {
 
 		username = pullSecret.Username
-		password, err = pullSecret.Password.Resolve(ctx)
+		password, err = pullSecret.Password.Resolve(req.ExecutionContext)
 		if err != nil {
 			// req.Log.Errorf("Could not resolve password for pull secret %q in namespace %q: %s", pullSecret.Name, ns.Name, err)
 			return err
@@ -411,14 +452,21 @@ func CreateOrUpdatePullSecret(ctx command.ExecutionContext, clusterName, namespa
 	}
 	_, err = client.CoreV1().Secrets(namespaceName).Create(secret)
 	if kerrors.IsAlreadyExists(err) {
-		// req.Log.Infof("Pull secret already exists, updating...")
-		_, err = client.CoreV1().Secrets(namespaceName).Update(secret)
-	}
-	if err != nil {
-		return errors.Wrapf(err, "create or update pull secret %q in namespace %q", pullSecret.Name, namespaceName)
+		if req.Force {
+			_, err = client.CoreV1().Secrets(namespaceName).Update(secret)
+			if err != nil {
+				return errors.Wrapf(err, "update pull secret %q in namespace %q", pullSecret.Name, namespaceName)
+			}
+			log.Info("Updated existing pull secret.")
+		} else {
+			log.Info("Pull secret already exists, run with --force to force update.")
+		}
+	} else if err != nil {
+		return errors.Wrapf(err, "create pull secret %q in namespace %q", pullSecret.Name, namespaceName)
+	} else {
+		req.Log.Infof("Created pull secret.")
 	}
 
-	// req.Log.Infof("Done creating or updating pull secret %q in namespace %q.", pullSecret.Name, ns.Name)
 	return nil
 }
 

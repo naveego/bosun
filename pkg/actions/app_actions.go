@@ -239,7 +239,7 @@ func (a BosunAction) Execute(ctx ActionContext) error {
 		stepArgs = append(stepArgs, "--dry-run")
 	}
 
-	stepArgs = append(stepArgs, "--cluster", ctx.GetStringValue(core.KeyCluster))
+	stepArgs = append(stepArgs, "--clusters", ctx.GetStringValue(core.KeyCluster))
 
 	log := ctx.WithLogField("args", stepArgs).Log()
 	log.WithField("args", stepArgs).Info("Executing step")

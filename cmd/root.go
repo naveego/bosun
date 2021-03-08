@@ -130,6 +130,7 @@ const (
 	ArgGlobalNoReport      = "no-report"
 	ArgGlobalOutput        = "output"
 	ArgGlobalProfile       = "profile"
+	ArgGlobalCluster       = "cluster"
 )
 
 func init() {
@@ -153,7 +154,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalSudo, false, "Use sudo when running commands like docker.")
 	rootCmd.PersistentFlags().String(ArgGlobalConfirmedEnv, "", "Set to confirm that the environment is correct when targeting a protected environment.")
-	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalConfirmedEnv)
+	rootCmd.PersistentFlags().String(ArgGlobalCluster, "", "Set to target a specific cluster.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalProfile, false, "Dump profiling info.")
 	_ = rootCmd.PersistentFlags().MarkHidden(ArgGlobalProfile)
 

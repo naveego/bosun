@@ -8,11 +8,17 @@ import (
 	"strings"
 )
 
-func RenderEnvironmentSettingScript(vars map[string]string) string {
+func RenderEnvironmentSettingScript(vars map[string]string, aliases map[string]string) string {
 	w := new(strings.Builder)
 	for k, v := range vars {
 		fmt.Fprintf(w, "export %s=%s\n", k, v)
 	}
+
+	for k, v := range aliases {
+		fmt.Fprintf(w, "alias %s=%q\n", k, v)
+	}
+
+
 	return w.String()
 }
 

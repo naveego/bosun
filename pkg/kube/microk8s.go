@@ -15,7 +15,7 @@ type Microk8sConfig struct {
 	Channel   string `yaml:"channel"`
 }
 
-func (c Microk8sConfig) configureKubernetes(ctx ConfigureKubeContextRequest) error {
+func (c Microk8sConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	if c.Channel == "" {
 		c.Channel =  "1.14/stable"
@@ -44,7 +44,7 @@ func (c Microk8sConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 	apiserverArgsPath := "/var/snap/microk8s/current/args/kube-apiserver"
 	apiserverArgsBytes, err := ioutil.ReadFile(apiserverArgsPath)
 	if err != nil {
-		return errors.Wrap(err, "trying to check args for apiserver")
+		return errors.Wrap(err, "trying to check args for apiserver: you probably need to run `su - $USER` to update your creds")
 	}
 	apiserverArgs := string(apiserverArgsBytes)
 
@@ -92,24 +92,37 @@ func (c Microk8sConfig) configureKubernetes(ctx ConfigureKubeContextRequest) err
 		return errors.Wrap(err, "enabling default addons for microk8s")
 	}
 
-	ctx.Log.Infof("deleting old virtualbox network interface")
+	return ConfigureMickok8sNetworking()
+}
+
+
+func ConfigureMickok8sNetworking() error {
+
+	_, err := exec.LookPath("ifconfig")
+	if err != nil {
+		return errors.Errorf("ifconfig not found; you may need to install it using `sudo apt install net-tools`")
+	}
+
+	pkg.Log.Debug("Deleting old virtualbox network interface...")
 	err = pkg.NewShellExe("sudo", "ifconfig", "vboxnet0", "down").RunE()
 	if err != nil {
-		ctx.Log.Debug("No virtualbox network found.")
+		pkg.Log.Debug("No virtualbox network found.")
 		// return err
 	}
 
-	ctx.Log.Infof("creating loopback IP at 192.168.99.1 for host services")
+	pkg.Log.Infof("Creating loopback IP at 192.168.99.1 for host services...")
 	err = pkg.NewShellExe("sudo", "ifconfig", "lo:microk8s", "192.168.99.1", "up").RunE()
 	if err != nil {
 		return err
 	}
 
-	ctx.Log.Infof("creating loopback IP at 192.168.99.100 for *.n5o.red/*.naveego.red services")
+	pkg.Log.Infof("Creating loopback IP at 192.168.99.100 for *.n5o.red/*.naveego.red services...")
 	err = pkg.NewShellExe("sudo", "ifconfig", "lo:microk8s:red", "192.168.99.100", "up").RunE()
 	if err != nil {
 		return err
 	}
+
+	pkg.Log.Info("Done.")
 
 	return nil
 }

@@ -137,32 +137,29 @@ var appValuesCmd = addCommand(appCmd, &cobra.Command{
 
 		env := b.GetCurrentEnvironment()
 
-		clusters := viper.GetStringSlice(argDeployAppClusters)
-		if len(clusters) == 0 {
-			clusters = []string{env.DefaultCluster}
+		cluster := viper.GetString(ArgGlobalCluster)
+		if len(cluster) == 0 {
+			cluster = env.DefaultCluster
 		}
 
-		for _, cluster := range clusters {
-			ctx := b.NewContext()
-			ctx.Log().Infof("Values for cluster %s", cluster)
-			appDeploy, err := getAppDeploy(b, cluster, app)
-			if err != nil {
-				return err
-			}
-			values, err := appDeploy.GetResolvedValues(ctx)
-			if err != nil {
-				return err
-			}
-
-			y, _ := yaml.MarshalString(values)
-
-			fmt.Println(y)
+		ctx := b.NewContext()
+		ctx.Log().Infof("Values for cluster %s", cluster)
+		appDeploy, err := getAppDeploy(b, cluster, app)
+		if err != nil {
+			return err
 		}
+		values, err := appDeploy.GetResolvedValues(ctx)
+		if err != nil {
+			return err
+		}
+
+		y, _ := yaml.MarshalString(values)
+
+		fmt.Println(y)
 
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "Clusters to target (defaults to default cluster for environment)")
 })
 
 var appBumpCmd = addCommand(appCmd, &cobra.Command{

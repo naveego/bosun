@@ -4,14 +4,16 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/hashicorp/vault/api"
+	"github.com/hashicorp/vault/helper/consts"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 )
 
 type VaultInitializer struct {
-	Client *api.Client
+	Client         *api.Client
 	VaultNamespace string
 }
 
@@ -46,29 +48,41 @@ func (v VaultInitializer) installPlugin() error {
 	vaultClient := v.Client
 
 	vaultNS := v.VaultNamespace
-	if vaultNS == ""{
+	if vaultNS == "" {
 		vaultNS = "kube-system"
 	}
 
-	Log.Debug("Getting hash for JOSE...")
-
-	joseSHA, err := NewShellExe(fmt.Sprintf("kubectl exec -n %s vault-dev-0 cat /vault/plugins/jose-plugin.sha", vaultNS)).RunOut()
+	vaultPods, err := NewShellExe(fmt.Sprintf("kubectl get pods -l app=vault -n %s -o name", vaultNS)).RunOut()
 	if err != nil {
 		return err
 	}
 
-	Log.Debug("Registering JOSE...")
-	err = vaultClient.Sys().RegisterPlugin(&api.RegisterPluginInput{
-		Name:    "jose",
-		SHA256:  joseSHA,
-		Command: "jose-plugin",
-	})
+	for _, vaultPod := range strings.Split(vaultPods, "\n") {
+		log := Log.WithField("pod", vaultPod)
 
-	if err != nil {
-		return err
+		log.Infof("Getting hash for JOSE...")
+
+		shaLine, err2 := NewShellExe(fmt.Sprintf("kubectl exec -n %s %s cat /vault/plugins/jose-plugin.sha", vaultNS, vaultPod)).RunOut()
+		if err2 != nil {
+			return err2
+		}
+
+		sha := strings.Split(shaLine, " ")[0]
+
+		log.Infof("Registering JOSE using sha %s...", sha)
+		err2 = vaultClient.Sys().RegisterPlugin(&api.RegisterPluginInput{
+			Name:    "jose",
+			SHA256:  sha,
+			Type:    consts.PluginTypeSecrets,
+			Command: "jose-plugin",
+		})
+
+		if err2 != nil {
+			return err2
+		}
+
+		log.Info("JOSE plugin installed and registered.")
 	}
-
-	Log.Debug("JOSE plugin installed and registered.")
 	return nil
 }
 

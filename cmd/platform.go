@@ -326,9 +326,9 @@ var _ = addCommand(platformCmd, &cobra.Command{
 		}
 
 		ctx := b.NewContext()
-
+		env := b.GetCurrentEnvironment()
 		var appNames []string
-		for _, app := range p.GetApps(ctx) {
+		for _, app := range p.GetApps(ctx).FilterByEnvironment(env) {
 			appNames = append(appNames, app.Name)
 		}
 

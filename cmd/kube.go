@@ -51,11 +51,11 @@ func init() {
 
 // kubeCmd represents the kube command
 var kubeCmd = &cobra.Command{
-	Use:   "kube {kube-layout}",
+	Use:     "kube {kube-layout}",
 	Aliases: []string{"k"},
-	Args:  cobra.ExactArgs(1),
-	Short: "Group of commands wrapping kubectl.",
-	Long:  `You must have the cluster set in kubectl.`,
+	Args:    cobra.ExactArgs(1),
+	Short:   "Group of commands wrapping kubectl.",
+	Long:    `You must have the cluster set in kubectl.`,
 }
 
 var dashboardTokenCmd = &cobra.Command{
@@ -146,7 +146,8 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
 		ctx := b.NewContext()
 
-		err := env.Clusters.HandleConfigureKubeContextRequest(kube.ConfigureKubeContextRequest{
+		err := env.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
+			Action:           kube.ConfigureContextAction{},
 			Log:              ctx.Log(),
 			Name:             name,
 			Force:            ctx.GetParameters().Force,
@@ -166,28 +167,6 @@ const (
 	ArgConfigureClusterName = "name"
 	ArgConfigureClusterRole = "role"
 )
-
-var kubeAddNamespaceCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:          "add-namespace {name}",
-	Args:         cobra.ExactArgs(1),
-	Short:        "Adds a namespace to your cluster. ",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-
-		name := args[0]
-
-		_, err := pkg.NewShellExe("kubectl", "create", "namespace", name).RunOut()
-		if err != nil {
-			if strings.Contains(err.Error(), "AlreadyExists") {
-				color.Yellow("Namespace %q already exists.", name)
-				return nil
-			}
-			return err
-		}
-
-		return nil
-	},
-})
 
 var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "dashboard",
@@ -221,6 +200,73 @@ var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(ArgKubeDashboardUrl, false, "Display dashboard URL instead of opening a browser")
+})
+
+var kubeConfigureLoopbackCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:   "configure-loopback",
+	Short: "Wires up a local network with the IP addresses the .red domains point to.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return kube.ConfigureMickok8sNetworking()
+
+	},
+}, func(cmd *cobra.Command) {
+})
+
+var kubeConfigureNamespacesCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:   "configure-namespaces",
+	Short: "Deploys the namespaces for the cluster",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun()
+
+		name := viper.GetString(ArgConfigureClusterName)
+		env := b.GetCurrentEnvironment()
+
+		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
+		ctx := b.NewContext()
+
+		err := env.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
+			Action:           kube.ConfigureNamespacesAction{},
+			Log:              ctx.Log(),
+			Name:             name,
+			Force:            ctx.GetParameters().Force,
+			Role:             role,
+			ExecutionContext: ctx,
+			PullSecrets:      env.PullSecrets,
+		})
+
+		return err
+	},
+}, func(cmd *cobra.Command) {
+})
+
+var kubeConfigurePullSecretsCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:   "configure-pull-secrets",
+	Short: "Deploys the pull secrets for the cluster",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun()
+
+		name := viper.GetString(ArgConfigureClusterName)
+		env := b.GetCurrentEnvironment()
+
+		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
+		ctx := b.NewContext()
+
+		err := env.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
+			Action:           kube.ConfigurePullSecretsAction{},
+			Log:              ctx.Log(),
+			Name:             name,
+			Force:            ctx.GetParameters().Force,
+			Role:             role,
+			ExecutionContext: ctx,
+			PullSecrets:      env.PullSecrets,
+		})
+
+		return err
+	},
+}, func(cmd *cobra.Command) {
 })
 
 var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{

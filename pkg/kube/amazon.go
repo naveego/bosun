@@ -8,7 +8,7 @@ type AmazonClusterConfig struct {
 	Region string `yaml:"region"`
 }
 
-func (c AmazonClusterConfig) configureKubernetes(ctx ConfigureKubeContextRequest) error {
+func (c AmazonClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	if c.Region == "" {
 		c.Region = "us-east-1"

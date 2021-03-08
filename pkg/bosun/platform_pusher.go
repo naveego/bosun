@@ -64,24 +64,6 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 	}
 
 	env := p.b.GetCurrentEnvironment()
-	ctx := p.b.NewContext()
-	for _, cluster := range env.Clusters {
-		createPullSecretNamespaces := map[string]bool{}
-		for _, ns := range cluster.Namespaces {
-			createPullSecretNamespaces[ns.Name] = ns.Name != "kube-system"
-		}
-
-		for ns, shouldCreate := range createPullSecretNamespaces {
-			if shouldCreate {
-				for _, ps := range p.b.GetCurrentEnvironment().PullSecrets {
-					err = kube.CreateOrUpdatePullSecret(ctx, cluster.Name, ns, ps)
-					if err != nil {
-						return fmt.Errorf("could not create pull secret '%s' in cluster '%s' and namespace '%s': %w", ps.Name, cluster.Name, ns, err)
-					}
-				}
-			}
-		}
-	}
 
 	stopPF := kube.PortForward("vault-dev-0", env.VaultNamespace, 8200)
 	defer stopPF()

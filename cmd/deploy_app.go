@@ -37,7 +37,6 @@ var _ = addCommand(deployCmd, &cobra.Command{
 }, deployAppFlags)
 
 const (
-	argDeployAppClusters = "clusters"
 	argDeployAppRecycle  = "recycle"
 	argDeployAppTag      = "tag"
 	argDeployAppDiffOnly = "diff-only"
@@ -50,13 +49,13 @@ func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployAppTag, "", "Tag to use when deploying the app or apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
-	cmd.Flags().StringSlice(argDeployAppClusters, []string{}, "List of specific clusters to deploy to.")
 	cmd.Flags().Bool(argAppDeployPreview, false, "Just dump the values which would be used to deploy, then exit.")
 	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().Bool(argDeployAppRecycle, false, "Recycle the app after deploying it.")
 	cmd.Flags().Bool(argDeployAppDiffOnly, false, "Display the impact of running the deploy but don't actually run it.")
 	cmd.Flags().StringSliceP(ArgAppValueSet, "v", []string{}, "Additional value sets to include in this deploy.")
 	cmd.Flags().StringSliceP(ArgAppSet, "s", []string{}, "Value overrides to set in this deploy, as key=value pairs.")
+	cmd.Flags().String(ArgGlobalCluster, "","Value overrides to set in this deploy, as key=value pairs.")
 }
 
 func deployApp(cmd *cobra.Command, args []string) error {
@@ -69,9 +68,11 @@ func deployApp(cmd *cobra.Command, args []string) error {
 	}
 	ctx := b.NewContext()
 
+	env := b.GetCurrentEnvironment()
+
 	apps := args
 	if len(apps) == 0 {
-		for _, a := range p.GetApps(ctx) {
+		for _, a := range p.GetApps(ctx).FilterByEnvironment(env) {
 			apps = append(apps, a.Name)
 		}
 		sort.Strings(apps)
@@ -177,7 +178,7 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 		}
 	}
 
-	clustersWhitelist := viper.GetStringSlice(argDeployAppClusters)
+	clustersWhitelist := viper.GetStringSlice(ArgGlobalCluster)
 	if len(clustersWhitelist) > 0 {
 		executeRequest.Clusters = map[string]bool{}
 		for _, cluster := range clustersWhitelist {
