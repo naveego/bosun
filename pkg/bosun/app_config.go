@@ -51,6 +51,7 @@ type AppConfig struct {
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"` // Will be true if this config was embedded in an AppManifest.
 	manifest       *AppManifest // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
+	ProviderInfo   string
 }
 
 func (p *AppConfig) GetValueSetCollection() values.ValueSetCollection {
@@ -116,7 +117,7 @@ func (a *AppConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		a.Branching.Develop = "master"
 		a.Branching.IsDefaulted = true
 	}
-	if a.Branching.Release == ""  {
+	if a.Branching.Release == "" {
 		a.Branching.Release = "release/{{.Version}}"
 		a.Branching.IsDefaulted = true
 	}
@@ -136,7 +137,7 @@ func (a *AppConfig) ErrIfFromManifest(msg string, args ...interface{}) error {
 }
 
 type ProjectManagementPlugin struct {
-	Name   string             `yaml:"name" json:"name"`
+	Name string `yaml:"name" json:"name"`
 }
 
 type AppMinikubeConfig struct {

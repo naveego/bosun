@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
-	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"io"
@@ -115,18 +115,16 @@ var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoCluster: true, NoEnvironment: true})
 
-		envs, err := b.GetEnvironments()
-
+		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
 		}
-		var clusters []*kube.ClusterConfig
-		for _, env := range envs {
-			for _, cluster := range env.Clusters {
-				clusters = append(clusters, cluster)
-			}
+
+		clusters, err := p.GetClusters()
+		if err != nil {
+			return err
 		}
 
 		return renderOutput(clusters)
@@ -134,39 +132,25 @@ var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
 })
 
 var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
-	Use:   "configure-cluster",
-	Short: "Configures clusters for the current environment, or a specific cluster if given flags. ",
+	Use:   "configure-cluster {name}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Configures the specified cluster.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-
-		name := viper.GetString(ArgConfigureClusterName)
-		env := b.GetCurrentEnvironment()
-
-		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
-		ctx := b.NewContext()
-
-		err := env.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
-			Action:           kube.ConfigureContextAction{},
-			Log:              ctx.Log(),
-			Name:             name,
-			Force:            ctx.GetParameters().Force,
-			Role:             role,
-			ExecutionContext: ctx,
-			PullSecrets:      env.PullSecrets,
-		})
-
-		return err
+		return HandleKubeConfigurationRequest(args[0], kube.ConfigureContextAction{})
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().String(ArgConfigureClusterName, "", "Name of cluster to configure.")
-	cmd.Flags().String(ArgConfigureClusterRole, "", "Role of cluster to configure.")
 })
 
-const (
-	ArgConfigureClusterName = "name"
-	ArgConfigureClusterRole = "role"
-)
+var kubeConfigureCertsCmd = addCommand(kubeCmd, &cobra.Command{
+	Use:   "configure-certs",
+	Short: "Configures certs in the current cluster.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return HandleKubeConfigurationRequest(args[0], kube.ConfigureCertsAction{})
+	},
+}, func(cmd *cobra.Command) {
+})
 
 var dashboardCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "dashboard",
@@ -215,59 +199,55 @@ var kubeConfigureLoopbackCmd = addCommand(kubeCmd, &cobra.Command{
 
 var kubeConfigureNamespacesCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "configure-namespaces",
-	Short: "Deploys the namespaces for the cluster",
+	Args:  cobra.ExactArgs(0),
+	Short: "Deploys the namespaces for the current cluster",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-
-		name := viper.GetString(ArgConfigureClusterName)
-		env := b.GetCurrentEnvironment()
-
-		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
-		ctx := b.NewContext()
-
-		err := env.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
-			Action:           kube.ConfigureNamespacesAction{},
-			Log:              ctx.Log(),
-			Name:             name,
-			Force:            ctx.GetParameters().Force,
-			Role:             role,
-			ExecutionContext: ctx,
-			PullSecrets:      env.PullSecrets,
-		})
-
-		return err
+		return HandleKubeConfigurationRequest(args[0], kube.ConfigureNamespacesAction{})
 	},
 }, func(cmd *cobra.Command) {
 })
 
 var kubeConfigurePullSecretsCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "configure-pull-secrets",
-	Short: "Deploys the pull secrets for the cluster",
+	Short: "Deploys the pull secrets for the current cluster",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
-
-		name := viper.GetString(ArgConfigureClusterName)
-		env := b.GetCurrentEnvironment()
-
-		role := core.ClusterRole(viper.GetString(ArgConfigureClusterRole))
-		ctx := b.NewContext()
-
-		err := env.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
-			Action:           kube.ConfigurePullSecretsAction{},
-			Log:              ctx.Log(),
-			Name:             name,
-			Force:            ctx.GetParameters().Force,
-			Role:             role,
-			ExecutionContext: ctx,
-			PullSecrets:      env.PullSecrets,
-		})
-
-		return err
+		return HandleKubeConfigurationRequest(args[0], kube.ConfigurePullSecretsAction{})
 	},
 }, func(cmd *cobra.Command) {
 })
+
+func HandleKubeConfigurationRequest(brnHint string, action interface{}) error {
+	b := MustGetBosun()
+	brn, err := b.NormalizeStackBrn(brnHint)
+	if err != nil {
+		return err
+	}
+	env := b.GetCurrentEnvironment()
+	ctx := b.NewContext()
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return err
+	}
+
+	clusters, err := p.GetClusters()
+	if err != nil {
+		return err
+	}
+
+	err = clusters.HandleConfigureRequest(kube.ConfigureRequest{
+		Action:           action,
+		Log:              ctx.Log(),
+		Force:            ctx.GetParameters().Force,
+		ExecutionContext: ctx,
+		PullSecrets:      env.PullSecrets,
+		Brn:              brn,
+	})
+
+	return err
+}
 
 var pullSecretCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:   "pull-secret [username] [password]",

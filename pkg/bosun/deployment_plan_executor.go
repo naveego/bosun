@@ -18,17 +18,17 @@ type DeploymentPlanExecutor struct {
 }
 
 type ExecuteDeploymentPlanRequest struct {
-	Path         string
-	Plan         *DeploymentPlan
-	IncludeApps  []string
-	Clusters     map[string]bool
-	ValueSets    values.ValueSets
-	Recycle      bool
-	Validate     bool
-	ValidateOnly bool
-	PreviewOnly  bool
-	DiffOnly     bool
-	UseSudo      bool
+	Path           string
+	Plan           *DeploymentPlan
+	IncludeApps    []string
+	Clusters       map[string]bool
+	ValueSets      values.ValueSets
+	Recycle        bool
+	Validate       bool
+	ValidateOnly   bool
+	DumpValuesOnly bool
+	DiffOnly       bool
+	UseSudo        bool
 }
 
 
@@ -75,10 +75,10 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 	deploymentPlan := req.Plan
 	deploySettings := DeploySettings{
 		SharedDeploySettings: SharedDeploySettings{
-			Environment: d.Bosun.GetCurrentEnvironment(),
-			Recycle:     req.Recycle,
-			PreviewOnly: req.PreviewOnly,
-			DiffOnly: req.DiffOnly,
+			Environment:    d.Bosun.GetCurrentEnvironment(),
+			Recycle:        req.Recycle,
+			DumpValuesOnly: req.DumpValuesOnly,
+			DiffOnly:       req.DiffOnly,
 		},
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
@@ -98,7 +98,6 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 			if err == nil {
 				afterLog := ctx.Log().WithFields(logrus.Fields{
 					"app":       app.Name,
-					"cluster":   app.Cluster,
 					"namespace": app.Namespace,
 				})
 				afterLog.Info("App deployed, saving progress in plan file.")

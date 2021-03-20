@@ -71,14 +71,14 @@ type AppDeploy struct {
 	Excluded          bool               `yaml:"excluded,omitempty"`
 	ActualState       workspace.AppState `yaml:"actualState,omitempty"`
 	DesiredState      workspace.AppState `yaml:"desiredState,omitempty"`
-	Cluster           string             `yaml:"cluster,omitempty"`
 	Namespace         string             `yaml:"namespace,omitempty"`
 	AppDeploySettings AppDeploySettings  `yaml:"appDeploySettings,omitempty"`
 
 	MatchArgs filter.MatchMapArgs `yaml:"matchArgs,omitempty"`
 
-	helmRelease *HelmRelease  `yaml:"-"`
-	labels      filter.Labels `yaml:"-"`
+	helmRelease *HelmRelease   `yaml:"-"`
+	labels      filter.Labels  `yaml:"-"`
+	StackApp    *kube.StackApp `yaml:"-"`
 }
 
 func (a *AppDeploy) Clone() *AppDeploy {
@@ -90,7 +90,6 @@ func (a *AppDeploy) Clone() *AppDeploy {
 		FromPath:          a.FromPath,
 		ActualState:       a.ActualState,
 		DesiredState:      a.DesiredState,
-		Cluster:           a.Cluster,
 		Namespace:         a.Namespace,
 		AppDeploySettings: a.AppDeploySettings,
 		helmRelease:       a.helmRelease,
@@ -209,9 +208,9 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 	// creating using `app toggle` and is routed to localhost.
 	if ctx.Environment().IsLocal && a.AppManifest.AppConfig.Minikube != nil {
 		for _, routableService := range a.AppManifest.AppConfig.Minikube.RoutableServices {
-			svcYaml, err := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.Namespace, routableService.Name, "-o", "yaml").RunOut()
-			if err != nil {
-				log.WithError(err).Errorf("Error getting service config %q", routableService.Name)
+			svcYaml, yamlErr := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.Namespace, routableService.Name, "-o", "yaml").RunOut()
+			if yamlErr != nil {
+				log.WithError(yamlErr).Errorf("Error getting service config %q", routableService.Name)
 				continue
 			}
 			if strings.Contains(svcYaml, "ExternalName") {
@@ -299,16 +298,13 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	valuesYaml, _ := yaml.MarshalString(resolvedValues)
 
-	if a.AppDeploySettings.PreviewOnly {
+	if a.AppDeploySettings.DumpValuesOnly {
 		log.Infof("Running in preview only mode, here are the values that would have been used to deploy:")
-		fmt.Printf("# Cluster: %s\n", a.Cluster)
 		fmt.Printf("# Namespace: %s\n", a.Namespace)
 		fmt.Println(valuesYaml)
 		fmt.Println("---")
 		return nil
 	}
-
-
 
 	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
@@ -354,7 +350,6 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	if a.AppDeploySettings.DiffOnly {
 		log.Infof("Running in diff-only mode..")
-
 
 		log.Infof("Here are the steps that would have been run:")
 		for _, step := range plan {
@@ -637,11 +632,11 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		log.Infof("Updating service and endpoint in namespace %s...", namespace)
 
 		svcClient := client.CoreV1().Services(namespace)
-		svc, err := svcClient.Get(routableService.Name, metav1.GetOptions{})
-		if err == nil {
-			err = svcClient.Delete(svc.Name, nil)
-			if err != nil {
-				log.WithError(err).Error("Could not delete service.")
+		svc, k8sErr := svcClient.Get(routableService.Name, metav1.GetOptions{})
+		if k8sErr == nil {
+			k8sErr = svcClient.Delete(svc.Name, nil)
+			if k8sErr != nil {
+				log.WithError(k8sErr).Error("Could not delete service.")
 			}
 		}
 
@@ -655,11 +650,11 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		}
 
 		svc = &v1.Service{
-			ObjectMeta:metav1.ObjectMeta{
-				Name:routableService.Name,
-				Namespace:namespace,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      routableService.Name,
+				Namespace: namespace,
 			},
-			Spec:v1.ServiceSpec{
+			Spec: v1.ServiceSpec{
 
 			},
 		}
@@ -681,9 +676,9 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		log.Info("Updating service...")
 
 		svc.ResourceVersion = ""
-		svc, err = svcClient.Create(svc)
-		if err != nil {
-			return errors.Wrap(err, "Could not replace service")
+		svc, k8sErr = svcClient.Create(svc)
+		if k8sErr != nil {
+			return errors.Wrap(k8sErr, "Could not replace service")
 		}
 
 		log.WithField("updated", svc).Info("Updated service.")
@@ -691,16 +686,16 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		endpointClient := client.CoreV1().Endpoints(namespace)
 
 		endpointExists := false
-		endpoint, err := endpointClient.Get(routableService.Name, metav1.GetOptions{})
-		if kerrors.IsNotFound(err) {
+		endpoint, k8sErr := endpointClient.Get(routableService.Name, metav1.GetOptions{})
+		if kerrors.IsNotFound(k8sErr) {
 			endpointExists = false
 			endpoint = &v1.Endpoints{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: routableService.Name,
 				},
 			}
-		} else if err != nil {
-			return errors.Wrap(err, "get endpoint if it exists")
+		} else if k8sErr != nil {
+			return errors.Wrap(k8sErr, "get endpoint if it exists")
 		} else {
 			endpointExists = true
 		}
@@ -721,16 +716,16 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 
 		if endpointExists {
 			log.WithField("endpoint", endpoint).Info("Creating endpoint...")
-			endpoint, err = endpointClient.Update(endpoint)
+			endpoint, k8sErr = endpointClient.Update(endpoint)
 			log.Info("Created endpoint.")
 		} else {
 			log.Info("Updating endpoint...")
-			endpoint, err = endpointClient.Create(endpoint)
+			endpoint, k8sErr = endpointClient.Create(endpoint)
 			log.Info("Updated endpoint.")
 		}
 
-		if err != nil {
-			return errors.Wrap(err, "creating endpoint")
+		if k8sErr != nil {
+			return errors.Wrap(k8sErr, "creating endpoint")
 		}
 
 		log.Info("Updated service and endpoint.")
@@ -790,10 +785,10 @@ func (a *AppDeploy) Recycle(ctx BosunContext) error {
 
 	for {
 		podsReady := true
-		out, err := pkg.NewShellExe("kubectl", "get", "pods", "--namespace", a.getNamespaceName(), "--selector=release="+a.AppManifest.AppConfig.Name,
+		out, shellErr := pkg.NewShellExe("kubectl", "get", "pods", "--namespace", a.getNamespaceName(), "--selector=release="+a.AppManifest.AppConfig.Name,
 			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
-		if err != nil {
-			return err
+		if shellErr != nil {
+			return shellErr
 		}
 		pods := strings.Split(out, ";")
 		for _, pod := range pods {
@@ -902,7 +897,7 @@ func checkImageExists(ctx BosunContext, name string) error {
 	reader := io.MultiReader(stdout, stderr)
 	scanner := bufio.NewScanner(reader)
 
-	if err := cmd.Start(); err != nil {
+	if err = cmd.Start(); err != nil {
 		return err
 	}
 
@@ -921,7 +916,7 @@ func checkImageExists(ctx BosunContext, name string) error {
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err = scanner.Err(); err != nil {
 		return err
 	}
 

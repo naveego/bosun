@@ -4,11 +4,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environmentvariables"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -16,120 +19,16 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-const DefaultRole core.ClusterRole = "default"
-
-type ConfigDefinitions []*ClusterConfig
-
-func (k ConfigDefinitions) GetKubeConfigDefinitionByName(name string) (*ClusterConfig, error) {
-	for _, c := range k {
-		if c.Name == name {
-			return c, nil
-		}
-	}
-	return nil, errors.Errorf("no cluster definition with name %q", name)
-}
-
-type ConfigureContextAction struct{}
-type ConfigureNamespacesAction struct{}
-type ConfigurePullSecretsAction struct{}
-
-type ConfigureRequest struct {
-	Action           interface{}
-	Name             string
-	Role             core.ClusterRole
-	KubeConfigPath   string
-	Force            bool
-	Log              *logrus.Entry
-	ExecutionContext command.ExecutionContext
-	PullSecrets      []PullSecret
-}
-
-// cache of clusters configured this run, no need to configure theme again
-var configuredClusters = map[string]bool{}
-
-func (k ConfigDefinitions) HandleConfigureRequest(req ConfigureRequest) error {
-	if req.Log == nil {
-		req.Log = logrus.NewEntry(logrus.StandardLogger())
-	}
-
-	if req.Role == "" {
-		req.Role = DefaultRole
-	}
-
-	var err error
-	var konfigs []*ClusterConfig
-
-	if req.Name != "" {
-		konfig, kubeConfigErr := k.GetKubeConfigDefinitionByName(req.Name)
-		if kubeConfigErr != nil {
-			return kubeConfigErr
-		}
-		konfigs = []*ClusterConfig{konfig}
-	} else {
-		konfigs, err = k.GetKubeConfigDefinitionsByRole(req.Role)
-		if err != nil {
-			return err
-		}
-	}
-
-	if len(konfigs) == 0 {
-		return errors.Errorf("could not find any kube configs")
-	}
-
-	for _, konfig := range konfigs {
-
-		if configuredClusters[konfig.Name] {
-			req.Log.Debugf("Already configured kubernetes cluster %q.", konfig.Name)
-			return nil
-		}
-
-		switch req.Action.(type) {
-		case ConfigureContextAction:
-			err = konfig.configureKubernetes(req)
-		case ConfigureNamespacesAction:
-			err = konfig.configureNamespaces(req)
-		case ConfigurePullSecretsAction:
-			err = konfig.configurePullSecrets(req)
-
-		}
-
-		if err != nil {
-			return err
-		}
-
-		configuredClusters[konfig.Name] = true
-	}
-
-	return nil
-}
-
-func (k ConfigDefinitions) GetKubeConfigDefinitionsByRole(role core.ClusterRole) ([]*ClusterConfig, error) {
-
-	if role == "" {
-		role = DefaultRole
-	}
-	var out []*ClusterConfig
-	for _, c := range k {
-		for _, r := range c.Roles {
-			if r == role {
-				out = append(out, c)
-			}
-		}
-	}
-	if len(out) > 0 {
-		return out, nil
-	}
-
-	return nil, errors.Errorf("no cluster definition had role %q", role)
-}
-
 type ClusterConfig struct {
 	core.ConfigShared `yaml:",inline"`
+	KubeconfigPath    string                               `yaml:"kubeconfigPath,omitempty"`
 	Provider          string                               `yaml:"-"`
 	EnvironmentAlias  string                               `yaml:"environmentAlias,omitempty"`
+	Environment       string                               `yaml:"environment,omitempty"`
 	Roles             core.ClusterRoles                    `yaml:"roles,flow"`
 	Protected         bool                                 `yaml:"protected"`
 	Variables         []*environmentvariables.Variable     `yaml:"variables,omitempty"`
@@ -142,6 +41,31 @@ type ClusterConfig struct {
 	ExternalCluster   *ExternalClusterConfig               `yaml:"externalCluster,omitempty"`
 	Namespaces        NamespaceConfigs                     `yaml:"namespaces"`
 	Apps              map[string]values.ValueSetCollection `yaml:"apps"`
+	StackTemplate     *ClusterConfig                       `yaml:"stackTemplate,omitempty"`
+	Brn               brns.Stack                           `yaml:"-"`
+	Certs             []ClusterCert                        `yaml:"certs"`
+	IsDefaultCluster  bool                                 `yaml:"isDefaultCluster"`
+	Aliases           []string                             `yaml:"aliases,omitempty"`
+}
+
+type ClusterCert struct {
+	SecretName string                `yaml:"secretName"`
+	VaultUrl   string                `yaml:"vaultUrl"`
+	VaultToken *command.CommandValue `yaml:"vaultToken"`
+	VaultPath  string                `yaml:"vaultPath"`
+	CommonName string                `yaml:"commonName"`
+	AltNames   []string              `yaml:"altNames"`
+}
+
+func (c ClusterConfig) GetKubeconfigPath() string {
+	return os.ExpandEnv(c.KubeconfigPath)
+}
+
+// IsAppDisabled returns true if the app is disabled for the cluster
+// Apps are assumed to be enabled for the cluster unless explicitly disabled
+func (c ClusterConfig) IsAppDisabled(appName string) bool {
+	v, ok := c.Apps[appName]
+	return ok && v.Disabled
 }
 
 type PullSecret struct {
@@ -201,9 +125,199 @@ func (f *ClusterConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	f.Brn = brns.NewStack(f.Environment, f.Name, "")
+
 	return err
 }
 
+const DefaultRole core.ClusterRole = "default"
+
+type ClusterConfigs []*ClusterConfig
+
+func (k ClusterConfigs) Headers() []string {
+	return []string{
+		"Name",
+		"KubeConfig",
+		"Environment",
+	}
+}
+
+func (k ClusterConfigs) Rows() [][]string {
+	var out [][]string
+	for _, c := range k {
+		row := []string{
+			c.Name,
+			c.KubeconfigPath,
+			c.Environment,
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func (k ClusterConfigs) GetByBrn(brn brns.Stack) (*ClusterConfig, error) {
+
+	if brn.EnvironmentName != "" && brn.ClusterName == "" && brn.StackName == "" {
+		var clustersWithEnvironment []*ClusterConfig
+		for _, c := range k {
+			if c.Environment == brn.EnvironmentName {
+				clustersWithEnvironment = append(clustersWithEnvironment, c)
+			}
+		}
+		switch len(clustersWithEnvironment) {
+		case 0:
+			return nil, errors.Errorf("no cluster matched environment %s", brn)
+		case 1:
+			return clustersWithEnvironment[0], nil
+		default:
+			for _, c := range clustersWithEnvironment {
+				if c.IsDefaultCluster {
+					return c, nil
+				}
+			}
+			return nil, errors.Errorf("%d clusters matched environment %s, but none had isDefaultCluster=true", len( brn)
+		}
+	}
+
+	var clusterConfig *ClusterConfig
+	for _, c := range k {
+		if c.Name == brn.ClusterName {
+			clusterConfig = c
+			break
+		}
+	}
+
+	if clusterConfig == nil {
+		return nil, errors.Errorf("no cluster matched cluster name %q from cluster path %q", brn.ClusterName, brn)
+	}
+
+	if brn.StackName != "" {
+		return clusterConfig.RenderStack(brn.StackName)
+	}
+
+	return clusterConfig, nil
+}
+
+func (c *ClusterConfig) RenderStack(subclusterName string) (*ClusterConfig, error) {
+
+	if c.StackTemplate == nil {
+		return nil, errors.Errorf("cluster %q has no subclusterTemplate to render %q", c.Name, subclusterName)
+	}
+
+	y, _ := yaml.MarshalString(c.StackTemplate)
+
+	parameters := map[string]string{
+		"Name": subclusterName,
+	}
+
+	rendered, err := pkg.NewTemplateBuilder(c.Name + "-subclusterTemplate").WithTemplate(y).BuildAndExecute(parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	var clusterConfig *ClusterConfig
+	err = yaml.UnmarshalString(rendered, &clusterConfig)
+
+	clusterConfig.Brn = brns.NewStack(c.Environment, c.Name, subclusterName)
+
+	clusterConfig.SetFromPath(c.FromPath)
+
+	return clusterConfig, err
+}
+
+type ConfigureContextAction struct{}
+type ConfigureCertsAction struct{}
+type ConfigureNamespacesAction struct{}
+type ConfigurePullSecretsAction struct{}
+
+type ConfigureRequest struct {
+	Action           interface{}
+	Brn              brns.Stack
+	KubeConfigPath   string
+	Force            bool
+	Log              *logrus.Entry
+	ExecutionContext command.ExecutionContext
+	PullSecrets      []PullSecret
+}
+
+// cache of clusters configured this run, no need to configure theme again
+var configuredClusters = map[string]bool{}
+
+func (k ClusterConfigs) HandleConfigureRequest(req ConfigureRequest) error {
+	if req.Log == nil {
+		req.Log = logrus.NewEntry(logrus.StandardLogger())
+	}
+
+	var err error
+	var konfigs []*ClusterConfig
+
+	if !req.Brn.IsEmpty() {
+		konfig, kubeConfigErr := k.GetByBrn(req.Brn)
+		if kubeConfigErr != nil {
+			return kubeConfigErr
+		}
+		konfigs = []*ClusterConfig{konfig}
+	}
+
+	if len(konfigs) == 0 {
+		return errors.Errorf("could not find any kube configs using brn %s", req.Brn)
+	}
+
+	for _, konfig := range konfigs {
+
+		err = konfig.HandleConfigureRequest(req)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (k ClusterConfig) HandleConfigureRequest(req ConfigureRequest) error {
+
+	if configuredClusters[k.Name] {
+		req.Log.Debugf("Already configured kubernetes cluster %q.", k.Name)
+		return nil
+	}
+
+	switch req.Action.(type) {
+	case ConfigureContextAction:
+		return k.configureKubernetes(req)
+	case ConfigureNamespacesAction:
+		return k.configureNamespaces(req)
+	case ConfigurePullSecretsAction:
+		return k.configurePullSecrets(req)
+	case ConfigureCertsAction:
+		return k.configureCerts(req)
+
+	}
+
+	configuredClusters[k.Name] = true
+
+	return nil
+
+}
+
+func (k ClusterConfigs) GetKubeConfigDefinitionsByRole(role core.ClusterRole) ([]*ClusterConfig, error) {
+
+	if role == "" {
+		role = DefaultRole
+	}
+	var out []*ClusterConfig
+	for _, c := range k {
+		for _, r := range c.Roles {
+			if r == role {
+				out = append(out, c)
+			}
+		}
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+
+	return nil, errors.Errorf("no cluster definition had role %q", role)
+}
 func (e *ClusterConfig) GetValueSetCollection() values.ValueSetCollection {
 	if e.ValueOverrides == nil {
 		return values.NewValueSetCollection()
@@ -233,11 +347,22 @@ func (k ClusterConfig) GetNamespace(role core.NamespaceRole) (NamespaceConfig, e
 }
 
 func (k ClusterConfig) configureKubernetes(req ConfigureRequest) error {
-	req.Name = k.Name
+	kubectl := Kubectl{
+		Cluster:    k.Name,
+		Kubeconfig: k.KubeconfigPath,
+	}
 
-	if contextIsDefined(req.Name) && !req.Force {
-		req.Log.Warnf("Kubernetes context %q already exists (use --force to configure anyway).", req.Name)
+	if kubectl.contextIsDefined(req.Brn.ClusterName) && !req.Force {
+		req.Log.Warnf("Kubernetes context %q already exists (use --force to configure anyway).", req.Brn.Cluster)
 		return nil
+	}
+
+	if req.KubeConfigPath == "" {
+		req.KubeConfigPath = k.GetKubeconfigPath()
+	}
+
+	if req.KubeConfigPath == "" {
+		req.KubeConfigPath = os.ExpandEnv("$HOME/.kube/config")
 	}
 
 	if k.Oracle != nil {
@@ -294,7 +419,7 @@ func (k ClusterConfig) configureKubernetes(req ConfigureRequest) error {
 
 func (k ClusterConfig) configureNamespaces(req ConfigureRequest) error {
 
-	client, err := GetKubeClientWithContext(k.Name)
+	client, err := GetKubeClientWithContext(req.KubeConfigPath, k.Name)
 	if err != nil {
 		return err
 	}
@@ -349,6 +474,90 @@ func (k ClusterConfig) configurePullSecrets(req ConfigureRequest) error {
 	return nil
 }
 
+func (k ClusterConfig) configureCerts(req ConfigureRequest) error {
+
+	req.Log.Infof("Configuring certs (%d certs to configure)", len(k.Certs))
+
+	for _, certConfig := range k.Certs {
+
+		log := req.Log.WithField("cert", certConfig.SecretName)
+
+		log.Infof("Creating cert with common name %q and alt names %v", certConfig.CommonName, certConfig.AltNames)
+
+		token, err := certConfig.VaultToken.Resolve(req.ExecutionContext)
+		if err != nil {
+			return errors.Wrap(err, "could not resolve token for creating cert")
+		}
+		if token == "" {
+			return errors.Errorf("token resolved using command %v was empty", certConfig.VaultToken)
+		}
+
+		log.Infof("Acquiring cert from vault using url=%s, path=%s, token=%s...", certConfig.VaultUrl, certConfig.VaultPath, token[0:3])
+
+		vaultClient, err := vault.NewClient(&vault.Config{
+			Address: certConfig.VaultUrl,
+		})
+		if err != nil {
+			return err
+		}
+
+		vaultClient.SetToken(token)
+
+		data := map[string]interface{}{
+			"common_name": certConfig.CommonName,
+			"alt_names":   strings.Join(certConfig.AltNames, ","),
+			"ttl":         "9504h",
+		}
+
+		certData, err := vaultClient.Logical().Write(certConfig.VaultPath, data)
+		if err != nil {
+			return err
+		}
+
+		certificate := certData.Data["certificate"].(string)
+		key := certData.Data["private_key"].(string)
+
+		tempDir, _ := os.MkdirTemp(os.TempDir(), k.Name+"-certs-*")
+		defer os.RemoveAll(tempDir)
+
+		certPath := filepath.Join(tempDir, "cert.pem")
+		keyPath := filepath.Join(tempDir, "cert.key")
+
+		err = ioutil.WriteFile(certPath, []byte(certificate), 0600)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		err = ioutil.WriteFile(keyPath, []byte(key), 0600)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		namespaceNames := map[string]bool{}
+
+		for _, ns := range k.Namespaces {
+			namespaceNames[ns.Name] = true
+		}
+
+		for namespaceName := range namespaceNames {
+			log.Infof("Deploying cert to namespace %q", namespaceName)
+
+			kubectl := Kubectl{Kubeconfig: req.KubeConfigPath, Namespace: namespaceName}
+
+			_, _ = kubectl.Exec("delete", "secret", certConfig.SecretName)
+
+			_, err = kubectl.Exec("create", "secret", "tls", certConfig.SecretName, "--cert", certPath, "--key", keyPath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	req.Log.Infof("Done configuring certs.")
+
+	return nil
+}
+
 // GetAppValueSetCollectionProvider returns a ValuesSetCollectionProvider that will provide any values set collection
 // defined in this cluster for a specific app. If none is defined, an instance that does nothing will be returned.
 
@@ -381,7 +590,7 @@ func createOrUpdatePullSecret(req ConfigureRequest, clusterName, namespaceName s
 	var username string
 	var err error
 
-	client, err := GetKubeClientWithContext(clusterName)
+	client, err := GetKubeClientWithContext(req.KubeConfigPath, clusterName)
 
 	if pullSecret.FromDockerConfig {
 		var dockerConfig map[string]interface{}
@@ -470,12 +679,12 @@ func createOrUpdatePullSecret(req ConfigureRequest, clusterName, namespaceName s
 	return nil
 }
 
-func contextIsDefined(name string) bool {
-	out, err := pkg.NewShellExe("kubectl",
+func (k Kubectl) contextIsDefined(name string) bool {
+	out, err := k.Exec(
 		"config",
 		"get-contexts",
 		name,
-	).RunOut()
+	)
 	if err != nil {
 		return false
 	}
@@ -483,4 +692,30 @@ func contextIsDefined(name string) bool {
 		return false
 	}
 	return true
+}
+
+type Kubectl struct {
+	Namespace  string
+	Cluster    string
+	Kubeconfig string
+}
+
+func (k Kubectl) Exec(args ...string) (string, error) {
+	if k.Namespace != "" {
+		args = append(args, "--namespace", k.Namespace)
+	}
+
+	if k.Cluster != "" {
+		args = append(args, "--cluster", k.Cluster)
+	}
+
+	if k.Kubeconfig != "" {
+		args = append(args, "--kubeconfig", k.Kubeconfig)
+	}
+
+	out, err := pkg.NewShellExe("kubectl", args...).RunOut()
+	if err != nil {
+		return "", errors.Wrapf(err, "kubectl:%v", k)
+	}
+	return out, nil
 }

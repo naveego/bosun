@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/naveego/bosun/pkg/templating"
+	"gopkg.in/yaml.v3"
 	"runtime"
 	"strings"
 )
@@ -62,23 +63,29 @@ func (c *CommandValue) MarshalYAML() (interface{}, error) {
 	return c.toMarshalling(), nil
 }
 
-func (c *CommandValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *CommandValue) UnmarshalYAML(node *yaml.Node) error {
 
-	var s string
 	var cmd []string
 	var u commandValueMarshalling
 	var err error
 
-	if err = unmarshal(&s); err == nil {
-		if isMultiline(s) {
-			u.Script = s
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if isMultiline(node.Value) {
+			u.Script = node.Value
 		} else {
-			u.Value = s
+			u.Value = node.Value
 		}
-	} else if err = unmarshal(&u); err == nil && (len(u.OS) > 0 || u.Value != "") {
-		// direct unmarshal succeeded
-	} else if err = unmarshal(&cmd); err == nil {
+	case yaml.SequenceNode:
+		for _, n := range node.Content {
+			cmd = append(cmd, n.Value)
+		}
 		u.Command = cmd
+	case yaml.MappingNode:
+		err = node.Decode(&u)
+		if err != nil {
+			return err
+		}
 	}
 
 	u.apply(c)

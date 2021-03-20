@@ -20,6 +20,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/spf13/cobra"
@@ -60,11 +61,11 @@ var envCmd = addCommand(rootCmd, &cobra.Command{
 
 // envCmd represents the env command
 var envUseCmd = addCommand(envCmd, &cobra.Command{
-	Use:     "use [environment]",
+	Use:     "use {\"current\"|env:cluster/stack}",
 	Args:    cobra.ExactArgs(1),
 	Short:   "Sets the environment, and outputs a script which will set environment variables in the environment. Should be called using $() so that the shell will apply the script.",
 	Long:    "The special environment name `current` will emit the script for the current environment without changing anything.",
-	Example: "$(bosun env {env})",
+	Example: "$(bosun env use {env})",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return useEnvironment(args...)
 	},
@@ -79,10 +80,12 @@ func useEnvironment(args ...string) error {
 	if err != nil {
 		return err
 	}
+	identifier := args[0]
 
-	envName := args[0]
-	if envName != "current" {
-		err = b.UseEnvironmentAndCluster(envName, viper.GetString(ArgEnvCluster))
+	if identifier != "current" {
+		var brn brns.Stack
+		brn, err = b.NormalizeStackBrn(identifier)
+		err = b.UseStack(brn)
 		if err != nil {
 			return err
 		}

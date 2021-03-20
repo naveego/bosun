@@ -16,20 +16,20 @@ type Variable struct {
 	Value            string                `yaml:"-" json:"-"`
 }
 
-type EnsureContext interface {
+type Dependencies interface {
 	command.ExecutionContext
 	workspace.Contexter
 	GetWorkspaceCommand(name string, hint string) *command.CommandValue
 }
 
 // Ensure sets Value using the From CommandValue.
-func (e *Variable) Ensure(ctx EnsureContext) error {
+func (e *Variable) Ensure(ctx Dependencies) error {
 
 	if e.WorkspaceCommand != "" {
 		e.From = ctx.GetWorkspaceCommand(e.WorkspaceCommand, e.WorkspaceCommandHint)
 	}
 
-	ctx = ctx.WithPwd(e.FromPath).(EnsureContext)
+	ctx = ctx.WithPwd(e.FromPath).(Dependencies)
 	log := ctx.Log().WithField("name", e.Name).WithField("fromPath", e.FromPath)
 
 	if e.From == nil {

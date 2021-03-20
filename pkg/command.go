@@ -38,6 +38,10 @@ func NewShellExe(exe string, args ...string) *ShellExe {
 	return c
 }
 
+func NewShellExeFromSlice(args ...string) *ShellExe {
+	return NewShellExe(args[0], args[1:]...)
+}
+
 func (c *ShellExe) WithDir(dir string) *ShellExe {
 	c.Dir = &dir
 	return c

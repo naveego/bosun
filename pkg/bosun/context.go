@@ -30,7 +30,7 @@ import (
 
 type BosunContext struct {
 	Bosun  *Bosun
-	env    *environment.Environment
+	_env   *environment.Environment
 	Dir    string
 	log    *logrus.Entry
 	Values *values.PersistableValues
@@ -54,7 +54,7 @@ func NewTestBosunContext() BosunContext {
 	return BosunContext{
 		ctx:   context.Background(),
 		Dir:   dir,
-		env:   &environment.Environment{},
+		_env:  &environment.Environment{},
 		Bosun: testBosun,
 		log:   logrus.WithField("TEST", "INSTANCE"),
 	}
@@ -152,11 +152,23 @@ func (c BosunContext) WithPersistableValues(v *values.PersistableValues) interfa
 
 func (c BosunContext) GetEnvironmentVariables() map[string]string {
 
-	out := map[string]string{
-		core.EnvCluster:                       c.env.ClusterName,
-		core.EnvEnvironment:                   c.env.Name,
-		core.EnvEnvironmentRole:               string(c.env.Role),
-		core.EnvInternalEnvironmentAndCluster: os.Getenv(core.EnvInternalEnvironmentAndCluster),
+	out := map[string]string{}
+
+	if c.Values != nil {
+		out = c.Values.Values.ToEnv(core.EnvPrefix)
+	}
+
+	if c.GetParameters().NoEnvironment {
+		c.log.Debug("Environment disabled, no environment variables available. If this is incorrect, update the command currently executing.")
+
+	} else {
+
+		env := c.Environment()
+
+		out[core.EnvCluster] = env.ClusterName
+		out[core.EnvEnvironment] = env.Name
+		out[core.EnvEnvironmentRole] = string(env.Role)
+		out[core.EnvInternalStack] = os.Getenv(core.EnvInternalStack)
 	}
 
 	return out
@@ -197,9 +209,9 @@ func (c BosunContext) ResolvePath(path string, expansions ...string) string {
 	path = os.Expand(path, func(name string) string {
 		switch name {
 		case "ENVIRONMENT", core.EnvEnvironment:
-			return c.env.Name
+			return c.Environment().Name
 		case core.EnvEnvironmentRole:
-			return string(c.env.Role)
+			return string(c.Environment().Role)
 		default:
 			if v, ok := expMap[name]; ok {
 				return v
@@ -232,7 +244,7 @@ func (c BosunContext) TemplateValues() templating.TemplateValues {
 	}
 
 	tv.Functions = templating.TemplateFunctions{
-		ResolveSecretPath: c.env.ResolveSecretPath,
+		ResolveSecretPath: c.Environment().ResolveSecretPath,
 	}
 
 	return tv
@@ -251,7 +263,7 @@ func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
 }
 
 func (c BosunContext) WithEnv(env environment.Environment) BosunContext {
-	c.env = &env
+	c._env = &env
 	c.log = c.Log().WithField("env", env.Name)
 	return c
 }
@@ -332,10 +344,10 @@ func (c BosunContext) IsVerbose() bool {
 }
 
 func (c BosunContext) GetClusterName() string {
-	if c.env == nil {
+	if c._env == nil {
 		return c.WorkspaceContext().CurrentCluster
 	}
-	return c.env.ClusterName
+	return c._env.ClusterName
 }
 
 // Log gets a logger safely.
@@ -369,7 +381,7 @@ func (c BosunContext) WithStringValue(key string, value string) core.StringKeyVa
 func (c BosunContext) GetStringValue(key string, defaultValue ...string) string {
 	switch key {
 	case core.KeyEnvironment:
-		return c.env.Name
+		return c.Environment().Name
 	case core.KeyCluster:
 		return c.GetClusterName()
 	}
@@ -399,11 +411,14 @@ func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
 }
 
 func (c BosunContext) EnsureEnvironment() error {
-	return c.env.Ensure(c)
+	return c.Environment().Ensure(c)
 }
 
 func (c BosunContext) Environment() *environment.Environment {
-	return c.env
+	if c.GetParameters().NoEnvironment {
+		panic("bosun created with no-environment flag; if environment is needed update the command")
+	}
+	return c._env
 }
 
 func (c BosunContext) GetReleaseValues() *values.PersistableValues {

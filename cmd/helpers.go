@@ -542,6 +542,10 @@ func (p *globalParameters) init() error {
 	}
 
 	if p.vaultAddr == "" {
+		p.vaultAddr = os.Getenv("VAULT_ADDR")
+	}
+
+	if p.vaultAddr == "" {
 		switch p.domain {
 		case "n5o.red":
 			p.vaultAddr = "http://vault.n5o.red"

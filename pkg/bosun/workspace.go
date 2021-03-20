@@ -21,23 +21,23 @@ import (
 const logConfigs = true
 
 type Workspace struct {
-	Path                string `yaml:"-" json:"-"`
-	workspace.Context   `yaml:",inline"`
-	Imports             []string                         `yaml:"imports,omitempty" json:"imports"`
-	GitRoots            []string                         `yaml:"gitRoots" json:"gitRoots"`
-	GithubToken         *command.CommandValue            `yaml:"githubToken" json:"githubToken"`
-	ScratchDir          string                           `yaml:"scratchDir" json:"scratchDir"`
-	WorkspaceCommands   map[string]*command.CommandValue `yaml:"workspaceCommands"`
-	HostIPInMinikube    string                           `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
-	AppStates           workspace.AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
-	ClonePaths          map[string]string                `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
-	MergedBosunFile     *File                            `yaml:"-" json:"merged"`
-	ImportedBosunFiles  map[string]*File                 `yaml:"-" json:"imported"`
-	ZenhubToken         *command.CommandValue            `yaml:"zenhubToken" json:"zenhubToken"`
-	Minikube            *kube.MinikubeConfig             `yaml:"minikube,omitempty" json:"minikube,omitempty"`
-	LocalRepos          map[string]*vcs.LocalRepo        `yaml:"localRepos" json:"localRepos"`
-	GithubCloneProtocol string                           `yaml:"githubCloneProtocol"`
-	StoryHandlers       []values.Values                  `yaml:"storyHandlers"`
+	Path                   string `yaml:"-" json:"-"`
+	workspace.Context      `yaml:",inline"`
+	Imports                []string                         `yaml:"imports,omitempty" json:"imports"`
+	GitRoots               []string                         `yaml:"gitRoots" json:"gitRoots"`
+	GithubToken            *command.CommandValue            `yaml:"githubToken" json:"githubToken"`
+	ScratchDir             string                           `yaml:"scratchDir" json:"scratchDir"`
+	WorkspaceCommands      map[string]*command.CommandValue `yaml:"workspaceCommands"`
+	HostIPInMinikube       string                           `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
+	AppStates              workspace.AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
+	ClonePaths             map[string]string                `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
+	MergedBosunFile        *File                            `yaml:"-" json:"merged"`
+	ImportedBosunFiles     map[string]*File                 `yaml:"-" json:"imported"`
+	Minikube               *kube.MinikubeConfig             `yaml:"minikube,omitempty" json:"minikube,omitempty"`
+	LocalRepos             map[string]*vcs.LocalRepo        `yaml:"localRepos" json:"localRepos"`
+	GithubCloneProtocol    string                           `yaml:"githubCloneProtocol"`
+	StoryHandlers          []values.Values                  `yaml:"storyHandlers"`
+	ClusterKubeconfigPaths map[string]string                `yaml:"clusterKubeconfigPaths"`
 }
 
 func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {

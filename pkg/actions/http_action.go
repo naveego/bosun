@@ -69,7 +69,7 @@ func (a *HTTPAction) Execute(ctx ActionContext) error {
 		return errors.Wrap(err, "made request")
 	}
 
-	ctx.Log().Debugf("Request returned %d - %s.", resp.StatusCode, resp.Status)
+	ctx.Log().Debugf("Dependencies returned %d - %s.", resp.StatusCode, resp.Status)
 
 	if len(a.OKCodes) == 0 {
 		a.OKCodes = []int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}

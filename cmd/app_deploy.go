@@ -23,5 +23,5 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 }, deployAppFlags)
 
 const (
-	argAppDeployPreview = "preview"
+	argAppDeployValuesOnly = "dump-values"
 )

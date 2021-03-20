@@ -2,9 +2,9 @@ package core
 
 const (
 	KeyCluster         = "cluster"
-	KeyClusterRole     = "clusterRole"
+	KeyStack           = "stack"
 	KeyClusterRoles    = "clusterRoles"
-	KeyClustersRoles    = "clustersRoles"
+	KeyClustersRoles   = "clustersRoles"
 	KeyClusterProvider = "clusterProvider"
 	KeyNamespace       = "namespace"
 	KeyNamespaceRole   = "namespaceRole"
@@ -12,7 +12,7 @@ const (
 	KeyEnvironment     = "environment"
 	KeyEnvironmentRole = "environmentRole"
 	KeyAppName         = "appName"
-	KeyAppVersion         = "appVersion"
+	KeyAppVersion      = "appVersion"
 	KeyReleaseVersion  = "releaseVersion"
 )
 

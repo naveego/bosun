@@ -39,5 +39,10 @@ type Dependency struct {
 type StoryHandler interface {
 
 	GetStory(id string) (*Story, error)
+
 	HandleEvent(event *ValidatedEvent) error
+
+	GetBranches(story *Story) ([]BranchRef, error)
+
 }
+

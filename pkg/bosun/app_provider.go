@@ -109,6 +109,8 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 	a.apps[name] = app
 	a.mu.Unlock()
 
+	app.ProviderInfo = a.String()
+
 	return app, nil
 }
 
@@ -118,8 +120,9 @@ func (a AppConfigAppProvider) GetAllApps() (map[string]*App, error) {
 		app, err := a.GetApp(name)
 		if err != nil {
 			return nil, err
+		} else {
+			out[name] = app
 		}
-		out[name] = app
 	}
 	return out, nil
 }
@@ -146,12 +149,12 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 		return app, nil
 	}
 
-	appManifest, err := a.release.GetAppManifest(name)
+	appManifest, found, err := a.release.TryGetAppManifest(name)
 	if err != nil {
 		return nil, err
 	}
-	if appManifest == nil {
-		return nil, errors.Errorf("appManifest was nil for app %q", name)
+	if !found {
+		return nil, ErrAppNotFound(name)
 	}
 
 	app = &App{
@@ -173,6 +176,8 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 
 	a.apps[name] = app
 
+	app.ProviderInfo = a.String()
+
 	return app, nil
 }
 
@@ -183,10 +188,14 @@ func (a ReleaseManifestAppProvider) GetAllApps() (map[string]*App, error) {
 		return nil, err
 	}
 	for name := range appManifests {
-		out[name], err = a.GetApp(name)
+		app, getErr := a.GetApp(name)
 
-		if err != nil {
-			return nil, err
+		if getErr != nil {
+			if !IsErrAppNotFound(getErr) {
+				return nil, getErr
+			}
+		} else {
+			out[name] = app
 		}
 	}
 
@@ -224,7 +233,11 @@ func (a ChainAppProvider) GetAppFromProvider(name string, providerName string) (
 	defer a.mu.Unlock()
 
 	if provider, ok := a.providersByName[providerName]; ok {
-		return provider.GetApp(name)
+		app, err := provider.GetApp(name)
+		if err != nil {
+			return nil, err
+		}
+		return app, nil
 	}
 	return nil, errors.Errorf("no provider named %q", providerName)
 }
@@ -236,12 +249,12 @@ func (a ChainAppProvider) GetApp(name string, providerPriority []string) (*App, 
 	for _, providerName := range providerPriority {
 		if provider, ok := a.providersByName[providerName]; ok {
 			app, err := provider.GetApp(name)
-			if err == nil {
-				return app, nil
-			} else {
+			if err != nil {
 				if !IsErrAppNotFound(err) {
-					return nil, err
+					return nil, errors.Wrapf(err, "error while trying to get app %q", name)
 				}
+			} else {
+				return app, nil
 			}
 		}
 	}
@@ -299,10 +312,13 @@ func (a ChainAppProvider) GetAllVersionsOfApp(name string, providerNames []strin
 		if ok {
 			app, err := provider.GetApp(name)
 			if err != nil {
-				continue
+				if !IsErrAppNotFound(err) {
+					return nil, errors.Wrapf(err, "error while trying to get app %q", name)
+				}
+			} else {
+				app.Provider = provider
+				out = append(out, app)
 			}
-			app.Provider = provider
-			out = append(out, app)
 		}
 	}
 	return out, nil
@@ -324,7 +340,7 @@ func (a FilePathAppProvider) String() string {
 	return FileProviderName
 }
 
-func (a FilePathAppProvider) GetApp(path string) (*App, error) {
+func (a FilePathAppProvider) GetApp(path string) (*App,  error) {
 
 	return a.GetAppByPathAndName(path, "")
 }
@@ -413,6 +429,8 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 	}
 
 	a.apps[app.Name] = app
+
+	app.ProviderInfo = path
 
 	return app, nil
 }

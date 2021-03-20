@@ -8,7 +8,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"path/filepath"
-	config2 "sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 func GetKubeClient() (*kubernetes.Clientset, error) {
@@ -34,19 +33,32 @@ func GetKubeClient() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func GetKubeClientWithContext(context string) (*kubernetes.Clientset, error) {
-	// creates the in-cluster config
+func GetKubeClientWithContext(configPath string, context string) (*kubernetes.Clientset, error) {
+
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		// not running in kubernetes...
-		config, err = config2.GetConfigWithContext(context)
+		home := util.HomeDir()
+
+		if configPath == "" {
+			configPath = os.Getenv("KUBECONFIG")
+		}
+		if configPath == "" {
+			configPath = filepath.Join(home, ".kube", "config")
+		}
+		config, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: configPath},
+			&clientcmd.ConfigOverrides{CurrentContext: context}).ClientConfig()
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not get kube config with context %q from in cluster strategy or from ~/.kube/config", context)
+			return nil, errors.Wrapf(err, "could not get kube config from in cluster strategy or from %s", configPath)
 		}
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrapf(err, "get api using config from %q and context %q", configPath, context)
+	}
 
 	return clientset, nil
 }

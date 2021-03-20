@@ -3,6 +3,8 @@ package environment
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/brns"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environmentvariables"
@@ -23,12 +25,24 @@ type Environment struct {
 	secretGroups map[string]*SecretGroup
 }
 
+func (e *Environment) GetCluster() *kube.ClusterConfig {
+	return e.Cluster
+}
+
 func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
 	if e.ValueOverrides == nil {
 		return values.NewValueSetCollection()
 	}
 	return *e.ValueOverrides
 }
+
+// IsAppDisabled returns true if the app is disabled for the environment.
+// Apps are assumed to be disabled for the environment unless they are in the app list and not marked as disabled
+func (e Environment) IsAppDisabled(appName string) bool {
+	v, ok := e.Apps[appName]
+	return !ok || v.Disabled
+}
+
 
 // GetAppValueSetCollectionProvider returns a ValuesSetCollectionProvider that will provide any values set collection
 // defined in this environment for a specific app. If none is defined, an instance that does nothing will be returned.
@@ -54,14 +68,14 @@ func (a appValueSetCollectionProvider) GetValueSetCollection() values.ValueSetCo
 }
 
 type Options struct {
-	Cluster string
+	Cluster *kube.ClusterConfig
 }
 
 func New(config Config, options Options) (*Environment, error) {
 
 	env := &Environment{
 		Config:       config,
-		ClusterName:  options.Cluster,
+		Cluster:      options.Cluster,
 		secretGroups: map[string]*SecretGroup{},
 	}
 
@@ -108,24 +122,6 @@ func (e Environment) Matches(candidate EnvironmentFilterable) bool {
 	return true
 }
 
-func (e *Environment) SwitchToCluster(ctx environmentvariables.EnsureContext, cluster *kube.ClusterConfig) error {
-
-	if cluster == nil {
-		return errors.New("cluster parameter was nil")
-	}
-
-	if e.Cluster != nil && e.Cluster.Name == cluster.Name {
-		return nil
-	}
-
-	e.setCurrentCluster(cluster)
-
-	e.ClusterName = cluster.Name
-	e.Cluster = cluster
-
-	return e.EnsureCluster(ctx)
-}
-
 func (e *Environment) GetClustersForRole(role core.ClusterRole) ([]*kube.ClusterConfig, error) {
 
 	clusters, err := e.Clusters.GetKubeConfigDefinitionsByRole(role)
@@ -142,11 +138,6 @@ func (e *Environment) ClusterForRoleExists(role core.ClusterRole) bool {
 	return false
 }
 
-func (e *Environment) GetClusterByName(name string) (*kube.ClusterConfig, error) {
-	cluster, err := e.Clusters.GetKubeConfigDefinitionByName(name)
-	return cluster, err
-}
-
 func (e *Environment) setCurrentCluster(cluster *kube.ClusterConfig) {
 	e.Cluster = cluster
 	e.ClusterName = cluster.Name
@@ -160,81 +151,90 @@ type EnvironmentFilterable interface {
 // Ensure resolves and sets all environment variables, and
 // sets the cluster, but only if the environment has not already
 // been set.
-func (e *Environment) Ensure(ctx environmentvariables.EnsureContext) error {
+func (e *Environment) Ensure(deps environmentvariables.Dependencies) error {
 
 	if os.Getenv(core.EnvEnvironment) == e.Name {
-		ctx.Log().Debugf("Environment is already %q, based on value of %s", e.Name, core.EnvEnvironment)
+		deps.Log().Debugf("Environment is already %q, based on value of %s", e.Name, core.EnvEnvironment)
 
-		return e.EnsureCluster(ctx)
+		return e.EnsureCluster(deps)
 	}
 
-	return e.ForceEnsure(ctx)
+	return e.ForceEnsure(deps)
 }
 
 // ForceEnsure resolves and sets all environment variables,
 // even if the environment already appears to have been configured.
-func (e *Environment) ForceEnsure(ctx environmentvariables.EnsureContext) error {
+func (e *Environment) ForceEnsure(deps environmentvariables.Dependencies) error {
+	if e == nil {
+		return errors.New("environment was nil")
+	}
 
-	ctx = ctx.WithPwd(e.FromPath).(environmentvariables.EnsureContext)
+	deps = deps.WithPwd(e.FromPath).(environmentvariables.Dependencies)
 
 	for _, v := range e.Variables {
-		if err := v.Ensure(ctx); err != nil {
+		if err := v.Ensure(deps); err != nil {
 			return err
 		}
 	}
 
-	return e.EnsureCluster(ctx)
+	return e.EnsureCluster(deps)
 }
 
 // Ensure resolves and sets all environment variables, and
 // sets the cluster, but only if the environment has not already
 // been set.
-func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) error {
+func (e *Environment) EnsureCluster(deps environmentvariables.Dependencies) error {
 
-	if ctx.GetParameters().NoCluster || len(e.Clusters) == 0 {
+	if e.Cluster == nil {
+		deps.Log().Info("The current environment has no cluster specified.")
 		return nil
 	}
 
-	if e.ClusterName == "" {
-		e.ClusterName = os.Getenv(core.EnvCluster)
+	if deps.GetParameters().NoCluster || len(e.Clusters) == 0 {
+		return nil
 	}
 
-	if e.ClusterName == "" {
-		e.ClusterName = e.DefaultCluster
-	}
+	e.ClusterName = e.Cluster.Name
 
 	var err error
-	e.Cluster, err = e.GetClusterByName(e.ClusterName)
-	if err != nil {
-		return err
-	}
 
 	for _, v := range e.Cluster.Variables {
-		if err = v.Ensure(ctx); err != nil {
+		if err = v.Ensure(deps); err != nil {
 			return err
 		}
 	}
 
 	_ = os.Setenv(core.EnvCluster, e.Cluster.Name)
 
-	currentContext, _ := pkg.NewShellExe("kubectl config current-context ").RunOut()
+	kubectl := kube.Kubectl{Kubeconfig: deps.WorkspaceContext().CurrentKubeconfig}
+
+	currentContext, _ := kubectl.Exec("config", "current-context")
 	if currentContext != e.Cluster.Name {
 
 		core.SetInternalEnvironmentAndCluster(e.Name, e.Cluster.Name)
 
 		pkg.Log.Infof("Switching to cluster %q", e.Cluster.Name)
 
-		_, err = pkg.NewShellExe("kubectl", "config", "use-context", e.Cluster.Name).RunOut()
+		_, err = kubectl.Exec("config", "use-context", e.Cluster.Name)
 
 		if err != nil && strings.Contains(err.Error(), "no context exists with the name") {
 
-			pkg.Log.Warnf("No context configured for cluster %q, I will try to configure it...", e.Cluster.Name)
-			err = e.Clusters.HandleConfigureRequest(kube.ConfigureRequest{
-				Action: kube.ConfigureContextAction{},
-				Log:              ctx.Log(),
-				Name:             e.Cluster.Name,
-				Force:            ctx.GetParameters().Force,
-				ExecutionContext: ctx,
+			pkg.Log.Warnf("No context %q found in kubeconfig with path %q. If you want to use a different kubeconfig, "+
+				"use `bosun ws edit` to edit your workspace and add `%s: <correct path>` to clusterKubeconfigPaths. Otherwise, bosun will "+
+				"attempt to configure this context.\n", e.Cluster.Name, kubectl.Kubeconfig, e.ClusterName)
+
+			confirmed := cli.RequestConfirmFromUser("Do you want to attempt to configure the context?")
+			if !confirmed {
+				e.Cluster = nil
+				return errors.New("Context configuration cancelled.")
+			}
+
+			err = e.Cluster.HandleConfigureRequest(kube.ConfigureRequest{
+				Action:           kube.ConfigureContextAction{},
+				Log:              deps.Log(),
+				Brn:              brns.NewStack(e.Name, e.Cluster.Name, ""),
+				Force:            deps.GetParameters().Force,
+				ExecutionContext: deps,
 				PullSecrets:      e.PullSecrets,
 			})
 
@@ -251,7 +251,7 @@ func (e *Environment) EnsureCluster(ctx environmentvariables.EnsureContext) erro
 	return nil
 }
 
-func (e *Environment) GetVariablesAsMap(ctx environmentvariables.EnsureContext) (map[string]string, error) {
+func (e *Environment) GetVariablesAsMap(ctx environmentvariables.Dependencies) (map[string]string, error) {
 
 	err := e.Ensure(ctx)
 	if err != nil {
@@ -274,7 +274,7 @@ func (e *Environment) GetVariablesAsMap(ctx environmentvariables.EnsureContext) 
 	return vars, nil
 }
 
-func (e *Environment) Render(ctx environmentvariables.EnsureContext) (string, error) {
+func (e *Environment) Render(ctx environmentvariables.Dependencies) (string, error) {
 
 	err := e.Ensure(ctx)
 	if err != nil {
@@ -287,15 +287,19 @@ func (e *Environment) Render(ctx environmentvariables.EnsureContext) (string, er
 	}
 
 	aliases := map[string]string{}
-	cluster, err := e.GetClusterByName(e.ClusterName)
-	if err != nil {
-		return "", err
+
+	for role, namespace := range e.Cluster.Namespaces {
+		vars["BOSUN_NAMESPACE_"+strings.ToUpper(string(role))] = namespace.Name
 	}
 
-	vars["BOSUN_CLUSTER"] = e.ClusterName
+	kubeconfigPath := ctx.WorkspaceContext().CurrentKubeconfig
+	if kubeconfigPath != "" {
+		vars["KUBECONFIG"] = os.ExpandEnv(kubeconfigPath)
+	}
 
-	for role, namespace := range cluster.Namespaces {
-		vars["BOSUN_NAMESPACE_" + strings.ToUpper(string(role))] = namespace.Name
+	if e.Cluster != nil {
+		vars["BOSUN_CLUSTER"] = e.Cluster.Name
+		vars["BOSUN_CLUSTER_PATH"] =  e.Cluster.Brn.String()
 	}
 
 	s := command.RenderEnvironmentSettingScript(vars, aliases)
@@ -303,9 +307,9 @@ func (e *Environment) Render(ctx environmentvariables.EnsureContext) (string, er
 	return s, nil
 }
 
-func (e *Environment) Execute(ctx environmentvariables.EnsureContext) error {
+func (e *Environment) Execute(ctx environmentvariables.Dependencies) error {
 
-	ctx = ctx.WithPwd(e.FromPath).(environmentvariables.EnsureContext)
+	ctx = ctx.WithPwd(e.FromPath).(environmentvariables.Dependencies)
 
 	for _, cmd := range e.Commands {
 		log := ctx.Log().WithField("name", cmd.Name).WithField("fromPath", e.FromPath)

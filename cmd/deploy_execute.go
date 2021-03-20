@@ -45,11 +45,11 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			return err
 		}
 		req := bosun.ExecuteDeploymentPlanRequest{
-			Validate:    !viper.GetBool(argDeployExecuteSkipValidate),
-			DiffOnly:    viper.GetBool(argDeployExecuteDiffOnly),
-			PreviewOnly: viper.GetBool(argDeployExecuteValuesOnly),
-			UseSudo:     viper.GetBool(ArgGlobalSudo),
-			Clusters: map[string]bool{},
+			Validate:       !viper.GetBool(argDeployExecuteSkipValidate),
+			DiffOnly:       viper.GetBool(argDeployExecuteDiffOnly),
+			DumpValuesOnly: viper.GetBool(argDeployExecuteValuesOnly),
+			UseSudo:        viper.GetBool(ArgGlobalSudo),
+			Clusters:       map[string]bool{},
 		}
 
 		pathOrSlot := args[0]

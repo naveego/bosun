@@ -12,14 +12,22 @@ import (
 )
 
 type Microk8sConfig struct {
-	Channel   string `yaml:"channel"`
+	Channel string `yaml:"channel"`
+	Remote  bool   `yaml:"remote"`
+	SSHKeyLocation string `yaml:"sshKeyLocation,omitempty"`
+	SSHDestination string `yaml:"sshDestination,omitempty"`
 }
 
 func (c Microk8sConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	if c.Channel == "" {
-		c.Channel =  "1.14/stable"
+		c.Channel = "1.17/stable"
 	}
+
+	if c.Remote {
+		return c.configureKubernetesRemote(ctx)
+	}
+
 
 	_, err := exec.LookPath("microk8s")
 	if err != nil {
@@ -94,7 +102,6 @@ func (c Microk8sConfig) configureKubernetes(ctx ConfigureRequest) error {
 	return ConfigureMickok8sNetworking()
 }
 
-
 func ConfigureMickok8sNetworking() error {
 
 	_, err := exec.LookPath("ifconfig")
@@ -122,6 +129,68 @@ func ConfigureMickok8sNetworking() error {
 	}
 
 	pkg.Log.Info("Done.")
+
+	return nil
+}
+
+func (c Microk8sConfig) configureKubernetesRemote(ctx ConfigureRequest) error {
+
+	ctx.Log.Info("Microk8s cluster marked with `remote: true`, no local configuration will be done.")
+
+	certString, err := pkg.NewShellExe("lpass", "show", c.SSHKeyLocation, "--field", "Private Key").RunOut()
+	if err != nil {
+		return errors.Wrapf(err, "getting cert from lpass location %q", c.SSHKeyLocation)
+	}
+
+	tempCertDir, err := ioutil.TempDir(os.TempDir(), "cert-*")
+	if err != nil {
+		return err
+	}
+
+	tempCertPath := filepath.Join(tempCertDir, ctx.Brn.ClusterName + ".pem")
+
+	ctx.Log.Infof("temp cert stored at %q, make sure you delete it if this crashes", tempCertPath)
+	
+// 	defer os.RemoveAll(tempCertDir)
+
+	certBytes := []byte(strings.TrimSpace(certString) + "\n")
+
+	err = ioutil.WriteFile(tempCertPath, certBytes, 0600)
+	if err != nil {
+		return err
+	}
+	
+	sshPrefix := []string{"ssh", "-i", tempCertPath, c.SSHDestination}
+
+	ctx.Log.Info("Making sure microk8s is installed...")
+	installResult, err := pkg.NewShellExeFromSlice(append(sshPrefix, "sudo", "snap", "install", "microk8s", "--channel", c.Channel )...).RunOutLog()
+
+	if err != nil {
+		return err
+	}
+
+	ctx.Log.Infof("microk8s install result: %s", installResult)
+
+	ctx.Log.Info("Getting kubeconfig from node...")
+	kubeconfigResult, err := pkg.NewShellExeFromSlice(append(sshPrefix, "sudo", "microk8s", "config")...).RunOut()
+
+	if err != nil {
+		return err
+	}
+
+	ctx.Log.Infof("microk8s kubeconfig:\n%s", kubeconfigResult)
+
+	kubeconfig := strings.ReplaceAll( kubeconfigResult,"microk8s", ctx.Brn.ClusterName)
+
+	if  !strings.Contains(ctx.KubeConfigPath, ctx.Brn.ClusterName) {
+		return errors.Errorf("kubeconfigPath %q does not contain requested context name %q (this is required to avoid accidentally overwriting some other cluster's config)", ctx.KubeConfigPath, ctx.Brn.Cluster)
+	}
+
+	err = ioutil.WriteFile(ctx.KubeConfigPath, []byte(kubeconfig), 0600)
+	if err != nil {
+		return err
+	}
+
 
 	return nil
 }

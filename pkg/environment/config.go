@@ -12,12 +12,12 @@ import (
 
 type Config struct {
 	core.ConfigShared `yaml:",inline"`
-	Role              core.EnvironmentRole   `yaml:"role" json:"role"`
-	ClusterRoles      []string               `yaml:"clusterRoles,omitempty" json:"clusterRoles,omitempty"`
-	DefaultCluster    string                 `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
-	Clusters          kube.ConfigDefinitions `yaml:"clusters,omitempty"`
-	PullSecrets       []kube.PullSecret      `yaml:"pullSecrets,omitempty"`
-	VaultNamespace    string                 `yaml:"vaultNamespace,omitempty" json:"vaultNamespace,omitempty"`
+	Role              core.EnvironmentRole `yaml:"role" json:"role"`
+	ClusterRoles      []string             `yaml:"clusterRoles,omitempty" json:"clusterRoles,omitempty"`
+	DefaultCluster    string               `yaml:"defaultCluster,omitempty" json:"defaultCluster"`
+	Clusters          kube.ClusterConfigs  `yaml:"clusters,omitempty"`
+	PullSecrets       []kube.PullSecret    `yaml:"pullSecrets,omitempty"`
+	VaultNamespace    string               `yaml:"vaultNamespace,omitempty" json:"vaultNamespace,omitempty"`
 	// If true, commands which would cause modifications to be deployed will
 	// trigger a confirmation prompt.
 	Protected bool                             `yaml:"protected" json:"protected"`

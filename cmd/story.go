@@ -45,13 +45,30 @@ var storyShowtCmd = addCommand(storyCmd, &cobra.Command{
 			fmt.Println(y)
 		}
 
+		if viper.GetBool(argStoryShowBranches) {
+			color.Blue("Branches:\n")
+
+			branches, branchesErr := storyHandler.GetBranches(story)
+			if branchesErr != nil {
+				return branchesErr
+			}
+
+			branchesErr = printOutputWithDefaultFormat("t", branches)
+			if branchesErr != nil {
+				return branchesErr
+			}
+
+		}
+
 		return nil
 
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(argStoryShowDetails, false, "Show provider details")
+	cmd.Flags().Bool(argStoryShowBranches, false, "Show branches for the story")
 })
 
 const (
-	argStoryShowDetails = "details"
+	argStoryShowDetails  = "details"
+	argStoryShowBranches = "branches"
 )

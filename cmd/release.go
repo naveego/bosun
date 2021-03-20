@@ -622,7 +622,7 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 
 		color.Yellow("About to deploy the following apps:")
 		for _, app := range deploy.AppDeploys {
-			fmt.Printf("- %s: %s (tag %s) => %s.%s \n", app.Name, app.AppConfig.Version, deploySettings.GetImageTag(app.AppManifest.AppMetadata), app.Cluster, app.Namespace)
+			fmt.Printf("- %s: %s (tag %s) => namespace:%s \n", app.Name, app.AppConfig.Version, deploySettings.GetImageTag(app.AppManifest.AppMetadata), app.Namespace)
 		}
 
 		if !confirm("Is this what you expected") {
@@ -700,13 +700,8 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 		fmt.Printf("Refreshing %d apps: %+v\n", len(apps), args[1:])
 
 		fromBranch := viper.GetString(argReleaseUpdateBranch)
-		if fromBranch != "" {
-			for _, app := range apps {
-				app.Branching.Release = fromBranch
-			}
-		}
 
-		err = release.RefreshApps(ctx, apps...)
+		err = release.RefreshApps(ctx, fromBranch, apps...)
 		if err != nil {
 			return err
 		}

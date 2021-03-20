@@ -60,16 +60,6 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		ctx := b.NewContext()
 
-		if err = b.ConfirmEnvironment(); err != nil {
-			return err
-		}
-
-		cluster := viper.GetString(ArgVaultCluster)
-		if cluster != "" {
-			if err = b.UseEnvironmentAndCluster(b.GetCurrentEnvironment().Name, cluster); err != nil {
-				return err
-			}
-		}
 		g := globalParameters{}
 		err = g.init()
 		if err != nil {
@@ -82,7 +72,9 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		app := mustGetApp(b, args[0:1])
 
-		appDeploy, err := getAppDeploy(b, cluster, app)
+		env := b.GetCurrentEnvironment()
+
+		appDeploy, err := getAppDeploy(b, env.Cluster.Name, app)
 		if err != nil {
 			return err
 		}
@@ -177,10 +169,7 @@ Otherwise, this will do nothing.
 			return errors.New("vault not found in platform apps")
 		}
 
-		cluster, err := env.GetClusterByName(env.ClusterName)
-		if err != nil {
-			return err
-		}
+		cluster := env.Cluster
 
 		for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
 			for namespaceRole, namespaceConfig := range cluster.Namespaces {

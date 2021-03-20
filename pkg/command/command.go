@@ -171,7 +171,6 @@ func executeScript(script string, ctx ExecutionContext, opt CommandOpts) (string
 
 	cmd := GetCommandForScript(tmp.Name()).
 		WithDir(dir).
-		IncludeEnv(ctx.GetEnvironmentVariables()).
 		IncludeEnv(vars).
 		WithContext(ctx.Ctx())
 

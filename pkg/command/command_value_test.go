@@ -24,10 +24,10 @@ var _ = Describe("CommandValue", func() {
 	var ctx BosunContext
 
 	BeforeEach(func() {
-		ctx = BosunContext{}.WithLog(logrus.NewEntry(logrus.StandardLogger()))
+		ctx = NewTestBosunContext().WithLog(logrus.NewEntry(logrus.StandardLogger()))
 	})
 
-	Describe("marshalling", func() {
+	FDescribe("marshalling", func() {
 
 		DescribeTable("should roundtrip", func(in string, expectedValue CommandValue, expectedYaml string) {
 			var sut container

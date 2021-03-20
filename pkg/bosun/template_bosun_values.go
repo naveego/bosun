@@ -6,29 +6,27 @@ import (
 )
 
 type TemplateBosunValues struct {
-	AppName         string              `yaml:"appName"`
-	AppVersion      string              `yaml:"appVersion"`
-	Cluster         string              `yaml:"cluster"`
-	ClusterRole     string              `yaml:"clusterRole"`
-	ClusterRoles    []string            `yaml:"clusterRoles"`
-	ClusterProvider string              `yaml:"clusterProvider"`
-	ClustersRoles   map[string][]string `yaml:"clusters"`
-	Namespace       string              `yaml:"namespace"`
-	NamespaceRole   string              `yaml:"namespaceRole"`
-	NamespaceRoles  []string            `yaml:"namespaceRoles"`
-	Environment     string              `yaml:"environment"`
-	EnvironmentRole string              `yaml:"environmentRole"`
-	ReleaseVersion  string              `yaml:"releaseVersion"`
-	DeployedAt      string              `yaml:"deployedAt"`
+	AppName         string   `yaml:"appName"`
+	AppVersion      string   `yaml:"appVersion"`
+	Cluster         string   `yaml:"cluster"`
+	Stack           string   `yaml:"stack"`
+	ClusterRoles    []string `yaml:"clusterRoles"`
+	ClusterProvider string   `yaml:"clusterProvider"`
+	Namespace       string   `yaml:"namespace"`
+	NamespaceRole   string   `yaml:"namespaceRole"`
+	NamespaceRoles  []string `yaml:"namespaceRoles"`
+	Environment     string   `yaml:"environment"`
+	EnvironmentRole string   `yaml:"environmentRole"`
+	ReleaseVersion  string   `yaml:"releaseVersion"`
+	DeployedAt      string   `yaml:"deployedAt"`
 }
 
 func (t TemplateBosunValues) ToValues() values.Values {
 	return values.Values{
 
 		core.KeyCluster:         t.Cluster,
-		core.KeyClusterRole:     t.ClusterRole,
+		core.KeyStack:           t.Stack,
 		core.KeyClusterRoles:    t.ClusterRoles,
-		core.KeyClustersRoles:   t.ClustersRoles,
 		core.KeyClusterProvider: t.ClusterProvider,
 		core.KeyNamespace:       t.Namespace,
 		core.KeyNamespaceRole:   t.NamespaceRole,

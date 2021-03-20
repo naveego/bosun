@@ -14,7 +14,7 @@ func (c AmazonClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 		c.Region = "us-east-1"
 	}
 
-	err := pkg.NewShellExe("aws", "eks", "--region", c.Region, "update-kubeconfig", "--name", ctx.Name, "--alias", ctx.Name).RunE()
+	err := pkg.NewShellExe("aws", "eks", "--region", c.Region, "update-kubeconfig", "--kubeconfig", ctx.KubeConfigPath, "--name", ctx.Brn.ClusterName, "--alias", ctx.Brn.ClusterName).RunE()
 	if err != nil {
 		return err
 	}

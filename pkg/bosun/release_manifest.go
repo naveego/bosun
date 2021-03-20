@@ -305,7 +305,7 @@ func (r *ReleaseManifest) IsMutable() error {
 	return nil
 }
 
-func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
+func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*App) error {
 
 	err := r.IsMutable()
 	if err != nil {
@@ -313,26 +313,45 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 	}
 
 	requestedApps := map[string]*App{}
+
 	for _, app := range apps {
 		requestedApps[app.Name] = app
 	}
 
+	allAppManifests, stableErr := r.GetAppManifests()
+	if stableErr != nil {
+		return stableErr
+	}
+	queue := worker.NewKeyedWorkQueue(ctx.Log(), 10)
+
+	if len(requestedApps) == 0 {
+		for appName := range allAppManifests {
+			wsApp, wsErr := ctx.Bosun.GetAppFromWorkspace(appName)
+			if wsErr != nil {
+				ctx.Log().WithError(wsErr).Warnf("Could not get app %q from workspace, it will not be refreshed", appName)
+			} else {
+				requestedApps[appName] = wsApp
+			}
+		}
+	}
+
 	switch r.Slot {
 	case SlotUnstable:
-		allAppManifests, unstableErr := r.GetAppManifests()
-		if unstableErr != nil {
-			return unstableErr
-		}
-		queue := worker.NewKeyedWorkQueue(ctx.Log(), 10)
 
 		for k := range allAppManifests {
 			app := allAppManifests[k]
 			log := ctx.Log().WithField("app", app.Name)
+
+			appBranch := branch
+			if appBranch == "" {
+				appBranch = app.AppConfig.Branching.Develop
+			}
+
 			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
 				queue.Dispatch(app.Repo, func() {
-					unstableErr = r.RefreshApp(ctx, app.Name, app.AppConfig.Branching.Develop)
-					if unstableErr != nil {
-						log.WithError(unstableErr).Errorf("Unable to refresh %q", app.Name)
+					err = r.RefreshApp(ctx, app.Name, appBranch)
+					if err != nil {
+						log.WithError(err).Errorf("Unable to refresh %q", app.Name)
 					}
 				})
 			}
@@ -341,39 +360,25 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 
 	case SlotStable:
 
-		allAppManifests, stableErr := r.GetAppManifests()
-		if stableErr != nil {
-			return stableErr
-		}
-		queue := worker.NewKeyedWorkQueue(ctx.Log(), 10)
-
-		if len(requestedApps) == 0 {
-			for appName := range allAppManifests {
-				wsApp, wsErr := ctx.Bosun.GetAppFromWorkspace(appName)
-				if wsErr != nil {
-					ctx.Log().WithError(wsErr).Warnf("Could not get app %q from workspace, it will not be refreshed", appName)
-				} else {
-					requestedApps[appName] = wsApp
-				}
-			}
-		}
-
 		for _, app := range requestedApps {
 
 			// app := allAppManifests[appName]
 			log := ctx.Log().WithField("app", app.Name)
 
-			releaseBranchForApp, appErr := r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
-
-			log.Infof("Refreshing on stable slot from branch %q", releaseBranchForApp)
-
-			if appErr != nil {
-				return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
+			var appErr error
+			appBranch := branch
+			if appBranch == "" {
+				appBranch, appErr = r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
+				if appErr != nil {
+					return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
+				}
 			}
+
+			log.Infof("Refreshing on stable slot from branch %q", appBranch)
 
 			queue.Dispatch(app.Repo.Name, func() {
 
-				appErr = r.RefreshApp(ctx, app.Name, releaseBranchForApp)
+				appErr = r.RefreshApp(ctx, app.Name, appBranch)
 				if appErr != nil {
 					log.WithError(appErr).Errorf("Unable to refresh %q", app.Name)
 				}
@@ -596,6 +601,18 @@ func (r *ReleaseManifest) GetAppManifest(name string) (*AppManifest, error) {
 	}
 
 	return nil, errors.Errorf("no app manifest with name %q in release %q", name, r.Name)
+
+}
+
+func (r *ReleaseManifest) TryGetAppManifest(name string) (*AppManifest, bool, error) {
+	appManifests, err := r.GetAppManifests()
+	if err != nil {
+		return nil, false, err
+	}
+
+	a, ok := appManifests[name]
+
+	return a, ok, nil
 
 }
 

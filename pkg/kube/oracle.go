@@ -2,7 +2,6 @@ package kube
 
 import (
 	"github.com/naveego/bosun/pkg"
-	"os"
 )
 
 type OracleClusterConfig struct {
@@ -12,15 +11,12 @@ type OracleClusterConfig struct {
 
 func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
-	kubeConfigPath := os.ExpandEnv("$HOME/.kube/config")
-	if ctx.KubeConfigPath != "" {
-		kubeConfigPath = ctx.KubeConfigPath
-	}
+	kubectl := Kubectl{Kubeconfig: ctx.KubeConfigPath}
 
 	err := pkg.NewShellExe("oci", "ce", "cluster", "create-kubeconfig",
 		"--token-version", "2.0.0",
 		"--cluster-id", oc.OCID,
-		"--file", kubeConfigPath,
+		"--file", kubectl.Kubeconfig,
 		"--region", oc.Region,
 	).RunE()
 
@@ -30,16 +26,20 @@ func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	opaqueName := oc.OCID[len(oc.OCID)-11:]
 
-	err = pkg.NewShellExe("kubectl", "config",
+	_, err = kubectl.Exec( "config",
 		"delete-context",
-		ctx.Name,
-	).RunE()
+		ctx.Brn.ClusterName,
+	)
 
-	err = pkg.NewShellExe("kubectl", "config",
+	if err != nil {
+		ctx.Log.Warnf("Delete of previous context instance %q failed: %s", ctx.Brn.Cluster, err.Error())
+	}
+
+	_, err = kubectl.Exec("config",
 		"rename-context",
 		"context-"+opaqueName,
-		ctx.Name,
-	).RunE()
+		ctx.Brn.ClusterName,
+	)
 
 	return err
 }

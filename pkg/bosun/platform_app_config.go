@@ -43,7 +43,7 @@ func (p PlatformAppConfigs) Names() []string {
 }
 
 func (p PlatformAppConfigs) FilterByEnvironment(env *environment.Environment) PlatformAppConfigs {
-	cluster, _ := env.GetClusterByName(env.ClusterName)
+	cluster := env.Cluster
 
 	var out PlatformAppConfigs
 	for _, app := range p {

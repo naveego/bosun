@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
@@ -53,6 +54,7 @@ type Platform struct {
 	EnvironmentDirectory         string                           `yaml:"environmentDirectory,omitempty" json:"environmentPaths"`
 	BundleDirectory              string                           `yaml:"bundleDirectory,omitempty" json:"bundleDirectory"`
 	EnvironmentPaths             []string                         `yaml:"environmentPaths,omitempty" json:"environmentPaths"`
+	ClusterPaths                 []string                         `yaml:"clusterPaths,omitempty" json:"clusterPaths"`
 	EnvironmentRoles             []core.EnvironmentRoleDefinition `yaml:"environmentRoles"`
 	ClusterRoles                 []core.ClusterRoleDefinition     `yaml:"clusterRoles"`
 	NamespaceRoles               []core.NamespaceRoleDefinition   `yaml:"namespaceRoles"`
@@ -61,6 +63,7 @@ type Platform struct {
 	Apps                         PlatformAppConfigs               `yaml:"apps,omitempty"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
+	_clusterConfigs               kube.ClusterConfigs            `yaml:"-" json:"-"`
 	bosun                        *Bosun                           `yaml:"-"`
 	// set to true if this platform is a dummy created for automation purposes
 	isAutomationDummy bool          `yaml:"-"`
@@ -154,19 +157,12 @@ func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 	return p.environmentConfigs, nil
 }
 
-func (p *Platform) GetClusterByName(name string) (*kube.ClusterConfig, error) {
-	envs, err := p.GetEnvironmentConfigs()
-	if err != nil {
-		return nil, err
-	}
-	for _, env := range envs {
-		for _, cluster := range env.Clusters {
-			if cluster.Name == name {
-				return cluster, nil
-			}
-		}
-	}
-	return nil, errors.Errorf("no cluster in any environment with name %q", name)
+func (p *Platform) GetClusterByBrn(stack brns.Stack) (*kube.ClusterConfig, error) {
+	return p._clusterConfigs.GetByBrn(stack)
+}
+
+func (p *Platform) GetClusters() (kube.ClusterConfigs, error) {
+	return p._clusterConfigs, nil
 }
 
 func (p *Platform) GetCurrentRelease() (*ReleaseManifest, error) {
@@ -192,7 +188,6 @@ func (p *Platform) GetPreviousRelease() (*ReleaseManifest, error) {
 
 	branches := g.Branches()
 
-
 	p.log.WithField("branches", branches).Debug("Got listing of previous branches.")
 
 	currentVersion := stable.Version
@@ -213,7 +208,7 @@ func (p *Platform) GetPreviousRelease() (*ReleaseManifest, error) {
 		if versionErr != nil {
 			continue
 		}
-		if version == currentVersion{
+		if version == currentVersion {
 			continue
 		}
 		if !version.LessThan(currentVersion) {
@@ -280,9 +275,9 @@ func (p *Platform) MakeReleaseBranchName(version semver.Version) string {
 }
 
 type ReleasePlanSettings struct {
-	Name         string
-	Version      semver.Version
-	Bump         string
+	Name    string
+	Version semver.Version
+	Bump    string
 }
 
 func (p *Platform) checkPlanningOngoing() error {
@@ -352,7 +347,7 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 		return nil, errors.Errorf("release already exists with name %q or version %v", settings.Name, settings.Version)
 	}
 
-	branch :=  p.MakeReleaseBranchName(settings.Version)
+	branch := p.MakeReleaseBranchName(settings.Version)
 	if err = p.SwitchToReleaseBranch(ctx, branch); err != nil {
 		return nil, err
 	}
@@ -376,8 +371,6 @@ func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSetti
 	}
 
 	metadata := manifest.ReleaseMetadata
-
-
 
 	if settings.Bump == "" && settings.Version.Empty() {
 		return nil, errors.New("either version or bump must be provided")
@@ -426,7 +419,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 
 	ctx.Log().Info("Refreshing apps in unstable release...")
 
-	err = unstableManifest.RefreshApps(ctx, apps...)
+	err = unstableManifest.RefreshApps(ctx, "", apps...)
 	if err != nil {
 		return err
 	}
@@ -1279,7 +1272,6 @@ func (p *Platform) GetApps(ctx filter.MatchMapArgContainer) PlatformAppConfigs {
 	for _, app := range p.Apps {
 		if app.TargetFilters.Matches(ctx.GetMatchMapArgs()) {
 
-
 			out = append(out, app)
 		}
 	}
@@ -1332,10 +1324,43 @@ func (p *Platform) LoadChildren() error {
 		var config *environment.Config
 		err = yaml.LoadYaml(path, &config)
 		if err != nil {
-			return err
+			p.log.WithError(err).Error("could not load environment config")
+			continue
 		}
 		config.SetFromPath(path)
 		p.environmentConfigs = append(p.environmentConfigs, config)
+
+		for _, clusterConfig := range config.Clusters {
+			clusterConfig.Environment = config.Name
+
+			if clusterConfig.StackTemplate != nil {
+				clusterConfig.StackTemplate.Environment = config.Name
+			}
+
+			p._clusterConfigs = append(p._clusterConfigs, clusterConfig)
+		}
+	}
+
+	for _, pattern := range p.ClusterPaths {
+
+		clusterPaths, _ := filepath.Glob(p.ResolveRelative(pattern))
+		for _, clusterPath := range clusterPaths {
+			var clusterConfig *kube.ClusterConfig
+
+			err = yaml.LoadYaml(clusterPath, &clusterConfig)
+			if err != nil {
+				p.log.WithError(err).Error("could not load environment config")
+				continue
+			}
+
+			clusterConfig.SetFromPath(clusterPath)
+
+			if clusterConfig.StackTemplate != nil {
+				clusterConfig.SetFromPath(clusterPath)
+			}
+
+			p._clusterConfigs = append(p._clusterConfigs, clusterConfig)
+		}
 	}
 
 	return nil

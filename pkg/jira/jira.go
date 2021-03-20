@@ -4,12 +4,15 @@ import (
 	"fmt"
 	jira "github.com/andygrunwald/go-jira"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/stories"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"path"
 	"regexp"
+	"strings"
 )
 
 type Client struct {
@@ -17,6 +20,43 @@ type Client struct {
 	jira        *jira.Client
 	username    string
 	transitions CompiledTransitions
+}
+
+func (c *Client) GetBranches(story *stories.Story) ([]stories.BranchRef, error) {
+
+	issue, err := getIssue(story)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.getBranches(issue.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	y, _ := yaml.MarshalString(resp)
+	fmt.Println(y)
+
+
+	var branches []stories.BranchRef
+
+	for _, detail := range resp.Detail {
+		for _, branch := range detail.Branches {
+
+			repoRef, parseErr := issues.ParseRepoRef(strings.Replace(branch.Repository.URL, "https://github.com/", "", 1))
+			if parseErr != nil {
+				return nil, errors.Wrap(parseErr, "could not parse repo name")
+			}
+
+			branchRef := stories.BranchRef{
+				Branch: git.BranchName(branch.Name),
+				Repo:   repoRef,
+			}
+
+			branches = append(branches, branchRef)
+		}
+	}
+	return branches, nil
 }
 
 var _ stories.StoryHandler = &Client{}
@@ -193,4 +233,26 @@ func detailedErr(res *jira.Response, err error) error {
 	body, _ := ioutil.ReadAll(res.Body)
 
 	return errors.Errorf("jira: %s; response body: %s", err.Error(), string(body))
+}
+
+func (c *Client) getBranches(issueID string) (getBranchesResponse, error) {
+
+	req, _ := c.jira.NewRequest("GET", fmt.Sprintf("/rest/dev-status/latest/issue/detail?issueId=%s&applicationType=GitHub&dataType=branch", issueID), nil)
+
+	var out getBranchesResponse
+
+	err := detailedErr(c.jira.Do(req, &out))
+
+	return out, err
+}
+
+func getIssue(story *stories.Story) (*jira.Issue, error) {
+
+	issue, ok := story.ProviderState.(*jira.Issue)
+	if ok {
+		return issue, nil
+	}
+
+	return nil, errors.Errorf("story was not created by jira story handler, wanted ProviderState to be *jira.Issue, but it was %t", story.ProviderState)
+
 }

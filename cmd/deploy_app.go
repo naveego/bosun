@@ -49,7 +49,7 @@ func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployAppTag, "", "Tag to use when deploying the app or apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
-	cmd.Flags().Bool(argAppDeployPreview, false, "Just dump the values which would be used to deploy, then exit.")
+	cmd.Flags().Bool(argAppDeployValuesOnly, false, "Just dump the values which would be used to deploy, then exit.")
 	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().Bool(argDeployAppRecycle, false, "Recycle the app after deploying it.")
 	cmd.Flags().Bool(argDeployAppDiffOnly, false, "Display the impact of running the deploy but don't actually run it.")
@@ -154,13 +154,13 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 	}
 
 	executeRequest := bosun.ExecuteDeploymentPlanRequest{
-		Plan:        plan,
-		IncludeApps: forceAppNames,
-		ValueSets:   valueSets,
-		Recycle:     viper.GetBool(argDeployAppRecycle),
-		PreviewOnly: viper.GetBool(argAppDeployPreview),
-		DiffOnly:    viper.GetBool(argDeployAppDiffOnly),
-		Clusters: map[string]bool{},
+		Plan:           plan,
+		IncludeApps:    forceAppNames,
+		ValueSets:      valueSets,
+		Recycle:        viper.GetBool(argDeployAppRecycle),
+		DumpValuesOnly: viper.GetBool(argAppDeployValuesOnly),
+		DiffOnly:       viper.GetBool(argDeployAppDiffOnly),
+		Clusters:       map[string]bool{},
 	}
 
 	clusters := viper.GetStringSlice(argDeployExecuteClusters)
