@@ -1255,6 +1255,18 @@ func (b *Bosun) GetCluster(cluster brns.Stack) (*kube.ClusterConfig, error) {
 
 func (b *Bosun) NormalizeStackBrn(hint string) (brns.Stack, error) {
 
+	brn, err := b.normalizeStackBrn(hint);
+
+	if err != nil {
+		return brn, err
+	}
+
+	if brn.String() != hint {
+		b.log.Infof("Normalized hint %q to %s", hint, brn)
+	}
+}
+
+func (b *Bosun) normalizeStackBrn(hint string) (brns.Stack, error)  {
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return brns.Stack{}, err

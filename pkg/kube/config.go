@@ -170,12 +170,14 @@ func (k ClusterConfigs) GetByBrn(brn brns.Stack) (*ClusterConfig, error) {
 		case 1:
 			return clustersWithEnvironment[0], nil
 		default:
+			var candidateBrns []string
 			for _, c := range clustersWithEnvironment {
+				candidateBrns = append(candidateBrns, c.Brn.String())
 				if c.IsDefaultCluster {
 					return c, nil
 				}
 			}
-			return nil, errors.Errorf("%d clusters matched environment %s, but none had isDefaultCluster=true", len( brn)
+			return nil, errors.Errorf("%d clusters matched hint %s, but none had isDefaultCluster=true; matches: %v", len(clustersWithEnvironment), brn, candidateBrns)
 		}
 	}
 
