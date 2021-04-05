@@ -31,10 +31,77 @@ var stackCmd = addCommand(rootCmd, &cobra.Command{
 	Short: "Contains commands for managing a stack of apps.",
 })
 
-var stackShowCmd = addCommand(stackCmd, &cobra.Command{
-	Use:          "show",
-	Aliases:      []string{"ls", "list", "view"},
-	Short:        "Shows the current stack for the current cluster or subcluster.",
+var stackLsCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "ls",
+	Aliases:      []string{"list", "view"},
+	Short:        "Lists the stacks in the current cluster.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b, p := MustGetPlatform()
+		env := b.GetCurrentEnvironment()
+		cluster := env.GetCluster()
+
+		stack, err := cluster.GetStackState()
+
+		if err != nil {
+			return err
+		}
+
+		knownApps := p.GetKnownAppMap()
+
+		skippedGlobalApps := 0
+		skippedEnvApps := 0
+
+		for _, knownApp := range knownApps {
+
+			_, deployed := stack.Apps[knownApp.Name]
+			if deployed {
+				continue
+			}
+
+			stackApp := kube.StackApp{
+				Name:    knownApp.Name,
+				Details: "Not deployed;",
+			}
+
+			disabledForEnv := env.IsAppDisabled(knownApp.Name)
+
+			if disabledForEnv && !viper.GetBool(argStackIncludeAllApps) {
+				skippedGlobalApps++
+				continue
+			}
+
+			disabledForCluster := env.Cluster.IsAppDisabled(knownApp.Name)
+
+			if disabledForCluster {
+				if !viper.GetBool(argStackIncludeEnvApps) && !viper.GetBool(argStackIncludeAllApps) {
+					skippedEnvApps++
+					continue
+				}
+
+				stackApp.Details += " Disabled for cluster"
+			}
+
+			stack.Apps[knownApp.Name] = stackApp
+
+		}
+
+		ctx := b.NewContext()
+		if skippedGlobalApps > 0 {
+			ctx.Log().Infof("Omitted %d apps which are disabled for this environment, use --%s flag to show them", skippedGlobalApps, argStackIncludeAllApps)
+		}
+		if skippedEnvApps > 0 {
+			ctx.Log().Infof("Omitted %d apps which are disabled for this cluster, use --%s flag to show them", skippedEnvApps, argStackIncludeEnvApps)
+		}
+
+		return printOutputWithDefaultFormat("table", stack)
+	},
+})
+
+var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "apps",
+	Short:        "Shows the apps in the current stack.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 

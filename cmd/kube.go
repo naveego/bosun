@@ -110,7 +110,7 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 
 var kubeListDefinitionsCmd = addCommand(kubeCmd, &cobra.Command{
 	Use:          "list-clusters",
-	Aliases:      []string{"lsc", "list-cluster"},
+	Aliases:      []string{"ls", "list-cluster", "list"},
 	Short:        "Lists all cluster definitions. ",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {

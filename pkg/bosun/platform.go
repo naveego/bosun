@@ -1333,10 +1333,6 @@ func (p *Platform) LoadChildren() error {
 		for _, clusterConfig := range config.Clusters {
 			clusterConfig.Environment = config.Name
 
-			if clusterConfig.StackTemplate != nil {
-				clusterConfig.StackTemplate.Environment = config.Name
-			}
-
 			p._clusterConfigs = append(p._clusterConfigs, clusterConfig)
 		}
 	}

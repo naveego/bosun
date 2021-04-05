@@ -1264,6 +1264,8 @@ func (b *Bosun) NormalizeStackBrn(hint string) (brns.Stack, error) {
 	if brn.String() != hint {
 		b.log.Infof("Normalized hint %q to %s", hint, brn)
 	}
+
+	return brn, nil
 }
 
 func (b *Bosun) normalizeStackBrn(hint string) (brns.Stack, error)  {

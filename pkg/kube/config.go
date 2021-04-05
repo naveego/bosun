@@ -25,27 +25,31 @@ import (
 
 type ClusterConfig struct {
 	core.ConfigShared `yaml:",inline"`
-	KubeconfigPath    string                               `yaml:"kubeconfigPath,omitempty"`
-	Provider          string                               `yaml:"-"`
-	EnvironmentAlias  string                               `yaml:"environmentAlias,omitempty"`
-	Environment       string                               `yaml:"environment,omitempty"`
-	Roles             core.ClusterRoles                    `yaml:"roles,flow"`
-	Protected         bool                                 `yaml:"protected"`
-	Variables         []*environmentvariables.Variable     `yaml:"variables,omitempty"`
-	ValueOverrides    *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
-	Oracle            *OracleClusterConfig                 `yaml:"oracle,omitempty"`
-	Minikube          *MinikubeConfig                      `yaml:"minikube,omitempty"`
-	Microk8s          *Microk8sConfig                      `yaml:"microk8s,omitempty"`
-	Amazon            *AmazonClusterConfig                 `yaml:"amazon,omitempty"`
-	Rancher           *RancherClusterConfig                `yaml:"rancher,omitempty"`
-	ExternalCluster   *ExternalClusterConfig               `yaml:"externalCluster,omitempty"`
-	Namespaces        NamespaceConfigs                     `yaml:"namespaces"`
-	Apps              map[string]values.ValueSetCollection `yaml:"apps"`
-	StackTemplate     *ClusterConfig                       `yaml:"stackTemplate,omitempty"`
-	Brn               brns.Stack                           `yaml:"-"`
-	Certs             []ClusterCert                        `yaml:"certs"`
-	IsDefaultCluster  bool                                 `yaml:"isDefaultCluster"`
-	Aliases           []string                             `yaml:"aliases,omitempty"`
+	StackConfig       `yaml:",inline"`
+	KubeconfigPath    string                 `yaml:"kubeconfigPath,omitempty"`
+	Provider          string                 `yaml:"-"`
+	EnvironmentAlias  string                 `yaml:"environmentAlias,omitempty"`
+	Environment       string                 `yaml:"environment,omitempty"`
+	Roles             core.ClusterRoles      `yaml:"roles,flow"`
+	Protected         bool                   `yaml:"protected"`
+	Oracle            *OracleClusterConfig   `yaml:"oracle,omitempty"`
+	Minikube          *MinikubeConfig        `yaml:"minikube,omitempty"`
+	Microk8s          *Microk8sConfig        `yaml:"microk8s,omitempty"`
+	Amazon            *AmazonClusterConfig   `yaml:"amazon,omitempty"`
+	Rancher           *RancherClusterConfig  `yaml:"rancher,omitempty"`
+	ExternalCluster   *ExternalClusterConfig `yaml:"externalCluster,omitempty"`
+	StackTemplate     *StackConfig           `yaml:"stackTemplate,omitempty"`
+	Brn               brns.Stack             `yaml:"-"`
+	IsDefaultCluster  bool                   `yaml:"isDefaultCluster"`
+	Aliases           []string               `yaml:"aliases,omitempty"`
+}
+
+type StackConfig struct {
+	Variables      []*environmentvariables.Variable     `yaml:"variables,omitempty"`
+	Namespaces     NamespaceConfigs                     `yaml:"namespaces"`
+	Apps           map[string]values.ValueSetCollection `yaml:"apps"`
+	Certs          []ClusterCert                        `yaml:"certs"`
+	ValueOverrides *values.ValueSetCollection           `yaml:"valueOverrides,omitempty"`
 }
 
 type ClusterCert struct {
@@ -216,6 +220,9 @@ func (c *ClusterConfig) RenderStack(subclusterName string) (*ClusterConfig, erro
 	if err != nil {
 		return nil, err
 	}
+
+	panic("Steve needs to fix this")
+
 
 	var clusterConfig *ClusterConfig
 	err = yaml.UnmarshalString(rendered, &clusterConfig)
