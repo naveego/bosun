@@ -9,5 +9,5 @@ import (
 
 func TestEnvironment(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Environment Suite")
+	RunSpecs(t, "EnvironmentBrn Suite")
 }

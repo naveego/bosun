@@ -7,7 +7,7 @@ import (
 )
 
 
-var _ = Describe("Environment", func() {
+var _ = Describe("EnvironmentBrn", func() {
 
 	const secretGroup = "default"
 	const secretName = "example"

@@ -15,6 +15,8 @@
 package cmd
 
 import (
+	"fmt"
+	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
@@ -31,6 +33,81 @@ var stackCmd = addCommand(rootCmd, &cobra.Command{
 	Short: "Contains commands for managing a stack of apps.",
 })
 
+var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "ensure [name]",
+	Aliases:      []string{"create"},
+	Args:         cobra.MaximumNArgs(1),
+	Short:        "Configures namespaces and other things for the provided stack. Uses the current stack if none is provided.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return configureStack(args, func(stack *kube.Stack) error {
+			err := stack.ConfigureNamespaces()
+			if err != nil {
+				color.Red("Could not configure namespaces: %+v", err)
+			}
+
+			err = stack.ConfigurePullSecrets()
+			if err != nil {
+				color.Red("Could not configure pull secrets: %+v", err)
+			}
+
+			err = stack.ConfigureCerts()
+			if err != nil {
+				color.Red("Could not configure certs: %+v", err)
+			}
+			return nil
+		})
+	},
+})
+
+var stackEnsureCertsCmd = addCommand(stackEnsureCmd, &cobra.Command{
+	Use:          "certs [name]",
+	Aliases:      []string{"create"},
+	Args:         cobra.MaximumNArgs(1),
+	Short:        "Configures certs for the provided stack. Uses the current stack if none is provided.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return configureStack(args, func(stack *kube.Stack) error {
+			return stack.ConfigureCerts()
+		})
+	},
+})
+
+func configureStack(args []string, fn func(stack *kube.Stack) error) error {
+	b, _ := MustGetPlatform()
+	env := b.GetCurrentEnvironment()
+
+	cluster := env.Cluster()
+
+	var err error
+	var stack *kube.Stack
+	if len(args) == 1 {
+		stack, err = cluster.GetStack(args[0])
+		if err != nil {
+			return err
+		}
+	} else {
+		stack = env.Stack()
+	}
+
+	err = fn(stack)
+	if err != nil {
+		return err
+	}
+
+	err = stack.Save()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Stack configured and saved.")
+
+	return nil
+
+}
+
 var stackLsCmd = addCommand(stackCmd, &cobra.Command{
 	Use:          "ls",
 	Aliases:      []string{"list", "view"},
@@ -38,64 +115,21 @@ var stackLsCmd = addCommand(stackCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b, p := MustGetPlatform()
+		b, _ := MustGetPlatform()
 		env := b.GetCurrentEnvironment()
-		cluster := env.GetCluster()
 
-		stack, err := cluster.GetStackState()
+		cluster := env.Cluster()
 
+		stacks, err := cluster.GetStackConfigs()
 		if err != nil {
 			return err
 		}
 
-		knownApps := p.GetKnownAppMap()
-
-		skippedGlobalApps := 0
-		skippedEnvApps := 0
-
-		for _, knownApp := range knownApps {
-
-			_, deployed := stack.Apps[knownApp.Name]
-			if deployed {
-				continue
-			}
-
-			stackApp := kube.StackApp{
-				Name:    knownApp.Name,
-				Details: "Not deployed;",
-			}
-
-			disabledForEnv := env.IsAppDisabled(knownApp.Name)
-
-			if disabledForEnv && !viper.GetBool(argStackIncludeAllApps) {
-				skippedGlobalApps++
-				continue
-			}
-
-			disabledForCluster := env.Cluster.IsAppDisabled(knownApp.Name)
-
-			if disabledForCluster {
-				if !viper.GetBool(argStackIncludeEnvApps) && !viper.GetBool(argStackIncludeAllApps) {
-					skippedEnvApps++
-					continue
-				}
-
-				stackApp.Details += " Disabled for cluster"
-			}
-
-			stack.Apps[knownApp.Name] = stackApp
-
+		for name := range stacks {
+			fmt.Println(name)
 		}
 
-		ctx := b.NewContext()
-		if skippedGlobalApps > 0 {
-			ctx.Log().Infof("Omitted %d apps which are disabled for this environment, use --%s flag to show them", skippedGlobalApps, argStackIncludeAllApps)
-		}
-		if skippedEnvApps > 0 {
-			ctx.Log().Infof("Omitted %d apps which are disabled for this cluster, use --%s flag to show them", skippedEnvApps, argStackIncludeEnvApps)
-		}
-
-		return printOutputWithDefaultFormat("table", stack)
+		return nil
 	},
 })
 
@@ -107,22 +141,22 @@ var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
 
 		b, p := MustGetPlatform()
 		env := b.GetCurrentEnvironment()
-		cluster := env.GetCluster()
 
-		stack, err := cluster.GetStackState()
-
-		if err != nil {
-			return err
-		}
+		stack := env.Stack()
 
 		knownApps := p.GetKnownAppMap()
 
 		skippedGlobalApps := 0
 		skippedEnvApps := 0
 
+		stackState, err := stack.GetState()
+		if err != nil {
+			return err
+		}
+
 		for _, knownApp := range knownApps {
 
-			_, deployed := stack.Apps[knownApp.Name]
+			_, deployed := stackState.DeployedApps[knownApp.Name]
 			if deployed {
 				continue
 			}
@@ -139,7 +173,7 @@ var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
 				continue
 			}
 
-			disabledForCluster := env.Cluster.IsAppDisabled(knownApp.Name)
+			disabledForCluster := env.Stack().IsAppDisabled(knownApp.Name)
 
 			if disabledForCluster {
 				if !viper.GetBool(argStackIncludeEnvApps) && !viper.GetBool(argStackIncludeAllApps) {
@@ -147,10 +181,10 @@ var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
 					continue
 				}
 
-				stackApp.Details += " Disabled for cluster"
+				stackApp.Details += " Disabled for stack"
 			}
 
-			stack.Apps[knownApp.Name] = stackApp
+			stackState.DeployedApps[knownApp.Name] = stackApp
 
 		}
 
@@ -162,7 +196,7 @@ var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
 			ctx.Log().Infof("Omitted %d apps which are disabled for this cluster, use --%s flag to show them", skippedEnvApps, argStackIncludeEnvApps)
 		}
 
-		return printOutputWithDefaultFormat("table", stack)
+		return printOutputWithDefaultFormat("table", stackState)
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(argStackIncludeEnvApps, false, "Include apps enabled for this environment but disabled for this cluster.")
@@ -189,9 +223,14 @@ var stackResetCmd = addCommand(stackCmd, &cobra.Command{
 		var appNames []string
 
 		for appName := range p.GetKnownAppMap() {
-			if !env.IsAppDisabled(appName) && !env.Cluster.IsAppDisabled(appName) {
+			if !env.IsAppDisabled(appName) && !env.Stack().IsAppDisabled(appName) {
 				appNames = append(appNames, appName)
 			}
+		}
+
+		stackState, err := env.Stack().GetState()
+		if err != nil {
+			return err
 		}
 
 		var providers []string
@@ -220,9 +259,31 @@ var stackResetCmd = addCommand(stackCmd, &cobra.Command{
 			return err
 		}
 
+		var appsNeedingReset []*bosun.AppDeploymentPlan
+
+		ctx := b.NewContext()
+
+		for _, app := range plan.Apps {
+
+			log := ctx.Log().WithField("app", app.Name).WithField("branch", app.Manifest.Branch).WithField("version", app.Manifest.Version.String())
+
+			deployedApp, isDeployed := stackState.DeployedApps[app.Name]
+			if !isDeployed {
+				appsNeedingReset = append(appsNeedingReset, app)
+				continue
+			}
+
+			if app.Manifest.Branch == deployedApp.Branch &&
+				app.Manifest.Version.String() == deployedApp.Version {
+				log.Info("Skipping app reset because branch and version match what is currently deployed.")
+				continue
+			}
+		}
+
+		plan.Apps = appsNeedingReset
+
 		executeRequest := bosun.ExecuteDeploymentPlanRequest{
-			Plan:     plan,
-			Clusters: map[string]bool{},
+			Plan: plan,
 		}
 
 		executor := bosun.NewDeploymentPlanExecutor(b, p)

@@ -413,7 +413,7 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 	appConfig.SetFileSaver(c)
 	appConfig.SetFromPath(c.FromPath)
 
-	repoPath, _ := git.GetRepoPath(bosunFile)
+	repoPath := filepath.Dir(bosunFile)
 
 	app := &App{
 		AppConfig: appConfig,

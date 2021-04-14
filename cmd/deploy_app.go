@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"github.com/naveego/bosun/pkg/bosun"
-	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -44,7 +43,7 @@ const (
 
 func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(argDeployPlanProviderPriority, []string{bosun.WorkspaceProviderName, bosun.SlotUnstable, bosun.SlotStable}, "Providers in priority order to use to deploy apps (current, stable, unstable, or workspace).")
-	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
+	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "DeployedApps to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps.")
 	cmd.Flags().String(argDeployAppTag, "", "Tag to use when deploying the app or apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
@@ -100,13 +99,12 @@ func deployApp(cmd *cobra.Command, args []string) error {
 	return err
 }
 
-func getAppDeploy(b *bosun.Bosun, clusters string, app *bosun.App) (*bosun.AppDeploy, error){
+func getAppDeploy(b *bosun.Bosun, app *bosun.App) (*bosun.AppDeploy, error){
 
 	var deploySettings = bosun.DeploySettings{
 		SharedDeploySettings: bosun.SharedDeploySettings{},
 		Apps: map[string]*bosun.App{app.Name:app},
 		AppOrder:             []string{app.Name},
-		Clusters:             map[string]bool{clusters: true},
 		Filter:               nil,
 		IgnoreDependencies:   true,
 		ForceDeployApps:      nil,
@@ -160,30 +158,6 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 		Recycle:        viper.GetBool(argDeployAppRecycle),
 		DumpValuesOnly: viper.GetBool(argAppDeployValuesOnly),
 		DiffOnly:       viper.GetBool(argDeployAppDiffOnly),
-		Clusters:       map[string]bool{},
-	}
-
-	clusters := viper.GetStringSlice(argDeployExecuteClusters)
-	if len(clusters) > 0 {
-		for _, cluster := range clusters {
-			executeRequest.Clusters[cluster] = true
-		}
-	} else {
-		for _, cluster := range b.GetCurrentEnvironment().Clusters {
-			if cluster.Protected {
-				executeRequest.Clusters[cluster.Name] = cli.RequestConfirmFromUser("This deployment will affect protected cluster %s, are you sure you want to do this?", cluster.Name)
-			} else {
-				executeRequest.Clusters[cluster.Name] = true
-			}
-		}
-	}
-
-	clustersWhitelist := viper.GetStringSlice(ArgGlobalCluster)
-	if len(clustersWhitelist) > 0 {
-		executeRequest.Clusters = map[string]bool{}
-		for _, cluster := range clustersWhitelist {
-			executeRequest.Clusters[cluster] = true
-		}
 	}
 
 	executor := bosun.NewDeploymentPlanExecutor(b, p)

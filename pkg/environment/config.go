@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg/script"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
+	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -101,6 +102,7 @@ func (e *Config) SetFromPath(path string) {
 		e.Clusters[i].FromPath = path
 	}
 }
+
 func (e *Config) Merge(other *Config) {
 
 	e.Commands = append(e.Commands, other.Commands...)
@@ -109,6 +111,19 @@ func (e *Config) Merge(other *Config) {
 	for _, v := range other.Scripts {
 		e.Scripts = append(e.Scripts, v)
 	}
+}
+
+func (e *Config) GetDefaultClusterConfig() (*kube.ClusterConfig, error) {
+
+	for _, c := range e.Clusters {
+		if c.Name == e.DefaultCluster ||
+			c.IsDefaultCluster {
+			return c, nil
+		}
+
+	}
+
+	return nil, errors.Errorf("environment has no cluster with IsDefaultCluster==true and no cluster with name matching defaultCluster %q", e.DefaultCluster)
 }
 
 func firstNonemptyString(s ...string) string {

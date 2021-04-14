@@ -1,21 +1,16 @@
 package kube
 
 import (
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"time"
 )
 
-type Stack struct {
-	Apps map[string]StackApp `yaml:"apps"`
-}
-
-func (s Stack) Headers() []string {
+func (s StackState) Headers() []string {
 	return []string{
 		"Name",
 		"Version",
@@ -31,11 +26,11 @@ func (s Stack) Headers() []string {
 	}
 }
 
-func (s Stack) Rows() [][]string {
+func (s StackState) Rows() [][]string {
 	var out [][]string
-	for _, appName := range util.SortedKeys(s.Apps) {
+	for _, appName := range util.SortedKeys(s.DeployedApps) {
 
-		app := s.Apps[appName]
+		app := s.DeployedApps[appName]
 
 		var deployedAt string
 		if !app.DeployedAt.IsZero() {
@@ -74,101 +69,57 @@ type StackApp struct {
 }
 
 const (
-	deployedAppsConfigMapName = "bosun-deployed-apps"
-	deployedAppsConfigMapKey  = "data"
+	DefaultStackName = "default"
 )
 
-func (c *ClusterConfig) GetStackState() (*Stack, error) {
-
-	client, err := GetKubeClientWithContext(c.KubeconfigPath, c.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	namespace := c.Namespaces["default"].Name
-
-	configmap, err := client.CoreV1().ConfigMaps(namespace).Get(deployedAppsConfigMapName, metav1.GetOptions{})
-	if kerrors.IsNotFound(err) {
-		return &Stack{Apps: map[string]StackApp{}}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	data := configmap.Data[deployedAppsConfigMapKey]
-
-	var deployedApps *Stack
-
-	err = yaml.UnmarshalString(data, &deployedApps)
-
-	return deployedApps, err
+func makeStackConfigmapName(name string) string {
+	return "bosun-stack-" + git.Slug(name)
 }
 
-func (c *ClusterConfig) UpdateStackApp(updates ...StackApp) error {
+func (c *Cluster) GetStackConfigs() (map[string]*StackState, error) {
+	namespace := c.DefaultNamespace
 
-	err := c.UpdateStack(func(stack *Stack) error {
-		for _, app := range updates {
-
-			stack.Apps[app.Name] = app
-		}
-
-		return nil
+	configmaps, err := c.Client.CoreV1().ConfigMaps(namespace).List(metav1.ListOptions{
+		LabelSelector: StackLabel,
 	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 
-	return err
+	out := map[string]*StackState{}
+
+	for _, configmap := range configmaps.Items {
+
+		data := configmap.Data[stackConfigMapKey]
+
+		var stackConfig *StackState
+
+		err = yaml.UnmarshalString(data, &stackConfig)
+
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		out[stackConfig.Name] = stackConfig
+	}
+
+	return out, nil
 }
 
-func (c *ClusterConfig) UpdateStack(mutator func(apps *Stack) error) error {
+func (c *Cluster) CreateStack(name string) (*Stack, error) {
 
-	client, err := GetKubeClientWithContext(c.KubeconfigPath, c.Name)
-	if err != nil {
-		return err
+	namespace := c.DefaultNamespace
+	configmapName := makeStackConfigmapName(name)
+
+	_, err := c.Client.CoreV1().ConfigMaps(namespace).Get(configmapName, metav1.GetOptions{})
+	if !kerrors.IsNotFound(err) {
+		return nil, errors.Errorf("stack with name %q already exists", name)
 	}
 
-	namespace := c.Namespaces["default"].Name
+	return NewStack(c, name)
+}
 
-	var configmap *v1.ConfigMap
+func (c *Cluster) GetStack(name string) (*Stack, error) {
 
-	for {
-
-		configmap, err = client.CoreV1().ConfigMaps(namespace).Get(deployedAppsConfigMapName, metav1.GetOptions{})
-		if kerrors.IsNotFound(err) {
-			emptyData, _ := yaml.MarshalString(Stack{})
-
-			configmap, err = client.CoreV1().ConfigMaps(namespace).Create(&v1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: deployedAppsConfigMapName},
-				Data: map[string]string{
-					deployedAppsConfigMapKey: emptyData,
-				},
-				BinaryData: nil,
-			})
-
-			return err
-		} else if err != nil {
-			return err
-		}
-
-		var stack *Stack
-		_ = yaml.UnmarshalString(configmap.Data[deployedAppsConfigMapKey], &stack)
-
-		err = mutator(stack)
-		if err != nil {
-			return errors.Wrap(err, "error applying mutator")
-		}
-
-		configmap.Data[deployedAppsConfigMapKey], _ = yaml.MarshalString(stack)
-
-		_, err = client.CoreV1().ConfigMaps(namespace).Update(configmap)
-
-		if kerrors.IsConflict(err) {
-			pkg.Log.Warn("Conflict while updating deployed apps, will try again.")
-			<-time.After(1 * time.Second)
-		} else if err != nil {
-			return err
-		} else {
-			break
-		}
-	}
-
-	return err
+	return NewStack(c, name)
 }

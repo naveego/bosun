@@ -63,7 +63,7 @@ type Platform struct {
 	Apps                         PlatformAppConfigs               `yaml:"apps,omitempty"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
-	_clusterConfigs               kube.ClusterConfigs            `yaml:"-" json:"-"`
+	_clusterConfigs              kube.ClusterConfigs              `yaml:"-" json:"-"`
 	bosun                        *Bosun                           `yaml:"-"`
 	// set to true if this platform is a dummy created for automation purposes
 	isAutomationDummy bool          `yaml:"-"`
@@ -157,8 +157,8 @@ func (p *Platform) GetEnvironmentConfigs() ([]*environment.Config, error) {
 	return p.environmentConfigs, nil
 }
 
-func (p *Platform) GetClusterByBrn(stack brns.Stack) (*kube.ClusterConfig, error) {
-	return p._clusterConfigs.GetByBrn(stack)
+func (p *Platform) GetClusterByBrn(stack brns.StackBrn) (*kube.ClusterConfig, error) {
+	return p._clusterConfigs.GetClusterConfigByBrn(stack)
 }
 
 func (p *Platform) GetClusters() (kube.ClusterConfigs, error) {
@@ -1332,6 +1332,8 @@ func (p *Platform) LoadChildren() error {
 
 		for _, clusterConfig := range config.Clusters {
 			clusterConfig.Environment = config.Name
+			clusterConfig.Brn = brns.NewStack(config.Name, clusterConfig.Brn.ClusterName, clusterConfig.Brn.EnvironmentName)
+			clusterConfig.PullSecrets = config.PullSecrets
 
 			p._clusterConfigs = append(p._clusterConfigs, clusterConfig)
 		}
@@ -1351,8 +1353,8 @@ func (p *Platform) LoadChildren() error {
 
 			clusterConfig.SetFromPath(clusterPath)
 
-			if clusterConfig.StackTemplate != nil {
-				clusterConfig.SetFromPath(clusterPath)
+			for _, stackTemplate := range clusterConfig.StackTemplates {
+				stackTemplate.SetFromPath(clusterPath)
 			}
 
 			p._clusterConfigs = append(p._clusterConfigs, clusterConfig)

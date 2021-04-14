@@ -18,7 +18,6 @@ import (
 
 type ScriptContext interface {
 	actions.ActionContext
-	EnsureEnvironment() error
 	GetReleaseValues() *values.PersistableValues
 }
 
@@ -119,13 +118,13 @@ func (s *Script) Execute(ctx ScriptContext, steps ...int) error {
 	ctx = ctx.WithPwd(s.FromPath).(ScriptContext)
 
 	if s.BranchFilter != "" {
-		branchRE, err := regexp.Compile(s.BranchFilter)
-		if err != nil {
-			return errors.Wrapf(err, "invalid branchFilter %q", s.BranchFilter)
+		branchRE, regexErr := regexp.Compile(s.BranchFilter)
+		if regexErr != nil {
+			return errors.Wrapf(regexErr, "invalid branchFilter %q", s.BranchFilter)
 		}
-		g, err := git.NewGitWrapper(s.FromPath)
-		if err != nil {
-			return errors.Wrapf(err, "could not get git wrapper for branch filter %q using path %q", s.BranchFilter, s.FromPath)
+		g, regexErr := git.NewGitWrapper(s.FromPath)
+		if regexErr != nil {
+			return errors.Wrapf(regexErr, "could not get git wrapper for branch filter %q using path %q", s.BranchFilter, s.FromPath)
 		}
 		branch := g.Branch()
 		if !branchRE.MatchString(branch) {
@@ -136,10 +135,6 @@ func (s *Script) Execute(ctx ScriptContext, steps ...int) error {
 				return nil
 			}
 		}
-	}
-
-	if err = ctx.EnsureEnvironment(); err != nil {
-		return errors.Wrap(err, "ensure environment")
 	}
 
 	if len(s.Params) > 0 {

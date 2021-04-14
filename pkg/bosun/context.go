@@ -159,7 +159,7 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 	}
 
 	if c.GetParameters().NoEnvironment {
-		c.log.Debug("Environment disabled, no environment variables available. If this is incorrect, update the command currently executing.")
+		c.log.Debug("EnvironmentBrn disabled, no environment variables available. If this is incorrect, update the command currently executing.")
 
 	} else {
 
@@ -168,6 +168,7 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 		out[core.EnvCluster] = env.ClusterName
 		out[core.EnvEnvironment] = env.Name
 		out[core.EnvEnvironmentRole] = string(env.Role)
+		out[core.EnvStack] = env.Stack().Name
 		out[core.EnvInternalStack] = os.Getenv(core.EnvInternalStack)
 	}
 
@@ -235,7 +236,6 @@ func (c BosunContext) GetParameters() cli.Parameters {
 
 func (c BosunContext) TemplateValues() templating.TemplateValues {
 	tv := templating.TemplateValues{
-		Cluster: c.Environment().ClusterName,
 	}
 	if c.Values != nil {
 		tv.Values = c.Values.Values
@@ -244,7 +244,10 @@ func (c BosunContext) TemplateValues() templating.TemplateValues {
 	}
 
 	tv.Functions = templating.TemplateFunctions{
-		ResolveSecretPath: c.Environment().ResolveSecretPath,
+
+	}
+	if !c.Bosun.params.NoEnvironment {
+		tv.Functions.ResolveSecretPath = c.Environment().ResolveSecretPath
 	}
 
 	return tv
@@ -262,8 +265,8 @@ func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
 	}, nil
 }
 
-func (c BosunContext) WithEnv(env environment.Environment) BosunContext {
-	c._env = &env
+func (c BosunContext) WithEnv(env *environment.Environment) interface{} {
+	c._env = env
 	c.log = c.Log().WithField("env", env.Name)
 	return c
 }
@@ -410,15 +413,35 @@ func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
 	return c.provider.Provide(out, options...)
 }
 
-func (c BosunContext) EnsureEnvironment() error {
-	return c.Environment().Ensure(c)
-}
-
 func (c BosunContext) Environment() *environment.Environment {
 	if c.GetParameters().NoEnvironment {
 		panic("bosun created with no-environment flag; if environment is needed update the command")
 	}
+
+	if c._env == nil {
+		if c.Bosun.env == nil {
+			panic("bosun expected environment to be set, but it wasn't")
+		}
+		return c.Bosun.env
+	}
+
 	return c._env
+}
+
+func (c BosunContext) Cluster() *kube.Cluster {
+	if c.GetParameters().NoCluster {
+		panic("bosun created with no-cluster flag; if cluster is needed update the command")
+	}
+
+	return c.Environment().Cluster()
+}
+
+func (c BosunContext) Stack() *kube.Stack {
+	if c.GetParameters().NoEnvironment {
+		panic("bosun created with no-environment flag; if environment is needed update the command")
+	}
+
+	return c.Environment().Stack()
 }
 
 func (c BosunContext) GetReleaseValues() *values.PersistableValues {

@@ -1,7 +1,6 @@
 package bosun
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
@@ -78,7 +77,6 @@ type DeploySettings struct {
 	AppManifests       map[string]*AppManifest
 	AppDeploySettings  map[string]AppDeploySettings
 	AppOrder           []string
-	Clusters           map[string]bool
 	Filter             *filter.Chain // If set, only apps which match the filter will be deployed.
 	IgnoreDependencies bool
 	ForceDeployApps    map[string]bool
@@ -193,7 +191,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			appDeployMap[appDeploy.Name] = appDeploy
 		}
 	} else {
-		return nil, errors.New("either settings.Manifest, settings.Apps, or settings.AppManifests must be populated")
+		return nil, errors.New("either settings.Manifest, settings.DeployedApps, or settings.AppManifests must be populated")
 	}
 
 	if settings.Filter != nil {
@@ -252,7 +250,8 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 	var err error
 
 	env := ctx.Environment()
-	cluster := env.Cluster
+	cluster := ctx.Cluster()
+	stack := ctx.Stack()
 
 	for _, appName := range deploy.AppOrder {
 
@@ -267,16 +266,10 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			namespaceRoles = app.AppDeploySettings.PlatformAppConfig.NamespaceRoles
 		}
 
-		if len(settings.Clusters) > 0 && !settings.Clusters[cluster.Name] && !settings.Clusters[cluster.Brn.String()] {
-			clusterJSON, _ := json.Marshal(settings.Clusters)
-			log.Infof("Skipping deploy to cluster %s because it was excluded. Included: %s", cluster.Name, string(clusterJSON))
-			continue
-		}
-
-		clusterAppOverrides, hasClusterAppOverrides := cluster.Apps[app.Name]
+		clusterAppOverrides, hasClusterAppOverrides := stack.StackTemplate.Apps[app.Name]
 		if hasClusterAppOverrides {
 			if clusterAppOverrides.Disabled {
-				log.Infof("Skipping deploy to cluster %s because the cluster apps list marks this app as disabled.", cluster.Brn)
+				log.Infof("Skipping deploy to stack %s because the stack apps list marks this app as disabled.", stack.Brn)
 				continue
 			}
 		}
@@ -293,7 +286,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		app = app.WithValueSet(values.ValueSet{
 			Static: values.Values{
 				"bosun": values.Values{
-					"namespaces": cluster.Namespaces.ToStringMap(),
+					"namespaces": stack.StackTemplate.Namespaces.ToStringMap(),
 				},
 			},
 		})
@@ -302,7 +295,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		for _, namespaceRole := range namespaceRoles {
 
 			var namespace kube.NamespaceConfig
-			namespace, err = cluster.GetNamespace(namespaceRole)
+			namespace, err = stack.GetNamespace(namespaceRole)
 			if err != nil {
 				return nil, errors.Wrapf(err, "mapping namespace for %q", app.Name)
 			}
@@ -320,7 +313,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 
 			app = app.Clone()
 
-			stackName := cluster.Brn.StackName
+			stackName := stack.Name
 
 			matchArgs := filter.MatchMapArgs{
 				core.KeyEnvironment:     env.Name,
@@ -459,10 +452,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 
 		app.DesiredState.Force = appCtx.GetParameters().Force
 
-		cluster := ctx.Environment().GetCluster()
-		if cluster == nil {
-			return errors.New("environment must have a cluster to deploy")
-		}
+		stack := ctx.Stack()
 
 		err := app.Reconcile(appCtx)
 
@@ -470,17 +460,21 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 			return err
 		}
 
+		if d.DiffOnly || d.DumpValuesOnly {
+			return nil
+		}
+
 		stackApp := app.StackApp
 		if stackApp == nil {
 			stackApp = &kube.StackApp{
-				Name:         app.Name,
-				Version:      app.AppManifest.Version.String(),
-				Provider:     app.AppConfig.ProviderInfo,
-				Repo:         app.AppConfig.RepoName,
-				Branch:       app.AppManifest.Branch,
-				Commit:       app.AppManifest.Hashes.Commit,
-				DeployedAt:   time.Now(),
-				StoryKey:     "",
+				Name:       app.Name,
+				Version:    app.AppManifest.Version.String(),
+				Provider:   app.AppConfig.ProviderInfo,
+				Repo:       app.AppConfig.RepoName,
+				Branch:     app.AppManifest.Branch,
+				Commit:     app.AppManifest.Hashes.Commit,
+				DeployedAt: time.Now(),
+				StoryKey:   "",
 			}
 
 			if app.AppManifest.PinnedReleaseVersion != nil {
@@ -496,13 +490,9 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 			}
 		}
 
-		err = cluster.UpdateStackApp(*stackApp)
+		err = stack.UpdateApp(*stackApp)
 		if err != nil {
 			ctx.Log().WithError(err).Warnf("Could not update stack app %+v", *stackApp)
-		}
-
-		if d.DiffOnly || d.DumpValuesOnly {
-			return nil
 		}
 
 		if d.Recycle {
@@ -538,7 +528,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 // 	}
 // 	r.AppReleaseConfigs[app.Name] = config
 //
-// 	r.Apps[app.Name], err = NewAppRelease(ctx, config)
+// 	r.DeployedApps[app.Name], err = NewAppRelease(ctx, config)
 //
 // 	return nil
 // }

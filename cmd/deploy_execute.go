@@ -19,7 +19,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
@@ -49,7 +48,6 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			DiffOnly:       viper.GetBool(argDeployExecuteDiffOnly),
 			DumpValuesOnly: viper.GetBool(argDeployExecuteValuesOnly),
 			UseSudo:        viper.GetBool(ArgGlobalSudo),
-			Clusters:       map[string]bool{},
 		}
 
 		pathOrSlot := args[0]
@@ -88,32 +86,6 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			req.IncludeApps = args[1:]
 		}
 
-		clusters := viper.GetStringSlice(argDeployExecuteClusters)
-		if len(clusters) > 0 {
-			for _, cluster := range clusters {
-				req.Clusters[cluster] = true
-			}
-		} else {
-			for _, cluster := range b.GetCurrentEnvironment().Clusters {
-				if cluster.Protected {
-					req.Clusters[cluster.Name] = cli.RequestConfirmFromUser("This deployment will affect protected cluster %s, are you sure you want to do this?", cluster.Name)
-				} else {
-					req.Clusters[cluster.Name] = true
-				}
-			}
-		}
-
-		var atLeastOneCluster = false
-		for _, enabled := range req.Clusters {
-			if enabled {
-				atLeastOneCluster = true
-				break
-			}
-		}
-		if !atLeastOneCluster {
-			return errors.Errorf("no clusters confirmed")
-		}
-
 		executor := bosun.NewDeploymentPlanExecutor(b, p)
 
 		_, err = executor.Execute(req)
@@ -124,12 +96,10 @@ var _ = addCommand(deployCmd, &cobra.Command{
 	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation")
 	cmd.Flags().Bool(argDeployExecuteDiffOnly, false, "Display the diffs for the deploy, but do not actually execute.")
 	cmd.Flags().Bool(argDeployExecuteValuesOnly, false, "Display the values which would be used for the deploy, but do not actually execute.")
-	cmd.Flags().StringSlice(argDeployExecuteClusters, []string{}, "Clusters to deploy to, defaults to all.")
 })
 
 const (
 	argDeployExecuteSkipValidate = "skip-validation"
 	argDeployExecuteDiffOnly     = "diff-only"
 	argDeployExecuteValuesOnly   = "values-only"
-	argDeployExecuteClusters     = "clusters"
 )

@@ -47,7 +47,7 @@ The {vault-layouts...} argument is one or more paths to a vault layout yaml, or 
 
 The vault layout yaml file can use go template syntax for formatting.
 
-The .Domain and .Cluster values are populated from the flags to this command, or inferred from VAULT_ADDR.
+The .Domain and .ClusterBrn values are populated from the flags to this command, or inferred from VAULT_ADDR.
 Any values provided using --values will be in {{ .Values.xxx }}
 `,
 	Example: "vault green-auth.yaml green-kube.yaml green-default.yaml",
@@ -72,9 +72,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		app := mustGetApp(b, args[0:1])
 
-		env := b.GetCurrentEnvironment()
-
-		appDeploy, err := getAppDeploy(b, env.Cluster.Name, app)
+		appDeploy, err := getAppDeploy(b, app)
 		if err != nil {
 			return err
 		}
@@ -121,7 +119,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		return err
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().String(ArgVaultCluster, "", "Cluster to target")
+	cmd.Flags().String(ArgVaultCluster, "", "ClusterBrn to target")
 })
 
 var vaultInitCmd = &cobra.Command{
@@ -169,10 +167,10 @@ Otherwise, this will do nothing.
 			return errors.New("vault not found in platform apps")
 		}
 
-		cluster := env.Cluster
+		stack := env.Stack()
 
 		for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
-			for namespaceRole, namespaceConfig := range cluster.Namespaces {
+			for namespaceRole, namespaceConfig := range stack.StackTemplate.Namespaces {
 				if namespaceRole == requestedNamespaceRole {
 
 					initializer := pkg.VaultInitializer{

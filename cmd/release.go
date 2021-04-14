@@ -6,12 +6,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
-	"github.com/naveego/bosun/pkg/core"
-	"github.com/naveego/bosun/pkg/environment"
-	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
-	"github.com/naveego/bosun/pkg/values"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -750,155 +746,6 @@ var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
 const ArgReleaseSkipValidate = "skip-validation"
 const ArgReleaseRecycle = "recycle"
 
-var releaseDiffCmd = addCommand(
-	releaseCmd,
-	&cobra.Command{
-		Use:   "diff {app} [release/]{env} [release]/{env}",
-		Short: "Reports the differences between the values for an app in two scenarios.",
-		Long:  `If the release part of the scenario is not provided, a transient release will be created and used instead.`,
-		Example: `This command will show the differences between the values deployed 
-to the blue environment in release 2.4.2 and the current values for the
-green environment:
-
-diff go-between 2.4.2/blue green
-`,
-		Args:          cobra.ExactArgs(3),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			b := MustGetBosun()
-			app := mustGetApp(b, []string{args[0]})
-
-			env1 := args[1]
-			env2 := args[2]
-
-			p, err := b.GetCurrentPlatform()
-			if err != nil {
-				return err
-			}
-
-			getValuesForEnv := func(scenario string) (string, error) {
-
-				segs := strings.Split(scenario, "/")
-				var releaseName, envName string
-				var appDeploy *bosun.AppDeploy
-				switch len(segs) {
-				case 1:
-					envName = segs[0]
-				case 2:
-					releaseName = segs[0]
-					envName = segs[1]
-				default:
-					return "", errors.Errorf("invalid scenario %q", scenario)
-				}
-
-				environmentConfig, err := b.GetEnvironmentConfig(envName)
-				if err != nil {
-					return "", errors.Wrap(err, "environment")
-				}
-
-				env, err := environment.New(*environmentConfig, environment.Options{})
-				if err != nil {
-					return "", err
-				}
-
-				ctx := b.NewContext().WithEnv(*env)
-
-				var ok bool
-				if releaseName != "" {
-					releaseManifest, err := p.GetReleaseManifestBySlot(releaseName)
-
-					valueSets := []values.ValueSet{}
-
-					deploySettings := bosun.DeploySettings{
-						SharedDeploySettings: bosun.SharedDeploySettings{
-							Environment: ctx.Environment(),
-						},
-						ValueSets: valueSets,
-						Manifest:  releaseManifest,
-					}
-
-					deploy, err := bosun.NewDeploy(ctx, deploySettings)
-					if err != nil {
-						return "", err
-					}
-
-					for _, candidate := range deploy.AppDeploys {
-						if candidate.Name == app.Name {
-							appDeploy = candidate
-							ok = true
-						}
-					}
-
-					if !ok {
-						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
-					}
-
-				} else {
-					valueSets := []values.ValueSet{}
-
-					deploySettings := bosun.DeploySettings{
-						SharedDeploySettings: bosun.SharedDeploySettings{
-							Environment: ctx.Environment(),
-						},
-						ValueSets: valueSets,
-						Apps: map[string]*bosun.App{
-							app.Name: app,
-						},
-					}
-
-					deploy, err := bosun.NewDeploy(ctx, deploySettings)
-					if err != nil {
-						return "", err
-					}
-
-					for _, candidate := range deploy.AppDeploys {
-						if candidate.Name == app.Name {
-							appDeploy = candidate
-							ok = true
-						}
-					}
-					if !ok {
-						return "", errors.Errorf("no app named %q in release %q", app.Name, releaseName)
-					}
-
-				}
-
-				values, err := appDeploy.GetResolvedValues(ctx)
-				if err != nil {
-					return "", errors.Wrap(err, "get release values")
-				}
-
-				valueYaml, err := values.Values.YAML()
-				if err != nil {
-					return "", errors.Wrap(err, "get release values yaml")
-				}
-
-				return valueYaml, nil
-			}
-
-			env1yaml, err := getValuesForEnv(env1)
-			if err != nil {
-				return errors.Errorf("error for env1 %q: %s", env1, err)
-			}
-
-			env2yaml, err := getValuesForEnv(env2)
-			if err != nil {
-				return errors.Errorf("error for env2 %q: %s", env2, err)
-			}
-
-			env1lines := strings.Split(env1yaml, "\n")
-			env2lines := strings.Split(env2yaml, "\n")
-			diffs := difflib.Diff(env1lines, env2lines)
-
-			for _, diff := range diffs {
-				fmt.Println(renderDiff(diff))
-			}
-
-			return nil
-
-		},
-	})
 
 func diffStrings(a, b string) []difflib.DiffRecord {
 	left := strings.Split(a, "\n")
@@ -918,26 +765,3 @@ func renderDiff(diff difflib.DiffRecord) string {
 	panic(fmt.Sprintf("invalid delta %v", diff.Delta))
 }
 
-func getDeployableApps(b *bosun.Bosun, args []string) ([]*bosun.App, error) {
-	fp := getFilterParams(b, args)
-	apps, err := fp.GetAppsChain(fp.Chain().Including(filter.MustParse(core.LabelDeployable)))
-	if err != nil {
-		return nil, err
-	}
-	return apps, nil
-}
-
-func getReleaseBySlot(platform *bosun.Platform, slot string) (*bosun.ReleaseManifest, error) {
-
-	switch slot {
-	case bosun.SlotStable, bosun.SlotUnstable:
-	default:
-		return nil, errors.Errorf("invalid slot, wanted %s or %s, got %q", bosun.SlotStable, bosun.SlotUnstable, slot)
-	}
-
-	release, err := platform.GetReleaseManifestBySlot(slot)
-	if err != nil {
-		return nil, err
-	}
-	return release, nil
-}

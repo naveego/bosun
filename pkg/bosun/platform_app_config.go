@@ -43,7 +43,7 @@ func (p PlatformAppConfigs) Names() []string {
 }
 
 func (p PlatformAppConfigs) FilterByEnvironment(env *environment.Environment) PlatformAppConfigs {
-	cluster := env.Cluster
+	stack := env.Stack()
 
 	var out PlatformAppConfigs
 	for _, app := range p {
@@ -54,12 +54,12 @@ func (p PlatformAppConfigs) FilterByEnvironment(env *environment.Environment) Pl
 			continue
 		}
 
-		clusterApp, ok := cluster.Apps[app.Name]
+		clusterApp, ok := stack.StackTemplate.Apps[app.Name]
 
 		disabledForCluster := ok && clusterApp.Disabled
 
 		if disabledForCluster {
-			pkg.Log.Debugf("Skipping app %q because it's disabled for cluster %q", app.Name, cluster.Name)
+			pkg.Log.Debugf("Skipping app %q because it's disabled for stack %q", app.Name, stack.Name)
 		}
 
 		out = append(out, app)

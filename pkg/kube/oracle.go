@@ -32,7 +32,7 @@ func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 	)
 
 	if err != nil {
-		ctx.Log.Warnf("Delete of previous context instance %q failed: %s", ctx.Brn.Cluster, err.Error())
+		ctx.Log.Warnf("Delete of previous context instance %q failed: %s", ctx.Brn.ClusterBrn, err.Error())
 	}
 
 	_, err = kubectl.Exec("config",

@@ -77,7 +77,6 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 	executor := NewDeploymentPlanExecutor(p.b, p.p)
 	_, err = executor.Execute(ExecuteDeploymentPlanRequest{
 		Plan: plan,
-		Clusters: map[string]bool{ req.Cluster: true },
 	})
 
 	return err

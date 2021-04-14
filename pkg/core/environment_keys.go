@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/pkg/errors"
 	"os"
@@ -21,11 +20,11 @@ const (
 	EnvInternalStack = "BOSUN_INTERNAL_STACK"
 )
 
-func SetInternalEnvironmentAndCluster(environment, cluster string) {
-	_ = os.Setenv(EnvInternalStack, fmt.Sprintf("%s/%s", environment, cluster))
+func SetInternalBrn(stack brns.StackBrn) {
+	_ = os.Setenv(EnvInternalStack, stack.String())
 }
 
-func GetInternalEnvironmentAndCluster() (stack brns.Stack, found bool) {
+func GetInternalEnvironmentAndCluster() (stack brns.StackBrn, found bool) {
 
 	if ec, ok := os.LookupEnv(EnvInternalStack); ok {
 		var err error
@@ -36,7 +35,7 @@ func GetInternalEnvironmentAndCluster() (stack brns.Stack, found bool) {
 	} else {
 		// logrus.StandardLogger().Infof("Did not find internal environment and cluster!", ec)
 	}
-	return brns.Stack{}, false
+	return brns.StackBrn{}, false
 }
 
 const (

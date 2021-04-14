@@ -6,59 +6,73 @@ import (
 	"strings"
 )
 
-type Environment struct {
+type EnvironmentBrn struct {
 	EnvironmentName string
 }
 
-type Cluster struct {
-	Environment
+type ClusterBrn struct {
+	EnvironmentBrn
 	ClusterName     string
 }
 
-func (s Environment) String() string {
+func (s EnvironmentBrn) String() string {
 	return s.EnvironmentName
 }
 
-func (s Cluster) String() string {
-	brn := fmt.Sprintf("%s:%s", s.Environment, s.ClusterName)
+func (s ClusterBrn) String() string {
+	brn := fmt.Sprintf("%s:%s", s.EnvironmentBrn, s.ClusterName)
 	return brn
 }
 
-type Stack struct {
-	Cluster
+type StackBrn struct {
+	ClusterBrn
 	StackName string
 }
 
-func (s Stack) IsEmpty() bool {
+func (s StackBrn) IsEmpty() bool {
 	return s.EnvironmentName == "" && s.ClusterName == "" && s.StackName == ""
 }
 
-func (s Stack) String() string {
-	brn := strings.TrimSuffix(fmt.Sprintf("%s/%s", s.Cluster, s.StackName), "/")
+func (s StackBrn) String() string {
+	brn := strings.TrimSuffix(fmt.Sprintf("%s/%s", s.ClusterBrn, s.StackName), "/")
 	return brn
 }
 
-func NewEnvironment(env string) Environment {
-	return Environment{EnvironmentName: env}
+func (s StackBrn) Equals(brn StackBrn) bool {
+	return s.EnvironmentName == brn.EnvironmentName &&
+		s.ClusterName == brn.ClusterName &&
+		s.StackName == brn.StackName
 }
 
-func NewCluster(env string, cluster string) Cluster {
-	return Cluster{Environment: NewEnvironment(env), ClusterName: cluster}
+func NewEnvironment(env string) EnvironmentBrn {
+	return EnvironmentBrn{EnvironmentName: env}
 }
 
-func NewStack(env string, cluster string, stack string) Stack {
-	return Stack{Cluster: NewCluster(env, cluster), StackName: stack}
+func NewCluster(env string, cluster string) ClusterBrn {
+	return ClusterBrn{EnvironmentBrn: NewEnvironment(env), ClusterName: cluster}
 }
 
-func ParseStack(raw string) (Stack, error) {
+func NewStack(env string, cluster string, stack string) StackBrn {
+	return StackBrn{ClusterBrn: NewCluster(env, cluster), StackName: stack}
+}
 
-	var env, cluster, stack string
+type BrnParts struct {
+	Raw string
+	Environment string
+	EnvironmentOrCluster string
+	Cluster string
+	Stack string
+}
 
+func TryParseStack(raw string) BrnParts {
+	brnParts := BrnParts{
+		Raw: raw,
+	}
 	var clusterStack string
 
 	if strings.Contains(raw, ":"){
 		parts := strings.Split(raw, ":")
-		env = parts[0]
+		brnParts.Environment = parts[0]
 		clusterStack = parts[1]
 	} else {
 		clusterStack = raw
@@ -67,16 +81,24 @@ func ParseStack(raw string) (Stack, error) {
 	if clusterStack != "" {
 		if strings.Contains(clusterStack, "/") {
 			parts := strings.Split(clusterStack, "/")
-			cluster = parts[0]
-			stack = parts[1]
+			brnParts.Cluster = parts[0]
+			brnParts.Stack = parts[1]
 		} else {
-			cluster = clusterStack
+			brnParts.EnvironmentOrCluster = clusterStack
+			brnParts.Cluster = clusterStack
 		}
 	}
+	return brnParts
+}
 
-	if env == "" && cluster == "" && stack == "" {
-		return Stack{}, errors.Errorf("invalid stack brn %q, should be env:cluster/stack")
+func ParseStack(raw string) (StackBrn, error) {
+
+	parts := TryParseStack(raw)
+
+
+	if parts.Environment == "" && parts.Cluster == "" && parts.Stack == "" {
+		return StackBrn{}, errors.Errorf("invalid stack brn %q, should be env:cluster/stack", raw)
 	}
 
-	return NewStack(env, cluster, stack), nil
+	return NewStack(parts.Environment, parts.Cluster, parts.Stack), nil
 }

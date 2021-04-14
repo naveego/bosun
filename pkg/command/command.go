@@ -124,6 +124,17 @@ func (d *Command) executeCore(ctx ExecutionContext, opt CommandOpts) (string, er
 	doneCh := make(chan struct{})
 
 	go func() {
+		defer func() {
+			r := recover()
+			if r != nil {
+				if e, ok  := r.(error); ok {
+					err = e
+				} else {
+					err = errors.Errorf("error while executing script: %v; command was\n:%v", r, d)
+				}
+			}
+			close(doneCh)
+		}()
 		if specific, ok := d.OS[runtime.GOOS]; ok {
 			value, err = specific.executeCore(ctx, opt)
 		} else if len(d.Command) != 0 {
@@ -137,7 +148,6 @@ func (d *Command) executeCore(ctx ExecutionContext, opt CommandOpts) (string, er
 			value, err = executeScript(d.Script, ctx, opt)
 		}
 
-		close(doneCh)
 	}()
 
 	select {
@@ -146,7 +156,7 @@ func (d *Command) executeCore(ctx ExecutionContext, opt CommandOpts) (string, er
 		return "", errors.New("timed out")
 	}
 
-	return value, err
+	return value, errors.WithStack(err)
 }
 
 func executeScript(script string, ctx ExecutionContext, opt CommandOpts) (string, error) {

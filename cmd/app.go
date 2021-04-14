@@ -135,16 +135,8 @@ var appValuesCmd = addCommand(appCmd, &cobra.Command{
 
 		app := mustGetApp(b, args)
 
-		env := b.GetCurrentEnvironment()
-
-		cluster := viper.GetString(ArgGlobalCluster)
-		if len(cluster) == 0 {
-			cluster = env.DefaultCluster
-		}
-
 		ctx := b.NewContext()
-		ctx.Log().Infof("Values for cluster %s", cluster)
-		appDeploy, err := getAppDeploy(b, cluster, app)
+		appDeploy, err := getAppDeploy(b, app)
 		if err != nil {
 			return err
 		}
@@ -656,7 +648,7 @@ var appRunCmd = &cobra.Command{
 		// }
 		//
 		// if c.Name != "red" {
-		// 	return errors.New("Environment must be set to 'red' to run apps.")
+		// 	return errors.New("EnvironmentBrn must be set to 'red' to run apps.")
 		// }
 		//
 		// app := mustGetApp(b, args)

@@ -82,23 +82,27 @@ func useEnvironment(args ...string) error {
 	}
 	identifier := args[0]
 
-	if identifier != "current" {
-		var brn brns.Stack
-		brn, err = b.NormalizeStackBrn(identifier)
-		err = b.UseStack(brn)
+	var brn brns.StackBrn
+
+	if identifier == "current" {
+		brn, err = b.GetCurrentBrn()
 		if err != nil {
 			return err
 		}
+	} else {
+		brn, err = b.NormalizeStackBrn(identifier)
+		if err != nil {
+			return err
+		}
+	}
+	err = b.UseStack(brn)
+	if err != nil {
+		return err
 	}
 
 	env := b.GetCurrentEnvironment()
 
 	ctx := b.NewContext()
-
-	err = env.ForceEnsure(ctx)
-	if err != nil {
-		return err
-	}
 
 	err = env.Execute(ctx)
 	if err != nil {

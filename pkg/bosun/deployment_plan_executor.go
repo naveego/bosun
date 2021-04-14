@@ -21,7 +21,6 @@ type ExecuteDeploymentPlanRequest struct {
 	Path           string
 	Plan           *DeploymentPlan
 	IncludeApps    []string
-	Clusters       map[string]bool
 	ValueSets      values.ValueSets
 	Recycle        bool
 	Validate       bool
@@ -83,7 +82,6 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
 		ValueSets:          append([]values.ValueSet{deploymentPlan.ValueOverrides}, req.ValueSets...),
-		Clusters:           req.Clusters,
 		IgnoreDependencies: true,
 	}
 

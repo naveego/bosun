@@ -23,7 +23,7 @@ type EngineConfig struct {
 
 func NewEngine(config EngineConfig) (*Engine, error) {
 	if config.Environment == nil {
-		return nil, errors.Errorf("config.Environment required")
+		return nil, errors.Errorf("config.EnvironmentBrn required")
 	}
 	if config.Provider == nil {
 		return nil, errors.Errorf("config.Provider required")

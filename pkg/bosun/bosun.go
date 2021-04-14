@@ -75,7 +75,7 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 	// 	b.apps[dep.Name] = NewAppFromDependency(dep)
 	// }
 	//
-	// for _, a := range b.file.Apps {
+	// for _, a := range b.file.DeployedApps {
 	// 	if a != nil {
 	// 		_, err := b.addApp(a)
 	// 		if err != nil {
@@ -313,34 +313,37 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 }
 
 // Configures the workspace to use the specified environment and cluster, and activates them.
-func (b *Bosun) UseStack(stack brns.Stack) error {
+func (b *Bosun) UseStack(stack brns.StackBrn) error {
+	var err error
 
-	b.params.NoEnvironment = false
 
-	env, cluster, err := b.GetEnvironmentAndCluster(stack)
+	envConfig, err := b.GetEnvironmentConfig(stack.EnvironmentName)
 
 	if err != nil {
 		return err
 	}
 
-	b.ws.CurrentEnvironment = env.Name
-	b.ws.CurrentCluster = cluster.Name
-
-	if cluster.Brn.StackName != ""{
-		b.ws.CurrentStack = cluster.Brn.StackName
-	} else {
-		b.ws.CurrentStack = ""
+	b.env, err = envConfig.Builder(b.NewContextWithoutEnvironment()).WithBrn(stack).Build()
+	if err != nil {
+		return err
 	}
+
+	b.params.NoEnvironment = false
+
+	b.ws.CurrentEnvironment = b.env.Name
+	b.ws.CurrentCluster = b.env.Cluster().Name
+	b.ws.CurrentStack = b.env.Stack().Name
 
 	b.ws.CurrentKubeconfig = b.ws.ClusterKubeconfigPaths[b.ws.CurrentCluster]
 	if b.ws.CurrentKubeconfig == "" {
 		b.ws.CurrentKubeconfig = os.ExpandEnv("$HOME/.kube/config")
 	}
 
-	return b.ActivateEnvironmentAndCluster(env, cluster)
+	err = b.ws.Save()
+	return err
 }
 
-func (b *Bosun) GetEnvironmentAndCluster(stack brns.Stack) (*environment.Config, *kube.ClusterConfig, error) {
+func (b *Bosun) GetEnvironmentAndCluster(stack brns.StackBrn) (*environment.Config, *kube.ClusterConfig, error) {
 
 	var env *environment.Config
 	var clusterConfig *kube.ClusterConfig
@@ -354,7 +357,7 @@ func (b *Bosun) GetEnvironmentAndCluster(stack brns.Stack) (*environment.Config,
 		return nil, nil, err
 	}
 
-	clusterConfig, err = clusters.GetByBrn(stack)
+	clusterConfig, err = clusters.GetClusterConfigByBrn(stack)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -381,39 +384,15 @@ func (b *Bosun) GetEnvironmentAndCluster(stack brns.Stack) (*environment.Config,
 	return env, clusterConfig, nil
 }
 
-func (b *Bosun) ActivateEnvironmentAndCluster(config *environment.Config, cluster *kube.ClusterConfig) error {
-
-	b.params.NoEnvironment = false
-
-	env, err := environment.New(*config, environment.Options{
-		Cluster: cluster,
-	})
-
-	b.env = env
-
-	err = b.env.ForceEnsure(b.NewContext())
-	if err != nil {
-		return errors.Wrapf(err, "ensure environment %q", b.env.Name)
-	}
-
-	return nil
-}
-
 func (b *Bosun) GetCurrentEnvironment() *environment.Environment {
 	if b.params.NoEnvironment {
-		return nil
-	}
-	if b.env == nil {
-		err := b.configureCurrentEnv()
-		if err != nil {
-			panic(errors.Errorf("environment was not initialized; initializing environment caused error: %s", err))
-		}
+		panic(errors.New("bosun was created with NoEnvironment flag set; either the code calling this method or the code which created the bosun instance needs to be changed"))
 	}
 
 	return b.env
 }
 
-func (b *Bosun) getActiveEnvironmentAndClusterNames() (stack brns.Stack, err error) {
+func (b *Bosun) GetCurrentBrn() (stack brns.StackBrn, err error) {
 
 	found := false
 	if stack, found = core.GetInternalEnvironmentAndCluster(); found {
@@ -453,7 +432,22 @@ func (b *Bosun) getActiveEnvironmentAndClusterNames() (stack brns.Stack, err err
 		}
 	}
 
-	return brns.NewStack(env.Name, b.ws.CurrentCluster, b.ws.CurrentStack), nil
+	clusterName := b.ws.CurrentCluster
+	if clusterName == "" {
+		var clusterConfig *kube.ClusterConfig
+		clusterConfig, err = env.GetDefaultClusterConfig()
+		if err != nil {
+			return brns.StackBrn{}, nil
+		}
+		clusterName = clusterConfig.Name
+	}
+
+	stackName := b.ws.CurrentStack
+	if stackName == "" {
+		stackName = kube.DefaultStackName
+	}
+
+	return brns.NewStack(env.Name, clusterName, stackName), nil
 }
 
 func (b *Bosun) SetDesiredState(app string, state workspace.AppState) {
@@ -687,12 +681,29 @@ func (b *Bosun) NewContext() BosunContext {
 
 	dir, _ := os.Getwd()
 
+	ctx := BosunContext{
+		Bosun: b,
+
+		log:   b.log,
+	}
+	if !b.params.NoEnvironment {
+		ctx = ctx.WithEnv(b.GetCurrentEnvironment()).(BosunContext)
+	}
+
+	ctx = ctx.WithDir(dir).WithContext(context.Background())
+
+	return ctx
+
+}
+
+func (b *Bosun) NewContextWithoutEnvironment() BosunContext {
+
+	dir, _ := os.Getwd()
+
 	return BosunContext{
 		Bosun: b,
-		_env:  b.GetCurrentEnvironment(),
 		log:   b.log,
 	}.WithDir(dir).WithContext(context.Background())
-
 }
 
 func (b *Bosun) GetStableReleaseManifest() (*ReleaseManifest, error) {
@@ -777,12 +788,7 @@ func (b *Bosun) GetCurrentClusterName(env *environment.Config) (string, error) {
 		return env.DefaultCluster, nil
 	}
 
-	clusters, err := env.Clusters.GetKubeConfigDefinitionsByRole(kube.DefaultRole)
-	if err != nil {
-		return "", err
-	}
-
-	return clusters[0].Name, nil
+	return env.Clusters[0].Name, nil
 }
 
 func (b *Bosun) GetPlatform(name string) (*Platform, error) {
@@ -969,21 +975,23 @@ func (b *Bosun) TidyWorkspace() {
 
 func (b *Bosun) configureCurrentEnv() error {
 
-	stack, err := b.getActiveEnvironmentAndClusterNames()
+	b.params.NoEnvironment = true
+	b.params.NoCluster = true
+
+	stack, err := b.GetCurrentBrn()
 	if err != nil {
 		return err
 	}
 
-	env, err := b.GetEnvironmentConfig(stack.EnvironmentName)
+	envConfig, err := b.GetEnvironmentConfig(stack.EnvironmentName)
 	if err != nil {
 		return errors.Errorf("get environment %q: %s", b.ws.CurrentEnvironment, err)
 	}
 
-	cluster, err := b.GetCluster(stack)
+	b.env, err = envConfig.Builder(b.NewContextWithoutEnvironment()).WithBrn(stack).Build()
 
-	// set the current environment.
-	// this will also set environment vars based on it.
-	err = b.ActivateEnvironmentAndCluster(env, cluster)
+	b.params.NoEnvironment = false
+	b.params.NoCluster = false
 
 	return err
 }
@@ -1243,7 +1251,7 @@ func (b *Bosun) GetDeployer(repo issues.RepoRef) (*git.Deployer, error) {
 	return deployer, err
 }
 
-func (b *Bosun) GetCluster(cluster brns.Stack) (*kube.ClusterConfig, error) {
+func (b *Bosun) GetCluster(cluster brns.StackBrn) (*kube.ClusterConfig, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
@@ -1253,65 +1261,122 @@ func (b *Bosun) GetCluster(cluster brns.Stack) (*kube.ClusterConfig, error) {
 	return p.GetClusterByBrn(cluster)
 }
 
-func (b *Bosun) NormalizeStackBrn(hint string) (brns.Stack, error) {
+func (b *Bosun) NormalizeStackBrn(hint string) (brns.StackBrn, error) {
 
-	brn, err := b.normalizeStackBrn(hint);
+	brn, err := b.normalizeStackBrn(hint)
 
 	if err != nil {
 		return brn, err
 	}
 
 	if brn.String() != hint {
-		b.log.Infof("Normalized hint %q to %s", hint, brn)
+		b.log.Infof("Interpreted %q as %s", hint, brn)
 	}
 
 	return brn, nil
 }
 
-func (b *Bosun) normalizeStackBrn(hint string) (brns.Stack, error)  {
+func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, error) {
+
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
-		return brns.Stack{}, err
+		return brns.StackBrn{}, err
 	}
 
-	candidates, err := p.GetClusters()
+	var envNames []string
+	var environmentConfig *environment.Config
+	environmentConfigs, err := p.GetEnvironmentConfigs()
 	if err != nil {
-		return brns.Stack{}, err
+		return brns.StackBrn{}, err
+	}
+	for _, ec := range environmentConfigs {
+		envNames = append(envNames, ec.Name)
+		if ec.Name == hint || strings.HasPrefix(hint, ec.Name) {
+			environmentConfig = ec
+			break
+		}
 	}
 
-	var candidateMatches []*kube.ClusterConfig
+	approxBrn := brns.TryParseStack(hint)
+
+	var clusterNames []string
+	var candidates kube.ClusterConfigs
+	var candidateMatches kube.ClusterConfigs
+
+	if environmentConfig == nil {
+		candidates, err = p.GetClusters()
+		if err != nil {
+			return brns.StackBrn{}, errors.Wrap(err, "could get all clusters")
+		}
+	} else {
+		candidates = environmentConfig.Clusters
+	}
+
 	for _, c := range candidates {
-		if c.Environment == hint || c.Name == hint || c.EnvironmentAlias == hint || stringsn.Contains(hint, c.Aliases) {
+		clusterNames = append(clusterNames, fmt.Sprintf("%q or %q or %v", c.Name, c.EnvironmentAlias, c.Aliases))
+		if c.Environment == approxBrn.EnvironmentOrCluster ||
+			c.Environment == approxBrn.Environment ||
+			c.Name == approxBrn.EnvironmentOrCluster ||
+			c.Name == approxBrn.Cluster ||
+			c.EnvironmentAlias == approxBrn.Cluster ||
+			stringsn.Contains(approxBrn.Cluster, c.Aliases) {
 			candidateMatches = append(candidateMatches, c)
 		}
 	}
-	switch len(candidateMatches){
+
+	var clusterConfig *kube.ClusterConfig
+
+	switch len(candidateMatches) {
 	case 0:
 		break
 	case 1:
-		return candidateMatches[0].Brn, nil
+		clusterConfig = candidateMatches[0]
 	default:
-
 		var candidateBrns []string
 		for _, c := range candidateMatches {
 			candidateBrns = append(candidateBrns, c.Brn.String())
 			if c.IsDefaultCluster {
-				return c.Brn, nil
+				clusterConfig = c
 			}
 		}
-		return brns.Stack{}, errors.Errorf("%d clusters matched hint %s, but none had isDefaultCluster=true; matches: %v", len(candidateMatches), hint, candidateBrns)
+		return brns.StackBrn{}, errors.Errorf("%d clusters matched hint %s, but none had isDefaultCluster=true; matches: %v", len(candidateMatches), hint, candidateBrns)
 	}
 
-	brn, err := brns.ParseStack(hint)
+	if clusterConfig == nil {
+		return brns.StackBrn{}, errors.Errorf("No clusters matched hint %s; environments: %v; clusters: %v", hint, envNames, clusterNames)
+	}
+
+	environmentName := clusterConfig.Environment
+
+	stackName := kube.DefaultStackName
+
+	if strings.Contains(hint, "/") {
+		parts := strings.Split(hint, "/")
+		stackName = parts[1]
+	}
+
+	return brns.NewStack(environmentName, clusterConfig.Name, stackName), nil
+}
+
+func (b *Bosun) GetCurrentCluster() (*kube.Cluster, error) {
+
+	return b.env.Cluster(), nil
+}
+
+func (b *Bosun) GetCurrentStack() (*kube.Stack, error) {
+
+	brn, err := b.GetCurrentBrn()
 	if err != nil {
-		return brn, err
+		return nil, err
 	}
 
-	cluster, err := candidates.GetByBrn(brn)
+	c, err := b.GetCurrentCluster()
 
 	if err != nil {
-		return brn, err
+		return nil, err
 	}
 
-	return cluster.Brn, nil
+	stack, err := c.GetStack(brn.StackName)
+
+	return stack, err
 }

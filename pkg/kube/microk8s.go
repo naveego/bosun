@@ -183,7 +183,7 @@ func (c Microk8sConfig) configureKubernetesRemote(ctx ConfigureRequest) error {
 	kubeconfig := strings.ReplaceAll( kubeconfigResult,"microk8s", ctx.Brn.ClusterName)
 
 	if  !strings.Contains(ctx.KubeConfigPath, ctx.Brn.ClusterName) {
-		return errors.Errorf("kubeconfigPath %q does not contain requested context name %q (this is required to avoid accidentally overwriting some other cluster's config)", ctx.KubeConfigPath, ctx.Brn.Cluster)
+		return errors.Errorf("kubeconfigPath %q does not contain requested context name %q (this is required to avoid accidentally overwriting some other cluster's config)", ctx.KubeConfigPath, ctx.Brn.ClusterBrn)
 	}
 
 	err = ioutil.WriteFile(ctx.KubeConfigPath, []byte(kubeconfig), 0600)

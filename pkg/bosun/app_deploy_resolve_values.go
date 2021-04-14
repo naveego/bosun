@@ -70,17 +70,24 @@ func (a *AppDeploy) GetResolvedValues(ctx BosunContext) (*values.PersistableValu
 		resolvedValues = resolvedValues.WithValues(environmentAppValues.WithDefaultSource(fmt.Sprintf("%s environment app value overrides", env.Name)))
 	}
 
-	cluster := env.Cluster
+	cluster := env.Cluster()
 	if clusterValues, err := ResolveValues(cluster, ctx); err != nil {
 		return nil, errors.Wrapf(err, "resolve cluster values")
 	} else {
 		resolvedValues = resolvedValues.WithValues(clusterValues.WithDefaultSource(fmt.Sprintf("%s cluster", cluster.Name)))
 	}
 
-	if clusterAppValues, err := ResolveValues(cluster.GetAppValueSetCollectionProvider(a.Name), ctx); err != nil {
-		return nil, errors.Wrapf(err, "resolve cluster app values")
+	stack := env.Stack()
+	if stackValues, err := ResolveValues(stack, ctx); err != nil {
+		return nil, errors.Wrapf(err, "resolve stack app values")
 	} else {
-		resolvedValues = resolvedValues.WithValues(clusterAppValues.WithDefaultSource(fmt.Sprintf("%s cluster app overrides", cluster.Name)))
+		resolvedValues = resolvedValues.WithValues(stackValues.WithDefaultSource(fmt.Sprintf("%s stack overrides", cluster.Name)))
+	}
+
+	if stackAppValues, err := ResolveValues(stack.GetAppValueSetCollectionProvider(a.Name), ctx); err != nil {
+		return nil, errors.Wrapf(err, "resolve stack app values")
+	} else {
+		resolvedValues = resolvedValues.WithValues(stackAppValues.WithDefaultSource(fmt.Sprintf("%s stack app overrides", cluster.Name)))
 	}
 
 	// ApplyToValues any overrides from parameters passed to this invocation of bosun.
