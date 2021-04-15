@@ -990,6 +990,12 @@ func (b *Bosun) configureCurrentEnv() error {
 
 	b.env, err = envConfig.Builder(b.NewContextWithoutEnvironment()).WithBrn(stack).Build()
 
+	if err != nil {
+		return err
+	}
+
+	err = b.env.ValidateConsistency()
+
 	b.params.NoEnvironment = false
 	b.params.NoCluster = false
 

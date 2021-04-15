@@ -69,28 +69,28 @@ func (c Microk8sConfig) configureKubernetes(ctx ConfigureRequest) error {
 		}
 	}
 
-	rawConfig, err := pkg.NewShellExe("sudo", "microk8s", "kubectl", "config", "view", "--raw").RunOut()
+	rawConfig, err := pkg.NewShellExe("sudo", "microk8s", "kubectl", "kubeconfig", "view", "--raw").RunOut()
 	if err != nil {
-		return errors.Wrap(err, "read microk8s config")
+		return errors.Wrap(err, "read microk8s kubeconfig")
 	}
 
-	k8sConfigPath := filepath.Join(home, ".kube/config")
-	microk8sConfigPath := filepath.Join(home, ".kube/microk8s.config")
+	k8sConfigPath := filepath.Join(home, ".kube/kubeconfig")
+	microk8sConfigPath := filepath.Join(home, ".kube/microk8s.kubeconfig")
 	err = ioutil.WriteFile(microk8sConfigPath, []byte(rawConfig), 0600)
 	if err != nil {
-		return errors.Wrap(err, "adding microk8s config to default config location")
+		return errors.Wrap(err, "adding microk8s kubeconfig to default kubeconfig location")
 	}
 
-	rawConfig, err = pkg.NewShellExe("kubectl", "config", "view", "--merge", "--flatten").
+	rawConfig, err = pkg.NewShellExe("kubectl", "kubeconfig", "view", "--merge", "--flatten").
 		WithEnvValue("KUBECONFIG", fmt.Sprintf("%s:%s", microk8sConfigPath, k8sConfigPath)).
 		RunOut()
 	if err != nil {
-		return errors.Wrap(err, "merging k8s config files")
+		return errors.Wrap(err, "merging k8s kubeconfig files")
 	}
 
 	err = ioutil.WriteFile(k8sConfigPath, []byte(rawConfig), 0600)
 	if err != nil {
-		return errors.Wrap(err, "writing merged k8s config to default config location")
+		return errors.Wrap(err, "writing merged k8s kubeconfig to default kubeconfig location")
 	}
 
 	ctx.Log.Info("Configuring addons...")
@@ -172,7 +172,7 @@ func (c Microk8sConfig) configureKubernetesRemote(ctx ConfigureRequest) error {
 	ctx.Log.Infof("microk8s install result: %s", installResult)
 
 	ctx.Log.Info("Getting kubeconfig from node...")
-	kubeconfigResult, err := pkg.NewShellExeFromSlice(append(sshPrefix, "sudo", "microk8s", "config")...).RunOut()
+	kubeconfigResult, err := pkg.NewShellExeFromSlice(append(sshPrefix, "sudo", "microk8s", "kubeconfig")...).RunOut()
 
 	if err != nil {
 		return err
@@ -183,7 +183,7 @@ func (c Microk8sConfig) configureKubernetesRemote(ctx ConfigureRequest) error {
 	kubeconfig := strings.ReplaceAll( kubeconfigResult,"microk8s", ctx.Brn.ClusterName)
 
 	if  !strings.Contains(ctx.KubeConfigPath, ctx.Brn.ClusterName) {
-		return errors.Errorf("kubeconfigPath %q does not contain requested context name %q (this is required to avoid accidentally overwriting some other cluster's config)", ctx.KubeConfigPath, ctx.Brn.ClusterBrn)
+		return errors.Errorf("kubeconfigPath %q does not contain requested context name %q (this is required to avoid accidentally overwriting some other cluster's kubeconfig)", ctx.KubeConfigPath, ctx.Brn.ClusterBrn)
 	}
 
 	err = ioutil.WriteFile(ctx.KubeConfigPath, []byte(kubeconfig), 0600)

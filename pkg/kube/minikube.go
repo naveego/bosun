@@ -45,7 +45,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 	pkg.Log.Info("Resetting virtualbox DHCP leases...")
 	_, _ = pkg.NewShellExe("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
 
-	leasePath := os.ExpandEnv("$HOME/.config/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
+	leasePath := os.ExpandEnv("$HOME/.kubeconfig/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
 	if runtime.GOOS == "darwin" {
 		leasePath = os.ExpandEnv("$HOME/Library/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
 	}
@@ -59,7 +59,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 	ctx.Log.Info("minikube not running, starting minikube...")
 
 	// this is disabled because of a bug in minikube:
-	// pkg.NewShellExe("minikube config set embed-certs true").MustRun()
+	// pkg.NewShellExe("minikube kubeconfig set embed-certs true").MustRun()
 
 	if c.Driver == "none" {
 		cmd := pkg.NewShellExe("sudo",
@@ -67,7 +67,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 			"start",
 			"--kubernetes-version=v"+c.Version,
 			"--vm-driver=none",
-			"--extra-config=apiserver.service-node-port-range=80-32000",
+			"--extra-kubeconfig=apiserver.service-node-port-range=80-32000",
 		).WithEnvValue("CHANGE_MINIKUBE_NONE_USER", "true")
 
 		err = cmd.RunE()
@@ -80,7 +80,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 				"--kubernetes-version=v"+c.Version,
 				"--vm-driver", c.Driver,
 				"--hyperv-virtual-switch", "Default Switch",
-				"--extra-config=apiserver.service-node-port-range=80-32000",
+				"--extra-kubeconfig=apiserver.service-node-port-range=80-32000",
 				"--disk-size="+c.DiskSize,
 			).RunE()
 		} else {
@@ -90,7 +90,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 				fmt.Sprintf("--cpus=%d", c.CPUs),
 				"--kubernetes-version=v"+c.Version,
 				"--vm-driver", c.Driver,
-				"--extra-config=apiserver.service-node-port-range=80-32000",
+				"--extra-kubeconfig=apiserver.service-node-port-range=80-32000",
 				"--disk-size="+c.DiskSize,
 				//"-v=7",
 			).RunE()

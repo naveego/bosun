@@ -141,7 +141,7 @@ func (k ClusterConfig) configureKubernetes(req ConfigureRequest) error {
 	}
 
 	if req.KubeConfigPath == "" {
-		req.KubeConfigPath = os.ExpandEnv("$HOME/.kube/config")
+		req.KubeConfigPath = os.ExpandEnv("$HOME/.kube/kubeconfig")
 	}
 
 	if k.Oracle != nil {

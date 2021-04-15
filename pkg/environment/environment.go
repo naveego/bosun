@@ -2,6 +2,7 @@ package environment
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environmentvariables"
@@ -9,6 +10,7 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
+	"github.com/pterm/pterm"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +33,7 @@ func (e *Environment) Cluster() *kube.Cluster {
 }
 
 func (e *Environment) Stack() *kube.Stack {
-	if e.stack== nil {
+	if e.stack == nil {
 		panic("environment was built without a stack")
 	}
 	return e.stack
@@ -132,7 +134,6 @@ type EnvironmentFilterable interface {
 	GetEnvironmentRoles() (core.EnvironmentRoles, bool)
 	GetEnvironmentName() (string, bool)
 }
-
 
 func (e *Environment) GetVariablesAsMap(ctx environmentvariables.Dependencies) (map[string]string, error) {
 
@@ -379,4 +380,61 @@ func (e *Environment) GetSecretGroupConfigs() ([]SecretGroupConfig, error) {
 		out = append(out, *group)
 	}
 	return out, nil
+}
+
+func (e *Environment) ValidateConsistency() error {
+
+	ambientEnv := os.Getenv(core.EnvEnvironment)
+	ambientCluster := os.Getenv(core.EnvCluster)
+	ambientStack := os.Getenv(core.EnvStack)
+	ambientKubeConfig := os.Getenv("KUBECONFIG")
+
+	var inconsistencies []string
+
+	if e.Name != ambientEnv {
+		inconsistencies = append(inconsistencies, fmt.Sprintf("Configured environment is %q but %s=%s", e.Name, core.EnvEnvironment, ambientEnv))
+	}
+
+	actualCluster := ""
+	actualStack := kube.DefaultStackName
+	actualKubeConfig := ambientKubeConfig
+	if e.cluster != nil {
+		actualCluster = e.cluster.Name
+		actualKubeConfig = e.cluster.GetKubeconfigPath()
+	}
+
+	if e.stack != nil {
+		actualStack = e.stack.Name
+	}
+
+	if actualCluster != ambientCluster {
+		inconsistencies = append(inconsistencies, fmt.Sprintf("Configured cluster is %q but %s=%s", actualCluster, core.EnvCluster, ambientCluster))
+	}
+
+	if actualStack != ambientStack {
+		inconsistencies = append(inconsistencies, fmt.Sprintf("Configured stack is %q but %s=%s", actualStack, core.EnvStack, ambientStack))
+	}
+
+	if actualKubeConfig != ambientKubeConfig {
+		inconsistencies = append(inconsistencies, fmt.Sprintf("Configured kubeconfig path is %q but KUBECONFIG=%s", actualKubeConfig, ambientKubeConfig))
+	}
+
+	if len(inconsistencies) > 0 {
+
+		warning, _ := pterm.DefaultBigText.WithLetters(pterm.NewLettersFromStringWithStyle("Warning", pterm.NewStyle(pterm.FgRed))).Srender()
+
+		_, _ = fmt.Fprintf(os.Stderr, warning)
+
+		warningStyle := pterm.NewStyle(pterm.FgYellow)
+		_, _ = fmt.Fprintln(os.Stderr, warningStyle.Sprintf("\nInconsistencies detected between bosun config and current env vars. You may want to switch environments using bosun env use ..."))
+		for _, m := range inconsistencies {
+			_, _ = fmt.Fprintln(os.Stderr, warningStyle.Sprintf("- %s", m))
+		}
+
+		confirmed := cli.RequestConfirmFromUser("Do you want to continue despite environment mismatch?")
+		if !confirmed {
+			return errors.New("user canceled")
+		}
+	}
+	return nil
 }

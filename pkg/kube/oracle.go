@@ -13,7 +13,7 @@ func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	kubectl := Kubectl{Kubeconfig: ctx.KubeConfigPath}
 
-	err := pkg.NewShellExe("oci", "ce", "cluster", "create-kubeconfig",
+	err := pkg.NewShellExe("oci", "ce", "cluster", "create-config",
 		"--token-version", "2.0.0",
 		"--cluster-id", oc.OCID,
 		"--file", kubectl.Kubeconfig,

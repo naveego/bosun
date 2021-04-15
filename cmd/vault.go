@@ -81,6 +81,22 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			return err
 		}
 
+		if viper.GetBool(argVaultApplyDumpValues) {
+
+			fmt.Println("# Attribution")
+			fmt.Println("---")
+			y, _ := yaml.Marshal(templateValues.Attribution)
+			fmt.Println(string(y))
+
+			fmt.Println()
+			fmt.Println("# Values")
+			fmt.Println("---")
+			y, _ = yaml.Marshal(templateValues.Values)
+			fmt.Println(string(y))
+
+			return nil
+		}
+
 		templateArgs := templating.TemplateValues{
 			Values: templateValues.Values,
 		}
@@ -119,8 +135,11 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		return err
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().String(ArgVaultCluster, "", "ClusterBrn to target")
+	cmd.Flags().Bool(argVaultApplyDumpValues, false, "Dump values instead of actually applying")
+
 })
+
+const argVaultApplyDumpValues = "dump-values"
 
 var vaultInitCmd = &cobra.Command{
 	Use:   "bootstrap-dev",

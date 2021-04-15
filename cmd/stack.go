@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -34,7 +35,7 @@ var stackCmd = addCommand(rootCmd, &cobra.Command{
 })
 
 var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
-	Use:          "ensure [name]",
+	Use:          "create [name]",
 	Aliases:      []string{"create"},
 	Args:         cobra.MaximumNArgs(1),
 	Short:        "Configures namespaces and other things for the provided stack. Uses the current stack if none is provided.",
@@ -63,7 +64,6 @@ var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
 
 var stackEnsureCertsCmd = addCommand(stackEnsureCmd, &cobra.Command{
 	Use:          "certs [name]",
-	Aliases:      []string{"create"},
 	Args:         cobra.MaximumNArgs(1),
 	Short:        "Configures certs for the provided stack. Uses the current stack if none is provided.",
 	SilenceUsage: true,
@@ -71,6 +71,32 @@ var stackEnsureCertsCmd = addCommand(stackEnsureCmd, &cobra.Command{
 
 		return configureStack(args, func(stack *kube.Stack) error {
 			return stack.ConfigureCerts()
+		})
+	},
+})
+
+var stackEnsureNamespacesCmd = addCommand(stackEnsureCmd, &cobra.Command{
+	Use:          "namespaces [name]",
+	Args:         cobra.MaximumNArgs(1),
+	Short:        "Configures namespaces for the provided stack. Uses the current stack if none is provided.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return configureStack(args, func(stack *kube.Stack) error {
+			return stack.ConfigureNamespaces()
+		})
+	},
+})
+
+var stackEnsurePullSecretsCmd = addCommand(stackEnsureCmd, &cobra.Command{
+	Use:          "pull-secrets [name]",
+	Args:         cobra.MaximumNArgs(1),
+	Short:        "Configures pull-secrets for the provided stack. Uses the current stack if none is provided.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return configureStack(args, func(stack *kube.Stack) error {
+			return stack.ConfigureNamespaces()
 		})
 	},
 })
@@ -107,6 +133,31 @@ func configureStack(args []string, fn func(stack *kube.Stack) error) error {
 	return nil
 
 }
+
+var stackDestroyCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "destroy [name]",
+	Aliases:      []string{"delete"},
+	Args:         cobra.MaximumNArgs(1),
+	Short:        "Deletes the configured stack and all of it's resources.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+
+		return configureStack(args, func(stack *kube.Stack) error {
+
+			confirmed := cli.RequestConfirmFromUser("Are you sure you want to delete the stack %q and all of its resources", stack.Name)
+
+			if !confirmed {
+				return nil
+			}
+
+			return stack.Destroy()
+
+			return nil
+		})
+	},
+})
+
 
 var stackLsCmd = addCommand(stackCmd, &cobra.Command{
 	Use:          "ls",

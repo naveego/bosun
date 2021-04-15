@@ -199,7 +199,8 @@ func (n NamespaceConfigs) ToStringMap() map[string]NamespaceConfig {
 }
 
 type NamespaceConfig struct {
-	Name string `yaml:"name"`
+	Name   string `yaml:"name"`
+	Shared bool `yaml:"shared,omitempty"`
 }
 
 type appValueSetCollectionProvider struct {
@@ -212,7 +213,7 @@ func (a appValueSetCollectionProvider) GetValueSetCollection() values.ValueSetCo
 
 func (k Kubectl) contextIsDefined(name string) bool {
 	out, err := k.Exec(
-		"config",
+		"kubeconfig",
 		"get-contexts",
 		name,
 	)

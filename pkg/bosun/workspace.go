@@ -284,7 +284,7 @@ func (w *Workspace) importFileFromPath(path string) error {
 	}
 
 	if logConfigs {
-		log.Debug("Import complete.")
+		log.Trace("Import complete.")
 	}
 	w.ImportedBosunFiles[path] = c
 

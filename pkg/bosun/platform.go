@@ -1066,18 +1066,27 @@ func (p *Platform) GetReleaseManifestBySlotAndBranch(fromSlot string, asSlot str
 	if err != nil {
 		return nil, err
 	}
-	err = g.Fetch()
-	if err != nil {
-		return nil, err
-	}
-	worktree, err := g.Worktree(branch)
-	if err != nil {
-		return nil, err
-	}
 
-	defer worktree.Dispose()
+	var dir string
+	var manifest *ReleaseManifest
 
-	dir := worktree.ResolvePath(p.GetManifestDirectoryPath(fromSlot))
+	if g.Branch() != string(branch) {
+
+		err = g.Fetch()
+		if err != nil {
+			return nil, err
+		}
+		worktree, err := g.Worktree(branch)
+		if err != nil {
+			return nil, err
+		}
+
+		defer worktree.Dispose()
+
+		dir = worktree.ResolvePath(p.GetManifestDirectoryPath(fromSlot))
+	} else {
+		dir = p.GetManifestDirectoryPath(fromSlot)
+	}
 
 	if _, err = os.Stat(dir); err != nil {
 		return nil, err
@@ -1090,7 +1099,6 @@ func (p *Platform) GetReleaseManifestBySlotAndBranch(fromSlot string, asSlot str
 		return nil, errors.Wrapf(err, "read manifest for slot %q from branch %q", fromSlot, branch)
 	}
 
-	var manifest *ReleaseManifest
 	err = yaml.Unmarshal(b, &manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unmarshal manifest for slot %q from branch %q", fromSlot, branch)

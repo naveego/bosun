@@ -11,7 +11,7 @@ import (
 )
 
 func GetKubeClient() (*kubernetes.Clientset, error) {
-	// creates the in-cluster config
+	// creates the in-cluster kubeconfig
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		// not running in kubernetes...
@@ -19,12 +19,12 @@ func GetKubeClient() (*kubernetes.Clientset, error) {
 
 		configPath := os.Getenv("KUBECONFIG")
 		if configPath == "" {
-			configPath = filepath.Join(home, ".kube", "config")
+			configPath = filepath.Join(home, ".kube", "kubeconfig")
 		}
 		config, err = clientcmd.BuildConfigFromFlags("", configPath)
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not get kube config from in cluster strategy or from ~/.kube/config")
+			return nil, errors.Wrapf(err, "could not get kube kubeconfig from in cluster strategy or from ~/.kube/kubeconfig")
 		}
 	}
 
@@ -35,6 +35,20 @@ func GetKubeClient() (*kubernetes.Clientset, error) {
 
 func GetKubeClientWithContext(configPath string, context string) (*kubernetes.Clientset, error) {
 
+	config, err := GetKubeConfigWithContext(configPath, context)
+	if err != nil {
+		return nil, err
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrapf(err, "get api using kubeconfig from %q and context %q", configPath, context)
+	}
+
+	return clientset, nil
+}
+
+func GetKubeConfigWithContext(configPath string, context string) (*rest.Config, error) {
+
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		// not running in kubernetes...
@@ -44,21 +58,16 @@ func GetKubeClientWithContext(configPath string, context string) (*kubernetes.Cl
 			configPath = os.Getenv("KUBECONFIG")
 		}
 		if configPath == "" {
-			configPath = filepath.Join(home, ".kube", "config")
+			configPath = filepath.Join(home, ".kube", "kubeconfig")
 		}
 		config, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			&clientcmd.ClientConfigLoadingRules{ExplicitPath: configPath},
 			&clientcmd.ConfigOverrides{CurrentContext: context}).ClientConfig()
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not get kube config from in cluster strategy or from %s", configPath)
+			return nil, errors.Wrapf(err, "could not get kube kubeconfig from in cluster strategy or from %s", configPath)
 		}
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrapf(err, "get api using config from %q and context %q", configPath, context)
-	}
-
-	return clientset, nil
+	return config, nil
 }
