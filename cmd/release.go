@@ -5,6 +5,7 @@ import (
 	"github.com/aryann/difflib"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
@@ -657,7 +658,7 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 		ctx := b.NewContext()
 
 		p, err := b.GetCurrentPlatform()
