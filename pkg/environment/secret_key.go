@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/scrypt"
 	"os"
@@ -69,7 +69,7 @@ func (s *SecretKeyConfig) GetKeyComponents(secretGroupName string) (key []byte, 
 				s.Lastpass.Field = "password"
 			}
 
-			passphrase, err = pkg.NewShellExe("lpass", "show", s.Lastpass.Path, "--field", s.Lastpass.Field).RunOut()
+			passphrase, err = command.NewShellExe("lpass", "show", s.Lastpass.Path, "--field", s.Lastpass.Field).RunOut()
 			if err != nil {
 				return nil, nil, errors.Wrapf(err, "lastpass lookup failed (used path %q and field %q)", s.Lastpass.Path, s.Lastpass.Field)
 			}

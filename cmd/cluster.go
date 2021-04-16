@@ -57,7 +57,7 @@ var clusterConfigureClusterCmd = addCommand(clusterCmd, &cobra.Command{
 		var cluster *kube.Cluster
 		if len(args) == 1 {
 			name := args[0]
-			cluster, err = clusters.GetCluster(name, ctx)
+			cluster, err = clusters.GetPossiblyUnconfiguredCluster(name, ctx)
 			if err != nil {
 				return err
 			}

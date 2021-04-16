@@ -3,8 +3,8 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
 	actions "github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
@@ -349,14 +349,14 @@ func (a *App) BuildImages(req BuildImageRequest) error {
 		}
 
 		ctx.Log().Infof("Building image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
-		_, err := pkg.NewShellExe(buildCommand[0], buildCommand[1:]...).
+		_, cmdErr := command.NewShellExe(buildCommand[0], buildCommand[1:]...).
 			WithEnvValue("VERSION_NUMBER", a.Version.String()).
 			WithEnvValue("COMMIT", a.GetCommit()).
 			WithEnvValue("BUILD_NUMBER", os.Getenv("BUILD_NUMBER")).
 			RunOutLog()
 
-		if err != nil {
-			return errors.Wrapf(err, "build image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
+		if cmdErr != nil {
+			return errors.Wrapf(cmdErr, "build image %q from %q with context %q", image.ImageName, dockerfilePath, contextPath)
 		}
 
 		report = append(report, fmt.Sprintf("Built image from %q with context %q: %s", dockerfilePath, contextPath, image.GetFullName()))
@@ -556,7 +556,7 @@ func (a *App) BumpVersion(ctx BosunContext, bumpOrVersion string) error {
 	// packageJSONPath := filepath.Join(filepath.Dir(a.FromPath), "package.json")
 	// if _, err = os.Stat(packageJSONPath); err == nil {
 	// 	log.Info("package.json detected, its version will be updated.")
-	// 	err = pkg.NewShellExe("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
+	// 	err = command.NewShellExe("npm", "--no-git-tag-version", "--allow-same-version", "version", bumpOrVersion).
 	// 		WithDir(filepath.Dir(a.FromPath)).
 	// 		RunE()
 	// 	if err != nil {
@@ -659,7 +659,7 @@ func (a *App) ExportValues(ctx BosunContext) (values.ValueSetCollection, error) 
 
 	if a.HasChart() {
 		chartRef := a.getAbsoluteChartPathOrChart(ctx)
-		valuesYaml, err := pkg.NewShellExe(
+		valuesYaml, err := command.NewShellExe(
 			"helm", "inspect", "values",
 			chartRef,
 			"--version", a.Version.String(),

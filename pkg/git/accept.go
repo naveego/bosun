@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"regexp"
@@ -44,7 +44,7 @@ GetPR:
 	}
 
 	if pr.CreatedAt.After(time.Now().Add(-5 * time.Second)) {
-		pkg.Log.Warnf("PR is very new, waiting a little while before trying to merge.")
+		core.Log.Warnf("PR is very new, waiting a little while before trying to merge.")
 		<-time.After(5 * time.Second)
 		goto GetPR
 	}
@@ -70,7 +70,7 @@ GetPR:
 
 	segs := regexp.MustCompile(`(issue)/#?(\d+)/([\s\S]*)`).FindStringSubmatch(mergeBranch)
 	if len(segs) == 0 {
-		pkg.Log.Warn("Branch did not contain an issue number, not attempting to close issues.")
+		core.Log.Warn("Branch did not contain an issue number, not attempting to close issues.")
 		return nil
 	}
 
@@ -84,7 +84,7 @@ GetPR:
 	if c.IssueService != nil {
 		err = c.IssueService.SetProgress(prIssRef, issues.ColumnDone)
 		if err != nil {
-			pkg.Log.Warnf("Could not move issue %s to done status, you'll need to do that yourself. (error: %s)", prIssRef, err)
+			core.Log.Warnf("Could not move issue %s to done status, you'll need to do that yourself. (error: %s)", prIssRef, err)
 		}
 	}
 

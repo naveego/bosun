@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/jira"
@@ -92,7 +92,7 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 
 	storyTmp, storyErr := storyHandler.GetStory(storyID)
 	if storyErr != nil {
-		pkg.Log.WithError(storyErr).Errorf("Could not get story with ID %q", storyID)
+		core.Log.WithError(storyErr).Errorf("Could not get story with ID %q", storyID)
 	} else if storyTmp != nil {
 		story = storyTmp
 		body = fmt.Sprintf(`%s
@@ -205,7 +205,7 @@ func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story
 
 	_, err := g.Exec("commit", "-m", message, "--allow-empty")
 
-	pkg.Log.Info("Created initial commit.")
+	core.Log.Info("Created initial commit.")
 	color.Green("%s\n", message)
 
 	return err

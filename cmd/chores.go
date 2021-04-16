@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
@@ -86,7 +85,7 @@ var choresImportDescendentsCmd = addCommand(choresCmd, &cobra.Command{
 		}
 		targetDir := filepath.Dir(targetPath)
 
-		log := pkg.Log
+		log := core.Log
 		pattern, err := regexp.Compile(args[1])
 		if err != nil {
 			return err

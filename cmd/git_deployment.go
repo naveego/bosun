@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
@@ -85,7 +85,7 @@ var gitDeployStartCmd = addCommand(gitDeploymentCmd, &cobra.Command{
 		client := mustGetGithubClient()
 
 		cluster := args[0]
-		sha := pkg.NewShellExe("git rev-parse HEAD").MustOut()
+		sha := command.NewShellExe("git rev-parse HEAD").MustOut()
 		isProd := cluster == "blue"
 
 		deploymentRequest := &github.DeploymentRequest{

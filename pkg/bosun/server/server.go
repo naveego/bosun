@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"net"
 	"net/http"
 	"strings"
@@ -34,7 +34,7 @@ func newServer() *Server {
 
 	httpServer := &http.Server{	}
 
-	pkg.Log.Infof("Value file server started at %s", listener.Addr().String())
+	core.Log.Infof("Value file server started at %s", listener.Addr().String())
 
 	go func(){
 		err = httpServer.Serve(listener)

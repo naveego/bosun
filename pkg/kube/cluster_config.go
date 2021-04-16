@@ -1,7 +1,6 @@
 package kube
 
 import (
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
@@ -245,7 +244,7 @@ func (k Kubectl) Exec(args ...string) (string, error) {
 		args = append(args, "--kubeconfig", k.Kubeconfig)
 	}
 
-	out, err := pkg.NewShellExe("kubectl", args...).RunOut()
+	out, err := command.NewShellExe("kubectl", args...).RunOut()
 	if err != nil {
 		return "", errors.Wrapf(err, "kubectl:%v", k)
 	}

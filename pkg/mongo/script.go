@@ -2,7 +2,7 @@ package mongo
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"strings"
@@ -41,7 +41,7 @@ func (m ScriptCommand) Execute() error {
 	m.Log.Infof("Using connection string %s", safeAddr)
 	m.Log.Infof("Executing script:\n %s", m.Script)
 
-	err = pkg.NewShellExe("mongo", addr, "--eval", m.Script).RunE()
+	err = command.NewShellExe("mongo", addr, "--eval", m.Script).RunE()
 	if err != nil {
 		return errors.Wrapf(err, "running script %s", m.Script)
 	}

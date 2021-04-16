@@ -3,9 +3,9 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
@@ -108,9 +108,9 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 			if err != nil {
 				return nil, errors.Errorf("could not create directory for default mergedFragments file path: %s", err)
 			}
-			f, err := os.OpenFile(defaultPath, os.O_CREATE|os.O_RDWR, 0600)
-			if err != nil {
-				return nil, errors.Errorf("could not create default mergedFragments file: %s", err)
+			f, openErr := os.OpenFile(defaultPath, os.O_CREATE|os.O_RDWR, 0600)
+			if openErr != nil {
+				return nil, errors.Errorf("could not create default mergedFragments file: %s", openErr)
 			}
 			f.Close()
 		} else {
@@ -125,7 +125,7 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 		MergedBosunFile:    new(File),
 	}
 
-	err = pkg.LoadYaml(path, &c)
+	err = yaml.LoadYaml(path, &c)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading root config")
 	}
@@ -154,7 +154,7 @@ func LoadWorkspaceWithStaticImports(path string, imports []string) (*Workspace, 
 			for _, root := range c.GitRoots {
 				dir := filepath.Join(root, app.Repo)
 				bosunFile := filepath.Join(dir, "b.yaml")
-				if _, err := os.Stat(bosunFile); err == nil {
+				if _, statErr := os.Stat(bosunFile); statErr == nil {
 					syntheticPaths = append(syntheticPaths, bosunFile)
 				}
 			}
@@ -162,9 +162,9 @@ func LoadWorkspaceWithStaticImports(path string, imports []string) (*Workspace, 
 	}
 
 	// err = c.importFromPaths(path, syntheticPaths)
-	if err != nil {
-		return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
-	}
+	// if err != nil {
+	// 	return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
+	// }
 
 	return c, err
 }
@@ -189,7 +189,7 @@ func LoadWorkspace(path string) (*Workspace, error) {
 			for _, root := range c.GitRoots {
 				dir := filepath.Join(root, app.Repo)
 				bosunFile := filepath.Join(dir, "b.yaml")
-				if _, err := os.Stat(bosunFile); err == nil {
+				if _, statErr := os.Stat(bosunFile); statErr == nil {
 					syntheticPaths = append(syntheticPaths, bosunFile)
 				}
 			}
@@ -197,9 +197,9 @@ func LoadWorkspace(path string) (*Workspace, error) {
 	}
 
 	// err = c.importFromPaths(path, syntheticPaths)
-	if err != nil {
-		return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
-	}
+	// if err != nil {
+	// 	return nil, errors.Errorf("error importing from synthetic paths based on %q: %s", path, err)
+	// }
 
 	return c, err
 }
@@ -253,7 +253,7 @@ func (w *Workspace) importFromPaths(relativeTo string, paths []string) error {
 }
 
 func (w *Workspace) importFileFromPath(path string) error {
-	log := pkg.Log.WithField("import_path", path)
+	log := core.Log.WithField("import_path", path)
 	// if logConfigs {
 	// 	log.Debug("Importing mergedFragments...")
 	// }
@@ -269,7 +269,7 @@ func (w *Workspace) importFileFromPath(path string) error {
 		AppRefs: map[string]*Dependency{},
 	}
 
-	err := pkg.LoadYaml(path, &c)
+	err := yaml.LoadYaml(path, &c)
 
 	if err != nil {
 		return errors.Errorf("yaml error loading %q: %s", path, err)

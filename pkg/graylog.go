@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"github.com/dghubble/sling"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"net/http"
 	"net/http/httputil"
@@ -82,18 +83,18 @@ func (g *GraylogConfig) applyInputs() error {
 		titles[input["title"].(string)] = input["id"].(string)
 	}
 
-	Log.WithField("count", len(g.Inputs)).Debug("Processing inputs.")
+	core.Log.WithField("count", len(g.Inputs)).Debug("Processing inputs.")
 
 	for _, input := range g.Inputs {
 
 		if id, ok := titles[input.Title]; ok {
-			Log.WithField("title", input.Title).Debug("Updating input.")
+			core.Log.WithField("title", input.Title).Debug("Updating input.")
 			_, err := g.call(g.req().Put("/api/system/inputs/" + id).BodyJSON(input))
 			if err != nil {
 				return err
 			}
 		} else {
-			Log.WithField("title", input.Title).Debug("Creating input.")
+			core.Log.WithField("title", input.Title).Debug("Creating input.")
 			_, err := g.call(g.req().Post("/api/system/inputs").BodyJSON(input))
 			if err != nil {
 				return err
@@ -101,7 +102,7 @@ func (g *GraylogConfig) applyInputs() error {
 		}
 	}
 
-	Log.Debug("Inputs processed.")
+	core.Log.Debug("Inputs processed.")
 
 	return nil
 

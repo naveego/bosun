@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
@@ -434,15 +433,15 @@ func getKnownApps(b *bosun.Bosun, names []string) ([]*bosun.App, error) {
 func checkExecutableDependency(exe string) {
 	path, err := exec.LookPath(exe)
 	check(err, "Could not find executable for %q", exe)
-	pkg.Log.WithFields(logrus.Fields{"exe": exe, "path": path}).Debug("Found dependency.")
+	core.Log.WithFields(logrus.Fields{"exe": exe, "path": path}).Debug("Found dependency.")
 }
 
 func confirm(msg string, args ...interface{}) bool {
 
 	label := fmt.Sprintf(msg, args...)
 
-	if !pkg.IsInteractive() {
-		pkg.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
+	if !cli.IsInteractive() {
+		core.Log.WithField("label", label).Warn("No terminal attached, skipping confirmation.")
 		return true
 	}
 

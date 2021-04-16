@@ -43,12 +43,24 @@ func (k ClusterConfigs) GetClusterConfig(name string) (*ClusterConfig, error) {
 	return nil, errors.Errorf("no cluster with name or alias %q", name)
 }
 
+func (k ClusterConfigs) GetPossiblyUnconfiguredCluster(name string, ctx command.ExecutionContext) (*Cluster, error) {
+
+	for _, config := range k {
+		if config.Name == name ||
+			util.StringSliceContains(config.Aliases, name) {
+			return NewCluster(*config, ctx, true)
+		}
+	}
+
+	return nil, errors.Errorf("no cluster with name or alias %q", name)
+}
+
 func (k ClusterConfigs) GetCluster(name string, ctx command.ExecutionContext) (*Cluster, error) {
 
 	for _, config := range k {
 		if config.Name == name ||
 			util.StringSliceContains(config.Aliases, name) {
-			return NewCluster(*config, ctx)
+			return NewCluster(*config, ctx, false)
 		}
 	}
 
@@ -141,7 +153,7 @@ func (k ClusterConfig) configureKubernetes(req ConfigureRequest) error {
 	}
 
 	if req.KubeConfigPath == "" {
-		req.KubeConfigPath = os.ExpandEnv("$HOME/.kube/kubeconfig")
+		req.KubeConfigPath = os.ExpandEnv("$HOME/.kube/config")
 	}
 
 	if k.Oracle != nil {

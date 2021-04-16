@@ -1,7 +1,8 @@
 package kube
 
 import (
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"strconv"
 	"time"
 )
@@ -12,7 +13,7 @@ func PortForward(podName, namespace string, port int) func() {
 	doneCh := make(chan struct{}, 1)
 	stopCh := make(chan struct{}, 1)
 
-	var cmd *pkg.ShellExe
+	var cmd *command.ShellExe
 	var isRunning bool
 	var isStopping bool
 
@@ -20,7 +21,7 @@ func PortForward(podName, namespace string, port int) func() {
 		for {
 			select {
 			case <-doneCh:
-				pkg.Log.Infof("Stopping port forward on pod '%s'", podName)
+				core.Log.Infof("Stopping port forward on pod '%s'", podName)
 				if cmd != nil {
 					cmd.GetCmd().Process.Kill()
 				}
@@ -30,7 +31,7 @@ func PortForward(podName, namespace string, port int) func() {
 					isRunning = true
 
 					go func() {
-						cmd = pkg.NewShellExe("kubectl",
+						cmd = command.NewShellExe("kubectl",
 							"port-forward",
 							"-n",
 							namespace,

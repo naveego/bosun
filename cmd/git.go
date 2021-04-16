@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -46,7 +46,7 @@ func mustGetGithubClient() *github.Client {
 func getMaybeAuthenticatedGithubClient() *github.Client {
 	token, _ := getGithubToken()
 	if token == "" {
-		pkg.Log.Warn("No github token could be found, you may be using up a quota with each request.")
+		core.Log.Warn("No github token could be found, you may be using up a quota with each request.")
 	}
 
 	return git.NewGithubClient(token)

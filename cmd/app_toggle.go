@@ -3,7 +3,7 @@ package cmd
 import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/cli"
-	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/kube/kubeclient"
 	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -27,7 +27,7 @@ var appToggleCmd = &cobra.Command{
 
 		c := b.GetCurrentEnvironment()
 
-		if err := b.ConfirmEnvironment(); err != nil {
+		if err = b.ConfirmEnvironment(); err != nil {
 			return err
 		}
 
@@ -97,28 +97,28 @@ var appToggleCmd = &cobra.Command{
 
 		if appServiceChanged {
 
-			client, err := kube.GetKubeClient()
-			if err != nil {
-				return errors.Wrap(err, "get kube client for tweaking service")
+			client, clientErr := kubeclient.GetKubeClient()
+			if clientErr != nil {
+				return errors.Wrap(clientErr, "get kube client for tweaking service")
 			}
 
 			ctx.Log().Warn("Recycling kube-dns to ensure new services are routed correctly.")
 
 			podClient := client.CoreV1().Pods("kube-system")
-			pods, err := podClient.List(metav1.ListOptions{
+			pods, clientErr := podClient.List(metav1.ListOptions{
 				LabelSelector: "k8s-app=kube-dns",
 			})
-			if err != nil {
-				return errors.Wrap(err, "find kube-dns")
+			if clientErr != nil {
+				return errors.Wrap(clientErr, "find kube-dns")
 			}
 			if len(pods.Items) == 0 {
 				return errors.New("no kube-dns pods found")
 			}
 			for _, pod := range pods.Items {
 				ctx.Log().Warnf("Deleting pod %q...", pod.Name)
-				err = podClient.Delete(pod.Name, metav1.NewDeleteOptions(0))
-				if err != nil {
-					return errors.Wrapf(err, "delete pod %q", pod.Name)
+				clientErr = podClient.Delete(pod.Name, metav1.NewDeleteOptions(0))
+				if clientErr != nil {
+					return errors.Wrapf(clientErr, "delete pod %q", pod.Name)
 				}
 				ctx.Log().Warnf("Pod %q deleted. Kube-hosted services may be unavailable for a short time.", pod.Name)
 			}

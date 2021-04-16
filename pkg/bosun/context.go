@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	vault "github.com/hashicorp/vault/api"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
@@ -13,6 +12,7 @@ import (
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/ioc"
 	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/kube/kubeclient"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/values"
@@ -253,13 +253,13 @@ func (c BosunContext) TemplateValues() templating.TemplateValues {
 	return tv
 }
 
-func (c BosunContext) GetTemplateHelper() (*pkg.TemplateHelper, error) {
+func (c BosunContext) GetTemplateHelper() (*templating.TemplateHelper, error) {
 	vaultClient, err := c.GetVaultClient()
 	if err != nil {
 		return nil, errors.Wrap(err, "get vault client")
 	}
 
-	return &pkg.TemplateHelper{
+	return &templating.TemplateHelper{
 		TemplateValues: c.TemplateValues(),
 		VaultClient:    vaultClient,
 	}, nil
@@ -291,12 +291,12 @@ func (c BosunContext) GetMinikubeDockerEnv() []string {
 		}()
 		log := c.Log()
 		log.Info("Attempting to use docker agent in minikube...")
-		if err := pkg.NewShellExe("minikube", "ip").RunE(); err != nil {
+		if err := command.NewShellExe("minikube", "ip").RunE(); err != nil {
 			log.Warnf("Could not use minikube as a docker proxy: %s", err)
 			return
 		}
 
-		envblob, err := pkg.NewShellExe("minikube", "docker-env").RunOut()
+		envblob, err := command.NewShellExe("minikube", "docker-env").RunOut()
 		if err != nil {
 			log.WithError(err).Error("Could not get docker-env.")
 			return
@@ -405,7 +405,7 @@ func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
 		var container = ioc.NewContainer()
 		container.BindFactory(c.GetVaultClient)
 
-		container.BindFactory(kube.GetKubeClient)
+		container.BindFactory(kubeclient.GetKubeClient)
 
 		c.provider = container
 	}

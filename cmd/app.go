@@ -19,10 +19,11 @@ import (
 	"github.com/cheynewallace/tabby"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	script2 "github.com/naveego/bosun/pkg/script"
@@ -178,13 +179,13 @@ var appBumpCmd = addCommand(appCmd, &cobra.Command{
 		if len(args) == 2 {
 			bump = args[1]
 		} else {
-			pkg.Log.Info("Computing version bump from commits...")
-			changes, err := g.ChangeLog(app.Branching.Develop, "HEAD", nil, git.GitChangeLogOptions{})
-			if err != nil {
-				return errors.Wrap(err, "computing bump")
+			core.Log.Info("Computing version bump from commits...")
+			changes, changeErr := g.ChangeLog(app.Branching.Develop, "HEAD", nil, git.GitChangeLogOptions{})
+			if changeErr != nil {
+				return errors.Wrap(changeErr, "computing bump")
 			}
 
-			pkg.Log.Info(changes.OutputMessage)
+			core.Log.Info(changes.OutputMessage)
 
 			bump = string(changes.VersionBump)
 		}
@@ -224,7 +225,7 @@ func appBump(b *bosun.Bosun, app *bosun.App, bump string) error {
 
 	err = app.FileSaver.Save()
 	if err == nil {
-		pkg.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.FromPath)
+		core.Log.Infof("Updated %q to version %s and saved in %q", app.Name, app.Version, app.FromPath)
 	}
 	return err
 }
@@ -243,7 +244,7 @@ The current domain and the minikube IP are used to populate the output. To updat
 		// b := MustGetBosun()
 		// apps := mustGetAppsIncludeCurrent(b, args)
 		// env := b.GetCurrentEnvironment()
-		// ip := pkg.NewShellExe("minikube", "ip").MustOut()
+		// ip := command.NewShellExe("minikube", "ip").MustOut()
 		//
 		// toAdd := map[string]hostLine{}
 		// for _, app := range apps {
@@ -405,24 +406,24 @@ var appAcceptActualCmd = &cobra.Command{
 			}
 
 			ctx = ctx.WithApp(app)
-			appManifest, err := app.GetManifest(ctx)
-			if err != nil {
-				return errors.Wrapf(err, "get manifest for %q", app.Name)
+			appManifest, getErr := app.GetManifest(ctx)
+			if getErr != nil {
+				return errors.Wrapf(getErr, "get manifest for %q", app.Name)
 			}
-			appDeploy, err := bosun.NewAppDeploy(ctx, deploySettings, appManifest)
-			if err != nil {
-				ctx.Log().WithError(err).Error("Error creating app deploy for current state analysis.")
+			appDeploy, getErr := bosun.NewAppDeploy(ctx, deploySettings, appManifest)
+			if getErr != nil {
+				ctx.Log().WithError(getErr).Error("Error creating app deploy for current state analysis.")
 				continue
 			}
 			ctx = ctx.WithAppDeploy(appDeploy)
 
 			log := ctx.Log()
 			log.Debug("Getting actual state...")
-			err = appDeploy.LoadActualState(ctx, false)
+			getErr = appDeploy.LoadActualState(ctx, false)
 			p.Add(1)
-			if err != nil {
-				log.WithError(err).Error("Could not get actual state.")
-				return err
+			if getErr != nil {
+				log.WithError(getErr).Error("Could not get actual state.")
+				return getErr
 			}
 			b.SetDesiredState(app.Name, appDeploy.ActualState)
 			log.Debug("Updated.")
@@ -470,11 +471,11 @@ var appStatusCmd = &cobra.Command{
 				go func() {
 					defer wg.Done()
 					ctx := b.NewContext().WithAppDeploy(appRelease)
-					err := appRelease.LoadActualState(ctx, false)
-					if err != nil {
-						ctx.Log().WithError(err).Fatal()
+					loadErr := appRelease.LoadActualState(ctx, false)
+					if loadErr != nil {
+						ctx.Log().WithError(loadErr).Fatal()
 					}
-					p.Add(1)
+					_ = p.Add(1)
 				}()
 			}
 			wg.Wait()
@@ -561,21 +562,21 @@ var appRecycleCmd = addCommand(appCmd, &cobra.Command{
 		pullLatest := viper.GetBool(ArgAppRecyclePullLatest)
 
 		for _, appRelease := range releases {
-			ctx := ctx.WithAppDeploy(appRelease)
+			appCtx := ctx.WithAppDeploy(appRelease)
 
 			if env.IsLocal && pullLatest {
-				ctx.Log().Info("Pulling latest version of image(s) on minikube...")
+				appCtx.Log().Info("Pulling latest version of image(s) on minikube...")
 				for _, image := range appRelease.AppConfig.GetImages() {
 					imageName := image.GetFullNameWithTag("latest")
-					err := pkg.NewShellExe("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
+					err := command.NewShellExe("sh", "-c", fmt.Sprintf("eval $(minikube docker-env); docker pull %s", imageName)).RunE()
 					if err != nil {
 						return err
 					}
 				}
 			}
 
-			ctx.Log().Info("Recycling app...")
-			err := appRelease.Recycle(ctx)
+			appCtx.Log().Info("Recycling app...")
+			err := appRelease.Recycle(appCtx)
 			if err != nil {
 				return err
 			}
@@ -939,9 +940,9 @@ var appCloneCmd = addCommand(
 			}
 			if !rootExists {
 				b.AddGitRoot(dir)
-				err := b.Save()
-				if err != nil {
-					return err
+				saveErr := b.Save()
+				if saveErr != nil {
+					return saveErr
 				}
 				b = MustGetBosun()
 			}
@@ -957,7 +958,7 @@ var appCloneCmd = addCommand(
 				log := ctx.Log().WithField("app", app.Name).WithField("repo", app.Repo)
 
 				if app.IsRepoCloned() {
-					pkg.Log.Infof("App already cloned to %q", app.FromPath)
+					core.Log.Infof("App already cloned to %q", app.FromPath)
 					continue
 				}
 				log.Info("Cloning...")

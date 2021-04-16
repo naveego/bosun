@@ -1,7 +1,6 @@
 package command
 
 import (
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/templating"
@@ -138,7 +137,7 @@ func (d *Command) executeCore(ctx ExecutionContext, opt CommandOpts) (string, er
 		if specific, ok := d.OS[runtime.GOOS]; ok {
 			value, err = specific.executeCore(ctx, opt)
 		} else if len(d.Command) != 0 {
-			cmd := pkg.NewShellExe(d.Command[0], d.Command[1:]...).WithDir(ctx.Pwd()).IncludeEnv(ctx.GetEnvironmentVariables()).WithContext(ctx.Ctx())
+			cmd := NewShellExe(d.Command[0], d.Command[1:]...).WithDir(ctx.Pwd()).IncludeEnv(ctx.GetEnvironmentVariables()).WithContext(ctx.Ctx())
 			if opt.StreamOutput {
 				value, err = cmd.RunOutLog()
 			} else {
@@ -197,3 +196,4 @@ func executeScript(script string, ctx ExecutionContext, opt CommandOpts) (string
 
 	return output, nil
 }
+

@@ -1,7 +1,7 @@
 package kube
 
 import (
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 )
 
 type AmazonClusterConfig struct {
@@ -14,7 +14,7 @@ func (c AmazonClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 		c.Region = "us-east-1"
 	}
 
-	err := pkg.NewShellExe("aws", "eks", "--region", c.Region, "update-kubeconfig", "--kubeconfig", ctx.KubeConfigPath, "--name", ctx.Brn.ClusterName, "--alias", ctx.Brn.ClusterName).RunE()
+	err := command.NewShellExe("aws", "eks", "--region", c.Region, "update-kubeconfig", "--kubeconfig", ctx.KubeConfigPath, "--name", ctx.Brn.ClusterName, "--alias", ctx.Brn.ClusterName).RunE()
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,8 @@
 package actions
 
 import (
-	vault "github.com/hashicorp/vault/api"
-	"github.com/naveego/bosun/pkg"
+	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/naveego/bosun/pkg/vault"
 	"github.com/naveego/bosun/pkg/yaml"
 	"io/ioutil"
 )
@@ -10,18 +10,18 @@ import (
 type VaultAction struct {
 	CacheKey string           `yaml:"cacheKey,omitempty" json:"cacheKey"`
 	File     string           `yaml:"file,omitempty" json:"file,omitempty"`
-	Layout   *pkg.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
+	Layout   *vault.VaultLayout `yaml:"layout,omitempty" json:"layout,omitempty"`
 	Literal  string           `yaml:"literal,omitempty" json:"literal,omitempty"`
 }
 
 func (a *VaultAction) Execute(ctx ActionContext) error {
-	var vaultClient *vault.Client
+	var vaultClient *vaultapi.Client
 	err := ctx.Provide(&vaultClient)
 	if err != nil {
 		return err
 	}
 
-	var vaultLayout *pkg.VaultLayout
+	var vaultLayout *vault.VaultLayout
 	var layoutBytes []byte
 	if a.File != "" {
 		path := ctx.ResolvePath(a.File)
@@ -37,7 +37,7 @@ func (a *VaultAction) Execute(ctx ActionContext) error {
 
 	templateArgs := ctx.TemplateValues()
 
-	vaultLayout, err = pkg.LoadVaultLayoutFromBytes("action", layoutBytes, templateArgs, vaultClient)
+	vaultLayout, err = vault.LoadVaultLayoutFromBytes("action", layoutBytes, templateArgs, vaultClient)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (a *VaultAction) Execute(ctx ActionContext) error {
 	if err != nil {
 		ctx.Log().Info("Vault action failed... trying again with local vault client")
 
-		localClient, err := vault.NewClient(&vault.Config{
+		localClient, err := vaultapi.NewClient(&vaultapi.Config{
 			Address: "http://127.0.0.1:8200",
 		})
 		err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, localClient)

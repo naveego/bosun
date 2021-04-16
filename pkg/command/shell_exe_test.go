@@ -1,11 +1,11 @@
 // +build !windows
 
-package pkg_test
+package command_test
 
 import (
 	"context"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"time"
@@ -14,13 +14,13 @@ import (
 var _ = Describe("ShellExe", func() {
 
 	It("should execute in director", func() {
-		sut := pkg.NewShellExe("pwd").WithDir("/tmp")
+		sut := command.NewShellExe("pwd").WithDir("/tmp")
 		Expect(sut.RunOut()).To(Equal("/tmp"))
 	})
 
 	It("should respect context cancel", func() {
 		ctx, cancel := context.WithCancel(context.Background())
-		sut := pkg.NewShellExe("sleep", "1000").WithContext(ctx)
+		sut := command.NewShellExe("sleep", "1000").WithContext(ctx)
 		errCh := make(chan error)
 		go func() {
 			errCh <- sut.RunE()

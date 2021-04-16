@@ -18,8 +18,9 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/pkg/errors"
 	"io"
@@ -60,12 +61,12 @@ var dashboardTokenCmd = &cobra.Command{
 	Long:  `You must have the cluster set in kubectl.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		secretName, err := pkg.NewShellExe("kubectl get serviceaccount kubernetes-dashboard-user -n kube-system -o jsonpath={.secrets[0].name}").RunOut()
+		secretName, err := command.NewShellExe("kubectl get serviceaccount kubernetes-dashboard-user -n kube-system -o jsonpath={.secrets[0].name}").RunOut()
 		if err != nil {
 			return err
 		}
 
-		b64, err := pkg.NewShellExe(fmt.Sprintf("kubectl get secret %s -n kube-system -o jsonpath={.data.token}", secretName)).RunOut()
+		b64, err := command.NewShellExe(fmt.Sprintf("kubectl get secret %s -n kube-system -o jsonpath={.data.token}", secretName)).RunOut()
 		if err != nil {
 			return err
 		}
@@ -95,7 +96,7 @@ var kubeAddEKSCmd = addCommand(kubeCmd, &cobra.Command{
 		}
 		name := args[0]
 
-		err := pkg.NewShellExe("aws", "eks", "--region", region, "update-kubeconfig", "--name", name, "--alias", name).RunE()
+		err := command.NewShellExe("aws", "eks", "--region", region, "update-kubeconfig", "--name", name, "--alias", name).RunE()
 		if err != nil {
 			return err
 		}
@@ -148,7 +149,7 @@ var kubeConfigureClusterCmd = addCommand(kubeCmd, &cobra.Command{
 
 		name := args[0]
 
-		cluster, err := clusters.GetCluster(name, ctx)
+		cluster, err := clusters.GetPossiblyUnconfiguredCluster(name, ctx)
 
 		if err != nil {
 			return err
@@ -269,14 +270,14 @@ var kubeConfigurePullSecretsCmd = addCommand(kubeCmd, &cobra.Command{
 //
 // 		force := viper.GetBool("force")
 // 		if !force {
-// 			out, err := pkg.NewShellExe(fmt.Sprintf("kubectl get secret %s -n %s", name, namespace)).RunOut()
+// 			out, err := command.NewShellExe(fmt.Sprintf("kubectl get secret %s -n %s", name, namespace)).RunOut()
 // 			fmt.Println(out)
 // 			if err == nil {
 // 				color.Yellow("Pull secret already exists (run with --force parameter to overwrite).")
 // 				return nil
 // 			}
 // 		} else {
-// 			_ = pkg.NewShellExe(fmt.Sprintf("kubectl delete secret %s -n %s", name, namespace)).RunE()
+// 			_ = command.NewShellExe(fmt.Sprintf("kubectl delete secret %s -n %s", name, namespace)).RunE()
 //
 // 		}
 //
@@ -328,7 +329,7 @@ var kubeConfigurePullSecretsCmd = addCommand(kubeCmd, &cobra.Command{
 // 			} else if viper.GetString(ArgKubePullSecretPasswordLpassPath) != "" {
 // 				path := viper.GetString(ArgKubePullSecretPasswordLpassPath)
 // 				pkg.Log.WithField("path", path).Info("Trying to get password from LastPass.")
-// 				password, err = pkg.NewShellExe("lpass", "show", "--password", path).RunOut()
+// 				password, err = command.NewShellExe("lpass", "show", "--password", path).RunOut()
 // 				if err != nil {
 // 					return err
 // 				}
@@ -337,7 +338,7 @@ var kubeConfigurePullSecretsCmd = addCommand(kubeCmd, &cobra.Command{
 // 			}
 // 		}
 //
-// 		err = pkg.NewShellExe("kubectl",
+// 		err = command.NewShellExe("kubectl",
 // 			"create", "secret", "docker-registry",
 // 			name,
 // 			"-n", namespace,
@@ -387,12 +388,12 @@ func kubectlProxy() (*exec.Cmd, string, error) {
 		return nil, "", errors.Wrap(err, "cmd stdout")
 	}
 
-	pkg.Log.Infof("Executing: %s %s", cmd.Path, cmd.Args)
+	core.Log.Infof("Executing: %s %s", cmd.Path, cmd.Args)
 	if err = cmd.Start(); err != nil {
 		return nil, "", errors.Wrap(err, "proxy start")
 	}
 
-	pkg.Log.Infof("Waiting for kubectl to output host:port ...")
+	core.Log.Infof("Waiting for kubectl to output host:port ...")
 	reader := bufio.NewReader(stdoutPipe)
 
 	var out []byte
@@ -405,12 +406,12 @@ func kubectlProxy() (*exec.Cmd, string, error) {
 			break
 		}
 		if timedOut {
-			pkg.Log.Infof("timed out waiting for input: possibly due to an old kubectl version.")
+			core.Log.Infof("timed out waiting for input: possibly due to an old kubectl version.")
 			break
 		}
 		out = append(out, r)
 	}
-	pkg.Log.Infof("proxy stdout: %s", string(out))
+	core.Log.Infof("proxy stdout: %s", string(out))
 	return cmd, hostPortRe.FindString(string(out)), nil
 }
 

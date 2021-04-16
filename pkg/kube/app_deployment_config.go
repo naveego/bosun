@@ -100,6 +100,11 @@ func (c *Cluster) GetStackConfigs() (map[string]*StackState, error) {
 			return nil, errors.WithStack(err)
 		}
 
+		if stackConfig == nil {
+			c.ctx.Log().Warnf("Invalid stack configmap found with name %q", configmap.Name)
+			continue
+		}
+
 		out[stackConfig.Name] = stackConfig
 	}
 

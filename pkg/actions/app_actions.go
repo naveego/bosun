@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
@@ -244,7 +243,7 @@ func (a BosunAction) Execute(ctx ActionContext) error {
 	log := ctx.WithLogField("args", stepArgs).Log()
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
+	err = command.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err

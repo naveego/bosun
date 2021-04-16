@@ -81,7 +81,7 @@ func (b Builder) Build() (*Environment, error) {
 
 		_ = os.Setenv(core.EnvCluster, clusterConfig.Name)
 
-		e.cluster, err = kube.NewCluster(*clusterConfig, deps)
+		e.cluster, err = kube.NewCluster(*clusterConfig, deps, false)
 		if err != nil {
 			return nil, err
 		}

@@ -1,8 +1,8 @@
 package jira
 
 import (
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/stories"
 	"github.com/naveego/bosun/pkg/values"
 	"regexp"
@@ -81,7 +81,7 @@ var Factory = stories.StoryRegistrationFactory{
 				var config Config
 				err := v.Unmarshal(&config)
 				if err != nil {
-					pkg.Log.WithError(err).Error("Could not parse values.")
+					core.Log.WithError(err).Error("Could not parse values.")
 					continue
 				}
 				if config.IDPattern == "" {
@@ -90,7 +90,7 @@ var Factory = stories.StoryRegistrationFactory{
 
 				pattern, reErr := regexp.Compile(config.IDPattern)
 				if reErr != nil {
-					pkg.Log.WithError(err).Error("Invalid ID pattern")
+					core.Log.WithError(err).Error("Invalid ID pattern")
 					continue
 				}
 				results = append(results, stories.StoryHandlerRegistration{

@@ -1,9 +1,11 @@
-package pkg
+package command
 
 import (
 	"context"
 	"fmt"
 	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/pkg/errors"
 	"io"
 	"os"
@@ -115,7 +117,7 @@ func (c *ShellExe) prepare() {
 
 	c.cmd.Env = append(os.Environ(), c.Env...)
 
-	Log.WithField("exe", exe).
+	core.Log.WithField("exe", exe).
 		WithField("args", c.Args).
 		WithField("dir", c.cmd.Dir).
 		//	WithField("env", c.cmd.Env).
@@ -126,12 +128,12 @@ func (c *ShellExe) prepare() {
 
 // MustRun runs the command and kills this process if the command returns an error.
 func (c *ShellExe) MustRun() {
-	Must(c.RunE())
+	util.Must(c.RunE())
 }
 
 func (c *ShellExe) MustOut() string {
 	out, err := c.RunOut()
-	Must(err)
+	util.Must(err)
 	return out
 }
 

@@ -3,7 +3,6 @@ package bosun
 import (
 	"fmt"
 	"github.com/imdario/mergo"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/mirror"
@@ -64,7 +63,7 @@ func LoadFile(path string) (*File, error) {
 	f := &File{
 	}
 
-	err := pkg.LoadYaml(path, &f)
+	err := yaml.LoadYaml(path, &f)
 
 	if err != nil {
 		return nil, errors.Errorf("yaml error loading %q: %s", path, err)
@@ -144,7 +143,7 @@ func (f *File) mergeApp(incoming *AppConfig) error {
 
 	for _, app := range f.Apps {
 		if app.Name == incoming.Name {
-			pkg.Log.Warnf("app %q imported from %q will replace version imported from %q", incoming.Name, incoming.FromPath, app.FromPath)
+			core.Log.Warnf("app %q imported from %q will replace version imported from %q", incoming.Name, incoming.FromPath, app.FromPath)
 		} else {
 			appConfigs = append(appConfigs, app)
 		}

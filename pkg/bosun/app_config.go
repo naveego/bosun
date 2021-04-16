@@ -2,8 +2,8 @@ package bosun
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/actions"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
@@ -190,7 +190,7 @@ func (a *AppConfig) LoadChartValues() (values.ValueSet, error) {
 
 	if a.ChartPath != "" {
 		chartRef := a.ResolveRelative(a.ChartPath)
-		valuesYaml, err := pkg.NewShellExe(
+		valuesYaml, err := command.NewShellExe(
 			"helm", "inspect", "values",
 			chartRef,
 			"--version", a.Version.String(),

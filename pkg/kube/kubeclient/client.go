@@ -1,4 +1,4 @@
-package kube
+package kubeclient
 
 import (
 	"github.com/naveego/bosun/pkg/util"
@@ -19,12 +19,12 @@ func GetKubeClient() (*kubernetes.Clientset, error) {
 
 		configPath := os.Getenv("KUBECONFIG")
 		if configPath == "" {
-			configPath = filepath.Join(home, ".kube", "kubeconfig")
+			configPath = filepath.Join(home, ".kube", "config")
 		}
 		config, err = clientcmd.BuildConfigFromFlags("", configPath)
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not get kube kubeconfig from in cluster strategy or from ~/.kube/kubeconfig")
+			return nil, errors.Wrapf(err, "could not get kube kubeconfig from in cluster strategy or from ~/.kube/config")
 		}
 	}
 
@@ -58,7 +58,7 @@ func GetKubeConfigWithContext(configPath string, context string) (*rest.Config, 
 			configPath = os.Getenv("KUBECONFIG")
 		}
 		if configPath == "" {
-			configPath = filepath.Join(home, ".kube", "kubeconfig")
+			configPath = filepath.Join(home, ".kube", "config")
 		}
 		config, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			&clientcmd.ClientConfigLoadingRules{ExplicitPath: configPath},

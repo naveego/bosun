@@ -1,132 +1,9 @@
-package pkg
+package util
 
 import (
 	"bufio"
-	"errors"
-	"fmt"
-	"github.com/fatih/color"
-	"github.com/manifoldco/promptui"
-	"github.com/naveego/bosun/pkg/yaml"
-	"github.com/sirupsen/logrus"
 	"io"
-	"io/ioutil"
-	"os"
-	"runtime"
-	"strings"
 )
-
-var Log = logrus.NewEntry(logrus.StandardLogger())
-
-func RequestConfirmFromUser(label string, args ...interface{}) bool {
-
-	if !IsInteractive() {
-		return false
-	}
-
-	prompt := promptui.Prompt{
-		Label: fmt.Sprintf(label, args...) + " [y/N]",
-	}
-
-	value, err := prompt.Run()
-	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
-		fmt.Println("User quit.")
-		os.Exit(0)
-	}
-
-	if strings.HasPrefix(strings.ToLower(value), "y") {
-		return true
-	}
-
-	return false
-}
-
-func RequestStringFromUser(text string, args ...interface{}) string {
-
-	if !IsInteractive() {
-		panic(fmt.Sprintf("Requested string from user but no terminal is attached: %q, %v", text, args))
-	}
-
-	prompt := promptui.Prompt{
-		Label: fmt.Sprintf(text, args...),
-	}
-
-	value, err := prompt.Run()
-	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
-		fmt.Println("User quit.")
-		os.Exit(0)
-	}
-
-	return value
-}
-
-func RequestSecretFromUser(text string, args ...interface{}) string {
-	prompt := promptui.Prompt{
-		Label: fmt.Sprintf(text, args...),
-		Mask:  '*',
-	}
-
-	value, err := prompt.Run()
-	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
-		fmt.Println("User quit.")
-		os.Exit(0)
-	}
-
-	return value
-}
-
-// IfTTY invokes the function if there is a TTY attached, and returns ErrNoTTY otherwise.
-// If the function returns an error of promptui.ErrInterrupt or promptui.ErrAbort
-// this will call os.Exit.
-func IfTTY(fn func() (string, error)) (string, error) {
-	if !IsInteractive() {
-		return "", ErrNoTTY
-	}
-
-	result, err := fn()
-	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
-		fmt.Println("User quit.")
-		os.Exit(0)
-	}
-
-	return result, err
-}
-
-var ErrNoTTY = errors.New("no tty attached")
-
-func Must(err error, msgAndArgs ...string) {
-	if err == nil {
-		return
-	}
-	var msg string
-	switch len(msgAndArgs) {
-	case 0:
-		msg = "Fatal error."
-	case 1:
-		msg = msgAndArgs[0]
-	default:
-		msg = fmt.Sprintf(msgAndArgs[0], msgAndArgs[1:])
-	}
-
-	color.Red(msg)
-	color.Yellow(err.Error())
-
-	_, file, line, ok := runtime.Caller(1)
-	if ok {
-		color.Blue("@ %s : line %d", file, line)
-	}
-
-	os.Exit(1)
-}
-
-func LoadYaml(path string, out interface{}) error {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	err = yaml.Unmarshal(b, out)
-	return err
-}
 
 // Prefixer implements io.Reader and io.WriterTo. It reads
 // data from the underlying reader and prepends every line
@@ -200,10 +77,10 @@ func (r *Prefixer) WriteTo(w io.Writer) (n int64, err error) {
 	for {
 		// Write unread data from previous read.
 		if len(r.unread) > 0 {
-			m, err := w.Write(r.unread)
+			m, writeErr := w.Write(r.unread)
 			n += int64(m)
-			if err != nil {
-				return n, err
+			if writeErr != nil {
+				return n, writeErr
 			}
 			r.unread = r.unread[m:]
 			if len(r.unread) > 0 {
@@ -244,3 +121,4 @@ func (r *Prefixer) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	panic("unreachable")
 }
+

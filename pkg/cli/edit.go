@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
@@ -58,11 +58,11 @@ func Edit(targetPath string) error {
 	}
 
 	if bytes.Equal(currentBytes, updatedBytes) {
-		pkg.Log.Info("No changes detected.")
+		core.Log.Info("No changes detected.")
 		return nil
 	}
 
-	pkg.Log.WithField("path", targetPath).Info("Updating file.")
+	core.Log.WithField("path", targetPath).Info("Updating file.")
 
 	err = ioutil.WriteFile(targetPath, updatedBytes, stat.Mode())
 	if err != nil {

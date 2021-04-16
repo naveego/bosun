@@ -3,7 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/slack"
 	"github.com/pkg/errors"
 	"regexp"
@@ -77,11 +77,11 @@ func (x AppImageHelper) PublishImages(req PublishImagesRequest) error {
 
 			ctx.Log().Infof("Tagging and pushing %q", taggedName)
 			untaggedName := strings.Split(taggedName, ":")[0]
-			_, err = pkg.NewShellExe("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err = command.NewShellExe("docker", "tag", untaggedName, taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}
-			_, err = pkg.NewShellExe("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
+			_, err = command.NewShellExe("docker", "push", taggedName).Sudo(ctx.GetParameters().Sudo).RunOutLog()
 			if err != nil {
 				return err
 			}

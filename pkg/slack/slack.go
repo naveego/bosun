@@ -3,7 +3,7 @@ package slack
 import (
 	"bytes"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"os"
 
 	"encoding/json"
@@ -39,7 +39,7 @@ func (s Notification) Send() {
 		webhookURL, shouldSend = os.LookupEnv("SLACK_WEBHOOK")
 	}
 	if !shouldSend {
-		pkg.Log.Infof("Skipping slack notification (set SLACK_WEBHOOK to enable): %s", s.Message)
+		core.Log.Infof("Skipping slack notification (set SLACK_WEBHOOK to enable): %s", s.Message)
 		return
 	}
 
@@ -54,7 +54,7 @@ func (s Notification) Send() {
 
 	req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(slackBody))
 	if err != nil {
-		pkg.Log.WithError(err).Error("Slack notification failed.")
+		core.Log.WithError(err).Error("Slack notification failed.")
 		return
 	}
 
@@ -63,13 +63,13 @@ func (s Notification) Send() {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		pkg.Log.WithError(err).Error("Slack notification failed.")
+		core.Log.WithError(err).Error("Slack notification failed.")
 		return
 	}
 
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body)
 	if buf.String() != "ok" {
-		pkg.Log.WithError(errors.New(buf.String())).Error("Slack notification failed.")
+		core.Log.WithError(errors.New(buf.String())).Error("Slack notification failed.")
 	}
 }

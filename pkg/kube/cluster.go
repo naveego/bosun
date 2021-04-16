@@ -2,6 +2,7 @@ package kube
 
 import (
 	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/kube/kubeclient"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
@@ -18,7 +19,7 @@ type Cluster struct {
 	kubeconfig *rest.Config
 }
 
-func NewCluster(config ClusterConfig, ctx command.ExecutionContext) (*Cluster, error) {
+func NewCluster(config ClusterConfig, ctx command.ExecutionContext, allowIncomplete bool) (*Cluster, error) {
 
 	kubectl := Kubectl{
 		Cluster:    config.Name,
@@ -26,35 +27,39 @@ func NewCluster(config ClusterConfig, ctx command.ExecutionContext) (*Cluster, e
 	}
 
 	if kubectl.Kubeconfig == "" {
-		kubectl.Kubeconfig = os.ExpandEnv("$HOME/.kube/kubeconfig")
+		kubectl.Kubeconfig = os.ExpandEnv("$HOME/.kube/config")
 	}
 
-	kubeconfig, err := GetKubeConfigWithContext(config.KubeconfigPath, config.Name)
-	if err != nil {
-		ctx.Log().WithError(err).Warn("Could not create kubernetes client, you may need to run `bosun cluster configure`")
-	}
-
-	client, err := kubernetes.NewForConfig(kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Cluster{
+	c := &Cluster{
 		ctx:           ctx,
 		ClusterConfig: config,
 		Kubectl:       Kubectl{},
-		Client:        client,
-		kubeconfig:    kubeconfig,
-	}, nil
+	}
+
+	var err error
+	c.kubeconfig, err = kubeclient.GetKubeConfigWithContext(config.KubeconfigPath, config.Name)
+	if err != nil && !allowIncomplete{
+		return nil, errors.Wrapf(err, "could not create kubernetes client for cluster %q, you may need to run `bosun cluster configure`", config.Name)
+	}
+
+	if c.kubeconfig != nil {
+
+		c.Client, err = kubernetes.NewForConfig(c.kubeconfig)
+		if err != nil && !allowIncomplete {
+			return nil, err
+		}
+	}
+
+	return c, nil
 
 }
 
 func (c *Cluster) ConfigureKubectl() error {
-	
+
 	kubectl := c.Kubectl
 	config := c.ClusterConfig
 	ctx := c.ctx
-	
+
 	if kubectl.contextIsDefined(config.Name) && !ctx.GetParameters().Force {
 		ctx.Log().Debugf("Kubernetes context %q already exists (use --force to configure anyway).", config.Name)
 	} else {

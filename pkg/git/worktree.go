@@ -2,7 +2,7 @@ package git
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 	"github.com/sirupsen/logrus"
@@ -49,7 +49,7 @@ func NewWorktree(g GitWrapper, branch BranchName) (Worktree, error) {
 				WorktreeDir:    g.dir,
 			},
 			fake: true,
-			log: pkg.Log.WithField("repo", repoDirName).WithField("branch", branch).WithField("_", "worktree-fake"),
+			log:  core.Log.WithField("repo", repoDirName).WithField("branch", branch).WithField("_", "worktree-fake"),
 		}, nil
 	}
 
@@ -66,7 +66,7 @@ func NewWorktree(g GitWrapper, branch BranchName) (Worktree, error) {
 		WorktreeDir: worktreeDir,
 		WorktreeBranch:     fmt.Sprintf("worktree-%s-%s", branchSlug, xid.New()),
 		},
-		log:        pkg.Log.WithField("repo", repoDirName).WithField("branch", branch).WithField("_", "worktree"),
+		log: core.Log.WithField("repo", repoDirName).WithField("branch", branch).WithField("_", "worktree"),
 	}
 
 	worktree.log.Infof("Creating worktree at %s", worktree.dir)

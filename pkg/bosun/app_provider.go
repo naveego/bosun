@@ -3,11 +3,11 @@ package bosun
 import (
 	"fmt"
 	"github.com/manifoldco/promptui"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/vcs"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
@@ -366,7 +366,7 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 		AppRefs:  map[string]*Dependency{},
 	}
 
-	err := pkg.LoadYaml(bosunFile, &c)
+	err := yaml.LoadYaml(bosunFile, &c)
 	if err != nil {
 		return nil, errors.Wrapf(err, "load bosun file from %q", bosunFile)
 	}
@@ -391,7 +391,7 @@ func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error
 
 			sort.Strings(appNames)
 
-			pkg.Log.Infof("Couldn't find requested app %q in file %q which contained %#v.", name, bosunFile, appNames)
+			core.Log.Infof("Couldn't find requested app %q in file %q which contained %#v.", name, bosunFile, appNames)
 
 			if !terminal.IsTerminal(int(os.Stdout.Fd())) {
 				return nil, errors.Errorf("multiple apps found in %q, but no user available to choose; try importing the bosun file and referencing the app by name (apps were: %s)", bosunFile, strings.Join(appNames, ", "))

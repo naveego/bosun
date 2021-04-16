@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	vault "github.com/hashicorp/vault/api"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -96,7 +96,7 @@ func NewStack(cluster *Cluster, name string) (*Stack, error) {
 
 	var renderedStackTemplate *StackTemplate
 
-	rendered, err := pkg.NewTemplateBuilder(name + "-stack-template").WithTemplate(y).BuildAndExecute(parameters)
+	rendered, err := templating.NewTemplateBuilder(name + "-stack-template").WithTemplate(y).BuildAndExecute(parameters)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func (c *Stack) Save() error {
 		_, err = client.CoreV1().ConfigMaps(namespace).Update(configmap)
 
 		if kerrors.IsConflict(err) {
-			pkg.Log.Warn("Conflict while updating deployed apps, will try again.")
+			core.Log.Warn("Conflict while updating deployed apps, will try again.")
 			<-time.After(1 * time.Second)
 		} else if err != nil {
 			return err
@@ -321,14 +321,17 @@ func (k Stack) ConfigureCerts() error {
 		}
 
 		for namespaceName := range namespaceNames {
-			log.Infof("Deploying cert to namespace %q", namespaceName)
+			// log.Infof("Deploying cert to namespace %q", namespaceName)
 
 			kubectl := k.Cluster.Kubectl
+
+			log.Infof("Uploading cert to namespace %s", namespaceName)
 
 			_, _ = kubectl.Exec("delete", "secret", certConfig.SecretName, "-n", namespaceName)
 
 			_, err = kubectl.Exec("create", "secret", "tls", certConfig.SecretName, "--cert", certPath, "--key", keyPath, "-n", namespaceName)
 			if err != nil {
+				log.WithError(err).Warn("Could not create secret")
 				errs.Collect(err)
 			}
 		}
@@ -481,6 +484,8 @@ func (s Stack) IsAppDisabled(name string) bool {
 
 func (c *Stack) Destroy() error {
 
+	errs := multierr.New()
+
 	log := c.Cluster.ctx.Log()
 
 	client, err := dynamic.NewForConfig(c.Cluster.kubeconfig)
@@ -488,7 +493,7 @@ func (c *Stack) Destroy() error {
 		return err
 	}
 
-	log.Warn("Deleting tenants first to avoid operator issues...")
+	log.Info("Deleting tenants first to avoid operator issues...")
 
 	tenantRes := schema.GroupVersionResource{Group: "naveego.com", Version: "v1", Resource: "tenants"}
 
@@ -496,10 +501,10 @@ func (c *Stack) Destroy() error {
 	err = client.Resource(tenantRes).Namespace(tenantNamespace).DeleteCollection(&metav1.DeleteOptions{}, metav1.ListOptions{})
 
 	if err != nil {
-		return err
+		errs.Collect(err)
+	} else {
+		log.Info("Deleted tenants")
 	}
-
-	log.Warn("Deleted tenants")
 
 	deleted := map[string]bool{}
 
@@ -510,6 +515,25 @@ func (c *Stack) Destroy() error {
 			continue
 		}
 
+		sharedWith := ""
+		otherTemplates := append(c.Cluster.StackTemplates, &c.Cluster.StackTemplate)
+		for _, otherTemplate := range otherTemplates {
+			if otherTemplate.NamePattern == c.NamePattern {
+				continue
+			}
+			for _, otherNs := range otherTemplate.Namespaces {
+				if otherNs.Name == ns.Name {
+					sharedWith = otherTemplate.Name
+					break
+				}
+			}
+		}
+
+		if sharedWith != "" {
+			log.Infof("Skipping deletion of namespace %q because it is also used by stack template %q.", ns.Name, sharedWith)
+			continue
+		}
+
 		if deleted[ns.Name] {
 			continue
 		}
@@ -517,22 +541,27 @@ func (c *Stack) Destroy() error {
 		log.Warnf("Deleting namespace %q...", ns.Name)
 
 		err = c.Cluster.Client.CoreV1().Namespaces().Delete(ns.Name, &metav1.DeleteOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "deleting namespace %q", ns.Name)
+
+		if err != nil && !kerrors.IsNotFound(err) {
+			errs.Collect(errors.Wrapf(err, "deleting namespace %q", ns.Name))
 		}
 
 		deleted[ns.Name] = true
 	}
 
-	log.Warnf("Deleting stack history...")
+	log.Info("Deleting stack history...")
 	err = c.Cluster.Client.CoreV1().ConfigMaps(c.Cluster.GetDefaultNamespace()).Delete(makeStackConfigmapName(c.Name), &metav1.DeleteOptions{})
 
+	if err != nil {
+		errs.Collect(err)
+	}
+
+	err = errs.ToError()
 	if err != nil {
 		return err
 	}
 
-	log.Warnf("Done deleting stack.")
+	log.Info("Done deleting stack.")
 
 	return nil
-
 }

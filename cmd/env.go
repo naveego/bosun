@@ -18,10 +18,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -182,7 +182,7 @@ var envGetOrCreateCert = addCommand(envCmd, &cobra.Command{
 		certName := regexp.MustCompile(`(\W|_)+`).ReplaceAllString(fmt.Sprintf("%n_%n", name, strings.Join(hosts, "_")), "_")
 
 		dir := filepath.Join(os.TempDir(), name)
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
 			os.MkdirAll(dir, 0770)
 		}
 
@@ -204,7 +204,7 @@ var envGetOrCreateCert = addCommand(envCmd, &cobra.Command{
 
 		mkcertArgs := append([]string{"-cert-file", certPath, "-key-file", keyPath}, hosts...)
 
-		out, err := pkg.NewShellExe("mkcert", mkcertArgs...).RunOut()
+		out, err := command.NewShellExe("mkcert", mkcertArgs...).RunOut()
 		fmt.Fprintf(os.Stderr, "mkcert output:\n%s\n---- end output\n", out)
 
 		if err != nil {

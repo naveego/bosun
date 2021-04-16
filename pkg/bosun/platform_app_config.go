@@ -1,7 +1,6 @@
 package bosun
 
 import (
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
 	"github.com/naveego/bosun/pkg/filter"
@@ -50,7 +49,7 @@ func (p PlatformAppConfigs) FilterByEnvironment(env *environment.Environment) Pl
 
 		_, allowedByEnvironment := env.Apps[app.Name]
 		if !allowedByEnvironment {
-			pkg.Log.Debugf("Skipping app %q because it's disabled or not included in environment %q", app.Name, env.Name)
+			core.Log.Debugf("Skipping app %q because it's disabled or not included in environment %q", app.Name, env.Name)
 			continue
 		}
 
@@ -59,7 +58,7 @@ func (p PlatformAppConfigs) FilterByEnvironment(env *environment.Environment) Pl
 		disabledForCluster := ok && clusterApp.Disabled
 
 		if disabledForCluster {
-			pkg.Log.Debugf("Skipping app %q because it's disabled for stack %q", app.Name, stack.Name)
+			core.Log.Debugf("Skipping app %q because it's disabled for stack %q", app.Name, stack.Name)
 		}
 
 		out = append(out, app)

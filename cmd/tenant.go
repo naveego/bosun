@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/tenant"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -36,7 +36,7 @@ var tenantCloneCmd = addCommand(tenantCmd, &cobra.Command{
 	Short: "Clones a tenant",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		log := pkg.Log.WithField("cmd", "tenant clone")
+		log := core.Log.WithField("cmd", "tenant clone")
 		planner, err := tenant.NewPlanner(args[0], log)
 		if err != nil {
 			return err

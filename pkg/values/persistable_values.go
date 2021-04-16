@@ -1,7 +1,7 @@
 package values
 
 import (
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	yml "gopkg.in/yaml.v3"
 	"io/ioutil"
 	"os"
@@ -42,7 +42,7 @@ func (r *PersistableValues) PersistValues() (string, error) {
 func (r *PersistableValues) Cleanup() {
 	err := os.Remove(r.FilePath)
 	if err != nil && !os.IsNotExist(err) {
-		pkg.Log.WithError(err).WithField("path", r.FilePath).
+		core.Log.WithError(err).WithField("path", r.FilePath).
 			Fatal("Failed to clean up persisted values file, which make contain secrets. You must manually delete this file.")
 	}
 }

@@ -1,7 +1,7 @@
 package kube
 
 import (
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 )
 
 type OracleClusterConfig struct {
@@ -13,7 +13,7 @@ func (oc OracleClusterConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	kubectl := Kubectl{Kubeconfig: ctx.KubeConfigPath}
 
-	err := pkg.NewShellExe("oci", "ce", "cluster", "create-config",
+	err := command.NewShellExe("oci", "ce", "cluster", "create-config",
 		"--token-version", "2.0.0",
 		"--cluster-id", oc.OCID,
 		"--file", kubectl.Kubeconfig,

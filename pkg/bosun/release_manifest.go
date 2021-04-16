@@ -3,7 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
@@ -144,7 +144,7 @@ func (r *ReleaseManifest) GetPlan() (*ReleasePlan, error) {
 func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 
 	if r.appManifests == nil {
-		pkg.Log.Debugf("Getting app manifests...")
+		core.Log.Debugf("Getting app manifests...")
 		appManifests := map[string]*AppManifest{}
 
 		allAppMetadata := r.GetAllAppMetadata()
@@ -161,7 +161,7 @@ func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
 		}
 
 		r.appManifests = appManifests
-		pkg.Log.Debugf("Got %d app manifests.", len(r.appManifests))
+		core.Log.Debugf("Got %d app manifests.", len(r.appManifests))
 	}
 	return r.appManifests, nil
 }

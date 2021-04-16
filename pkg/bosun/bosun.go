@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/Azure/go-autorest/autorest/to"
-	vault "github.com/hashicorp/vault/api"
-	"github.com/naveego/bosun/pkg"
+	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/naveego/bosun/pkg/vault"
+
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
@@ -56,7 +57,7 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 		params: params,
 		ws:     ws,
 		file:   ws.MergedBosunFile,
-		log:    pkg.Log,
+		log:    core.Log,
 		repos:  map[string]*Repo{},
 	}
 
@@ -224,9 +225,9 @@ func (b *Bosun) getAppDependencies(name string, visited map[string]bool) ([]stri
 	return out, nil
 }
 
-func (b *Bosun) GetVaultClient() (*vault.Client, error) {
+func (b *Bosun) GetVaultClient() (*vaultapi.Client, error) {
 
-	vaultClient, err := pkg.NewVaultLowlevelClient("", "")
+	vaultClient, err := vault.NewVaultLowlevelClient("", "")
 
 	return vaultClient, err
 }
@@ -315,7 +316,6 @@ func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 // Configures the workspace to use the specified environment and cluster, and activates them.
 func (b *Bosun) UseStack(stack brns.StackBrn) error {
 	var err error
-
 
 	envConfig, err := b.GetEnvironmentConfig(stack.EnvironmentName)
 
@@ -684,7 +684,7 @@ func (b *Bosun) NewContext() BosunContext {
 	ctx := BosunContext{
 		Bosun: b,
 
-		log:   b.log,
+		log: b.log,
 	}
 	if !b.params.NoEnvironment {
 		ctx = ctx.WithEnv(b.GetCurrentEnvironment()).(BosunContext)
@@ -1020,7 +1020,7 @@ func (b *Bosun) ConfirmEnvironment() error {
 				return errors.Errorf("The --confirm-env flag was set to %q, but you are targeting the %q environment!\nSwitch environments or unset the flag.", b.params.ConfirmedEnv, b.env.Name)
 			}
 		} else {
-			confirmed := pkg.RequestConfirmFromUser("Do you really want to run this command against the %q environment?", envName)
+			confirmed := cli.RequestConfirmFromUser("Do you really want to run this command against the %q environment?", envName)
 			b.environmentConfirmed = &confirmed
 		}
 	}
@@ -1183,7 +1183,7 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 	// 	return nil, errors.Wrap(err, "get zenhub token")
 	// }
 
-	gis, err := git.NewIssueService(*gc, pkg.Log.WithField("cmp", "github"))
+	gis, err := git.NewIssueService(*gc, core.Log.WithField("cmp", "github"))
 	if err != nil {
 		return nil, errors.Wrapf(err, "get github issue service with tokens %q", gc.GithubToken)
 	}
@@ -1211,7 +1211,7 @@ func (b *Bosun) GetGithubToken() (string, error) {
 			fmt.Println(`Simple example: echo "9uha09h39oenhsir98snegcu"`)
 			fmt.Println(`Better example: cat $HOME/.tokens/github.token"`)
 			fmt.Println(`Secure example: lpass show "Tokens/GithubCLIForBosun" --notes"`)
-			scriptContent := pkg.RequestStringFromUser("ShellExe")
+			scriptContent := cli.RequestStringFromUser("ShellExe")
 
 			ws.GithubToken = &command.CommandValue{
 				Command: command.Command{
@@ -1269,31 +1269,35 @@ func (b *Bosun) GetCluster(cluster brns.StackBrn) (*kube.ClusterConfig, error) {
 
 func (b *Bosun) NormalizeStackBrn(hint string) (brns.StackBrn, error) {
 
-	brn, err := b.normalizeStackBrn(hint)
+	brn, alternatives, err := b.normalizeStackBrn(hint)
 
 	if err != nil {
 		return brn, err
 	}
 
 	if brn.String() != hint {
-		b.log.Infof("Interpreted %q as %s", hint, brn)
+		if len(alternatives) > 0 {
+			b.log.Infof("Interpreted %q as %s (alternatives were %v)", hint, brn, alternatives)
+		} else {
+			b.log.Infof("Interpreted %q as %s", hint, brn)
+		}
 	}
 
 	return brn, nil
 }
 
-func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, error) {
+func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, []string, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
-		return brns.StackBrn{}, err
+		return brns.StackBrn{}, nil, err
 	}
 
 	var envNames []string
 	var environmentConfig *environment.Config
 	environmentConfigs, err := p.GetEnvironmentConfigs()
 	if err != nil {
-		return brns.StackBrn{}, err
+		return brns.StackBrn{}, nil, err
 	}
 	for _, ec := range environmentConfigs {
 		envNames = append(envNames, ec.Name)
@@ -1312,7 +1316,7 @@ func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, error) {
 	if environmentConfig == nil {
 		candidates, err = p.GetClusters()
 		if err != nil {
-			return brns.StackBrn{}, errors.Wrap(err, "could get all clusters")
+			return brns.StackBrn{}, nil, errors.Wrap(err, "could get all clusters")
 		}
 	} else {
 		candidates = environmentConfig.Clusters
@@ -1343,13 +1347,17 @@ func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, error) {
 			candidateBrns = append(candidateBrns, c.Brn.String())
 			if c.IsDefaultCluster {
 				clusterConfig = c
+				break
+			}
+			if environmentConfig != nil && environmentConfig.DefaultCluster == c.Name {
+				clusterConfig = c
+				break
 			}
 		}
-		return brns.StackBrn{}, errors.Errorf("%d clusters matched hint %s, but none had isDefaultCluster=true; matches: %v", len(candidateMatches), hint, candidateBrns)
 	}
 
 	if clusterConfig == nil {
-		return brns.StackBrn{}, errors.Errorf("No clusters matched hint %s; environments: %v; clusters: %v", hint, envNames, clusterNames)
+		return brns.StackBrn{}, nil, errors.Errorf("No clusters matched hint %s; environments: %v; clusters: %v", hint, envNames, clusterNames)
 	}
 
 	environmentName := clusterConfig.Environment
@@ -1361,7 +1369,15 @@ func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, error) {
 		stackName = parts[1]
 	}
 
-	return brns.NewStack(environmentName, clusterConfig.Name, stackName), nil
+	var alternatives []string
+
+	for _, v := range candidateMatches {
+		if v.Name != clusterConfig.Name {
+			alternatives = append(alternatives, v.Name)
+		}
+	}
+
+	return brns.NewStack(environmentName, clusterConfig.Name, stackName), alternatives, nil
 }
 
 func (b *Bosun) GetCurrentCluster() (*kube.Cluster, error) {

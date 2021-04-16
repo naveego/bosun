@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"github.com/google/go-github/v20/github"
 	"github.com/hashicorp/go-getter"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/pkg/errors"
@@ -104,7 +103,7 @@ var metaUpgradeCmd = addCommand(metaCmd, &cobra.Command{
 			return nil
 		}
 
-		pkg.Log.Infof("Found upgrade: %s", release.GetTagName())
+		core.Log.Infof("Found upgrade: %s", release.GetTagName())
 
 		err = downloadOtherVersion(release)
 		if err != nil {
@@ -173,7 +172,7 @@ var metaDowngradeCmd = addCommand(metaCmd, &cobra.Command{
 			return nil
 		}
 
-		pkg.Log.Infof("Found downgrade: %s", release.GetTagName())
+		core.Log.Infof("Found downgrade: %s", release.GetTagName())
 
 		err = downloadOtherVersion(release)
 		if err != nil {
@@ -213,7 +212,7 @@ func downloadOtherVersion(release *github.RepositoryRelease) error {
 	defer os.RemoveAll(tempDir)
 
 	downloadURL := asset.GetBrowserDownloadURL()
-	pkg.Log.Infof("Found upgrade asset, will download from %q to %q", downloadURL, tempDir)
+	core.Log.Infof("Found upgrade asset, will download from %q to %q", downloadURL, tempDir)
 
 	err = getter.Get(tempDir, "http::"+downloadURL)
 	if err != nil {

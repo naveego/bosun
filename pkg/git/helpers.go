@@ -3,7 +3,8 @@ package git
 import (
 	"context"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -45,7 +46,7 @@ func GetRepoPath(path string) (string, error) {
 		path = filepath.Dir(path)
 	}
 
-	repoPath, err := pkg.NewShellExe("git", "-C", path, "rev-parse", "--show-toplevel").RunOut()
+	repoPath, err := command.NewShellExe("git", "-C", path, "rev-parse", "--show-toplevel").RunOut()
 	if err != nil {
 		return "", errors.Errorf("could not get repo for path %q (based on path %q): %s", path, original, err)
 	}
@@ -87,7 +88,7 @@ func mustGetGitClient(token string) *github.Client {
 		var ok bool
 		token, ok = os.LookupEnv("GITHUB_TOKEN")
 		if !ok {
-			pkg.Log.Fatal("GITHUB_TOKEN must be set")
+			core.Log.Fatal("GITHUB_TOKEN must be set")
 		}
 	}
 

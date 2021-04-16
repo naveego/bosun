@@ -5,7 +5,6 @@ import (
 	"github.com/aryann/difflib"
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
@@ -134,7 +133,7 @@ var releasePlanDiscardCmd = addCommand(releasePlanCmd, &cobra.Command{
 			return err
 		}
 
-		if pkg.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
+		if cli.RequestConfirmFromUser("Are you sure you want to discard the current release plan?") {
 			_, err = g.Exec("reset", "--hard")
 			if err != nil {
 				return err

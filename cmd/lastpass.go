@@ -17,7 +17,8 @@ package cmd
 import (
 	"fmt"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/spf13/cobra"
 )
 
@@ -39,15 +40,15 @@ var lpassPasswordCmd = addCommand(lpassCmd, &cobra.Command{
 		username := args[1]
 		url := args[2]
 
-		password, err := pkg.NewShellExe("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
+		password, err := command.NewShellExe("lpass", "show", "--sync=now", "-p", "--basic-regexp", name).RunOut()
 		if err == nil {
 			fmt.Println(password)
 			return nil
 		}
 
-		pkg.Log.Debug("Password %q does not yet exist; it will be generated.", name)
+		core.Log.Debug("Password %q does not yet exist; it will be generated.", name)
 
-		password, err = pkg.NewShellExe("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
+		password, err = command.NewShellExe("lpass", "generate", "--sync=now", "--no-symbols", "--username", username, "--url", url, name, "30").RunOut()
 		if err == nil {
 			fmt.Println(password)
 		}
@@ -63,7 +64,7 @@ var lpassExecCred = addCommand(lpassCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		name := args[0]
-		password, err := pkg.NewShellExe("lpass", "show", "--sync=now", "-p", name).RunOut()
+		password, err := command.NewShellExe("lpass", "show", "--sync=now", "-p", name).RunOut()
 		if err != nil {
 			return err
 		}
@@ -93,7 +94,7 @@ var lpassNoteCmd = addCommand(lpassCmd, &cobra.Command{
 		name := args[0]
 		field := args[1]
 
-		data, err := pkg.NewShellExe("lpass", "show", "--sync=now", name, "--field", field).RunOut()
+		data, err := command.NewShellExe("lpass", "show", "--sync=now", name, "--field", field).RunOut()
 		if err == nil {
 			fmt.Println(data)
 			return nil

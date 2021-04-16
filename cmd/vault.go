@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/google/uuid"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/vault"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -65,7 +66,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		if err != nil {
 			return err
 		}
-		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err
 		}
@@ -109,7 +110,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 			templateArgs.Values[segs[0]] = segs[1]
 		}
 
-		vaultLayout, err := pkg.LoadVaultLayoutFromFiles(args, templateArgs, vaultClient)
+		vaultLayout, err := vault.LoadVaultLayoutFromFiles(args, templateArgs, vaultClient)
 		if err != nil {
 			return err
 		}
@@ -142,16 +143,16 @@ Any values provided using --values will be in {{ .Values.xxx }}
 const argVaultApplyDumpValues = "dump-values"
 
 var vaultInitCmd = &cobra.Command{
-	Use:   "bootstrap-dev",
-	Short: "Sets up a Vault instance suitable for non-production environment.",
-
-	Long: `This command should only be run against the dev vault instances.
-
+	Use:          "init [namespace]",
+	Aliases:      []string{"bootstrap-dev"},
+	Short:        "Initializes or unseals a vault instance.",
+	SilenceUsage: true,
+	Long: `
 If Vault has not been initialized, this will initialize it and store the keys in Kubernetes secrets.
 If Vault is initialized, but sealed, this will unseal it using the keys stored in Kubernetes.
 Otherwise, this will do nothing.
 `,
-	Example: "vault bootstrap-dev",
+	Example: "vault init",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 		var err error
@@ -162,9 +163,9 @@ Otherwise, this will do nothing.
 			return err
 		}
 
-		pkg.Log.Infof("Bootstrapping vault using address %s and token %s", g.vaultAddr, g.vaultToken)
+		core.Log.Infof("Bootstrapping vault using address %s and token %s", g.vaultAddr, g.vaultToken)
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err
 		}
@@ -180,29 +181,40 @@ Otherwise, this will do nothing.
 
 		platformApps := p.GetKnownAppMap()
 
-		vaultPlatformApp, ok := platformApps["vault"]
+		namespace := "default"
 
-		if !ok {
-			return errors.New("vault not found in platform apps")
-		}
+		if len(args) > 0 {
+			namespace = args[1]
+		} else {
 
-		stack := env.Stack()
+			vaultPlatformApp, ok := platformApps["vault"]
 
-		for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
-			for namespaceRole, namespaceConfig := range stack.StackTemplate.Namespaces {
-				if namespaceRole == requestedNamespaceRole {
+			if !ok {
+				return errors.New("vault not found in platform apps")
+			}
 
-					initializer := pkg.VaultInitializer{
-						Client:         vaultClient,
-						VaultNamespace: namespaceConfig.Name,
-					}
+			stack := env.Stack()
 
-					err = initializer.InitNonProd()
-					if err != nil {
-						return err
+			for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
+				for namespaceRole, namespaceConfig := range stack.StackTemplate.Namespaces {
+					if namespaceRole == requestedNamespaceRole {
+						namespace = namespaceConfig.Name
+						break
 					}
 				}
 			}
+		}
+
+		core.Log.Infof("Initializing vault in namespace %q", namespace)
+
+		initializer := vault.VaultInitializer{
+			Client:         vaultClient,
+			VaultNamespace: namespace,
+		}
+
+		err = initializer.Init()
+		if err != nil {
+			return err
 		}
 
 		return nil
@@ -210,12 +222,18 @@ Otherwise, this will do nothing.
 }
 
 var vaultUnsealCmd = &cobra.Command{
-	Use:           "unseal {path/to/keys}",
-	Args:          cobra.ExactArgs(1),
-	Short:         "Unseals vault using the keys at the provided path, if it exists. Intended to be run from within kubernetes, with the shard secret mounted.",
+	Use:           "unseal [namespace]",
+	Short:         "Unseals vault using the keys in k8s.",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+
+
+		namespace := "default"
+		if len(args) > 0 {
+			namespace = args[0]
+		}
+
 		viper.BindPFlags(cmd.Flags())
 
 		g := globalParameters{}
@@ -224,17 +242,20 @@ var vaultUnsealCmd = &cobra.Command{
 			return err
 		}
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err
 		}
 
-		initializer := pkg.VaultInitializer{
+		core.Log.Infof("Unsealing vault in namespace %q", namespace)
+
+
+		initializer := vault.VaultInitializer{
 			Client:         vaultClient,
-			VaultNamespace: viper.GetString(ArgVaultNamespace),
+			VaultNamespace: namespace,
 		}
 
-		err = initializer.Unseal(args[0])
+		err = initializer.Unseal()
 
 		return err
 	},
@@ -251,7 +272,7 @@ var vaultSecretCmd = &cobra.Command{
 
 		_ = MustGetBosun()
 
-		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
+		vaultClient, err := vault.NewVaultLowlevelClient("", "")
 		if err != nil {
 			return err
 		}
@@ -267,7 +288,7 @@ var vaultSecretCmd = &cobra.Command{
 			defaultValue = strings.Replace(uuid.New().String(), "-", "", -1)
 		}
 
-		action := pkg.GetOrUpdateVaultSecretAction{
+		action := vault.GetOrUpdateVaultSecretAction{
 			Client:       vaultClient,
 			Path:         path,
 			Key:          key,
@@ -303,7 +324,7 @@ var vaultJWTCmd = &cobra.Command{
 			return err
 		}
 
-		vaultClient, err := pkg.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
 		if err != nil {
 			return err
 		}

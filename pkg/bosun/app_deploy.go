@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/kube/kubeclient"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/workspace"
 	"io"
@@ -208,7 +209,7 @@ func (a *AppDeploy) LoadActualState(ctx BosunContext, diff bool) error {
 	// creating using `app toggle` and is routed to localhost.
 	if ctx.Environment().IsLocal && a.AppManifest.AppConfig.Minikube != nil {
 		for _, routableService := range a.AppManifest.AppConfig.Minikube.RoutableServices {
-			svcYaml, yamlErr := pkg.NewShellExe("kubectl", "get", "svc", "--namespace", a.Namespace, routableService.Name, "-o", "yaml").RunOut()
+			svcYaml, yamlErr := command.NewShellExe("kubectl", "get", "svc", "--namespace", a.Namespace, routableService.Name, "-o", "yaml").RunOut()
 			if yamlErr != nil {
 				log.WithError(yamlErr).Errorf("Error getting service config %q", routableService.Name)
 				continue
@@ -267,7 +268,7 @@ func (a *AppDeploy) GetHelmList(filter string, namespace string) ([]*HelmRelease
 		filter = ".*"
 	}
 	args := []string{"list", "--all", "--namespace", namespace, "--output", "yaml", "--filter", filter}
-	data, err := pkg.NewShellExe("helm", args...).RunOut()
+	data, err := command.NewShellExe("helm", args...).RunOut()
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +525,7 @@ func (a *AppDeploy) diff(ctx BosunContext) (string, error) {
 
 	args := omitStrings(a.makeHelmArgs(ctx), "--dry-run")
 
-	msg, err := pkg.NewShellExe("helm", "diff", "upgrade", a.AppManifest.Name, a.Chart(ctx)).
+	msg, err := command.NewShellExe("helm", "diff", "upgrade", a.AppManifest.Name, a.Chart(ctx)).
 		WithArgs(args...).
 		RunOut()
 
@@ -549,7 +550,7 @@ func (a *AppDeploy) Delete(ctx BosunContext) error {
 	args = append(args, a.AppManifest.Name)
 	args = append(args, a.getNamespaceFlag(ctx)...)
 
-	out, err := pkg.NewShellExe("helm", args...).RunOut()
+	out, err := command.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "delete using args %v", args)
 }
@@ -560,14 +561,14 @@ func (a *AppDeploy) Rollback(ctx BosunContext) error {
 	// args = append(args, a.getNamespaceFlag(ctx)...)
 	args = append(args, a.getHelmDryRunArgs(ctx)...)
 
-	out, err := pkg.NewShellExe("helm", args...).RunOut()
+	out, err := command.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "rollback using args %v", args)
 }
 
 func (a *AppDeploy) Install(ctx BosunContext) error {
 	args := append([]string{"install", a.AppManifest.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
-	out, err := pkg.NewShellExe("helm", args...).RunOut()
+	out, err := command.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "install using args %v", args)
 }
@@ -577,7 +578,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 	if a.DesiredState.Force {
 		args = append(args, "--force")
 	}
-	out, err := pkg.NewShellExe("helm", args...).RunOut()
+	out, err := command.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
 	return errors.Wrapf(err, "upgrade using args %v", args)
 }
@@ -615,7 +616,7 @@ func (a *AppDeploy) RouteToLocalhost(ctx BosunContext, namespace string) error {
 		return errors.New("minikube.hostIP is not set in root config file; it should be the IP of your machine reachable from the minikube VM")
 	}
 
-	client, err := kube.GetKubeClient()
+	client, err := kubeclient.GetKubeClient()
 	if err != nil {
 		return errors.Wrap(err, "get kube client for tweaking service")
 	}
@@ -777,7 +778,7 @@ func (a *AppDeploy) getHelmDryRunArgs(ctx BosunContext) []string {
 func (a *AppDeploy) Recycle(ctx BosunContext) error {
 	ctx = ctx.WithAppDeploy(a)
 	ctx.Log().Info("Deleting pods...")
-	err := pkg.NewShellExe("kubectl", "delete", "--namespace", a.getNamespaceName(), "pods", "--selector=release="+a.AppManifest.AppConfig.Name).RunE()
+	err := command.NewShellExe("kubectl", "delete", "--namespace", a.getNamespaceName(), "pods", "--selector=release="+a.AppManifest.AppConfig.Name).RunE()
 	if err != nil {
 		return err
 	}
@@ -785,7 +786,7 @@ func (a *AppDeploy) Recycle(ctx BosunContext) error {
 
 	for {
 		podsReady := true
-		out, shellErr := pkg.NewShellExe("kubectl", "get", "pods", "--namespace", a.getNamespaceName(), "--selector=release="+a.AppManifest.AppConfig.Name,
+		out, shellErr := command.NewShellExe("kubectl", "get", "pods", "--namespace", a.getNamespaceName(), "--selector=release="+a.AppManifest.AppConfig.Name,
 			"-o", `jsonpath={range .items[*]}{@.metadata.name}:{@.status.conditions[?(@.type=='Ready')].status};{end}`).RunOut()
 		if shellErr != nil {
 			return shellErr
@@ -838,7 +839,7 @@ func (a *AppDeploy) Validate(ctx BosunContext) []error {
 
 	var errs []error
 
-	out, err := pkg.NewShellExe("helm", "search", a.Chart(ctx), "-v", a.AppConfig.Version.String()).RunOut()
+	out, err := command.NewShellExe("helm", "search", a.Chart(ctx), "-v", a.AppConfig.Version.String()).RunOut()
 	if err != nil {
 		errs = append(errs, errors.Errorf("search for %s@%s failed: %s", a.AppConfig.Chart, a.AppConfig.Version, err))
 	}

@@ -2,7 +2,7 @@ package bosun
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
@@ -54,7 +54,7 @@ func (r *Repo) Clone(ctx BosunContext, toDir string) error {
 
 	dir, _ := filepath.Abs(filepath.Join(toDir, r.Name))
 
-	err := pkg.NewShellExe("git", "clone",
+	err := command.NewShellExe("git", "clone",
 		"--depth", "1",
 		"--no-single-branch",
 		fmt.Sprintf("git@github.com:%s.git", r.Name),

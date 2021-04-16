@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/aryann/difflib"
 	"github.com/fatih/color"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
@@ -475,7 +475,7 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 
 	// ctx.GetMinikubeDockerEnv()
 
-	err := pkg.NewShellExe("helm", "repo", "update").RunE()
+	err := command.NewShellExe("helm", "repo", "update").RunE()
 	if err != nil {
 		return errors.Wrap(err, "update repo indexes")
 	}
@@ -525,8 +525,8 @@ func validateDeploy(b *bosun.Bosun, ctx bosun.BosunContext, release *bosun.Deplo
 			state = append(state, colorOK.Sprint("OK"))
 		} else {
 			hasErrors = true
-			for _, err := range appErrs {
-				state = append(state, colorError.Sprint(err))
+			for _, appErr := range appErrs {
+				state = append(state, colorError.Sprint(appErr))
 			}
 		}
 		t.Append([]string{appName, strings.Join(state, "\n")})

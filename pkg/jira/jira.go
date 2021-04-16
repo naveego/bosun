@@ -7,7 +7,6 @@ import (
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/stories"
-	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"path"
@@ -34,8 +33,8 @@ func (c *Client) GetBranches(story *stories.Story) ([]stories.BranchRef, error) 
 		return nil, err
 	}
 
-	y, _ := yaml.MarshalString(resp)
-	fmt.Println(y)
+	// y, _ := yaml.MarshalString(resp)
+	// fmt.Println(y)
 
 
 	var branches []stories.BranchRef

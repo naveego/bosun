@@ -16,6 +16,9 @@ package main
 
 import (
 	"github.com/naveego/bosun/cmd"
+	// These are imported so their inits will run
+	_ "github.com/naveego/bosun/pkg/command"
+	_ "github.com/naveego/bosun/pkg/vault"
 )
 
 func main() {

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/vault"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -217,13 +217,13 @@ func GetPreparedConnection(log *logrus.Entry, c Connection) (PreparedConnection,
 
 		err = func() error {
 
-			line, _, err := reader.ReadLine()
-			if err == io.EOF {
-				err := entry.cmd.Wait()
-				return errors.Wrap(err, "kubectl port-forward failed")
+			line, _, readErr := reader.ReadLine()
+			if readErr == io.EOF {
+				readErr = entry.cmd.Wait()
+				return errors.Wrap(readErr, "kubectl port-forward failed")
 			}
-			if err != nil {
-				return errors.Wrap(err, "read kubectl port-forward output")
+			if readErr != nil {
+				return errors.Wrap(readErr, "read kubectl port-forward output")
 			}
 			matches := regexp.MustCompile(`Forwarding from ([^:]+):(\d+)`).FindStringSubmatch(string(line))
 			if len(matches) < 3 {
@@ -343,7 +343,7 @@ func getVaultCredentials(log *logrus.Entry, c CredentialProvider) (username stri
 
 	log.Debugf("getting vault client at '%s' with token '%s'", vaultAddr, vaultToken)
 
-	vault, err := pkg.NewVaultLowlevelClient(vaultToken, vaultAddr)
+	vault, err := vault.NewVaultLowlevelClient(vaultToken, vaultAddr)
 	if err != nil {
 		return
 	}

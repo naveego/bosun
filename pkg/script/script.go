@@ -2,7 +2,6 @@ package script
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
@@ -246,7 +245,7 @@ func (s ScriptStep) Execute(ctx ScriptContext, index int) error {
 
 	log.WithField("args", stepArgs).Info("Executing step")
 
-	err = pkg.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
+	err = command.NewShellExe(exe, stepArgs...).WithDir(ctx.Pwd()).RunE()
 	if err != nil {
 		log.WithError(err).WithField("args", stepArgs).Error("Step failed.")
 		return err

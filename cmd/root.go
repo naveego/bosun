@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -57,21 +56,21 @@ building, deploying, or monitoring apps you may want to add them to this tool.`,
 			ForceColors:      true,
 		})
 
-		pkg.Log = logrus.NewEntry(logrus.StandardLogger())
+		core.Log = logrus.NewEntry(logrus.StandardLogger())
 
 		verbose := viper.GetBool(ArgGlobalVerbose)
 		if viper.GetBool(ArgGlobalTrace) {
 			logrus.SetLevel(logrus.TraceLevel)
-			pkg.Log.Debug("Logging at trace level.")
+			core.Log.Debug("Logging at trace level.")
 		} else if verbose {
 			logrus.SetLevel(logrus.DebugLevel)
-			pkg.Log.Debug("Logging at debug level.")
+			core.Log.Debug("Logging at debug level.")
 		} else {
 			logrus.SetLevel(logrus.InfoLevel)
 		}
 
 		if step >= 0 {
-			pkg.Log = pkg.Log.WithField("@step", step).WithField("@command", cmd.Name())
+			core.Log = core.Log.WithField("@step", step).WithField("@command", cmd.Name())
 			cmd.SilenceUsage = true
 		}
 

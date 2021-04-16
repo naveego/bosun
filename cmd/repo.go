@@ -16,8 +16,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
@@ -136,7 +136,7 @@ var _ = addCommand(
 				log := ctx.Log().WithField("repo", repo.Name)
 
 				if repo.CheckCloned() == nil {
-					pkg.Log.Infof("Repo already cloned to %q", repo.LocalRepo.Path)
+					core.Log.Infof("Repo already cloned to %q", repo.LocalRepo.Path)
 					continue
 				}
 				log.Info("Cloning...")

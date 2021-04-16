@@ -3,7 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -62,7 +62,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			err = g.Pull()
 			return err
 		} else {
-			pkg.Log.Infof("You should probably pull the develop branch now.")
+			core.Log.Infof("You should probably pull the develop branch now.")
 		}
 
 		return nil

@@ -2,7 +2,9 @@ package kube
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/command"
+
+	"github.com/naveego/bosun/pkg/core"
 	"os"
 	"runtime"
 )
@@ -36,14 +38,14 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 
 	fmt.Println(c)
 
-	err := pkg.NewShellExe("minikube", "ip").RunE()
+	err := command.NewShellExe("minikube", "ip").RunE()
 	if err == nil {
-		pkg.Log.Info("Minikube is already running.")
+		core.Log.Info("Minikube is already running.")
 		return nil
 	}
 
-	pkg.Log.Info("Resetting virtualbox DHCP leases...")
-	_, _ = pkg.NewShellExe("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
+	core.Log.Info("Resetting virtualbox DHCP leases...")
+	_, _ = command.NewShellExe("bash", "-c", `kill -9 $(ps aux | grep -i "vboxsvc\|vboxnetdhcp" | awk '{print $2}') 2>/dev/null`).RunOutLog()
 
 	leasePath := os.ExpandEnv("$HOME/.kubeconfig/VirtualBox/HostInterfaceNetworking-vboxnet0-Dhcpd.leases")
 	if runtime.GOOS == "darwin" {
@@ -51,18 +53,18 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 	}
 	err = os.RemoveAll(leasePath)
 	if err != nil {
-		pkg.Log.WithError(err).Warn("Could not delete virtualbox leases, IP address may be incorrect.")
+		core.Log.WithError(err).Warn("Could not delete virtualbox leases, IP address may be incorrect.")
 	} else {
-		pkg.Log.Info("Deleted virtualbox DHCP leases.")
+		core.Log.Info("Deleted virtualbox DHCP leases.")
 	}
 
 	ctx.Log.Info("minikube not running, starting minikube...")
 
 	// this is disabled because of a bug in minikube:
-	// pkg.NewShellExe("minikube kubeconfig set embed-certs true").MustRun()
+	// command.NewShellExe("minikube kubeconfig set embed-certs true").MustRun()
 
 	if c.Driver == "none" {
-		cmd := pkg.NewShellExe("sudo",
+		cmd := command.NewShellExe("sudo",
 			"minikube",
 			"start",
 			"--kubernetes-version=v"+c.Version,
@@ -73,7 +75,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 		err = cmd.RunE()
 	} else {
 		if runtime.GOOS == "windows" {
-			err = pkg.NewShellExe("minikube",
+			err = command.NewShellExe("minikube",
 				"start",
 				fmt.Sprintf("--memory=%d", c.MemoryMB),
 				fmt.Sprintf("--cpus=%d", c.CPUs),
@@ -84,7 +86,7 @@ func (c MinikubeConfig) configureKubernetes(ctx ConfigureRequest) error {
 				"--disk-size="+c.DiskSize,
 			).RunE()
 		} else {
-			err = pkg.NewShellExe("minikube",
+			err = command.NewShellExe("minikube",
 				"start",
 				fmt.Sprintf("--memory=%d", c.MemoryMB),
 				fmt.Sprintf("--cpus=%d", c.CPUs),

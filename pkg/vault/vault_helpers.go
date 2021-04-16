@@ -1,4 +1,4 @@
-package pkg
+package vault
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/api"
 	"github.com/imdario/mergo"
+	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/yaml"
@@ -77,9 +79,11 @@ func LoadVaultLayoutFromFiles(globs []string, templateArgs templating.TemplateVa
 }
 
 func LoadVaultLayoutFromBytes(label string, data []byte, templateArgs templating.TemplateValues, client *api.Client) (*VaultLayout, error) {
-	yamlString, err := NewTemplateBuilder(label).
-		WithKubeFunctions().
-		WithVaultTemplateFunctions(client).
+	yamlString, err := templating.NewTemplateBuilder(label).
+		WithFunctions(
+			TemplateFuncs(client),
+			kube.TemplateFuncs(),
+			).
 		WithTemplate(string(data)).
 		BuildAndExecute(templateArgs)
 	if err != nil {
@@ -157,14 +161,14 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 		if err == nil && previousHashSecret != nil && previousHashSecret.Data != nil {
 			previousHash := previousHashSecret.Data["hash"].(string)
 			if previousHash == hash {
-				Log.Warnf("Hash of vault layout %q has not changed since last applied. Use the --force flag to force it to be applied again.", hashKey)
+				core.Log.Warnf("Hash of vault layout %q has not changed since last applied. Use the --force flag to force it to be applied again.", hashKey)
 				return nil
 			}
 		}
 	}
 
 	for path, data := range v.Auth {
-		log := Log.WithField("@type", "Auth").WithField("path", path)
+		log := core.Log.WithField("@type", "Auth").WithField("path", path)
 		mounts, err := client.Sys().ListAuth()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -185,7 +189,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Mounts {
-		log := Log.WithField("@type", "Mount").WithField("Dir", path)
+		log := core.Log.WithField("@type", "Mount").WithField("Dir", path)
 		mounts, err := client.Sys().ListMounts()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -206,7 +210,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Resources {
-		log := Log.WithField("@type", "Resource").WithField("Dir", path)
+		log := core.Log.WithField("@type", "Resource").WithField("Dir", path)
 
 		u, err := url.Parse(path)
 		if err != nil {
@@ -219,17 +223,17 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 
 		switch mode {
 		case "delete":
-			_, err := client.Logical().Delete(path)
-			if err != nil {
-				recordError(log, "", errors.WithMessage(err, "delete failed"))
+			_, deleteErr := client.Logical().Delete(path)
+			if deleteErr != nil {
+				recordError(log, "", errors.WithMessage(deleteErr, "delete failed"))
 				continue
 			}
 			log.Info("Deleted resource.")
 			continue
 		case "insert", "create":
-			secret, err := client.Logical().Read(path)
-			if err != nil {
-				recordError(log, "redacted", errors.WithMessage(err, "could not check if resource already exists, not safe to insert"))
+			secret, readErr := client.Logical().Read(path)
+			if readErr != nil {
+				recordError(log, "redacted", errors.WithMessage(readErr, "could not check if resource already exists, not safe to insert"))
 				continue
 			}
 			if secret != nil {
@@ -250,7 +254,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Policies {
-		log := Log.WithField("@type", "Policy").WithField("Dir", path)
+		log := core.Log.WithField("@type", "Policy").WithField("Dir", path)
 		var policy string
 		switch d := data.(type) {
 		case string:
@@ -282,7 +286,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 			"hash": hash,
 		})
 		if err != nil {
-			Log.WithError(err).Warn("Could not store change detection hash in Vault.")
+			core.Log.WithError(err).Warn("Could not store change detection hash in Vault.")
 		}
 	}
 
@@ -303,7 +307,7 @@ func ensureJsonMarshallable(m interface{}) interface{} {
 			if ks, ok := ki.(string); ok {
 				mapsi[ks] = ensureJsonMarshallable(vi)
 			} else {
-				Log.WithField("ki", ki).WithField("v", v).Panicf("could not convert child Key %v (of type %T) to string", ki, ki)
+				core.Log.WithField("ki", ki).WithField("v", v).Panicf("could not convert child Key %v (of type %T) to string", ki, ki)
 			}
 		}
 		return mapsi
@@ -324,7 +328,7 @@ func ensureJsonMarshallable(m interface{}) interface{} {
 
 func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
 
-	log := Log.WithField("method", "NewVaultLowLevelClient")
+	log := core.Log.WithField("method", "NewVaultLowLevelClient")
 
 	vaultConfig := api.DefaultConfig()
 	vaultConfig.Address = vaultAddr
@@ -352,14 +356,14 @@ func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
 	if token == "" {
 		// Try to read the token from the user's most recent vault login.
 		vaultAuthFile := os.ExpandEnv("$HOME/.vault-token")
-		if vaultToken, err := ioutil.ReadFile(vaultAuthFile); err == nil {
+		if vaultToken, readErr := ioutil.ReadFile(vaultAuthFile); readErr == nil {
 			token = string(vaultToken)
 		}
 	}
 
 	if token == "" {
-		credentialBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
-		if err == nil {
+		credentialBytes, readErr := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+		if readErr == nil {
 			log.Debug("Found kubernetes token, attempting to authenticate.")
 			credential := string(credentialBytes)
 
@@ -368,18 +372,18 @@ func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
 				role = "devops"
 			}
 
-			secret, err := vaultClient.Logical().Write("/auth/kubernetes/login", map[string]interface{}{
+			secret, writeErr := vaultClient.Logical().Write("/auth/kubernetes/login", map[string]interface{}{
 				"role": role,
 				"jwt":  credential,
 			})
 
-			if err != nil {
-				return nil, errors.Errorf("kubernetes authentication failed using role %q: %s", role, err)
+			if writeErr != nil {
+				return nil, errors.Errorf("kubernetes authentication failed using role %q: %s", role, writeErr)
 			}
 
 			token, err = secret.TokenID()
 			if err != nil {
-				return nil, errors.WithMessage(err, "secret returned from kubernetes login did not have a token")
+				return nil, errors.WithMessage(writeErr, "secret returned from kubernetes login did not have a token")
 			}
 		}
 	}

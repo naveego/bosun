@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/naveego/bosun/pkg/core"
+
 	// "github.com/naveego/bosun/pkg/git"
 
 	// "github.com/coreos/etcd/client"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -310,7 +311,7 @@ func (s IssueService) GetClosedIssue(org, repoName string) ([]int, error) {
 type IssueRef issues.IssueRef
 
 func dumpJSON(label string, data interface{}) {
-	if pkg.Log != nil && pkg.Log.Logger.IsLevelEnabled(logrus.DebugLevel) {
+	if core.Log != nil && core.Log.Logger.IsLevelEnabled(logrus.DebugLevel) {
 		j, _ := json.MarshalIndent(data, "", "  ")
 		fmt.Fprintf(os.Stderr, "%s:\n%s\n\n", label, string(j))
 	}

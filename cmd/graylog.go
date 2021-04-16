@@ -19,6 +19,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
 	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/vault"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -38,7 +39,7 @@ var graylogConfigureCmd = &cobra.Command{
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		vaultClient, err := pkg.NewVaultLowlevelClient("", "")
+		vaultClient, err := vault.NewVaultLowlevelClient("", "")
 		if err != nil {
 			return err
 		}
@@ -49,7 +50,7 @@ var graylogConfigureCmd = &cobra.Command{
 			return err
 		}
 
-		th := &pkg.TemplateHelper{
+		th := &templating.TemplateHelper{
 			VaultClient:    vaultClient,
 			TemplateValues: templateArgs,
 		}
