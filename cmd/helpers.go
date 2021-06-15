@@ -31,6 +31,15 @@ const (
 	OutputYaml  = "yaml"
 )
 
+func MustGetBosunNoEnvironment(optionalParams ...cli.Parameters) *bosun.Bosun {
+	var params cli.Parameters
+	if len(optionalParams) > 0 {
+		params = optionalParams[0]
+	}
+	params.NoEnvironment = true
+	return MustGetBosun(params)
+}
+
 func MustGetBosun(optionalParams ...cli.Parameters) *bosun.Bosun {
 	b, err := getBosun(optionalParams...)
 	if err != nil {

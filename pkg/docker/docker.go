@@ -10,6 +10,19 @@ import (
 
 func CheckImageExists(name string, useSudo bool) error {
 
+	err := checkImageExistsNoRetry(name, useSudo)
+
+	if err != nil {
+		if strings.Contains(err.Error(), "permission denied") && !useSudo {
+			err = checkImageExistsNoRetry(name, true)
+		}
+	}
+
+	return errors.Wrapf(err, "verifying image %q", name)
+}
+
+func checkImageExistsNoRetry(name string, useSudo bool) error {
+
 	cmdParts := []string {"docker", "pull", name}
 	if useSudo {
 		cmdParts = append([]string{"sudo"}, cmdParts...)

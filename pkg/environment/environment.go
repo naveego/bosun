@@ -19,7 +19,6 @@ import (
 type Environment struct {
 	Config
 
-	ClusterName  string
 	cluster      *kube.Cluster
 	stack        *kube.Stack
 	secretGroups map[string]*SecretGroup
@@ -431,10 +430,17 @@ func (e *Environment) ValidateConsistency() error {
 			_, _ = fmt.Fprintln(os.Stderr, warningStyle.Sprintf("- %s", m))
 		}
 
+		// stack := errors.New("Stack")
+		// fmt.Fprintf(os.Stderr, "%+v\n", stack)
+
 		confirmed := cli.RequestConfirmFromUser("Do you want to continue despite environment mismatch?")
 		if !confirmed {
 			return errors.New("user canceled")
 		}
 	}
 	return nil
+}
+
+func (e *Environment) HasCluster() bool {
+	return e.cluster != nil
 }

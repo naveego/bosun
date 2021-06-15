@@ -348,65 +348,6 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
 }, withFilteringFlags)
 
-var releaseHotfixCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "hotfix [apps...]",
-	Args:  cobra.MinimumNArgs(1),
-	Short: "Adds an app to a release as a hotfix.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
-
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-
-		release, err := p.GetCurrentRelease()
-		if err != nil {
-			return err
-		}
-
-		previousRelease, err := p.GetPreviousRelease()
-		if err != nil {
-			return err
-		}
-
-		bump := viper.GetString(ArgReleaseAddBump)
-		apps := mustGetKnownApps(b, args)
-		for _, app := range apps {
-
-			ctx := b.NewContext().WithApp(app)
-
-			branch := viper.GetString(ArgReleaseAddBranch)
-			if branch == "" {
-
-				previousApp, appErr := previousRelease.GetAppManifest(app.Name)
-				if appErr != nil {
-					return errors.Wrapf(appErr, "previous release %s did not contain app %s", previousRelease.Version, app.Name)
-				}
-
-				branch = previousApp.Branch
-			}
-
-			ctx.Log().Infof("Adding app to release from branch %s with bump %q", branch, bump)
-
-			appManifest, prepareErr := release.PrepareAppForRelease(ctx, app, semver.Bump(bump), branch)
-			if prepareErr != nil {
-				return prepareErr
-			}
-
-			addErr := release.AddOrReplaceApp(appManifest, true)
-			if addErr != nil {
-				return addErr
-			}
-		}
-
-		err = p.Save(b.NewContext())
-		return err
-	},
-}, func(cmd *cobra.Command) {
-	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
-	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
-}, withFilteringFlags)
 
 const (
 	ArgReleaseAddBranch = "branch"

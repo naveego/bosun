@@ -5,6 +5,7 @@ import (
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/values"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/tomb.v2"
@@ -28,11 +29,12 @@ type ExecuteDeploymentPlanRequest struct {
 	DumpValuesOnly bool
 	DiffOnly       bool
 	UseSudo        bool
+	RenderOnly     bool
 }
 
 
 type ExecuteDeploymentPlanResponse struct {
-	ValidationErrors map[string]error
+	ValidationErrors map[string]string
 }
 
 func NewDeploymentPlanExecutor(bosun *Bosun, platform *Platform) DeploymentPlanExecutor {
@@ -63,12 +65,12 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 		response.ValidationErrors, err = d.validateDeploymentPlan(req)
 	}
 
-	if req.ValidateOnly  {
-		return response, nil
+	if len(response.ValidationErrors) > 0 {
+		return response, errors.Errorf("one or more apps are invalid:\n%s", yaml.MustMarshalString(response.ValidationErrors))
 	}
 
-	if len(response.ValidationErrors) > 0 {
-		return response, errors.New("one or more apps are invalid")
+	if req.ValidateOnly  {
+		return response, nil
 	}
 
 	deploymentPlan := req.Plan
@@ -78,6 +80,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 			Recycle:        req.Recycle,
 			DumpValuesOnly: req.DumpValuesOnly,
 			DiffOnly:       req.DiffOnly,
+			RenderOnly: req.RenderOnly,
 		},
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
@@ -193,7 +196,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 }
 
 
-func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlanRequest) (map[string]error, error) {
+func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlanRequest) (map[string]string, error) {
 
 	plan := req.Plan
 
@@ -201,7 +204,7 @@ func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlan
 
 	apps := plan.Apps
 
-	response :=  map[string]error{}
+	response :=  map[string]string{}
 
 	t := new(tomb.Tomb)
 
@@ -223,7 +226,6 @@ func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlan
 		imageConfigs := app.Manifest.AppConfig.GetImages()
 		appLog := ctx.Log().WithField("app", app.Name)
 
-		appLog.Infof("Verifying images...")
 		for i := range imageConfigs {
 			imageConfig := imageConfigs[i]
 			t.Go(func() error {
@@ -237,7 +239,7 @@ func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlan
 				mu.Lock()
 				if err != nil {
 					imageLog.WithError(err).Warnf("Image invalid")
-					response[app.Name] = err
+					response[app.Name] = err.Error()
 				} else {
 					imageLog.Info("Image OK")
 				}

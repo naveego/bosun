@@ -43,13 +43,13 @@ func (v VaultInitializer) Init() error {
 		return errors.Wrap(err, "unseal")
 	}
 
-	err = v.installPlugin()
+	err = v.InstallJose()
 
 	return err
 
 }
 
-func (v VaultInitializer) installPlugin() error {
+func (v VaultInitializer) InstallJose() error {
 	vaultClient := v.Client
 
 	vaultNS := v.VaultNamespace

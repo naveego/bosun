@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -44,7 +45,7 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 			}
 		}
 
-		b := MustGetBosun()
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -200,7 +201,7 @@ func getReleaseAndPlanFolderName(b *bosun.Bosun, slotDescription string) (*bosun
 
 func releaseDeployPlan(slotDescription string) error {
 
-	b := MustGetBosun()
+	b := MustGetBosun(cli.Parameters{NoEnvironment: true})
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return err

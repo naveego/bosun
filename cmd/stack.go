@@ -20,9 +20,12 @@ import (
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/kube"
+	"github.com/naveego/bosun/pkg/mirror"
+	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"sort"
 )
 
 func init() {
@@ -34,9 +37,92 @@ var stackCmd = addCommand(rootCmd, &cobra.Command{
 	Short: "Contains commands for managing a stack of apps.",
 })
 
+var stackCreateCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "create {name} [template]",
+	Args:         cobra.RangeArgs(1, 2),
+	Short:        "Configures namespaces and other things for the provided stack. Uses the current stack if none is provided.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b, _ := MustGetPlatform()
+		env := b.GetCurrentEnvironment()
+
+		cluster := env.Cluster()
+
+		name := args[0]
+		var templateName string
+		if len(args) == 2 {
+			templateName = args[1]
+		} else {
+
+			var templateChoices []string
+			for _, template := range cluster.GetStackTemplates() {
+				templateChoices = append(templateChoices, template.Name)
+			}
+
+			sort.Strings(templateChoices)
+
+			templateName = cli.RequestChoice("Choose a template for your stack", templateChoices...)
+		}
+
+		stack, err := cluster.CreateStack(name, templateName)
+		if err != nil {
+			return err
+		}
+
+		err = stack.Initialize()
+
+		return err
+	},
+})
+
+var stackShowCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "show [name]",
+	Args:         cobra.MaximumNArgs(1),
+	Aliases:      []string{"view"},
+	Short:        "Shows the current state of a stack or the current stack",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b, _ := MustGetPlatform()
+		env := b.GetCurrentEnvironment()
+
+		cluster := env.Cluster()
+
+		var err error
+		var stack *kube.Stack
+
+		if len(args) == 1 {
+			stackName := args[0]
+			stack, err = cluster.GetStack(stackName)
+			if err != nil {
+				return err
+			}
+		} else {
+			stack = env.Stack()
+		}
+
+		stackState, err := stack.GetState(viper.GetBool(argStackShowSync))
+		if err != nil {
+			return err
+		}
+
+		y, _ := yaml.MarshalString(stackState)
+
+		fmt.Println(y)
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().Bool(argStackShowSync, false, "Force reload of stack info from kubernetes.")
+})
+
+const (
+	argStackShowSync = "sync"
+)
+
 var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
-	Use:          "create [name]",
-	Aliases:      []string{"create"},
+	Use:          "configure [name]",
 	Args:         cobra.MaximumNArgs(1),
 	Short:        "Configures namespaces and other things for the provided stack. Uses the current stack if none is provided.",
 	SilenceUsage: true,
@@ -57,7 +143,9 @@ var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
 			if err != nil {
 				color.Red("Could not configure certs: %+v", err)
 			}
-			return nil
+
+			err = stack.Save()
+			return err
 		})
 	},
 })
@@ -142,7 +230,6 @@ var stackDestroyCmd = addCommand(stackCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-
 		return configureStack(args, func(stack *kube.Stack) error {
 
 			confirmed := cli.RequestConfirmFromUser("Are you sure you want to delete the stack %q and all of its resources", stack.Name)
@@ -152,12 +239,9 @@ var stackDestroyCmd = addCommand(stackCmd, &cobra.Command{
 			}
 
 			return stack.Destroy()
-
-			return nil
 		})
 	},
 })
-
 
 var stackLsCmd = addCommand(stackCmd, &cobra.Command{
 	Use:          "ls",
@@ -171,16 +255,12 @@ var stackLsCmd = addCommand(stackCmd, &cobra.Command{
 
 		cluster := env.Cluster()
 
-		stacks, err := cluster.GetStackConfigs()
+		stacks, err := cluster.GetStackStates()
 		if err != nil {
 			return err
 		}
 
-		for name := range stacks {
-			fmt.Println(name)
-		}
-
-		return nil
+		return renderOutput(stacks)
 	},
 })
 
@@ -200,7 +280,7 @@ var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
 		skippedGlobalApps := 0
 		skippedEnvApps := 0
 
-		stackState, err := stack.GetState()
+		stackState, err := stack.GetState(true)
 		if err != nil {
 			return err
 		}
@@ -269,61 +349,66 @@ var stackResetCmd = addCommand(stackCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b, p := MustGetPlatform()
-		env := b.GetCurrentEnvironment()
 
-		var appNames []string
+		return resetCurrentStack(b, p, args[0])
+	},
+})
 
-		for appName := range p.GetKnownAppMap() {
-			if !env.IsAppDisabled(appName) && !env.Stack().IsAppDisabled(appName) {
-				appNames = append(appNames, appName)
-			}
+func resetCurrentStack(b *bosun.Bosun, p *bosun.Platform, provider string) error {
+	var appNames []string
+
+	env := b.GetCurrentEnvironment()
+
+	var err error
+
+	for appName := range p.GetKnownAppMap() {
+		if !env.IsAppDisabled(appName) && !env.Stack().IsAppDisabled(appName) {
+			appNames = append(appNames, appName)
 		}
+	}
 
-		stackState, err := env.Stack().GetState()
-		if err != nil {
-			return err
-		}
+	stackState, err := env.Stack().GetState(true)
+	if err != nil {
+		return err
+	}
 
-		var providers []string
-		switch args[0] {
-		case bosun.SlotStable:
-			providers = []string{bosun.SlotStable, bosun.SlotUnstable, bosun.WorkspaceProviderName}
-		case bosun.SlotUnstable:
-			providers = []string{bosun.SlotUnstable, bosun.WorkspaceProviderName}
+	var providers []string
+	switch provider {
+	case bosun.SlotStable:
+		providers = []string{bosun.SlotStable, bosun.SlotUnstable, bosun.WorkspaceProviderName}
+	case bosun.SlotUnstable:
+		providers = []string{bosun.SlotUnstable, bosun.WorkspaceProviderName}
+	case bosun.WorkspaceProviderName:
+		providers = []string{bosun.WorkspaceProviderName, bosun.SlotUnstable, bosun.SlotStable}
+	default:
+		return errors.Errorf("invalid release slot %q", provider)
+	}
 
-		default:
-			return errors.Errorf("invalid release slot %q", args[0])
-		}
+	var req = bosun.CreateDeploymentPlanRequest{
+		Apps:                  appNames,
+		ProviderPriority:      providers,
+		IgnoreDependencies:    true,
+		AutomaticDependencies: false,
+	}
 
-		var req = bosun.CreateDeploymentPlanRequest{
-			Apps:                  appNames,
-			ProviderPriority:      providers,
-			IgnoreDependencies:    true,
-			AutomaticDependencies: false,
-		}
+	planCreator := bosun.NewDeploymentPlanCreator(b, p)
 
-		planCreator := bosun.NewDeploymentPlanCreator(b, p)
+	plan, err := planCreator.CreateDeploymentPlan(req)
 
-		plan, err := planCreator.CreateDeploymentPlan(req)
+	if err != nil {
+		return err
+	}
 
-		if err != nil {
-			return err
-		}
+	var appsNeedingReset []*bosun.AppDeploymentPlan
 
-		var appsNeedingReset []*bosun.AppDeploymentPlan
+	ctx := b.NewContext()
 
-		ctx := b.NewContext()
+	for _, app := range plan.Apps {
 
-		for _, app := range plan.Apps {
+		log := ctx.Log().WithField("app", app.Name).WithField("branch", app.Manifest.Branch).WithField("version", app.Manifest.Version.String())
 
-			log := ctx.Log().WithField("app", app.Name).WithField("branch", app.Manifest.Branch).WithField("version", app.Manifest.Version.String())
-
-			deployedApp, isDeployed := stackState.DeployedApps[app.Name]
-			if !isDeployed {
-				appsNeedingReset = append(appsNeedingReset, app)
-				continue
-			}
-
+		deployedApp, isDeployed := stackState.DeployedApps[app.Name]
+		if isDeployed && !ctx.GetParameters().Force {
 			if app.Manifest.Branch == deployedApp.Branch &&
 				app.Manifest.Version.String() == deployedApp.Version {
 				log.Info("Skipping app reset because branch and version match what is currently deployed.")
@@ -331,16 +416,40 @@ var stackResetCmd = addCommand(stackCmd, &cobra.Command{
 			}
 		}
 
+		appsNeedingReset = append(appsNeedingReset, app)
+	}
+
+	mirror.Sort(appsNeedingReset, func(a, b *bosun.AppDeploymentPlan) bool { return a.Name < b.Name })
+
+	appSelect := map[string]*bosun.AppDeploymentPlan{}
+	appSelectOptions := []string{"ALL"}
+
+	for _, app := range appsNeedingReset {
+		key := fmt.Sprintf("%s @ %s from %s", app.Name, app.Tag, app.ManifestPath)
+		appSelect[key] = app
+		appSelectOptions = append(appSelectOptions, key)
+	}
+
+	confirmed := cli.RequestMultiChoice("Which apps do you want to reset?", appSelectOptions)
+	if len(confirmed) == 0 {
+		return errors.New("User cancelled")
+	} else if len(confirmed) == 1 && confirmed[0] == "ALL" {
 		plan.Apps = appsNeedingReset
-
-		executeRequest := bosun.ExecuteDeploymentPlanRequest{
-			Plan: plan,
+	} else {
+		plan.Apps = nil
+		for _, key := range confirmed {
+			plan.Apps = append(plan.Apps, appSelect[key])
 		}
+	}
 
-		executor := bosun.NewDeploymentPlanExecutor(b, p)
+	executeRequest := bosun.ExecuteDeploymentPlanRequest{
+		Plan: plan,
+	}
 
-		_, err = executor.Execute(executeRequest)
+	executor := bosun.NewDeploymentPlanExecutor(b, p)
 
-		return nil
-	},
-})
+	_, err = executor.Execute(executeRequest)
+
+	return err
+
+}

@@ -13,10 +13,13 @@ type DeploymentPlanCreator struct {
 }
 
 type CreateDeploymentPlanRequest struct {
-	Path                  string
-	ManifestDirPath       string
-	ProviderPriority      []string
-	Apps                  []string
+	Path             string
+	ManifestDirPath  string
+	ProviderPriority []string
+	// Basic way to request apps with default behaviors
+	Apps []string
+	// Advanced parameter to customize how apps get resolved
+	AppOptions            map[string]AppProviderRequest
 	IgnoreDependencies    bool
 	AutomaticDependencies bool
 	ReleaseVersion        *semver.Version
@@ -39,10 +42,42 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 		req.Path = filepath.Join(filepath.Dir(p.FromPath), "deployments/default/plan.yaml")
 	}
 	dir := filepath.Dir(req.Path)
-
 	if req.ManifestDirPath == "" {
 		req.ManifestDirPath = dir
 	}
+
+	autoPopulateApps := len(req.Apps) == 0
+
+	if len(req.Apps) == 0 {
+		if len(req.AppOptions) == 0 {
+			return nil, errors.New("req.Apps or req.AppOptions must be populated")
+		}
+
+	}
+
+	// If only app names are populated, populate all the app options with default values.
+	if len(req.Apps) > 0  && len(req.AppOptions) == 0 {
+		req.AppOptions = map[string]AppProviderRequest{}
+		for _, appName := range req.Apps{
+			req.AppOptions[appName] = AppProviderRequest{
+				Name:             appName,
+			}
+		}
+	}
+
+	for appName := range req.AppOptions {
+		if autoPopulateApps {
+			req.Apps = append(req.Apps, appName)
+		}
+
+		app := req.AppOptions[appName]
+
+		if len(req.ProviderPriority) > 0 && len(app.ProviderPriority) == 0 {
+			app.ProviderPriority = req.ProviderPriority
+		}
+		req.AppOptions[appName] = app
+	}
+
 	plan := &DeploymentPlan{
 		DirectoryPath:            dir,
 		ProviderPriority:         req.ProviderPriority,
@@ -75,6 +110,8 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 			continue
 		}
 
+		appReq := req.AppOptions[app.Name]
+
 		appPlan := &AppDeploymentPlan{
 			Name:           app.Name,
 			ValueOverrides: values.ValueSet{},
@@ -88,16 +125,23 @@ func (d DeploymentPlanCreator) CreateDeploymentPlan(req CreateDeploymentPlanRequ
 
 		} else {
 
-			appPlan.Manifest, err = app.GetManifest(ctx)
-			appPlan.Tag = appPlan.Manifest.GetTagBasedOnVersionAndBranch()
-			if err != nil {
-				return nil, errors.Wrapf(err, "getting manifest for app %q from provider %q", app.Name, req.ProviderPriority)
+			if appReq.Branch != "" {
+				appPlan.Manifest, err = app.GetManifestFromBranch(ctx, appReq.Branch, true)
+				if err != nil {
+					return nil, errors.Wrapf(err, "getting manifest for app %q from branch %q", app.Name, appReq.Branch)
+				}
+			} else {
+				appPlan.Manifest, err = app.GetManifest(ctx)
+				if err != nil {
+					return nil, errors.Wrapf(err, "getting manifest for app %q", app.Name)
+				}
+				err = appPlan.Manifest.MakePortable()
+				if err != nil {
+					return nil, errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderPriority)
+				}
 			}
 
-			err = appPlan.Manifest.MakePortable()
-			if err != nil {
-				return nil, errors.Wrapf(err, "making manifest portable for app %q from provider %q", app.Name, req.ProviderPriority)
-			}
+			appPlan.Tag = appPlan.Manifest.GetTagBasedOnVersionAndBranch()
 
 			manifestPath := filepath.Join(req.ManifestDirPath, appPlan.Name)
 

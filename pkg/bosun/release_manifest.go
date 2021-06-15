@@ -219,7 +219,7 @@ func (r *ReleaseManifest) BumpForRelease(ctx BosunContext, app *App, fromBranch,
 		log := ctx.Log().WithField("app", appConfig.Name)
 		if !app.IsRepoCloned() {
 
-			app, err = ctx.Bosun.workspaceAppProvider.GetApp(name)
+			app, err = ctx.Bosun.workspaceAppProvider.ProvideApp(AppProviderRequest{Name: name, Branch: fromBranch})
 			if err != nil {
 				return nil, errors.New("app to bump %q could not be acquired from workspace provider")
 			}
@@ -400,7 +400,7 @@ func (r *ReleaseManifest) RefreshApp(ctx BosunContext, name string, branch strin
 	}
 
 	b := ctx.Bosun
-	app, err := b.workspaceAppProvider.GetApp(name)
+	app, err := b.workspaceAppProvider.ProvideApp(AppProviderRequest{Name: name, Branch: branch})
 
 	if err != nil {
 		return errors.Wrapf(err, "get local version of app %s to refresh", name)

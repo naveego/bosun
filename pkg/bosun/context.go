@@ -165,7 +165,7 @@ func (c BosunContext) GetEnvironmentVariables() map[string]string {
 
 		env := c.Environment()
 
-		out[core.EnvCluster] = env.ClusterName
+		out[core.EnvCluster] = env.Cluster().Name
 		out[core.EnvEnvironment] = env.Name
 		out[core.EnvEnvironmentRole] = string(env.Role)
 		out[core.EnvStack] = env.Stack().Name
@@ -268,6 +268,14 @@ func (c BosunContext) GetTemplateHelper() (*templating.TemplateHelper, error) {
 func (c BosunContext) WithEnv(env *environment.Environment) interface{} {
 	c._env = env
 	c.log = c.Log().WithField("env", env.Name)
+	if env.HasCluster() {
+		cluster := env.Cluster()
+		c.log = c.log.WithField("cluster", cluster.Name)
+		stack := env.Stack()
+		if stack.Name != kube.DefaultStackName {
+			c.log = c.log.WithField("stack", stack.Name)
+		}
+	}
 	return c
 }
 
@@ -347,10 +355,10 @@ func (c BosunContext) IsVerbose() bool {
 }
 
 func (c BosunContext) GetClusterName() string {
-	if c._env == nil {
+	if c._env == nil || !c._env.HasCluster() {
 		return c.WorkspaceContext().CurrentCluster
 	}
-	return c._env.ClusterName
+	return c._env.Cluster().Name
 }
 
 // Log gets a logger safely.
@@ -413,6 +421,10 @@ func (c BosunContext) Provide(out interface{}, options ...ioc.Options) error {
 	return c.provider.Provide(out, options...)
 }
 
+func (c BosunContext) HasEnvironment() bool {
+	return c._env != nil
+}
+
 func (c BosunContext) Environment() *environment.Environment {
 	if c.GetParameters().NoEnvironment {
 		panic("bosun created with no-environment flag; if environment is needed update the command")
@@ -455,12 +467,12 @@ func (c BosunContext) GetWorkspaceCommand(name string, hint string) *command.Com
 func (c BosunContext) GetMatchMapArgs() filter.MatchMapArgs {
 	if c.exactMatchArgs == nil {
 		c.exactMatchArgs = map[string]string{}
-		if c.Environment() != nil {
+		if c.HasEnvironment() {
 			c.exactMatchArgs[core.KeyEnvironment] = c.Environment().Name
 			c.exactMatchArgs[core.KeyEnvironmentRole] = string(c.Environment().Role)
-		}
-		if c.GetClusterName() != "" {
-			c.exactMatchArgs[core.KeyCluster] = c.GetClusterName()
+			if c.GetClusterName() != "" {
+				c.exactMatchArgs[core.KeyCluster] = c.GetClusterName()
+			}
 		}
 
 	}

@@ -49,6 +49,7 @@ func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
 	cmd.Flags().Bool(argAppDeployValuesOnly, false, "Just dump the values which would be used to deploy, then exit.")
+	cmd.Flags().Bool(argAppDeployRenderOnly, false, "Just dump the rendered chart which would be used to deploy, then exit.")
 	cmd.Flags().Bool(ArgAppLatest, false, "Force bosun to pull the latest of the app and deploy that.")
 	cmd.Flags().Bool(argDeployAppRecycle, false, "Recycle the app after deploying it.")
 	cmd.Flags().Bool(argDeployAppDiffOnly, false, "Display the impact of running the deploy but don't actually run it.")
@@ -158,6 +159,7 @@ func deployApps(b *bosun.Bosun, p *bosun.Platform, appNames []string, valueSets 
 		Recycle:        viper.GetBool(argDeployAppRecycle),
 		DumpValuesOnly: viper.GetBool(argAppDeployValuesOnly),
 		DiffOnly:       viper.GetBool(argDeployAppDiffOnly),
+		RenderOnly:       viper.GetBool(argAppDeployRenderOnly),
 	}
 
 	executor := bosun.NewDeploymentPlanExecutor(b, p)

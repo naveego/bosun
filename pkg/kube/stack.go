@@ -6,11 +6,12 @@ import (
 	"fmt"
 	vault "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg/brns"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
-	"github.com/naveego/bosun/pkg/templating"
+	"github.com/naveego/bosun/pkg/git"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
 	"github.com/naveego/bosun/pkg/values"
-	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	v1 "k8s.io/api/core/v1"
@@ -20,7 +21,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -38,116 +38,108 @@ type Stack struct {
 	Brn     brns.StackBrn
 	Cluster *Cluster
 
-	state *StackState
+	state           *StackState
+	// Set to true if we have reason to think that this stack has been defined and deployed
+	BelievedToExist bool
 }
 
-func NewStack(cluster *Cluster, name string) (*Stack, error) {
+func NewStackFromState(cluster *Cluster, state *StackState) (*Stack, error) {
+
+	if cluster == nil {
+		panic("cluster must not be nil")
+	}
+
+	if state == nil {
+		panic("state must not be nil")
+	}
+
+	stack := &Stack{
+		Brn:           brns.NewStack(cluster.Environment, cluster.Name, state.Name),
+		Cluster:       cluster,
+	}
+
+	var hit bool
+
+	if state.TemplateName == "" || state.TemplateName == DefaultStackName {
+		stack.StackTemplate = cluster.StackTemplate
+		stack.StackTemplate.Name = DefaultStackName
+		hit = true
+	} else {
+		for _, stackTemplate := range cluster.StackTemplates {
+			if stackTemplate.Name == state.TemplateName {
+				renderedTemplate, err := stackTemplate.Render(state.Name)
+				if err != nil {
+					return nil, err
+				}
+				stack.StackTemplate = *renderedTemplate
+				hit = true
+				break
+			}
+		}
+	}
+
+	if !hit {
+		return nil, errors.Errorf("no stack template matched name %q", state.TemplateName)
+	}
+
+	stack.state = state
+
+	return stack, nil
+
+}
+
+func NewStack(cluster *Cluster, name string, templateName string, template StackTemplate) (*Stack, error) {
 
 	if name == "" || name == DefaultStackName {
-
 		defaultStackTemplate := cluster.StackTemplate
 		defaultStackTemplate.Name = DefaultStackName
+
 		return &Stack{
 			Brn:           brns.NewStack(cluster.Environment, cluster.Name, DefaultStackName),
 			StackTemplate: defaultStackTemplate,
 			Cluster:       cluster,
+			state: &StackState{
+				Name:          name,
+				TemplateName:  DefaultStackName,
+				StoryID:       "",
+				Uninitialized: true,
+				DeployedApps:  nil,
+			},
 		}, nil
 	}
 
-	var stackTemplate *StackTemplate
-	patterns := map[string]string{}
-
-	var shortName string
-
-	for _, candidate := range cluster.StackTemplates {
-		patterns[candidate.Name] = candidate.NamePattern
-
-		re, err := regexp.Compile(candidate.NamePattern)
-		if err != nil {
-			return nil, errors.Wrapf(err, "invalid name pattern in template %q", candidate.Name)
-		}
-
-		m := re.FindStringSubmatch(name)
-		switch len(m) {
-		case 0:
-			continue
-		case 1:
-			shortName = m[0]
-			stackTemplate = candidate
-		default:
-			shortName = m[1]
-			stackTemplate = candidate
-		}
-		if stackTemplate != nil {
-			break
-		}
-	}
-
-	if stackTemplate == nil {
-		return nil, errors.Errorf("no stack template name pattern matched requested name %q; name patterns: %+v", name, patterns)
-	}
-
-	y, _ := yaml.MarshalString(stackTemplate)
-
-	parameters := map[string]string{
-		"Name":      name,
-		"ShortName": shortName,
-	}
-
-	var renderedStackTemplate *StackTemplate
-
-	rendered, err := templating.NewTemplateBuilder(name + "-stack-template").WithTemplate(y).BuildAndExecute(parameters)
+	renderedStackTemplate, err := template.Render(name)
 	if err != nil {
 		return nil, err
 	}
-
-	err = yaml.UnmarshalString(rendered, &renderedStackTemplate)
-
-	if err != nil {
-		return nil, err
-	}
-
-	renderedStackTemplate.Name = name
-	renderedStackTemplate.SetFromPath(stackTemplate.FromPath)
 
 	return &Stack{
 		StackTemplate: *renderedStackTemplate,
 		Brn:           brns.NewStack(cluster.Brn.EnvironmentName, cluster.Brn.ClusterName, name),
 		Cluster:       cluster,
+		state: &StackState{
+			Name:          name,
+			TemplateName:  templateName,
+			StoryID:       "",
+			Uninitialized: true,
+			DeployedApps:  nil,
+		},
 	}, nil
 }
 
-func (c *Stack) GetState() (*StackState, error) {
+func (c *Stack) GetState(refresh bool) (*StackState, error) {
+	if c.state == nil || refresh {
 
-	if c.state == nil {
-
-		namespace := c.Cluster.DefaultNamespace
-		if namespace == "" {
-			namespace = "default"
-		}
-
-		configmapName := makeStackConfigmapName(c.Name)
-
-		configmap, err := c.Cluster.Client.CoreV1().ConfigMaps(namespace).Get(configmapName, metav1.GetOptions{})
-		if kerrors.IsNotFound(err) {
-			c.state = &StackState{
-				Name:         c.Name,
-				DeployedApps: map[string]StackApp{},
-			}
-		} else if err != nil {
-			return nil, err
-		}
-
-		err = yaml.Unmarshal([]byte(configmap.Data[stackConfigMapKey]), &c.state)
+		var err error
+		c.state, err = c.Cluster.GetStackState(c.Name)
 		if err != nil {
-			return nil, err
-		}
-
-		if c.state == nil {
-			c.state = &StackState{
-				Name:         c.Name,
-				DeployedApps: map[string]StackApp{},
+			if c.Name == DefaultStackName {
+				// default stack in a cluster which has not been initialized yet
+				c.state = &StackState{}
+				err = c.Save()
+				return c.state, err
 			}
+			return nil, err
 		}
 	}
 
@@ -156,7 +148,7 @@ func (c *Stack) GetState() (*StackState, error) {
 
 func (c *Stack) UpdateApp(updates ...StackApp) error {
 
-	state, err := c.GetState()
+	state, err := c.GetState(false)
 
 	if err != nil {
 		return err
@@ -175,51 +167,29 @@ func (c *Stack) UpdateApp(updates ...StackApp) error {
 
 func (c *Stack) Save() error {
 
-	client := c.Cluster.Client
-	namespace := c.Cluster.GetDefaultNamespace()
-	configmapName := makeStackConfigmapName(c.Name)
+	c.state.Uninitialized = false
+	c.state.Name = c.Name
 
-	var err error
-	var configmap *v1.ConfigMap
+	return c.Cluster.SaveStackState(c.state)
+}
 
-	for {
-
-		configmap, err = client.CoreV1().ConfigMaps(namespace).Get(configmapName, metav1.GetOptions{})
-		if kerrors.IsNotFound(err) {
-			defaultData, _ := yaml.MarshalString(c.state)
-
-			configmap, err = client.CoreV1().ConfigMaps(namespace).Create(&v1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: configmapName,
-					Labels: map[string]string{
-						StackLabel: c.Name,
-					},
-				},
-				Data: map[string]string{
-					stackConfigMapKey: defaultData,
-				},
-				BinaryData: nil,
-			})
-
-			return err
-		} else if err != nil {
-			return err
-		}
-
-		configmap.Data[stackConfigMapKey], _ = yaml.MarshalString(c.state)
-
-		_, err = client.CoreV1().ConfigMaps(namespace).Update(configmap)
-
-		if kerrors.IsConflict(err) {
-			core.Log.Warn("Conflict while updating deployed apps, will try again.")
-			<-time.After(1 * time.Second)
-		} else if err != nil {
-			return err
-		} else {
-			break
-		}
+func (k *Stack) Initialize() error {
+	err := k.ConfigureNamespaces()
+	if err != nil {
+		return errors.Wrap(err, "could not configure namespaces")
 	}
 
+	err = k.ConfigurePullSecrets()
+	if err != nil {
+		return errors.Wrap(err, "could not configure pull secrets")
+	}
+
+	err = k.ConfigureCerts()
+	if err != nil {
+		return errors.Wrap(err, "could not configure certs")
+	}
+
+	err = k.Save()
 	return err
 }
 
@@ -283,6 +253,11 @@ func (k Stack) ConfigureCerts() error {
 		}
 
 		vaultClient.SetToken(token)
+
+		_, renewErr := vaultClient.Auth().Token().RenewSelf(int((768 * time.Hour).Seconds()))
+		if renewErr != nil {
+			log.Warnf("Couldn't renew token: %s", renewErr)
+		}
 
 		data := map[string]interface{}{
 			"common_name": certConfig.CommonName,
@@ -364,7 +339,12 @@ func (k Stack) ConfigurePullSecrets() error {
 				}
 				data, dockerFileErr := ioutil.ReadFile(dockerConfigPath)
 				if dockerFileErr != nil {
-					return errors.Errorf("error reading docker kubeconfig from %q: %s", dockerConfigPath, dockerFileErr)
+					var dataString string
+					dataString, dockerFileErr = command.NewShellExe("bash", "-c", "sudo cat " + dockerConfigPath).RunOut()
+					if dockerFileErr != nil {
+						return errors.Errorf("error reading docker kubeconfig from %q: %s", dockerConfigPath, dockerFileErr)
+					}
+					data = []byte(dataString)
 				}
 
 				dockerFileErr = json.Unmarshal(data, &dockerConfig)
@@ -564,4 +544,82 @@ func (c *Stack) Destroy() error {
 	log.Info("Done deleting stack.")
 
 	return nil
+}
+
+func (c *Stack) SetStoryID(id string) {
+	c.state.StoryID = id
+}
+
+func (c *Stack) IsInitialized() bool {
+	return c.state != nil && c.state.Uninitialized != true
+}
+
+func (c *Stack) GetStoryID() string {
+	return c.state.StoryID
+}
+
+func (s StackState) Headers() []string {
+	return []string{
+		"Name",
+		"Version",
+		"Release",
+		"Repo",
+		"Branch",
+		"Provider",
+		"Commit",
+		"DeployedAt",
+		"DevopsBranch",
+		"StoryKey",
+		"Details",
+	}
+}
+
+func (s StackState) Rows() [][]string {
+	var out [][]string
+	for _, appName := range util.SortedKeys(s.DeployedApps) {
+
+		app := s.DeployedApps[appName]
+
+		var deployedAt string
+		if !app.DeployedAt.IsZero() {
+			deployedAt = app.DeployedAt.Format(time.RFC3339)
+		}
+
+		out = append(out, []string{
+			app.Name,
+			app.Version,
+			app.Release,
+			app.Repo,
+			app.Branch,
+			app.Provider,
+			app.Commit,
+			deployedAt,
+			app.DevopsBranch,
+			app.StoryKey,
+			app.Details,
+		})
+	}
+	return out
+}
+
+type StackApp struct {
+	Name         string    `yaml:"name"`
+	Version      string    `yaml:"version"`
+	Release      string    `yaml:"release"`
+	Provider     string    `yaml:"provider"`
+	Repo         string    `yaml:"repo"`
+	Branch       string    `yaml:"branch"`
+	Commit       string    `yaml:"commit"`
+	DeployedAt   time.Time `yaml:"deployedAt"`
+	DevopsBranch string    `yaml:"devopsBranch"`
+	StoryKey     string    `yaml:"storyKey"`
+	Details      string    `yaml:"details"`
+}
+
+const (
+	DefaultStackName = "default"
+)
+
+func makeStackConfigmapName(name string) string {
+	return "bosun-stack-" + git.Slug(name)
 }

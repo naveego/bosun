@@ -6,7 +6,7 @@ type Context struct {
 	CurrentRelease     string                `yaml:"currentRelease" json:"currentRelease"`
 	CurrentCluster     string                `yaml:"currentCluster" json:"currentCluster"`
 	CurrentKubeconfig  string                `yaml:"currentKubeconfig" json:"currentKubeconfig"`
-	CurrentStack       string                `yaml:"currentSubcluster" json:"currentSubcluster"`
+	CurrentStack       string                `yaml:"currentStack" json:"currentStack"`
 	KnownStacks        map[string]KnownStack `yaml:"knownStacks"`
 }
 

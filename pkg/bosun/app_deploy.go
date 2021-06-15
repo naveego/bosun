@@ -307,6 +307,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		return nil
 	}
 
+
 	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
 	_, err = resolvedValues.PersistValues()
@@ -316,6 +317,16 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	defer resolvedValues.Cleanup()
 
 	ctx = ctx.WithPersistableValues(resolvedValues).(BosunContext)
+
+	if a.AppDeploySettings.RenderOnly {
+		log.Infof("Running in render only mode, here is the chart that would have been used to deploy:")
+		rendered, renderErr := a.Render(ctx)
+		if renderErr != nil {
+			return renderErr
+		}
+		fmt.Println(rendered)
+		return nil
+	}
 
 	// clear helm release cache after work is done
 	defer func() { a.helmRelease = nil }()
@@ -339,6 +350,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	log.Info("Planning reconciliation...")
 
 	plan, err := a.PlanReconciliation(ctx)
+
 
 	if err != nil {
 		return errors.Wrap(err, "planning reconciliation")
@@ -570,17 +582,47 @@ func (a *AppDeploy) Install(ctx BosunContext) error {
 	args := append([]string{"install", a.AppManifest.Name, a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	out, err := command.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
-	return errors.Wrapf(err, "install using args %v", args)
+	return errors.Wrapf(a.wrapActionError(ctx, err, args), "install using args %v", args)
+}
+
+func (a *AppDeploy) Render(ctx BosunContext) (string, error) {
+	args := append([]string{"template", a.AppManifest.Name, "--debug", a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
+	out, err := command.NewShellExe("helm", args...).RunOut()
+	return out, errors.Wrapf(err, "render using args %v", args)
 }
 
 func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 	args := append([]string{"upgrade", a.AppManifest.Name, "--history-max", "5", a.Chart(ctx)}, a.makeHelmArgs(ctx)...)
 	if a.DesiredState.Force {
-		args = append(args, "--force")
+		// args = append(args, "--force")
 	}
 	out, err := command.NewShellExe("helm", args...).RunOut()
 	ctx.Log().Debug(out)
-	return errors.Wrapf(err, "upgrade using args %v", args)
+	return errors.Wrapf(a.wrapActionError(ctx, err, args), "upgrade using args %v", args)
+}
+
+func (a *AppDeploy) wrapActionError(ctx BosunContext, err error, args []string ) error {
+
+	if err == nil {
+		return err
+	}
+
+	errText := err.Error()
+
+	if strings.Contains(errText, "error converting YAML to JSON") {
+
+		args[0] = "template"
+		out, renderErr := a.Render(ctx)
+		if renderErr != nil {
+			return errors.Wrapf(renderErr, "couldn't render chart when recovering from other error: %s", err)
+		}
+
+		ctx.Log().Warnf("Chart produced invalid yaml. Error was %s", err)
+		ctx.Log().Info("Here is the yaml that was produced:\n%s", out)
+		ctx.Log().Warnf("Yaml above dumped because chart produced invalid yaml. Error was %s", err)
+	}
+
+	return err
 }
 
 func (a *AppDeploy) GetStatus() (string, error) {

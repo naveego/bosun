@@ -56,6 +56,15 @@ func MarshalString(value interface{}) (string, error) {
 	return string(out), err
 }
 
+// MustMarshallString marshals the value to a string and panics if there is an error.
+func MustMarshalString(value interface{}) string {
+	out, err := Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(out)
+}
+
 func Marshal(value interface{}) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	encoder := yaml.NewEncoder(buf)

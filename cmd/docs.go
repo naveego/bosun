@@ -58,9 +58,9 @@ var _ = addCommand(docsCmd, &cobra.Command{
 })
 
 var _ = addCommand(docsCmd, &cobra.Command{
-	Use:   "bash",
-	Short: "Completion generator for bash.",
+	Use:   "zsh",
+	Short: "Completion generator for zsh.",
 	Run: func(cmd *cobra.Command, args []string) {
-		rootCmd.GenBashCompletion(os.Stdout)
+		rootCmd.GenZshCompletion(os.Stdout)
 	},
 })

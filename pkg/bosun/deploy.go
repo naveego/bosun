@@ -67,6 +67,7 @@ type SharedDeploySettings struct {
 	UseLocalContent bool
 	Recycle         bool
 	DiffOnly        bool
+	RenderOnly      bool
 }
 
 type DeploySettings struct {
@@ -460,7 +461,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 			return err
 		}
 
-		if d.DiffOnly || d.DumpValuesOnly {
+		if d.DiffOnly || d.DumpValuesOnly || d.RenderOnly {
 			return nil
 		}
 

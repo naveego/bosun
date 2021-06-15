@@ -1,6 +1,7 @@
 package bosun
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/fatih/color"
 	actions "github.com/naveego/bosun/pkg/actions"
@@ -23,6 +24,18 @@ import (
 	"regexp"
 	"strings"
 )
+
+type AppProviderRequest struct {
+	Name string `json:"name,omitempty"`
+	ProviderPriority []string `json:"providerPriority,omitempty"`
+	Path string `json:"path,omitempty"`
+	Branch string `json:"branch,omitempty"`
+}
+
+func (r AppProviderRequest) String() string {
+	j, _ := json.Marshal(r)
+	return string(j)
+}
 
 type App struct {
 	*AppConfig
@@ -762,6 +775,8 @@ func (a *App) GetMostRecentCommitFromBranch(ctx BosunContext, branch string) (st
 
 func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortable bool) (*AppManifest, error) {
 
+	log := ctx.Log().WithField("app", a.Name)
+
 	wsApp, err := ctx.Bosun.GetAppFromWorkspace(a.Name)
 	if err != nil {
 		return nil, err
@@ -824,12 +839,12 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortabl
 
 	provider := NewFilePathAppProvider(ctx.Log())
 
-	app, err := provider.GetAppByPathAndName(bosunFile, wsApp.Name)
+	app, err := provider.ProvideApp(AppProviderRequest{Name: wsApp.Name, Path: bosunFile})
 	if err != nil {
 		return nil, err
 	}
 
-	ctx.Log().Infof("Creating manifest from branch %q...", branch)
+	log.Infof("Creating manifest from branch %q...", branch)
 	manifest, err := app.GetManifest(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create manifest from branch %q", branch)

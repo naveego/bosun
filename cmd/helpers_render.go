@@ -20,7 +20,7 @@ func renderOutput(out interface{}, columns ...string) error {
 }
 
 func printOutput(out interface{}, columns ...string) error {
-	return printOutputWithDefaultFormat("y", out, columns...)
+	return printOutputWithDefaultFormat("t", out, columns...)
 }
 
 func printOutputWithDefaultFormat(defaultFormat string, out interface{}, columns ...string) error {

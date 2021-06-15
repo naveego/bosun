@@ -78,10 +78,10 @@ var _ = addCommand(deployCmd, &cobra.Command{
 			validationError := result.ValidationErrors[app.Name]
 
 			resultText := ""
-			if validationError == nil {
+			if validationError == "" {
 				resultText = color.GreenString("OK")
 			} else {
-				resultText = color.RedString(validationError.Error())
+				resultText = color.RedString(validationError)
 				errCount++
 			}
 			t.Append([]string{app.Name, resultText})

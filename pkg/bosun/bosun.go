@@ -6,6 +6,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/naveego/bosun/pkg/vault"
+	"github.com/pterm/pterm"
 
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/cli"
@@ -258,12 +259,17 @@ func (b *Bosun) GetScript(name string) (*script.Script, error) {
 	return nil, errors.Errorf("no script found with name %q", name)
 }
 
-func (b *Bosun) GetApp(name string, providerPriority ...string) (*App, error) {
-	if len(providerPriority) == 0 {
-		providerPriority = b.params.ProviderPriority
-	}
-	app, err := b.appProvider.GetApp(name, providerPriority)
+func (b *Bosun) ProvideApp(req AppProviderRequest) (*App, error){
+	app, err := b.appProvider.GetApp(req)
+
 	return app, err
+}
+
+func (b *Bosun) GetApp(name string, providerPriority ...string) (*App, error) {
+	return b.ProvideApp(AppProviderRequest{
+		Name: name,
+		ProviderPriority: providerPriority,
+	})
 }
 
 func (b *Bosun) GetAppFromProvider(appName, providerName string) (*App, error) {
@@ -274,6 +280,22 @@ func (b *Bosun) GetAppFromProvider(appName, providerName string) (*App, error) {
 func (b *Bosun) GetAppFromWorkspace(appName string) (*App, error) {
 	app, err := b.appProvider.GetAppFromProvider(appName, WorkspaceProviderName)
 	return app, err
+}
+
+func (b *Bosun) GetAppFromRepo(repoName string) (*App, error) {
+
+	apps, err := b.workspaceAppProvider.GetAllApps()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, app := range apps {
+		if app.AppConfig.RepoName == repoName {
+			return app, nil
+		}
+	}
+
+	return nil, errors.Errorf("no app had repo name %q", repoName)
 }
 
 func (b *Bosun) ReloadApp(name string) (*App, error) {
@@ -293,7 +315,7 @@ func (b *Bosun) ReloadApp(name string) (*App, error) {
 func (b *Bosun) GetOrAddAppForPath(path string) (*App, error) {
 
 	provider := NewFilePathAppProvider(b.log)
-	app, err := provider.GetApp(path)
+	app, err := provider.ProvideApp(AppProviderRequest{Path: path})
 
 	if err != nil {
 		return nil, errors.Errorf("could not get app from path %q", path)
@@ -1277,9 +1299,9 @@ func (b *Bosun) NormalizeStackBrn(hint string) (brns.StackBrn, error) {
 
 	if brn.String() != hint {
 		if len(alternatives) > 0 {
-			b.log.Infof("Interpreted %q as %s (alternatives were %v)", hint, brn, alternatives)
+			b.log.WithField("alternatives", alternatives).Infof("Interpreted %s as %s", pterm.LightCyan(hint), pterm.LightBlue(brn.String()))
 		} else {
-			b.log.Infof("Interpreted %q as %s", hint, brn)
+			b.log.Infof("Interpreted %s as %s", pterm.LightCyan(hint), pterm.LightBlue(brn.String()))
 		}
 	}
 

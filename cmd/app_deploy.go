@@ -24,4 +24,5 @@ bosun app deploy {appName} --value-sets latest,pullIfNotPresent
 
 const (
 	argAppDeployValuesOnly = "dump-values"
+	argAppDeployRenderOnly = "render-only"
 )

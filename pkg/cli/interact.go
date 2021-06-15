@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/manifoldco/promptui"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"strings"
@@ -15,21 +16,30 @@ func RequestConfirmFromUser(label string, args ...interface{}) bool {
 		return false
 	}
 
-	prompt := promptui.Prompt{
-		Label: fmt.Sprintf(label, args...) + " [y/N]",
-	}
+	for {
 
-	value, err := prompt.Run()
-	if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
-		fmt.Println("User quit.")
-		os.Exit(0)
-	}
+		prompt := promptui.Prompt{
+			Label: fmt.Sprintf(label, args...) + " [y/N]",
+		}
 
-	if strings.HasPrefix(strings.ToLower(value), "y") {
-		return true
-	}
+		value, err := prompt.Run()
+		if err == promptui.ErrInterrupt || err == promptui.ErrAbort {
+			fmt.Println("User quit.")
+			os.Exit(0)
+		}
 
-	return false
+		if strings.HasPrefix(strings.ToLower(value), "y") {
+			return true
+		}
+
+		if strings.HasPrefix(value, "?") || strings.HasPrefix(value, "h") {
+			e := errors.New("Stack")
+			_, _ = fmt.Fprintf(os.Stderr, "%+v\n", e)
+			continue
+		}
+
+		return false
+	}
 }
 
 func RequestStringFromUser(text string, args ...interface{}) string {

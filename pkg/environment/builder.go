@@ -104,6 +104,10 @@ func (b Builder) Build() (*Environment, error) {
 			return nil, err
 		}
 
+		if !e.stack.IsInitialized(){
+			core.Log.Warnf("Current stack %q is not initialized, you should create it using `bosun stack create %s`", b.stackName, b.stackName)
+		}
+
 		if !alreadyConfiguredEnv {
 			for _, v := range e.stack.Variables {
 				if err = v.Ensure(deps); err != nil {

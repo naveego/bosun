@@ -508,7 +508,7 @@ func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App)
 
 		if previousVersion != nil && unstableVersion != nil {
 
-			localVersion, localVersionErr := workspaceAppProvider.GetApp(appName)
+			localVersion, localVersionErr := workspaceAppProvider.ProvideApp(AppProviderRequest{Name: appName})
 			if localVersionErr != nil {
 				return errors.Wrapf(localVersionErr, "get local version of app %q", appName)
 			}
@@ -730,7 +730,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				case SlotPrevious:
 					log.Infof("App %q will not be upgraded in this release; adding version last released in %q, with no deploy requested.", appName, appPlan.ChosenProvider)
 
-					app, getAppErr = previousProvider.GetApp(appName)
+					app, getAppErr = previousProvider.ProvideApp(AppProviderRequest{Name: appName})
 					if getAppErr != nil {
 						return nil, errors.Wrapf(err, "app %q not available from release %s, you must choose a different provider", appName, previous.Version)
 					}
@@ -753,7 +753,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 						bump = appPlan.BumpOverride
 					}
 
-					unstableApp, unstableErr := unstableProvider.GetApp(appName)
+					unstableApp, unstableErr := unstableProvider.ProvideApp(AppProviderRequest{Name: appName})
 					if unstableErr != nil {
 						return nil, errors.Wrapf(unstableErr, "app %q not available from unstable, you must choose a different provider", appName)
 					}
@@ -764,7 +764,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				case SlotStable:
 					log.Infof("App %q has already been added to this release.", appName)
 
-					app, getAppErr = currentProvider.GetApp(appName)
+					app, getAppErr = currentProvider.ProvideApp(AppProviderRequest{Name: appName})
 					if getAppErr != nil {
 						return nil, getAppErr
 					}
@@ -959,17 +959,14 @@ func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest
 			return err
 		}
 		var app *App
-		if len(req.ProviderPriority) > 0 {
-			app, err = b.GetApp(appName, req.ProviderPriority...)
-			if err != nil {
-				return errors.Wrapf(err, "get app %q from provider %q", appName, req.ProviderPriority)
-			}
-		} else {
-			app, err = b.GetApp(appName)
-			if err != nil {
-				return errors.Wrapf(err, "get app %q from anywhere", appName)
-			}
+
+		appReq := req.AppOptions[appName]
+		appReq.Name = appName
+		app, err = b.ProvideApp(appReq)
+		if err != nil {
+			return errors.Wrapf(err, "get app %q from anywhere", appName)
 		}
+
 		apps[appName] = app
 		appDeps := deps[app.Name]
 
@@ -1076,9 +1073,9 @@ func (p *Platform) GetReleaseManifestBySlotAndBranch(fromSlot string, asSlot str
 		if err != nil {
 			return nil, err
 		}
-		worktree, err := g.Worktree(branch)
-		if err != nil {
-			return nil, err
+		worktree, worktreeErr := g.Worktree(branch)
+		if worktreeErr != nil {
+			return nil, worktreeErr
 		}
 
 		defer worktree.Dispose()
@@ -1393,6 +1390,38 @@ func (p *Platform) GetDeploymentsDir() string {
 	dir := filepath.Join(filepath.Dir(p.FromPath), "deployments")
 	_ = os.MkdirAll(dir, 0700)
 	return dir
+}
+
+func (p *Platform) CreateHotfix(ctx BosunContext, version semver.Version) (*ReleaseManifest, error) {
+	var err error
+
+	_, err = p.GetStableRelease()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx.Log().Info("Creating new release plan.")
+
+	branch := p.MakeReleaseBranchName(version)
+	if err = p.SwitchToReleaseBranch(ctx, branch); err != nil {
+		return nil, err
+	}
+
+	manifest, err := p.GetCurrentRelease()
+	if err != nil {
+		return nil, err
+	} else {
+		ctx.Log().Infof("Using release %s as current release.", manifest)
+		manifest.ReleaseMetadata.Version = version
+		manifest.ReleaseMetadata.Name = p.MakeReleaseBranchName(version)
+	}
+
+	ctx.Log().Infof("Created new release plan %s.", manifest)
+
+	p.SetReleaseManifest(SlotStable, manifest)
+
+	err = p.Save(ctx)
+	return manifest, err
 }
 
 type StatusDiff struct {

@@ -507,7 +507,7 @@ var appStatusCmd = &cobra.Command{
 			}
 
 			routing := "n/a"
-			if env.ClusterName == "minikube" {
+			if env.IsLocal {
 				routing = fmtDesiredActual(desired.Routing, actual.Routing)
 			}
 
@@ -629,6 +629,7 @@ var appDeleteCmd = &cobra.Command{
 		return err
 	},
 }
+
 
 var appRunCmd = &cobra.Command{
 	Use:           "run [app]",

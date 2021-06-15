@@ -261,6 +261,46 @@ var vaultUnsealCmd = &cobra.Command{
 	},
 }
 
+var vaultInstallJoseCmd = addCommand(vaultCmd, &cobra.Command{
+	Use:           "install-jose [namespace]",
+	Short:         "Installs the jose plugin into vault.",
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+
+		namespace := "default"
+		if len(args) > 0 {
+			namespace = args[0]
+		}
+
+		viper.BindPFlags(cmd.Flags())
+
+		g := globalParameters{}
+		err := g.init()
+		if err != nil {
+			return err
+		}
+
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		if err != nil {
+			return err
+		}
+
+		core.Log.Infof("Installing jose in namespace %q", namespace)
+
+
+		initializer := vault.VaultInitializer{
+			Client:         vaultClient,
+			VaultNamespace: namespace,
+		}
+
+		err = initializer.InstallJose()
+
+		return err
+	},
+})
+
 var vaultSecretCmd = &cobra.Command{
 	Use:           "secret {path} [key]",
 	Args:          cobra.RangeArgs(1, 2),

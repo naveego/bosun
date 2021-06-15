@@ -25,7 +25,7 @@ var DefaultAppProviderPriority = []string{WorkspaceProviderName, SlotUnstable, S
 
 type AppProvider interface {
 	fmt.Stringer
-	GetApp(name string) (*App, error)
+	ProvideApp(req AppProviderRequest) (*App, error)
 	GetAllApps() (map[string]*App, error)
 }
 
@@ -56,19 +56,19 @@ func (a AppConfigAppProvider) String() string {
 	return WorkspaceProviderName
 }
 
-func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
+func (a AppConfigAppProvider) ProvideApp(req AppProviderRequest) (*App, error) {
 	var app *App
 	var appConfig *AppConfig
 	var ok bool
 	a.mu.Lock()
-	app, ok = a.apps[name]
+	app, ok = a.apps[req.Name]
 	a.mu.Unlock()
 	if ok {
 		return app, nil
 	}
-	appConfig, ok = a.appConfigs[name]
+	appConfig, ok = a.appConfigs[req.Name]
 	if !ok {
-		return nil, ErrAppNotFound(name)
+		return nil, ErrAppNotFound(req.Name)
 	}
 	app = &App{
 		Provider:  a,
@@ -106,7 +106,7 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 	}
 
 	a.mu.Lock()
-	a.apps[name] = app
+	a.apps[req.Name] = app
 	a.mu.Unlock()
 
 	app.ProviderInfo = a.String()
@@ -117,7 +117,7 @@ func (a AppConfigAppProvider) GetApp(name string) (*App, error) {
 func (a AppConfigAppProvider) GetAllApps() (map[string]*App, error) {
 	out := map[string]*App{}
 	for name := range a.appConfigs {
-		app, err := a.GetApp(name)
+		app, err := a.ProvideApp(AppProviderRequest{Name: name})
 		if err != nil {
 			return nil, err
 		} else {
@@ -143,18 +143,18 @@ func (a ReleaseManifestAppProvider) String() string {
 	return a.release.Slot
 }
 
-func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
-	app, ok := a.apps[name]
+func (a ReleaseManifestAppProvider) ProvideApp(req AppProviderRequest) (*App, error) {
+	app, ok := a.apps[req.Name]
 	if ok {
 		return app, nil
 	}
 
-	appManifest, found, err := a.release.TryGetAppManifest(name)
+	appManifest, found, err := a.release.TryGetAppManifest(req.Name)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, ErrAppNotFound(name)
+		return nil, ErrAppNotFound(req.Name)
 	}
 
 	app = &App{
@@ -174,7 +174,7 @@ func (a ReleaseManifestAppProvider) GetApp(name string) (*App, error) {
 		}
 	}
 
-	a.apps[name] = app
+	a.apps[req.Name] = app
 
 	app.ProviderInfo = a.String()
 
@@ -188,7 +188,7 @@ func (a ReleaseManifestAppProvider) GetAllApps() (map[string]*App, error) {
 		return nil, err
 	}
 	for name := range appManifests {
-		app, getErr := a.GetApp(name)
+		app, getErr := a.ProvideApp(AppProviderRequest{Name: name})
 
 		if getErr != nil {
 			if !IsErrAppNotFound(getErr) {
@@ -206,6 +206,7 @@ type ChainAppProvider struct {
 	mu              *sync.Mutex
 	providers       []AppProvider
 	providersByName map[string]AppProvider
+	defaultPriority []string
 }
 
 func NewChainAppProvider(providers ...AppProvider) ChainAppProvider {
@@ -215,6 +216,7 @@ func NewChainAppProvider(providers ...AppProvider) ChainAppProvider {
 		providersByName: map[string]AppProvider{},
 	}
 	for _, provider := range providers {
+		p.defaultPriority = append(p.defaultPriority, provider.String())
 		p.providersByName[provider.String()] = provider
 	}
 	return p
@@ -233,7 +235,7 @@ func (a ChainAppProvider) GetAppFromProvider(name string, providerName string) (
 	defer a.mu.Unlock()
 
 	if provider, ok := a.providersByName[providerName]; ok {
-		app, err := provider.GetApp(name)
+		app, err := provider.ProvideApp(AppProviderRequest{Name: name})
 		if err != nil {
 			return nil, err
 		}
@@ -242,23 +244,28 @@ func (a ChainAppProvider) GetAppFromProvider(name string, providerName string) (
 	return nil, errors.Errorf("no provider named %q", providerName)
 }
 
-func (a ChainAppProvider) GetApp(name string, providerPriority []string) (*App, error) {
+func (a ChainAppProvider) GetApp(req AppProviderRequest) (*App, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	providerPriority := req.ProviderPriority
+	if len(providerPriority) == 0 {
+		providerPriority = a.defaultPriority
+	}
+
 	for _, providerName := range providerPriority {
 		if provider, ok := a.providersByName[providerName]; ok {
-			app, err := provider.GetApp(name)
+			app, err := provider.ProvideApp(req)
 			if err != nil {
 				if !IsErrAppNotFound(err) {
-					return nil, errors.Wrapf(err, "error while trying to get app %q", name)
+					return nil, errors.Wrapf(err, "error while trying to get app using request %s", req)
 				}
 			} else {
 				return app, nil
 			}
 		}
 	}
-	return nil, ErrAppNotFound(name)
+	return nil, ErrAppNotFound(req.String())
 }
 
 func (a ChainAppProvider) GetAllApps(providerPriority []string) (map[string]*App, error) {
@@ -310,7 +317,7 @@ func (a ChainAppProvider) GetAllVersionsOfApp(name string, providerNames []strin
 	for _, providerName := range providerNames {
 		provider, ok := a.providersByName[providerName]
 		if ok {
-			app, err := provider.GetApp(name)
+			app, err := provider.ProvideApp(AppProviderRequest{Name: name})
 			if err != nil {
 				if !IsErrAppNotFound(err) {
 					return nil, errors.Wrapf(err, "error while trying to get app %q", name)
@@ -340,15 +347,13 @@ func (a FilePathAppProvider) String() string {
 	return FileProviderName
 }
 
-func (a FilePathAppProvider) GetApp(path string) (*App,  error) {
+func (a FilePathAppProvider) ProvideApp(req AppProviderRequest) (*App, error) {
 
-	return a.GetAppByPathAndName(path, "")
-}
-
-func (a FilePathAppProvider) GetAppByPathAndName(path, name string) (*App, error) {
+	name := req.Name
+	path := req.Path
 	if !strings.HasSuffix(path, ".yaml") {
 		a.log.Debugf("Provider can only get apps if path to bosun file is provided (path was %q).", path)
-		return nil, ErrAppNotFound(name)
+		return nil, ErrAppNotFound(req.Name)
 	}
 
 	bosunFile, _ := filepath.Abs(path)
