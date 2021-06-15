@@ -1,85 +1,86 @@
 imports:
-- integration/testdata/e2e/simple-http-test/suite.yaml
-- integration/testdata/e2e/mongo-test/suite.yaml
+  - integration/testdata/e2e/simple-http-test/suite.yaml
+  - integration/testdata/e2e/mongo-test/suite.yaml
 apps:
-- name: bosun
-  branching: null
-  repo: naveego/bosun
-  version: 2.16.3
-  labels:
-    category: tool
-    repo-kind: own
-  images: []
-  scripts:
-  - name: build
-    steps:
-    - cmd: |
-        set -e
-        version=$(bosun app version bosun)
-        commit=$(git rev-parse --short HEAD)
-        timestamp=$(date -Iseconds)
-        ldflags="-s -w -X github.com/naveego/bosun/pkg/core.Version=${version} -X github.com/naveego/bosun/pkg/core.Timestamp='test' -X github.com/naveego/bosun/pkg/core.Commit=${commit}"
-        go build --ldflags "$ldflags"
-  - name: install
-    steps:
-    - cmd: |
-        set -e
-        version=$(bosun app version bosun)
-        commit=$(git rev-parse --short HEAD)
-        timestamp=$(date -Iseconds)
-        ldflags="-s -w -X github.com/naveego/bosun/pkg/core.Version=${version} -X github.com/naveego/bosun/pkg/core.Timestamp='test' -X github.com/naveego/bosun/pkg/core.Commit=${commit}"
-        go install --ldflags "$ldflags"
-  - name: publish
-    steps:
-    - bosun: [""]
-      cmd: |-
-        set -e
-        if [[ -n "$(git status --porcelain)" ]] ; then
-          echo "directory is dirty"
-          exit 1
-        fi
-        git tag $(bosun app version bosun)
-        git push --tags
-        goreleaser --rm-dist
-  actions:
-  - name: TestManualHTTPTest
-    description: Test for manual actions.
-    when: [Manual]
-    test:
-      http: https://google.com
-  - name: ManualMongo
-    description: Test for manual mongo insert action.
-    when: [Manual]
-    mongo:
-      connection:
-        dbName: bosun-test
-        host: ""
-        port: ""
-        kubePort:
-          forward: true
-          serviceName: mongodb-0
-          port: 27017
-          namespace: ""
-        credentials:
-          type: vault
-          vaultPath: database/creds/mongodb-provisioner
-          authSource: admin
-      databaseFile: test/mongo/db.yaml
-      rebuildDb: false
-  files: []
-  releaseHistory: []
+  - name: bosun
+    branching: null
+    repo: naveego/bosun
+    version: 3.0.0-beta1
+    labels:
+      category: tool
+      repo-kind: own
+    images: []
+    scripts:
+      - name: build
+        steps:
+          - cmd: |
+              set -e
+              version=$(bosun app version bosun)
+              commit=$(git rev-parse --short HEAD)
+              timestamp=$(date -Iseconds)
+              ldflags="-s -w -X github.com/naveego/bosun/pkg/core.Version=${version} -X github.com/naveego/bosun/pkg/core.Timestamp='test' -X github.com/naveego/bosun/pkg/core.Commit=${commit}"
+              go build --ldflags "$ldflags"
+      - name: install
+        steps:
+          - cmd: |
+              set -e
+              version=$(bosun app version bosun)
+              commit=$(git rev-parse --short HEAD)
+              timestamp=$(date -Iseconds)
+              ldflags="-s -w -X github.com/naveego/bosun/pkg/core.Version=${version} -X github.com/naveego/bosun/pkg/core.Timestamp='test' -X github.com/naveego/bosun/pkg/core.Commit=${commit}"
+              go install --ldflags "$ldflags"
+      - name: publish
+        steps:
+          - bosun: [""]
+            cmd: |-
+              set -e
+              if [[ -n "$(git status --porcelain)" ]] ; then
+                echo "directory is dirty"
+                exit 1
+              fi
+              git tag $(bosun app version bosun)
+              git push --tags
+              goreleaser --rm-dist
+    actions:
+      - name: TestManualHTTPTest
+        description: Test for manual actions.
+        when: [Manual]
+        test:
+          http: https://google.com
+      - name: ManualMongo
+        description: Test for manual mongo insert action.
+        when: [Manual]
+        mongo:
+          connection:
+            dbName: bosun-test
+            host: ""
+            port: ""
+            kubePort:
+              forward: true
+              serviceName: mongodb-0
+              port: 27017
+              namespace: ""
+            credentials:
+              type: vault
+              vaultPath: database/creds/mongodb-provisioner
+              authSource: admin
+          databaseFile: test/mongo/db.yaml
+          rebuildDb: false
+    files: []
+    releaseHistory: []
+    providerinfo: workspace
 repos:
-- name: bosun
-  branching:
-    master: ""
-    develop: ""
-    release: ""
-    feature: ""
-  labels: {}
-- name: bosun
-  branching:
-    master: ""
-    develop: ""
-    release: ""
-    feature: ""
-  labels: {}
+  - name: bosun
+    branching:
+      master: ""
+      develop: ""
+      release: ""
+      feature: ""
+    labels: {}
+  - name: bosun
+    branching:
+      master: ""
+      develop: ""
+      release: ""
+      feature: ""
+    labels: {}

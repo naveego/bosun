@@ -4,7 +4,6 @@ package command
 
 import (
 	"fmt"
-	"github.com/naveego/bosun/pkg"
 	"strings"
 )
 
@@ -23,7 +22,7 @@ func RenderEnvironmentSettingScript(vars map[string]string, aliases map[string]s
 	return w.String()
 }
 
-func GetCommandForScript(file string) *pkg.ShellExe {
-	cmd := command.NewShellExe("cmd", "/q", "/c", file)
+func GetCommandForScript(file string) *ShellExe {
+	cmd := NewShellExe("cmd", "/q", "/c", file)
 	return cmd
 }
