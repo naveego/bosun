@@ -281,6 +281,16 @@ func (q *QAStory) deployStoryApps(appNameFilter []string) error {
 		return err
 	}
 
+	err = plan.Save()
+	if err != nil {
+		return err
+	}
+
+	plan, err = bosun.LoadDeploymentPlanFromFile(plan.FromPath)
+	if err != nil {
+		return err
+	}
+
 	executeRequest := bosun.ExecuteDeploymentPlanRequest{
 		Plan:           plan,
 		Recycle:        viper.GetBool(argDeployAppRecycle),

@@ -53,7 +53,7 @@ func LoadDeploymentPlanFromFile(path string) (*DeploymentPlan, error) {
 	return &out, nil
 }
 
-func (d DeploymentPlan) Save() error {
+func (d *DeploymentPlan) Save() error {
 	var err error
 
 	if d.DirectoryPath == "" {
@@ -80,7 +80,7 @@ func (d DeploymentPlan) Save() error {
 	return d.SavePlanFileOnly()
 }
 
-func (d DeploymentPlan) SavePlanFileOnly() error {
+func (d *DeploymentPlan) SavePlanFileOnly() error {
 
 
 	mirror.Sort(d.Apps, func(a,b *AppDeploymentPlan) bool {
@@ -93,6 +93,7 @@ func (d DeploymentPlan) SavePlanFileOnly() error {
 			return errors.New("fromPath and directoryPath were both empty")
 		}
 		planPath = filepath.Join(d.DirectoryPath, "plan.yaml")
+		d.SetFromPath(planPath)
 	}
 
 	err := yaml.SaveYaml(planPath, d)

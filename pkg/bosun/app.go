@@ -15,7 +15,6 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"github.com/rs/xid"
 	"github.com/stevenle/topsort"
 	"io/ioutil"
 	"os"
@@ -807,34 +806,13 @@ func (a *App) GetManifestFromBranch(ctx BosunContext, branch string, makePortabl
 
 	if useWorktreeCheckout {
 
-		err = g.Fetch()
-		if err != nil {
-			return nil, err
-		}
-		repoDirName := filepath.Base(wsApp.Repo.LocalRepo.Path)
-		worktreePath := fmt.Sprintf("/tmp/%s-worktree", repoDirName)
-		tmpBranchName := fmt.Sprintf("worktree-%s", xid.New())
-		_, err = g.Exec("branch", "--track", tmpBranchName, fmt.Sprintf("origin/%s", branch))
-		if err != nil {
-			return nil, errors.Wrapf(err, "checking out tmp branch tracking origin/%q", branch)
-		}
-		defer func() {
-			ctx.Log().Debugf("Deleting worktree %s", worktreePath)
-			_, _ = g.Exec("checkout", currentBranch)
-			_, _ = g.Exec("worktree", "remove", worktreePath)
-			_, _ = g.Exec("branch", "-D", tmpBranchName)
-		}()
-
-		ctx.Log().Debugf("Creating worktree for %s at %s", tmpBranchName, worktreePath)
-		_, _ = g.Exec("worktree", "remove", worktreePath)
-		_, err = g.Exec("worktree", "add", worktreePath, tmpBranchName)
-		if err != nil {
-			return nil, errors.Wrapf(err, "create work tree for checking out branch %q", tmpBranchName)
+		worktree, worktreeErr := g.Worktree(git.BranchName(branch))
+		if worktreeErr != nil {
+			return nil, worktreeErr
 		}
 
-		// bosunFile should now be pulled from the worktree
-		bosunFile = strings.Replace(wsApp.FromPath, wsApp.Repo.LocalRepo.Path, "", 1)
-		bosunFile = filepath.Join(worktreePath, bosunFile)
+		defer worktree.Dispose()
+		bosunFile = worktree.ResolvePath(bosunFile)
 	}
 
 	provider := NewFilePathAppProvider(ctx.Log())
