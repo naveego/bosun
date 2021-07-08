@@ -108,7 +108,7 @@ func (b *Bosun) initializeAppProviders() error {
 	if err != nil {
 		return err
 	}
-	if !p.isAutomationDummy {
+	if !p.isAutomationDummy && !b.ws.BuildServer {
 
 		for _, slot := range []string{SlotUnstable, SlotStable} {
 			release, releaseErr := p.GetReleaseManifestBySlot(slot)

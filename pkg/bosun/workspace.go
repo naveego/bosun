@@ -26,6 +26,7 @@ type Workspace struct {
 	Imports                []string                         `yaml:"imports,omitempty" json:"imports"`
 	Parameters             cli.Parameters                   `yaml:"parameters" json:"parameters"`
 	GitRoots               []string                         `yaml:"gitRoots" json:"gitRoots"`
+	BuildServer            bool                             `yaml:"buildServer" json:"buildServer"`
 	GithubToken            *command.CommandValue            `yaml:"githubToken" json:"githubToken"`
 	ScratchDir             string                           `yaml:"scratchDir" json:"scratchDir"`
 	WorkspaceCommands      map[string]*command.CommandValue `yaml:"workspaceCommands"`
