@@ -598,7 +598,7 @@ var appDeleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 
 		if err := b.ConfirmEnvironment(); err != nil {
 			return err

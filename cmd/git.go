@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/google/go-github/v20/github"
-	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/pkg/errors"
@@ -27,9 +26,7 @@ func init() {
 }
 
 func getGithubToken() (string, error) {
-	b := MustGetBosun(cli.Parameters{
-		NoEnvironment: true,
-	})
+	b := MustGetBosunNoEnvironment()
 	token, err := b.GetGithubToken()
 
 	return token, err

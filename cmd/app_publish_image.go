@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/naveego/bosun/pkg/bosun"
-	"github.com/naveego/bosun/pkg/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -23,7 +22,7 @@ as "version-release".
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+			b := MustGetBosunNoEnvironment()
 			app := mustGetApp(b, args)
 
 			helper := bosun.NewAppImageHelper(b)
@@ -48,7 +47,7 @@ var appBuildImageCmd = addCommand(
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := MustGetBosun(cli.Parameters{NoEnvironment:true})
+			b := MustGetBosunNoEnvironment()
 			app := mustGetApp(b, args)
 			ctx := b.NewContext().WithApp(app)
 			req := bosun.BuildImageRequest{

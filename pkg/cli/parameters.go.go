@@ -1,22 +1,22 @@
 package cli
 
 type Parameters struct {
-	Verbose        bool
-	DryRun         bool
-	Force          bool
-	NoReport       bool
-	ForceTests     bool
-	ValueOverrides map[string]string
-	FileOverrides  []string
+	Verbose        bool              `yaml:"verbose"`
+	DryRun         bool              `yaml:"dryRun"`
+	Force          bool              `yaml:"force"`
+	NoReport       bool              `yaml:"noReport"`
+	ForceTests     bool              `yaml:"forceTests"`
+	ValueOverrides map[string]string `yaml:"valueOverrides"`
+	FileOverrides  []string          `yaml:"fileOverrides"`
 	// Indicates no environment needs to be loaded in this run.
-	NoEnvironment bool
+	NoEnvironment bool `yaml:"noEnvironment"`
 	// Indicates no cluster is needed in this run.
-	NoCluster        bool
-	ConfirmedEnv     string
-	ProviderPriority []string
-	Sudo             bool
+	NoCluster        bool     `yaml:"noCluster"`
+	ConfirmedEnv     string   `yaml:"confirmedEnv"`
+	ProviderPriority []string `yaml:"providerPriority"`
+	Sudo             bool     `yaml:"sudo"`
 	// Additional parameters not strictly defined.
-	Misc map[string]string
+	Misc map[string]string `yaml:"misc"`
 }
 
 type ParametersGetter interface {

@@ -24,6 +24,7 @@ type Workspace struct {
 	Path                   string `yaml:"-" json:"-"`
 	workspace.Context      `yaml:",inline"`
 	Imports                []string                         `yaml:"imports,omitempty" json:"imports"`
+	Parameters             cli.Parameters                   `yaml:"parameters" json:"parameters"`
 	GitRoots               []string                         `yaml:"gitRoots" json:"gitRoots"`
 	GithubToken            *command.CommandValue            `yaml:"githubToken" json:"githubToken"`
 	ScratchDir             string                           `yaml:"scratchDir" json:"scratchDir"`

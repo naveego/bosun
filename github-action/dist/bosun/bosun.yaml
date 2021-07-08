@@ -1,4 +1,5 @@
 currentEnvironment: github
 currentPlatform: naveego
+buildServer: true
 imports:
   - ./platform.yaml

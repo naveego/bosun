@@ -19,7 +19,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/core"
-	"github.com/naveego/bosun/pkg/filter"
 	"github.com/naveego/bosun/pkg/git"
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/pkg/errors"
@@ -28,7 +27,6 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 func init() {
@@ -45,7 +43,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "list",
 	Short: "Lists platforms.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		platforms, err := b.GetPlatforms()
 		if err != nil {
 			return err
@@ -63,7 +61,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Short:        "Sets the platform.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		err := b.UsePlatform(args[0])
 		if err != nil {
 			return err
@@ -78,7 +76,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Short: "Updates the manifests of the provided apps on the unstable branch with the provided apps. Defaults to using the 'develop' branch of the apps.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		ctx := b.NewContext()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
@@ -157,7 +155,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Adds an app from the workspace to the platform.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -204,41 +202,6 @@ const (
 )
 
 var _ = addCommand(platformCmd, &cobra.Command{
-	Use:   "add-value-overrides {appName} {override-name} {cluster|clusterRole|environment={value,...} ...}",
-	Args:  cobra.MinimumNArgs(2),
-	Short: "Adds default values for an app to a cluster.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-
-		matches := filter.MatchMapConfig{}
-		pairs := args[2:]
-		for _, pair := range pairs {
-			keyValues := strings.Split(pair, "=")
-			if len(keyValues) != 2 {
-				return errors.New("invalid match values")
-			}
-			key := keyValues[0]
-			values := strings.Split(keyValues[1], ",")
-			matches[key] = filter.MatchMapConfigValuesFromStrings(values)
-		}
-
-		ctx := b.NewContext()
-
-		err = p.AddAppValuesForCluster(ctx, args[0], args[1], matches)
-
-		if err != nil {
-			return err
-		}
-
-		return p.Save(b.NewContext())
-	},
-})
-
-var _ = addCommand(platformCmd, &cobra.Command{
 	Use:   "add-repo {org/repo...}",
 	Args:  cobra.ExactArgs(1),
 	Short: "Adds a repo and its apps to the platform.",
@@ -247,7 +210,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -266,7 +229,8 @@ var _ = addCommand(platformCmd, &cobra.Command{
 		if path != "" {
 			log.Infof("Found repo locally at %q", path)
 		} else {
-			dir, err := getOrAddGitRoot(b, "")
+			var dir string
+			dir, err = getOrAddGitRoot(b, "")
 			if err != nil {
 				return err
 			}
@@ -291,7 +255,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Aliases: []string{"dump"},
 	Short:   "Shows the named platform, or the current platform if no name provided.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		var platform *bosun.Platform
 		var err error
 		if len(args) == 1 {
@@ -319,7 +283,7 @@ var _ = addCommand(platformCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(0),
 	Short: "Prints off the apps in the platform in dependency order.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err

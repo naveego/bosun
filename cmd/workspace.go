@@ -57,10 +57,7 @@ var configShowImportsCmd = addCommand(configShowCmd, &cobra.Command{
 	Use:   "imports",
 	Short: "Prints the imports.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := MustGetBosunNoEnvironment()
 
 		c := b.GetWorkspace()
 		visited := map[string]bool{}
@@ -85,7 +82,7 @@ var configGetCmd = addCommand(workspaceCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Gets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		ws := b.GetWorkspace()
 
 		//spew.Dump(ws)
@@ -111,7 +108,7 @@ var configEditCmd = addCommand(workspaceCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(0),
 	Short: "Edits your workspace in your default editor.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		ws := b.GetWorkspace()
 
 		err := cli.Edit(ws.Path)
@@ -125,7 +122,7 @@ var configSetImports = addCommand(workspaceCmd, &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Sets a value in the workspace config. Use a dotted path to reference the value.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		err := b.SetInWorkspace(args[0], args[1])
 		return err
 	},
@@ -135,10 +132,7 @@ var configDumpCmd = addCommand(workspaceCmd, &cobra.Command{
 	Use:   "dump [app]",
 	Short: "Prints current merged config, or the config of an app.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := MustGetBosunNoEnvironment()
 
 		if len(args) == 1 {
 			app, err := b.GetApp(args[0])
@@ -185,10 +179,7 @@ var configImportCmd = addCommand(workspaceCmd, &cobra.Command{
 			return err
 		}
 
-		b, err := getBosun()
-		if err != nil {
-			return err
-		}
+		b := MustGetBosunNoEnvironment()
 
 		if !b.AddImport(filename) {
 			fmt.Printf("File %s is already imported in user config.\n", filename)
@@ -283,7 +274,7 @@ var wsTidyPathsCmd = addCommand(workspaceCmd, &cobra.Command{
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		b.TidyWorkspace()
 
 		if viper.GetBool(ArgGlobalDryRun) {

@@ -125,6 +125,8 @@ const (
 	ArgGlobalValues        = "values"
 	ArgBosunConfigFile     = "config-file"
 	ArgGlobalConfirmedEnv  = "confirm-env"
+	ArgGlobalNoEnv         = "no-env"
+	ArgGlobalNoCluster     = "no-cluster"
 	ArgGlobalForce         = "force"
 	ArgGlobalNoReport      = "no-report"
 	ArgGlobalOutput        = "output"
