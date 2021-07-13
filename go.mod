@@ -3,7 +3,7 @@ module github.com/naveego/bosun
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.4.6 // indirect
 	github.com/10gen/openssl v0.0.0-20190228222722-2862bcc79a77 // indirect
-	github.com/AlecAivazis/survey/v2 v2.0.1
+	github.com/AlecAivazis/survey/v2 v2.2.14
 	github.com/Azure/azure-sdk-for-go v29.0.0+incompatible // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Azure/go-autorest v11.2.8+incompatible
@@ -181,7 +181,6 @@ require (
 	golang.org/x/net v0.0.0-20190812203447-cdfb69ac37fc // indirect
 	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/tools v0.0.0-20190621195816-6e04913cbbac // indirect
 	google.golang.org/genproto v0.0.0-20190502173448-54afdca5d873 // indirect
 	google.golang.org/grpc v1.23.0 // indirect

@@ -422,7 +422,7 @@ func resetCurrentStack(b *bosun.Bosun, p *bosun.Platform, provider string) error
 	mirror.Sort(appsNeedingReset, func(a, b *bosun.AppDeploymentPlan) bool { return a.Name < b.Name })
 
 	appSelect := map[string]*bosun.AppDeploymentPlan{}
-	appSelectOptions := []string{"ALL"}
+	appSelectOptions := []string{}
 
 	for _, app := range appsNeedingReset {
 		key := fmt.Sprintf("%s @ %s from %s", app.Name, app.Tag, app.ManifestPath)
@@ -433,8 +433,6 @@ func resetCurrentStack(b *bosun.Bosun, p *bosun.Platform, provider string) error
 	confirmed := cli.RequestMultiChoice("Which apps do you want to reset?", appSelectOptions)
 	if len(confirmed) == 0 {
 		return errors.New("User cancelled")
-	} else if len(confirmed) == 1 && confirmed[0] == "ALL" {
-		plan.Apps = appsNeedingReset
 	} else {
 		plan.Apps = nil
 		for _, key := range confirmed {
