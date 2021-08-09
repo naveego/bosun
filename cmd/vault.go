@@ -170,36 +170,43 @@ Otherwise, this will do nothing.
 			return err
 		}
 
-		b := MustGetBosun()
-
-		env := b.GetCurrentEnvironment()
-
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-
-		platformApps := p.GetKnownAppMap()
-
 		namespace := "default"
 
 		if len(args) > 0 {
 			namespace = args[1]
-		} else {
+		}
 
-			vaultPlatformApp, ok := platformApps["vault"]
+		if !viper.GetBool(ArgGlobalNoEnv) {
 
-			if !ok {
-				return errors.New("vault not found in platform apps")
+			b := MustGetBosun()
+
+			env := b.GetCurrentEnvironment()
+
+			p, err := b.GetCurrentPlatform()
+			if err != nil {
+				return err
 			}
 
-			stack := env.Stack()
+			platformApps := p.GetKnownAppMap()
 
-			for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
-				for namespaceRole, namespaceConfig := range stack.StackTemplate.Namespaces {
-					if namespaceRole == requestedNamespaceRole {
-						namespace = namespaceConfig.Name
-						break
+			if len(args) > 0 {
+				namespace = args[1]
+			} else {
+
+				vaultPlatformApp, ok := platformApps["vault"]
+
+				if !ok {
+					return errors.New("vault not found in platform apps")
+				}
+
+				stack := env.Stack()
+
+				for _, requestedNamespaceRole := range vaultPlatformApp.NamespaceRoles {
+					for namespaceRole, namespaceConfig := range stack.StackTemplate.Namespaces {
+						if namespaceRole == requestedNamespaceRole {
+							namespace = namespaceConfig.Name
+							break
+						}
 					}
 				}
 			}
@@ -210,6 +217,9 @@ Otherwise, this will do nothing.
 		initializer := vault.VaultInitializer{
 			Client:         vaultClient,
 			VaultNamespace: namespace,
+			AutoUnseal: viper.GetBool(ArgVaultAutoUnseal),
+			DisableJoseInstall: viper.GetBool(ArgVaultDisableJoseInstall),
+			DisableDevRootTokenCreation: viper.GetBool(ArgVaultDisableDevRootToken),
 		}
 
 		err = initializer.Init()
@@ -418,6 +428,9 @@ const (
 	ArgVaultSecretDefault   = "default"
 	ArgVaultNamespace       = "vault-namespace"
 	ArgVaultCluster         = "cluster"
+	ArgVaultAutoUnseal 		= "auto-unseal"
+	ArgVaultDisableJoseInstall = "disable-jose-install"
+	ArgVaultDisableDevRootToken = "disable-dev-root-token"
 )
 
 func init() {
@@ -437,6 +450,9 @@ func init() {
 	addVaultFlags(vaultJWTCmd)
 	vaultCmd.AddCommand(vaultJWTCmd)
 
+	vaultInitCmd.Flags().Bool(ArgVaultAutoUnseal, false, "Disables the capture of the unseal keys.")
+	vaultInitCmd.Flags().Bool(ArgVaultDisableJoseInstall, false, "Disables the install of the Jose plugin.")
+	vaultInitCmd.Flags().Bool(ArgVaultDisableDevRootToken, false, "Disables the creation of the dev root token (ID `root`).")
 	addVaultFlags(vaultInitCmd)
 	vaultCmd.AddCommand(vaultInitCmd)
 
