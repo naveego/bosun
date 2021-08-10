@@ -74,6 +74,7 @@ type ExecutionContext interface {
 	templating.TemplateValuer
 	util.WithLogFielder
 	core.Ctxer
+	GetWorkspaceCommand(name string, hint string) *CommandValue
 }
 
 func (d *Command) String() string {

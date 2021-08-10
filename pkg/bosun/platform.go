@@ -51,7 +51,7 @@ type Platform struct {
 	MasterBranch_OBSOLETE        string                           `yaml:"masterBranch,omitempty"`
 	ReleaseDirectory             string                           `yaml:"releaseDirectory" json:"releaseDirectory"`
 	AppConfigDirectory           string                           `yaml:"appConfigDirectory,omitempty"`
-	EnvironmentDirectory         string                           `yaml:"environmentDirectory,omitempty" json:"environmentPaths"`
+	EnvironmentDirectory         string                           `yaml:"environmentDirectory,omitempty" json:"environmentDirectory"`
 	BundleDirectory              string                           `yaml:"bundleDirectory,omitempty" json:"bundleDirectory"`
 	EnvironmentPaths             []string                         `yaml:"environmentPaths,omitempty" json:"environmentPaths"`
 	ClusterPaths                 []string                         `yaml:"clusterPaths,omitempty" json:"clusterPaths"`
@@ -61,6 +61,7 @@ type Platform struct {
 	ValueOverrides               *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
 	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
 	Apps                         PlatformAppConfigs               `yaml:"apps,omitempty"`
+	StoryHandlers                map[string]values.Values                  `yaml:"storyHandlers"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 	_clusterConfigs              kube.ClusterConfigs              `yaml:"-" json:"-"`

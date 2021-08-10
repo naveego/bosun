@@ -23,7 +23,7 @@ type Transitions struct {
 	InDevelopment string `yaml:"development,omitempty"`
 	CodeReview    string `yaml:"codeReview,omitempty"`
 	QA            string `yaml:"qa,omitempty"`
-	UAT           string `yaml:"qa,omitempty"`
+	UAT           string `yaml:"uat,omitempty"`
 }
 
 type CompiledTransitions struct {

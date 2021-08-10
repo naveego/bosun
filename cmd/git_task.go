@@ -117,6 +117,8 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 		return err
 	}
 
+	ctx := b.NewContext()
+
 	currentBranch := g.Branch()
 
 	branch, err := app.Branching.RenderFeature(issue.Slug(), storyID)
@@ -136,22 +138,28 @@ func StartFeatureDevelopment(taskName string, body string, storyID string) error
 		}
 		check(g.Push())
 
-		//if storyHandler != nil {
-//
-		//	event, validationErr := stories.Event{
-		//		Payload: stories.EventBranchCreated{},
-		//		StoryID: storyID,
-		//		Story:   story,
-		//		Issue:   issue.RefPtr(),
-		//	}.Validated()
-		//	if validationErr != nil {
-		//		return validationErr
-		//	}
-		//	err = storyHandler.HandleEvent(event)
-		//	if err != nil {
-		//		return err
-		//	}
-		// }
+
+		if storyHandler == nil {
+			ctx.Log().Info("No story handler, will not attempt to move story to In Development")
+		} else {
+			ctx.Log().Info("Attempting to to move story to In Development")
+			event, validationErr := stories.Event{
+				Payload: stories.EventBranchCreated{},
+				StoryID: storyID,
+				Story:   story,
+				Issue:   issue.RefPtr(),
+			}.Validated()
+			if validationErr != nil {
+				return validationErr
+			}
+			err = storyHandler.HandleEvent(event)
+			if err != nil {
+				return err
+			}
+			ctx.Log().Info("Story moved to In Development")
+		}
+	} else {
+		ctx.Log().Info("No story found, will not attempt to create initial commit or move story")
 	}
 
 	return nil
@@ -203,7 +211,7 @@ func createStoryCommit(g git.GitWrapper, baseBranch string, branch string, story
 %s
 `, message, issueMetadata.String(), task.Body)
 
-	_, err := g.Exec("commit", "-m", message, "--allow-empty")
+	_, err := g.Exec("commit", "-m", message, "--allow-empty", "--no-verify")
 
 	core.Log.Info("Created initial commit.")
 	color.Green("%s\n", message)

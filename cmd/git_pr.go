@@ -28,7 +28,7 @@ var gitPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 			return err
 		}
 
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		issueSvc, err := b.GetIssueService()
 		if err != nil {
 			return errors.New("get issue service")

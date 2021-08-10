@@ -16,6 +16,27 @@ var storyCmd = addCommand(rootCmd, &cobra.Command{
 	Short: "Commands related to stories development.",
 })
 
+var storyHandlersCmd = addCommand(storyCmd, &cobra.Command{
+	Use:   "handlers",
+	Short: "Show story handler configs.",
+	Args:  cobra.ExactArgs(0),
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b := MustGetBosun(cli.Parameters{NoEnvironment: true})
+
+		configs := b.GetStoryHandlerConfiguration()
+
+		y, _ := yaml.MarshalString(configs)
+
+		fmt.Println(y)
+
+		return nil
+
+	},
+}, func(cmd *cobra.Command) {
+})
+
+
 var storyShowtCmd = addCommand(storyCmd, &cobra.Command{
 	Use:   "show {story}",
 	Short: "Show information about a story.",

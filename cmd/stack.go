@@ -128,7 +128,7 @@ var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		return configureStack(args, func(stack *kube.Stack) error {
+		return configureStack(args, func(stack *kube.Stack) (bool, error) {
 			err := stack.ConfigureNamespaces()
 			if err != nil {
 				color.Red("Could not configure namespaces: %+v", err)
@@ -145,7 +145,7 @@ var stackEnsureCmd = addCommand(stackCmd, &cobra.Command{
 			}
 
 			err = stack.Save()
-			return err
+			return false, err
 		})
 	},
 })
@@ -157,8 +157,9 @@ var stackEnsureCertsCmd = addCommand(stackEnsureCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		return configureStack(args, func(stack *kube.Stack) error {
-			return stack.ConfigureCerts()
+		return configureStack(args, func(stack *kube.Stack) (bool, error) {
+			err := stack.ConfigureCerts()
+			return true, err
 		})
 	},
 })
@@ -170,8 +171,9 @@ var stackEnsureNamespacesCmd = addCommand(stackEnsureCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		return configureStack(args, func(stack *kube.Stack) error {
-			return stack.ConfigureNamespaces()
+		return configureStack(args, func(stack *kube.Stack) (bool, error) {
+			err := stack.ConfigureNamespaces()
+			return true, err
 		})
 	},
 })
@@ -183,13 +185,14 @@ var stackEnsurePullSecretsCmd = addCommand(stackEnsureCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		return configureStack(args, func(stack *kube.Stack) error {
-			return stack.ConfigureNamespaces()
+		return configureStack(args, func(stack *kube.Stack) (bool, error) {
+			err := stack.ConfigureNamespaces()
+			return true, err
 		})
 	},
 })
 
-func configureStack(args []string, fn func(stack *kube.Stack) error) error {
+func configureStack(args []string, fn func(stack *kube.Stack) (bool, error)) error {
 	b, _ := MustGetPlatform()
 	env := b.GetCurrentEnvironment()
 
@@ -206,17 +209,20 @@ func configureStack(args []string, fn func(stack *kube.Stack) error) error {
 		stack = env.Stack()
 	}
 
-	err = fn(stack)
+	var save bool
+	save, err = fn(stack)
 	if err != nil {
 		return err
 	}
 
-	err = stack.Save()
-	if err != nil {
-		return err
-	}
+	if save {
+		err = stack.Save()
+		if err != nil {
+			return err
+		}
 
-	fmt.Println("Stack configured and saved.")
+		fmt.Println("Stack configured and saved.")
+	}
 
 	return nil
 
@@ -230,15 +236,16 @@ var stackDestroyCmd = addCommand(stackCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		return configureStack(args, func(stack *kube.Stack) error {
+		return configureStack(args, func(stack *kube.Stack) (bool, error) {
 
 			confirmed := cli.RequestConfirmFromUser("Are you sure you want to delete the stack %q and all of its resources", stack.Name)
 
 			if !confirmed {
-				return nil
+				return false, nil
 			}
 
-			return stack.Destroy()
+			err := stack.Destroy()
+			return false, err
 		})
 	},
 })

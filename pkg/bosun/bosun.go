@@ -259,7 +259,7 @@ func (b *Bosun) GetScript(name string) (*script.Script, error) {
 	return nil, errors.Errorf("no script found with name %q", name)
 }
 
-func (b *Bosun) ProvideApp(req AppProviderRequest) (*App, error){
+func (b *Bosun) ProvideApp(req AppProviderRequest) (*App, error) {
 	app, err := b.appProvider.GetApp(req)
 
 	return app, err
@@ -267,7 +267,7 @@ func (b *Bosun) ProvideApp(req AppProviderRequest) (*App, error){
 
 func (b *Bosun) GetApp(name string, providerPriority ...string) (*App, error) {
 	return b.ProvideApp(AppProviderRequest{
-		Name: name,
+		Name:             name,
 		ProviderPriority: providerPriority,
 	})
 }
@@ -1216,7 +1216,34 @@ func (b *Bosun) GetIssueService() (issues.IssueService, error) {
 
 func (b *Bosun) GetStoryHandlerConfiguration() []values.Values {
 	w := b.GetWorkspace()
-	return w.StoryHandlers
+
+	storyHandlers := map[string]values.Values{}
+
+	for k, s := range w.StoryHandlers {
+		storyHandlers[k] = s
+	}
+
+	p, err := b.GetCurrentPlatform()
+	if err == nil {
+		// Merge in story handler configs from the platform
+		for k, s := range p.StoryHandlers {
+			mergedStoryHandler, ok := storyHandlers[k]
+			if !ok {
+				mergedStoryHandler = values.Values{}
+			}
+
+			mergedStoryHandler = mergedStoryHandler.Merge(s)
+			storyHandlers[k] = mergedStoryHandler
+		}
+	}
+
+	var configs []values.Values
+
+	for _, s := range storyHandlers {
+		configs = append(configs, s)
+	}
+
+	return configs
 }
 
 func (b *Bosun) GetGithubToken() (string, error) {

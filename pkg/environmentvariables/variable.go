@@ -19,7 +19,6 @@ type Variable struct {
 type Dependencies interface {
 	command.ExecutionContext
 	workspace.Contexter
-	GetWorkspaceCommand(name string, hint string) *command.CommandValue
 }
 
 // Ensure sets Value using the From CommandValue.

@@ -38,8 +38,42 @@ type Workspace struct {
 	Minikube               *kube.MinikubeConfig             `yaml:"minikube,omitempty" json:"minikube,omitempty"`
 	LocalRepos             map[string]*vcs.LocalRepo        `yaml:"localRepos" json:"localRepos"`
 	GithubCloneProtocol    string                           `yaml:"githubCloneProtocol"`
-	StoryHandlers          []values.Values                  `yaml:"storyHandlers"`
+	StoryHandlers          StoryHandlers                    `yaml:"storyHandlers"`
 	ClusterKubeconfigPaths map[string]string                `yaml:"clusterKubeconfigPaths"`
+}
+
+type StoryHandlers map[string]values.Values
+
+func (s *StoryHandlers) UnmarshalYAML(unmarshal func(interface{}) error) error {
+
+	var m map[string]values.Values
+
+	var arr []values.Values
+	if err := unmarshal(&arr); err == nil {
+
+		// migrate array to map
+
+		m = StoryHandlers{}
+
+		for i, config := range arr {
+			provider, providerErr := config.GetAtPath("provider")
+			if providerErr != nil {
+				return errors.Errorf("could not parse story handler config at index %d, expected it to have a provider element", i)
+			}
+
+			m[provider.(string)] = config
+		}
+	} else {
+		err = unmarshal(&m)
+		if err != nil {
+			return err
+		}
+	}
+
+	*s = m
+
+	return nil
+
 }
 
 func (w *Workspace) UnmarshalYAML(unmarshal func(interface{}) error) error {

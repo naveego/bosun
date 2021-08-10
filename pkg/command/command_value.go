@@ -8,10 +8,12 @@ import (
 )
 
 type CommandValue struct {
-	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
-	Value   string `yaml:"value" json:"value"`
-	Command `yaml:"-" json:"-"`
-	OS      map[string]*CommandValue `yaml:"os,omitempty" json:"os,omitempty"`
+	Comment              string `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Value                string `yaml:"value" json:"value"`
+	Command              `yaml:"-" json:"-"`
+	OS                   map[string]*CommandValue `yaml:"os,omitempty" json:"os,omitempty"`
+	WorkspaceCommand     string                   `yaml:"workspaceCommand,omitempty"`
+	WorkspaceCommandHint string                   `yaml:"workspaceCommandHint,omitempty"`
 
 	resolvedValue string
 }
@@ -127,12 +129,19 @@ func (c *CommandValue) Resolve(ctx ExecutionContext) (string, error) {
 
 	c.resolved = true
 
-	if c.Value != "" {
-		c.resolvedValue, err = templating.RenderTemplate(c.Value, ctx.TemplateValues())
+	if c.WorkspaceCommandHint != "" {
+
+		realCommandValue := ctx.GetWorkspaceCommand(c.WorkspaceCommand, c.WorkspaceCommandHint)
+		c.resolvedValue, err = realCommandValue.Resolve(ctx)
 	} else {
-		c.resolvedValue, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true, StreamOutput:ctx.GetParameters().Verbose})
-		// trim whitespace, as script output may contain line breaks at the end
-		c.resolvedValue = strings.TrimSpace(c.resolvedValue)
+
+		if c.Value != "" {
+			c.resolvedValue, err = templating.RenderTemplate(c.Value, ctx.TemplateValues())
+		} else {
+			c.resolvedValue, err = c.Command.Execute(ctx, CommandOpts{IgnoreDryRun: true, StreamOutput: ctx.GetParameters().Verbose})
+			// trim whitespace, as script output may contain line breaks at the end
+			c.resolvedValue = strings.TrimSpace(c.resolvedValue)
+		}
 	}
 
 	return c.resolvedValue, err
