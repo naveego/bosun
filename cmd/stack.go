@@ -21,6 +21,7 @@ import (
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/mirror"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -358,6 +359,89 @@ var stackResetCmd = addCommand(stackCmd, &cobra.Command{
 		b, p := MustGetPlatform()
 
 		return resetCurrentStack(b, p, args[0])
+	},
+})
+
+var stackRedeployCmd = addCommand(stackCmd, &cobra.Command{
+	Use:          "redeploy [apps...]",
+	Short:        "Redeploys apps deployed to the stack using --force to ensure they are deployed. If no apps are provided as args then all will be redeployed.",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		b, p := MustGetPlatform(cli.Parameters{Force: true})
+
+		var appNames []string
+
+		env := b.GetCurrentEnvironment()
+
+		var err error
+
+		for appName := range p.GetKnownAppMap() {
+			if !env.IsAppDisabled(appName) && !env.Stack().IsAppDisabled(appName) {
+				appNames = append(appNames, appName)
+			}
+		}
+
+		stackState, err := env.Stack().GetState(true)
+		if err != nil {
+			return err
+		}
+
+		ctx := b.NewContext()
+
+		for appName, stackApp := range stackState.DeployedApps {
+
+			appLog := ctx.Log().WithField("app", appName)
+
+			if len(args) > 0 && !stringsn.Contains(appName, args) {
+				appLog.Info("Skipping deploy because it wasn't requested")
+				continue
+			}
+
+			appLog.Info("Re-deploying...")
+
+			var req = bosun.CreateDeploymentPlanRequest{
+				IgnoreDependencies:    true,
+				AutomaticDependencies: false,
+				AppOptions:            map[string]bosun.AppProviderRequest{},
+			}
+
+			appReq := bosun.AppProviderRequest{
+				Name:   appName,
+				Path:   "",
+				Branch: stackApp.Branch,
+			}
+
+			if stackApp.Provider == bosun.SlotStable || stackApp.Provider == bosun.SlotUnstable {
+				appReq.ProviderPriority = []string{stackApp.Provider}
+			} else {
+				appReq.Path = stackApp.Provider
+			}
+
+			req.AppOptions[appName] = appReq
+			planCreator := bosun.NewDeploymentPlanCreator(b, p)
+
+			plan, appErr := planCreator.CreateDeploymentPlan(req)
+
+			if appErr != nil {
+				appLog.WithError(appErr).Error("Failed when creating deployment plan.")
+				return appErr
+			}
+
+			executeRequest := bosun.ExecuteDeploymentPlanRequest{
+				Plan: plan,
+			}
+
+			executor := bosun.NewDeploymentPlanExecutor(b, p)
+
+			_, appErr = executor.Execute(executeRequest)
+			if appErr != nil {
+				appLog.WithError(appErr).Error("Failed when executing deployment plan.")
+			}
+			appLog.WithField("req", appReq).Info("Re-deployed app.")
+		}
+
+		return nil
 	},
 })
 
