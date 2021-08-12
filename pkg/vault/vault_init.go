@@ -20,6 +20,16 @@ import (
 type VaultInitializer struct {
 	Client         *api.Client
 	VaultNamespace string
+
+	// Whether or not vault is using auto unseal.  If it is we don't need
+	// to capture the unseal keys, since they will be sent to the target location
+	// for storage.
+	AutoUnseal 		bool
+
+	// Overrides the prompting of the user to create  root token
+	DisableDevRootTokenCreation bool
+
+	DisableJoseInstall bool
 }
 
 func (v VaultInitializer) Init() error {
@@ -38,12 +48,16 @@ func (v VaultInitializer) Init() error {
 		fmt.Printf("Vault at %q is already initialized.\n", vaultClient.Address())
 	}
 
-	err = v.Unseal()
-	if err != nil {
-		return errors.Wrap(err, "unseal")
+	if !v.AutoUnseal {
+		err = v.Unseal()
+		if err != nil {
+			return errors.Wrap(err, "unseal")
+		}
 	}
 
-	err = v.InstallJose()
+	if !v.DisableJoseInstall {
+		err = v.InstallJose()
+	}
 
 	return err
 
@@ -147,6 +161,8 @@ func (v VaultInitializer) initialize() error {
 	initResp, initErr = vaultClient.Sys().Init(&api.InitRequest{
 		SecretShares:    1,
 		SecretThreshold: 1,
+		RecoveryThreshold: 1,
+		RecoveryShares: 1,
 	})
 	if initErr != nil {
 		return initErr
@@ -161,34 +177,37 @@ func (v VaultInitializer) initialize() error {
 			return err
 		}
 
-		log.Info("Storing unseal keys in k8s")
-
 		secretsClient := kubeClient.CoreV1().Secrets(v.VaultNamespace)
-		unsealKeysSecret, err := secretsClient.Get("vault-unseal-keys", metav1.GetOptions{})
-		if kerrors.IsNotFound(err) {
-			unsealKeysSecret, err = secretsClient.Create(&v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "vault-unseal-keys",
-				},
-				Type: v1.SecretTypeOpaque,
-			})
-			if err != nil {
+
+		if !v.AutoUnseal {
+			log.Info("Storing unseal keys in k8s")
+
+			unsealKeysSecret, err := secretsClient.Get("vault-unseal-keys", metav1.GetOptions{})
+			if kerrors.IsNotFound(err) {
+				unsealKeysSecret, err = secretsClient.Create(&v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "vault-unseal-keys",
+					},
+					Type: v1.SecretTypeOpaque,
+				})
+				if err != nil {
+					return err
+				}
+			} else if err != nil {
 				return err
 			}
-		} else if err != nil {
-			return err
-		}
 
-		unsealKeysSecret.StringData = map[string]string{}
+			unsealKeysSecret.StringData = map[string]string{}
 
-		for i, key := range initResp.Keys {
-			fmt.Printf("Seal Key %d: %q", i, key)
-			unsealKeysSecret.StringData[fmt.Sprintf("Key%d", i)] = key
-		}
+			for i, key := range initResp.Keys {
+				fmt.Printf("Seal Key %d: %q", i, key)
+				unsealKeysSecret.StringData[fmt.Sprintf("Key%d", i)] = key
+			}
 
-		_, err = secretsClient.Update(unsealKeysSecret)
-		if err != nil {
-			return errors.Wrap(err, "save unseal keys secret")
+			_, err = secretsClient.Update(unsealKeysSecret)
+			if err != nil {
+				return errors.Wrap(err, "save unseal keys secret")
+			}
 		}
 
 		log.Info("Storing root token in k8s")
@@ -196,7 +215,7 @@ func (v VaultInitializer) initialize() error {
 
 		vaultRootTokenSecret, err := secretsClient.Get("vault-root-token", metav1.GetOptions{})
 		if kerrors.IsNotFound(err) {
-			unsealKeysSecret, err = secretsClient.Create(&v1.Secret{
+			vaultRootTokenSecret, err = secretsClient.Create(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vault-root-token",
 				},
@@ -227,28 +246,32 @@ func (v VaultInitializer) initialize() error {
 		return errors.Wrap(storeErr, "could not store unseal keys and initial root token; you will need to uninstall vault, destroy the pvc, and re-install")
 	}
 
-	log.Info("Unsealing vault")
+	if !v.AutoUnseal {
+		log.Info("Unsealing vault")
 
-	err := v.Unseal()
-	if err != nil {
-		return err
-	}
-
-	vaultClient.SetToken(rootToken)
-
-	createRootToken := cli.RequestConfirmFromUser("Should we create a root token named `root`")
-
-	if createRootToken {
-		log.Info("Creating token `root` (DELETE THIS TOKEN IN PRODUCTION!)")
-
-		_, err = vaultClient.Auth().Token().Create(&api.TokenCreateRequest{
-			ID:       "root",
-			Policies: []string{"root"},
-		})
+		err := v.Unseal()
 		if err != nil {
 			return err
 		}
+	}
 
+	if !v.DisableDevRootTokenCreation {
+		vaultClient.SetToken(rootToken)
+
+		createRootToken := cli.RequestConfirmFromUser("Should we create a root token named `root`")
+
+		if createRootToken {
+			log.Info("Creating token `root` (DELETE THIS TOKEN IN PRODUCTION!)")
+
+			_, err := vaultClient.Auth().Token().Create(&api.TokenCreateRequest{
+				ID:       "root",
+				Policies: []string{"root"},
+			})
+			if err != nil {
+				return err
+			}
+
+		}
 	}
 
 	log.Info("Init completed")

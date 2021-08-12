@@ -153,6 +153,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool(ArgGlobalDryRun, false, "Display rendered plans, but do not actually execute (not supported by all commands).")
 	rootCmd.PersistentFlags().Bool(ArgGlobalForce, false, "Force the requested command to be executed even if heuristics indicate it should not be.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalNoReport, false, "Disable reporting of deploys to github.")
+	rootCmd.PersistentFlags().Bool(ArgGlobalNoEnv, false, "Disables loading of the environment.")
 	rootCmd.PersistentFlags().Bool(ArgGlobalSudo, false, "Use sudo when running commands like docker.")
 	rootCmd.PersistentFlags().String(ArgGlobalConfirmedEnv, "", "Set to confirm that the environment is correct when targeting a protected environment.")
 	rootCmd.PersistentFlags().String(ArgGlobalCluster, "", "Set to target a specific cluster.")
