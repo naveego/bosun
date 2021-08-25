@@ -663,7 +663,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	currentProvider := NewReleaseManifestAppProvider(currentRelease)
+	// currentProvider := NewReleaseManifestAppProvider(currentRelease)
 	plan, err := currentRelease.GetPlan()
 	if err != nil {
 		return nil, err
@@ -765,7 +765,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 				case SlotStable:
 					log.Infof("App %q has already been added to this release.", appName)
 
-					app, getAppErr = currentProvider.ProvideApp(AppProviderRequest{Name: appName})
+					app, getAppErr = previousProvider.ProvideApp(AppProviderRequest{Name: appName})
 					if getAppErr != nil {
 						return nil, getAppErr
 					}

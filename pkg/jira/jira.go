@@ -170,31 +170,6 @@ func (c *Client) HandleEvent(event *stories.ValidatedEvent) error {
 }
 
 func (c *Client) handleBranchCreated(event *stories.ValidatedEvent, payload stories.EventBranchCreated, story *jira.Issue) (error, bool) {
-	subtaskName := SubtaskName(event.Issue(), payload.Branch)
-	var subtask = &jira.Issue{
-		Fields: &jira.IssueFields{
-			Parent:   &jira.Parent{Key: story.Key, ID: story.ID},
-			Project:  story.Fields.Project,
-			Summary:  subtaskName.String(),
-			Type:     jira.IssueType{ID: "5"},
-			Assignee: &jira.User{AccountID: c.AccountID},
-			Description: fmt.Sprintf(`This subtask tracks development in the %s repo.
-
-The branch is %s
-
-Link: %s
-`, event.Issue().RepoRef.String(), payload.Branch, event.URL()),
-		},
-	}
-	var err error
-	var res *jira.Response
-
-	subtask, res, err = c.jira.Issue.Create(subtask)
-	if err != nil {
-		return errors.Wrapf(detailedErr(res, err), "create subtask documenting branch %q for story with key %q, id %q", subtaskName, story.Key, story.ID), true
-	}
-
-	err = c.doTransition(subtask.ID, c.transitions.InDevelopment)
 	return nil, false
 }
 

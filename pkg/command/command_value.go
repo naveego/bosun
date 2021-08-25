@@ -14,6 +14,7 @@ type CommandValue struct {
 	OS                   map[string]*CommandValue `yaml:"os,omitempty" json:"os,omitempty"`
 	WorkspaceCommand     string                   `yaml:"workspaceCommand,omitempty"`
 	WorkspaceCommandHint string                   `yaml:"workspaceCommandHint,omitempty"`
+	Disabled             bool                     `yaml:"disabled"`
 
 	resolvedValue string
 }

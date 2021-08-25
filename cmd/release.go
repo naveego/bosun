@@ -9,6 +9,7 @@ import (
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -173,7 +174,6 @@ var releaseShowPreviousCmd = addCommand(releaseCmd, &cobra.Command{
 		return err
 	},
 })
-
 
 var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "dot",
@@ -348,6 +348,59 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
 }, withFilteringFlags)
 
+var releaseReloadCmd = addCommand(releaseCmd, &cobra.Command{
+	Use:   "reload {stable|unstable} [apps...]",
+	Args:  cobra.MinimumNArgs(1),
+	Short: "Reloads an app (or all apps) into a release from the location declared in the manifest.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosun()
+
+		p, err := b.GetCurrentPlatform()
+		if err != nil {
+			return err
+		}
+
+		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotStable)
+
+		requestedApps := args[1:]
+
+		ctx := b.NewContext()
+
+		for appName, appMetadata := range r.AppMetadata {
+
+			if len(requestedApps) > 0 && !stringsn.Contains(appName, requestedApps) {
+				ctx.Log().Info("Skipping app %s because it wasn't requested.", appName)
+				continue
+			}
+			ctx.Log().Info("Reloading app %s.", appName)
+
+			app, appErr := b.ProvideApp(bosun.AppProviderRequest{
+				Name:   appName,
+				Branch: appMetadata.Branch,
+			})
+
+			if appErr != nil {
+				ctx.Log().WithError(err).Warnf("Couldn't provide app %s from branch %s", appName, appMetadata.Branch)
+			}
+
+			manifest, appErr := app.GetManifest(ctx)
+			if appErr != nil {
+				ctx.Log().WithError(err).Warnf("Couldn't get manifest from app %s from branch %s", appName, appMetadata.Branch)
+			}
+
+			appErr = r.AddOrReplaceApp(manifest, false)
+			if appErr != nil {
+				ctx.Log().WithError(err).Warnf("Couldn't add app to release for app %s from branch %s", appName, appMetadata.Branch)
+			}
+		}
+
+		err = p.Save(b.NewContext())
+		return err
+	},
+}, func(cmd *cobra.Command) {
+	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
+	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
+}, withFilteringFlags)
 
 const (
 	ArgReleaseAddBranch = "branch"
@@ -588,8 +641,6 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 	withFilteringFlags,
 	withValueSetFlags)
 
-
-
 var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:           "update {stable|unstable} [apps...]",
 	Short:         "Updates the release with the correct values from the apps in it.",
@@ -666,28 +717,27 @@ var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		return errors.New("not implemented")
-/*		viper.BindPFlags(cmd.Flags())
+		/*		viper.BindPFlags(cmd.Flags())
 
-		b := MustGetBosun()
-		ctx := b.NewContext()
+				b := MustGetBosun()
+				ctx := b.NewContext()
 
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
+				p, err := b.GetCurrentPlatform()
+				if err != nil {
+					return err
+				}
 
-		err = p.CommitCurrentRelease(ctx)
-		if err != nil {
-			return err
-		}
+				err = p.CommitCurrentRelease(ctx)
+				if err != nil {
+					return err
+				}
 
-		return nil*/
+				return nil*/
 	},
 }, withFilteringFlags)
 
 const ArgReleaseSkipValidate = "skip-validation"
 const ArgReleaseRecycle = "recycle"
-
 
 func diffStrings(a, b string) []difflib.DiffRecord {
 	left := strings.Split(a, "\n")
@@ -706,4 +756,3 @@ func renderDiff(diff difflib.DiffRecord) string {
 	}
 	panic(fmt.Sprintf("invalid delta %v", diff.Delta))
 }
-

@@ -286,6 +286,10 @@ func (v ValueSet) WithDynamicValuesResolved(ctx command.ExecutionContext) (Value
 
 	for k, value := range out.Dynamic {
 
+		if value.Disabled {
+			continue
+		}
+
 		if value.Script != "" {
 			ctx.Log().Debugf("Resolving dynamic value %q using script:\n %s", k, value.Script)
 		}

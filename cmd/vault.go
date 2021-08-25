@@ -19,12 +19,14 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/naveego/bosun/pkg/core"
+	"github.com/naveego/bosun/pkg/kube/kubeclient"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/vault"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os/user"
 	"strings"
 	"time"
@@ -228,7 +230,6 @@ var vaultUnsealCmd = &cobra.Command{
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-
 		namespace := "default"
 		if len(args) > 0 {
 			namespace = args[0]
@@ -249,7 +250,6 @@ var vaultUnsealCmd = &cobra.Command{
 
 		core.Log.Infof("Unsealing vault in namespace %q", namespace)
 
-
 		initializer := vault.VaultInitializer{
 			Client:         vaultClient,
 			VaultNamespace: namespace,
@@ -267,7 +267,6 @@ var vaultInstallJoseCmd = addCommand(vaultCmd, &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-
 
 		namespace := "default"
 		if len(args) > 0 {
@@ -288,7 +287,6 @@ var vaultInstallJoseCmd = addCommand(vaultCmd, &cobra.Command{
 		}
 
 		core.Log.Infof("Installing jose in namespace %q", namespace)
-
 
 		initializer := vault.VaultInitializer{
 			Client:         vaultClient,
@@ -405,6 +403,57 @@ var vaultJWTCmd = &cobra.Command{
 	},
 }
 
+var vaultK8sRootTokenCmd = addCommand(vaultCmd, &cobra.Command{
+	Use:          "get-root-token-from-k8s",
+	Short:        "Tries to pull the root token from the conventional location in k8s. This will not return an error if it fails.",
+	Long:         ``,
+	Example:      "vault init-dev",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		err := func() error {
+
+			cluster := viper.GetString(ArgGlobalCluster)
+
+			k8sClient, err := kubeclient.GetKubeClientWithContext("", cluster)
+
+			if err != nil {
+				return err
+			}
+
+			namespace := viper.GetString(ArgVaultNamespace)
+
+			secret, err := k8sClient.CoreV1().Secrets(namespace).Get("vault-root-token", v1.GetOptions{})
+			if err != nil {
+				return errors.Wrap(err, "couldn't get vault-root-token secret")
+			}
+
+			encodedToken, hasToken := secret.Data["root"]
+			if !hasToken {
+				return errors.Wrap(err, "secret vault-root-token did not contain root token")
+			}
+
+			fmt.Println(string(encodedToken))
+
+			return nil
+		}()
+
+		if err != nil {
+			if viper.GetBool(argSuppressErrors) {
+				core.Log.Warnf("Error getting root token from k8s: %s", err)
+				return nil
+			}
+			return err
+		}
+
+		return nil
+	},
+}, func(cmd *cobra.Command) {
+
+	cmd.Flags().Bool(argSuppressErrors, false, "Don't return errors if something fails.")
+	cmd.Flags().String(ArgVaultNamespace, "default", "The namespace vault is deployed into.")
+})
+
 const (
 	ArgVaultAddr            = "vault-addr"
 	ArgVaultToken           = "vault-token"
@@ -417,7 +466,9 @@ const (
 	ArgVaultSecretOverwrite = "overwrite"
 	ArgVaultSecretDefault   = "default"
 	ArgVaultNamespace       = "vault-namespace"
-	ArgVaultCluster         = "cluster"
+
+	argK8sNamespace   = "namespace"
+	argSuppressErrors = "no-errors"
 )
 
 func init() {

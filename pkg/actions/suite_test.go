@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/naveego/bosun/pkg/actions"
 	"github.com/naveego/bosun/pkg/cli"
+	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/ioc"
 	"github.com/naveego/bosun/pkg/templating"
@@ -44,6 +45,10 @@ func NewTestActionContext() actions.ActionContext {
 
 type TestActionContext struct {
 	log *logrus.Entry
+}
+
+func (t TestActionContext) GetWorkspaceCommand(name string, hint string) *command.CommandValue {
+	panic("implement me")
 }
 
 func (t TestActionContext) ResolvePath(path string, expansions ...string) string {
