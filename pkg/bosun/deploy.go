@@ -92,8 +92,8 @@ func (d DeploySettings) WithValueSets(valueSets ...values.ValueSet) DeploySettin
 
 func (d DeploySettings) GetImageTag(appMetadata *AppMetadata) string {
 	if d.Manifest != nil {
-		if d.Manifest.Name == SlotUnstable {
-			return "latest"
+		if d.Manifest.Slot == SlotUnstable {
+			return "develop"
 		}
 
 		// If app is not pinned, use the version from this release.

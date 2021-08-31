@@ -1,12 +1,93 @@
 package bosun
 
 import (
+	"fmt"
+	"github.com/kyokomi/emoji"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/util/multierr"
 	"go4.org/sort"
+	"strings"
 	"sync"
 )
 
 type AppList []*App
+
+func (a AppList) Headers() []string {
+
+	return []string{
+		AppListColName,
+		AppListColPath,
+		AppListColCloned,
+		AppListColVersion,
+		AppListColRepo,
+		AppListColBranch,
+		AppListColDirty,
+		AppListColStale,
+		AppListColImages,
+		AppListColLabels,
+	}
+}
+
+func (a AppList) Rows() [][]string {
+
+	var out [][]string
+	cols := a.Headers()
+
+	for _, app := range a {
+		m := map[string]string{}
+
+		m[AppListColName] = app.Name
+		m[AppListColRepo] = app.RepoName
+
+		if app.IsRepoCloned() {
+			m[AppListColCloned] = fmtBool(true)
+			m[AppListColBranch] = app.GetBranchName().String()
+			m[AppListColVersion] = app.Version.String()
+
+			m[AppListColDirty] = fmtBool(app.Repo.LocalRepo.IsDirty())
+
+			m[AppListColStale] = app.Repo.LocalRepo.GetUpstreamStatus()
+		} else {
+			m[AppListColCloned] = fmtBool(false)
+			m[AppListColVersion] = app.Version.String()
+		}
+
+		m[AppListColPath] = app.AppConfig.FromPath
+
+		var labelLines []string
+		for _, k := range util.SortedKeys(app.Labels) {
+			labelLines = append(labelLines, fmt.Sprintf("%s: %s", k, app.Labels[k]))
+		}
+		m[AppListColLabels] = strings.Join(labelLines, "\n")
+
+		var imageLines []string
+		images := app.GetImages()
+		for _, image := range images {
+			imageLines = append(imageLines, image.GetFullName())
+		}
+		m[AppListColImages] = strings.Join(imageLines, "\n")
+
+		var row []string
+
+		for _, c := range cols {
+			row = append(row, m[c])
+		}
+
+		out = append(out, row)
+	}
+
+	return out
+
+}
+
+func fmtBool(b bool) string {
+	if b {
+		return emoji.Sprint("YES    ")
+	} else {
+		return emoji.Sprint("     NO")
+	}
+}
+
 type AppMap map[string]*App
 
 func (a AppMap) ToList() AppList {
@@ -135,3 +216,16 @@ func (a AppList) ForEachRepo(fn func(app *App) error) error {
 	wg.Wait()
 	return errs.ToError()
 }
+
+const (
+	AppListColName    = "app"
+	AppListColCloned  = "cloned"
+	AppListColVersion = "version"
+	AppListColRepo    = "repo"
+	AppListColBranch  = "branch"
+	AppListColDirty   = "dirty"
+	AppListColStale   = "stale"
+	AppListColPath    = "path"
+	AppListColImages  = "images"
+	AppListColLabels  = "meta-labels"
+)

@@ -61,7 +61,7 @@ type Platform struct {
 	ValueOverrides               *values.ValueSetCollection       `yaml:"valueOverrides,omitempty"`
 	ReleaseMetadata              []*ReleaseMetadata               `yaml:"releases" json:"releases"`
 	Apps                         PlatformAppConfigs               `yaml:"apps,omitempty"`
-	StoryHandlers                map[string]values.Values                  `yaml:"storyHandlers"`
+	StoryHandlers                map[string]values.Values         `yaml:"storyHandlers"`
 	releaseManifests             map[string]*ReleaseManifest      `yaml:"-"`
 	environmentConfigs           []*environment.Config            `yaml:"-" json:"-"`
 	_clusterConfigs              kube.ClusterConfigs              `yaml:"-" json:"-"`
@@ -275,18 +275,6 @@ func (p *Platform) MakeReleaseBranchName(version semver.Version) string {
 	return name
 }
 
-type ReleasePlanSettings struct {
-	Name    string
-	Version semver.Version
-	Bump    string
-}
-
-func (p *Platform) checkPlanningOngoing() error {
-	if release, err := p.GetCurrentRelease(); err == nil {
-		return errors.Errorf("currently editing plan for release %q, commit or discard the plan before starting a new one", release.String())
-	}
-	return nil
-}
 
 func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error {
 	log := ctx.Log()
@@ -332,81 +320,7 @@ func (p *Platform) SwitchToReleaseBranch(ctx BosunContext, branch string) error 
 
 }
 
-func (p *Platform) CreateReleasePlan(ctx BosunContext, settings ReleasePlanSettings) (*ReleasePlan, error) {
-	var err error
 
-	if err = p.checkPlanningOngoing(); err != nil {
-		return nil, err
-	}
-	ctx.Log().Info("Creating new release plan.")
-
-	existing, _ := p.GetReleaseMetadataByNameOrVersion(settings.Name)
-	if existing == nil {
-		existing, _ = p.GetReleaseMetadataByVersion(settings.Version)
-	}
-	if existing != nil {
-		return nil, errors.Errorf("release already exists with name %q or version %v", settings.Name, settings.Version)
-	}
-
-	branch := p.MakeReleaseBranchName(settings.Version)
-	if err = p.SwitchToReleaseBranch(ctx, branch); err != nil {
-		return nil, err
-	}
-
-	manifest, err := p.GetCurrentRelease()
-	if err != nil {
-		ctx.Log().WithError(err).Warnf("Could not get current release, creating new release plan with empty release.")
-		manifest = &ReleaseManifest{
-			ReleaseMetadata: &ReleaseMetadata{
-				Version: settings.Version,
-				Name:    settings.Name,
-				Branch:  p.MakeReleaseBranchName(settings.Version),
-			},
-		}
-		manifest.init()
-	} else {
-		ctx.Log().Infof("Using release %s as current release.", manifest)
-		manifest.ReleaseMetadata.Version = settings.Version
-		manifest.ReleaseMetadata.Name = settings.Name
-		manifest.ReleaseMetadata.Name = p.MakeReleaseBranchName(settings.Version)
-	}
-
-	metadata := manifest.ReleaseMetadata
-
-	if settings.Bump == "" && settings.Version.Empty() {
-		return nil, errors.New("either version or bump must be provided")
-	}
-	if settings.Bump != "" {
-
-		previousRelease, previousReleaseErr := p.GetPreviousRelease()
-		if previousReleaseErr != nil {
-			return nil, previousReleaseErr
-		}
-		settings.Version, previousReleaseErr = previousRelease.Version.Bump(settings.Bump)
-		if previousReleaseErr != nil {
-			return nil, errors.WithStack(previousReleaseErr)
-		}
-	}
-
-	if settings.Name == "" {
-		settings.Name = settings.Version.String()
-	}
-
-	plan := NewReleasePlan(metadata)
-
-	err = p.UpdatePlan(ctx, plan)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx.Log().Infof("Created new release plan %s.", manifest)
-
-	manifest.plan = plan
-
-	p.SetReleaseManifest(SlotStable, manifest)
-
-	return plan, nil
-}
 
 // UpdatePlan updates the plan using the provided apps. If no apps are provided, all apps in the unstable release will be updated in the plan.
 func (p *Platform) UpdatePlan(ctx BosunContext, plan *ReleasePlan, apps ...*App) error {
@@ -804,7 +718,7 @@ func (p *Platform) CommitPlan(ctx BosunContext) (*ReleaseManifest, error) {
 
 	p.SetReleaseManifest(SlotStable, releaseManifest)
 
-	ctx.Log().Infof("Added release %q to releases for platform.", releaseManifest.Name)
+	ctx.Log().Infof("Added release %q to releases for platform.", releaseManifest)
 
 	releaseManifest.MarkDirty()
 
@@ -983,30 +897,6 @@ func (p *Platform) buildAppsAndDepsRec(b *Bosun, req CreateDeploymentPlanRequest
 		}
 	}
 	return nil
-}
-
-func (p *Platform) GetReleaseMetadataByNameOrVersion(name string) (*ReleaseMetadata, error) {
-	switch name {
-	case SlotUnstable, SlotStable:
-		r, err := p.GetReleaseManifestBySlot(name)
-		if err != nil {
-			return nil, err
-		}
-		return r.ReleaseMetadata, nil
-	}
-
-	for _, rm := range p.ReleaseMetadata {
-		if rm.Name == name {
-			return rm, nil
-		}
-	}
-
-	version, err := semver.NewVersion(name)
-	if err != nil {
-		return nil, errors.Errorf("this platform has no release named %q ", name)
-	}
-
-	return p.GetReleaseMetadataByVersion(version)
 }
 
 func (p *Platform) GetReleaseMetadataByVersion(v semver.Version) (*ReleaseMetadata, error) {
@@ -1259,7 +1149,7 @@ func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
 	var updatedMetadata []*ReleaseMetadata
 	replaced := false
 	for _, metadata := range p.ReleaseMetadata {
-		if metadata.Name == manifest.Name {
+		if metadata.Version == manifest.Version {
 			updatedMetadata = append(updatedMetadata, manifest.ReleaseMetadata)
 			replaced = true
 		} else {
@@ -1414,7 +1304,6 @@ func (p *Platform) CreateHotfix(ctx BosunContext, version semver.Version) (*Rele
 	} else {
 		ctx.Log().Infof("Using release %s as current release.", manifest)
 		manifest.ReleaseMetadata.Version = version
-		manifest.ReleaseMetadata.Name = p.MakeReleaseBranchName(version)
 	}
 
 	ctx.Log().Infof("Created new release plan %s.", manifest)

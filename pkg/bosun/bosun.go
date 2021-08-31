@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/Azure/go-autorest/autorest/to"
 	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/naveego/bosun/pkg/apps"
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/vault"
 	"github.com/pterm/pterm"
 
@@ -146,15 +148,34 @@ func (b *Bosun) GetAllProviderNames() []string {
 func (b *Bosun) GetAllApps() AppMap {
 
 	apps, err := b.appProvider.GetAllApps(b.params.ProviderPriority)
+
 	if err != nil {
 		b.log.WithError(err).Error("Could not get apps.")
 		apps = map[string]*App{}
 	}
 
+	out := AppMap{}
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		out = apps
+	} else {
+
+		for appName, app := range apps {
+
+			for _, platformApp := range p.Apps {
+				if platformApp.Name == appName {
+					out[appName] = app
+					break
+				}
+			}
+		}
+	}
+
 	return apps
 }
 
-func (b *Bosun) GetPlatformApps() map[string]*App {
+func (b *Bosun) GetPlatformApps() AppMap {
 
 	apps, err := b.appProvider.GetAllApps(b.params.ProviderPriority)
 	if err != nil {
@@ -163,6 +184,12 @@ func (b *Bosun) GetPlatformApps() map[string]*App {
 	}
 
 	return b.removeNonPlatformAppsFromMap(apps)
+}
+
+func (b *Bosun) GetAppRefs() apps.AppRefList {
+
+
+
 }
 
 func (b *Bosun) removeNonPlatformAppsFromMap(in map[string]*App) map[string]*App {
@@ -842,18 +869,23 @@ func (b *Bosun) UsePlatform(name string) error {
 	return errors.Errorf("no platform named %q", name)
 }
 
-func (b *Bosun) UseRelease(name string) error {
+func (b *Bosun) UseRelease(versionString string) error {
+
+	version, err := semver.Parse(versionString)
+	if err != nil {
+		return err
+	}
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		return err
 	}
-	release, err := p.GetReleaseMetadataByNameOrVersion(name)
+	release, err := p.GetReleaseMetadataByVersion(version)
 	if err != nil {
 		return err
 	}
 
-	b.ws.CurrentRelease = name
+	b.ws.CurrentRelease = versionString
 
 	err = p.SwitchToReleaseBranch(b.NewContext(), release.Branch)
 	return err

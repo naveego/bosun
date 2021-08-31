@@ -5,6 +5,7 @@ import (
 	"github.com/cheynewallace/tabby"
 	"github.com/fatih/color"
 	"github.com/kyokomi/emoji"
+	"github.com/naveego/bosun/pkg/bosun"
 	"github.com/naveego/bosun/pkg/util"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -14,33 +15,20 @@ import (
 	"strings"
 )
 
-const (
-	AppListColName    = "app"
-	AppListColCloned  = "cloned"
-	AppListColVersion = "version"
-	AppListColRepo    = "repo"
-	AppListColBranch  = "branch"
-	AppListColDirty   = "dirty"
-	AppListColStale   = "stale"
-	AppListColPath    = "path"
-	AppListColImages    = "images"
-	AppListColLabels    = "meta-labels"
-)
-
 var appListAlwaysColumns = []string{
-	AppListColName,
-	AppListColRepo,
-	AppListColCloned,
-	AppListColVersion,
-	AppListColBranch,
+	bosun.AppListColName,
+	bosun.AppListColRepo,
+	bosun.AppListColCloned,
+	bosun.AppListColVersion,
+	bosun.AppListColBranch,
 }
 
 var appListOptionalColumns = []string{
-	AppListColDirty,
-	AppListColStale,
-	AppListColPath,
-	AppListColLabels,
-	AppListColImages,
+	bosun.AppListColDirty,
+	bosun.AppListColStale,
+	bosun.AppListColPath,
+	bosun.AppListColLabels,
+	bosun.AppListColImages,
 }
 
 var appListCmd = addCommand(appCmd, &cobra.Command{
@@ -52,9 +40,10 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 		viper.BindPFlags(cmd.Flags())
 		viper.SetDefault(ArgFilteringAll, true)
 
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 
 		apps := getFilterParams(b, args).GetApps()
+
 
 		wd, _ := os.Getwd()
 
@@ -76,46 +65,45 @@ var appListCmd = addCommand(appCmd, &cobra.Command{
 		for _, app := range apps {
 			row := map[string]string{}
 
-			row[AppListColName] = app.Name
-			row[AppListColRepo] = app.RepoName
-
+			row[bosun.AppListColName] = app.Name
+			row[bosun.AppListColRepo] = app.RepoName
 
 			if app.IsRepoCloned() {
-				row[AppListColCloned] = fmtBool(true)
-				row[AppListColBranch] = app.GetBranchName().String()
-				row[AppListColVersion] = app.Version.String()
-				if colsMap[AppListColDirty] {
-					row[AppListColDirty] = fmtBool(app.Repo.LocalRepo.IsDirty())
+				row[bosun.AppListColCloned] = fmtBool(true)
+				row[bosun.AppListColBranch] = app.GetBranchName().String()
+				row[bosun.AppListColVersion] = app.Version.String()
+				if colsMap[bosun.AppListColDirty] {
+					row[bosun.AppListColDirty] = fmtBool(app.Repo.LocalRepo.IsDirty())
 				}
-				if colsMap[AppListColStale] {
-					row[AppListColStale] = app.Repo.LocalRepo.GetUpstreamStatus()
+				if colsMap[bosun.AppListColStale] {
+					row[bosun.AppListColStale] = app.Repo.LocalRepo.GetUpstreamStatus()
 				}
 			} else {
-				row[AppListColCloned] = fmtBool(false)
-				row[AppListColVersion] = app.Version.String()
+				row[bosun.AppListColCloned] = fmtBool(false)
+				row[bosun.AppListColVersion] = app.Version.String()
 			}
 
 			if app.IsFromManifest {
 				manifest, _ := app.GetManifest(ctx)
-				row[AppListColPath], _ = filepath.Rel(wd, manifest.AppConfig.FromPath)
+				row[bosun.AppListColPath], _ = filepath.Rel(wd, manifest.AppConfig.FromPath)
 			} else {
-				row[AppListColPath], _ = filepath.Rel(wd, app.AppConfig.FromPath)
+				row[bosun.AppListColPath], _ = filepath.Rel(wd, app.AppConfig.FromPath)
 			}
 
-			if colsMap[AppListColLabels] {
+			if colsMap[bosun.AppListColLabels] {
 				var labelLines []string
 				for _, k := range util.SortedKeys(app.Labels) {
 					labelLines = append(labelLines, fmt.Sprintf("%s: %s", k, app.Labels[k]))
 				}
-				row[AppListColLabels] = strings.Join(labelLines, "\n")
+				row[bosun.AppListColLabels] = strings.Join(labelLines, "\n")
 			}
-			if colsMap[AppListColImages] {
+			if colsMap[bosun.AppListColImages] {
 				var imageLines []string
 				images := app.GetImages()
 				for _, image := range images {
 					imageLines = append(imageLines, image.GetFullName())
 				}
-				row[AppListColImages] = strings.Join(imageLines, "\n")
+				row[bosun.AppListColImages] = strings.Join(imageLines, "\n")
 			}
 			out = append(out, row)
 		}

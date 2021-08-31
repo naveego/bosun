@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/vbauerster/mpb/v4"
 	"github.com/vbauerster/mpb/v4/decor"
-	"gopkg.in/yaml.v2"
 	"log"
 	"os"
 	"strings"
@@ -59,12 +58,12 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 	Aliases: []string{"ls"},
 	Short:   "Lists known releases.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 
 		t := tablewriter.NewWriter(os.Stdout)
 		t.SetCenterSeparator("")
 		t.SetColumnSeparator("")
-		t.SetHeader([]string{"", "RELEASE", "VERSION", "PATH"})
+		t.SetHeader([]string{"", "VERSION", "PATH"})
 		platform, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -76,14 +75,14 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 		}
 
 		for _, release := range platform.GetReleaseMetadataSortedByVersion(true) {
-			name := release.Name
+			version := release.Version.String()
 			currentMark := ""
-			if current != nil && release.Name == current.Name {
+			if current != nil && release.Version == current.Version {
 				currentMark = "*"
-				name = color.GreenString("%s", name)
+				version = color.GreenString( version)
 			}
 
-			t.Append([]string{currentMark, name, release.Version.String(), release.Description})
+			t.Append([]string{currentMark, version, release.Description})
 		}
 
 		t.Render()
@@ -97,45 +96,12 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 })
 
-var releaseReplanCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "replan [apps...]",
-	Short: "Returns the release to the planning stage.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b, p := getReleaseCmdDeps()
-
-		apps, err := getKnownApps(b, args)
-		if err != nil {
-			return err
-		}
-
-		confirmMsg := "Replanning release for all apps."
-		if len(apps) > 0 {
-			appNames := []string{}
-			for _, app := range apps {
-				appNames = append(appNames, app.Name)
-			}
-			confirmMsg = "Replanning release for these apps: " + strings.Join(appNames, ", ")
-		}
-		confirm(confirmMsg)
-
-		ctx := b.NewContext()
-		_, err = p.RePlanRelease(ctx, apps...)
-		if err != nil {
-			return err
-		}
-
-		err = p.Save(ctx)
-
-		return err
-	},
-})
-
 var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:     "show",
 	Aliases: []string{"dump"},
 	Short:   "Lists the apps in the current release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
 			return err
@@ -154,32 +120,11 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 })
 
-var releaseShowPreviousCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "show-previous",
-	Short: "Shows information about the previous release.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-		r, err := p.GetPreviousRelease()
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Name: %s\n", r.Name)
-		fmt.Printf("Version: %s\n", r.Version)
-
-		return err
-	},
-})
-
 var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "dot",
 	Short: "Prints a dot diagram of the release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 		rm, err := b.GetStableReleaseManifest()
 		if err != nil {
 			return err
@@ -192,7 +137,7 @@ var releaseDotCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 func getReleaseCmdDeps() (*bosun.Bosun, *bosun.Platform) {
-	b := MustGetBosun()
+	b := MustGetBosunNoEnvironment()
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
 		log.Fatal(err)
@@ -200,117 +145,12 @@ func getReleaseCmdDeps() (*bosun.Bosun, *bosun.Platform) {
 	return b, p
 }
 
-var releaseImpactCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "impact",
-	Short: "Reports on the changes deploying the release will inflict on the current environment.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// TODO: Re-implement release impact command
-		return errors.New("needs to be re-implemented after release manifest refactor")
-		// b, p := getReleaseCmdDeps()
-		//
-		// if len(viper.GetStringSlice(ArgFilteringLabels)) == 0 && len(args) == 0 {
-		// 	viper.Set(ArgFilteringAll, true)
-		// }
-		//
-		// apps, err := getAppsIncludeCurrent(b, args)
-		// if err != nil {
-		// 	return err
-		// }
-		// requestedApps := map[string]bool{}
-		// for _, app := range apps {
-		// 	requestedApps[app.Name] = true
-		// }
-		//
-		// total := len(requestedApps)
-		// complete := 0
-		//
-		// appReleases := r.AppReleases
-		// wg := new(sync.WaitGroup)
-		// wg.Add(len(appReleases))
-		// for _, appRelease := range appReleases {
-		// 	if !requestedApps[appRelease.Name] {
-		// 		continue
-		// 	}
-		// 	go func(appRelease *bosun.AppDeploy) {
-		// 		defer wg.Done()
-		//
-		// 		ctx := b.NewContext().WithAppDeploy(appRelease)
-		// 		values, err := appRelease.GetResolvedValues(ctx)
-		// 		if err != nil {
-		// 			ctx.Log().WithError(err).Error("Could not create values map for app release.")
-		// 			return
-		// 		}
-		//
-		// 		ctx = ctx.WithPersistableValues(values)
-		// 		err = appRelease.LoadActualState(ctx, true)
-		// 		if err != nil {
-		// 			ctx.Log().WithError(err).Error("Could not load actual state.")
-		// 			return
-		// 		}
-		// 		complete += 1
-		// 		color.White("Loaded %s (%d/%d)", appRelease.Name, complete, total)
-		// 		wg.Done()
-		// 	}(appRelease)
-		// }
-		// wg.Wait()
-		//
-		// for _, appRelease := range appReleases {
-		// 	color.Blue("%s\n", appRelease.Name)
-		// 	if appRelease.ActualState.Diff == "" {
-		// 		color.White("No diff detected.")
-		// 	} else {
-		// 		color.Yellow("Diff:\n")
-		// 		fmt.Println(appRelease.ActualState.Diff)
-		// 		fmt.Println()
-		// 	}
-		// }
-		//
-		// color.Blue("SUMMARY:\n")
-		// for _, appRelease := range appReleases {
-		// 	color.Blue(appRelease.Name)
-		// 	if appRelease.ActualState.Diff == "" {
-		// 		color.White("No diff detected.\n")
-		// 	} else {
-		// 		fmt.Println("Has changes (see above).")
-		// 	}
-		// }
-		//
-		return nil
-	},
-}, withFilteringFlags)
-
-var releaseShowValuesCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "show-values {app}",
-	Args:  cobra.ExactArgs(1),
-	Short: "Shows the values which will be used for a release.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b, _ := getReleaseCmdDeps()
-		releaseManifest := mustGetActiveRelease(b)
-
-		appManifest, err := releaseManifest.GetAppManifest(args[0])
-		if appManifest == nil {
-			return errors.Errorf("app %q not in this release", args[0])
-		}
-
-		values, err := getResolvedValuesFromAppManifest(b, appManifest)
-
-		yml, err := yaml.Marshal(values)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(string(yml))
-
-		return nil
-	},
-})
-
 var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 	Use:   "add {stable|unstable} [apps...]",
 	Args:  cobra.MinimumNArgs(1),
 	Short: "Adds an app to a release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
+		b := MustGetBosunNoEnvironment()
 
 		p, err := b.GetCurrentPlatform()
 		if err != nil {
@@ -699,11 +539,7 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 
 		return err
 	},
-}, withFilteringFlags,
-
-	func(cmd *cobra.Command) {
-		cmd.Flags().String(argReleaseUpdateBranch, "", "The branch to pull the app from (defaults to using the release branch for the app).")
-	})
+}, withFilteringFlags)
 
 const (
 	argReleaseUpdateBranch = "branch"

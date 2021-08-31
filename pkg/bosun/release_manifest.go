@@ -19,17 +19,13 @@ import (
 )
 
 type ReleaseMetadata struct {
-	Name        string         `yaml:"name"`
 	Version     semver.Version `yaml:"version"`
 	Branch      string         `yaml:"branch"`
 	Description string         `yaml:"description"`
 }
 
 func (r ReleaseMetadata) String() string {
-	if r.Name == r.Version.String() {
-		return r.Name
-	}
-	return fmt.Sprintf("%s@%s", r.Name, r.Version)
+	return r.Version.String()
 }
 
 func (r ReleaseMetadata) GetReleaseBranchName(branchSpec git.BranchSpec) (string, error) {
@@ -103,7 +99,6 @@ func (r *ReleaseManifest) UnmarshalYAML(unmarshal func(interface{}) error) error
 func (r *ReleaseMetadata) GetBranchParts() git.BranchParts {
 	return git.BranchParts{
 		git.BranchPartVersion: r.Version.String(),
-		git.BranchPartName:    r.Name,
 	}
 }
 
@@ -318,9 +313,9 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*
 		requestedApps[app.Name] = app
 	}
 
-	allAppManifests, stableErr := r.GetAppManifests()
-	if stableErr != nil {
-		return stableErr
+	allAppManifests, err := r.GetAppManifests()
+	if err != nil {
+		return err
 	}
 	queue := worker.NewKeyedWorkQueue(ctx.Log(), 10)
 
@@ -359,6 +354,33 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*
 		queue.Wait()
 
 	case SlotStable:
+
+
+		for appName, app := range requestedApps {
+
+
+			currentAppManifest, isInRelease := allAppManifests[appName]
+			if !isInRelease {
+				return errors.Errorf("app %q is not known in the stable release; use `bosun release add %s` to add it", appName, appName)
+			}
+
+			var appErr error
+			appBranch := branch
+			if appBranch == "" {
+				appBranch, appErr = r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
+				if appErr != nil {
+					return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
+				}
+			}
+
+			if currentAppManifest.Branch != appBranch {
+				return errors.Errorf("app %q has not been added to the in the stable release (release is using version %s from branch %s and release %s); use `bosun release add %s` to add it", appName,
+					currentAppManifest.Version,
+					currentAppManifest.Branch,
+					currentAppManifest.PinnedReleaseVersion,
+					appName)
+			}
+		}
 
 		for _, app := range requestedApps {
 
@@ -600,7 +622,7 @@ func (r *ReleaseManifest) GetAppManifest(name string) (*AppManifest, error) {
 		return a, nil
 	}
 
-	return nil, errors.Errorf("no app manifest with name %q in release %q", name, r.Name)
+	return nil, errors.Errorf("no app manifest with name %q in release %q", name, r)
 
 }
 

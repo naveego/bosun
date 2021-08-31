@@ -312,3 +312,17 @@ var _ = addCommand(platformCmd, &cobra.Command{
 
 	},
 })
+
+var _ = addCommand(platformCmd, &cobra.Command{
+	Use:   "apps",
+	Args:  cobra.ExactArgs(0),
+	Short: "Prints off the apps in the platform.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		b := MustGetBosunNoEnvironment()
+
+		apps := b.GetPlatformApps()
+
+		return printOutput(apps.ToList())
+
+	},
+})

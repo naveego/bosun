@@ -34,7 +34,17 @@ var releaseCommitPlanCmd = addCommand(releaseCommitCmd, &cobra.Command{
 
 		err = committer.Plan()
 
-		return err
+		if err != nil {
+			return err
+		}
+
+		plan, err := committer.GetPlan()
+
+		if err != nil {
+			return err
+		}
+
+		return printOutput(plan)
 	},
 })
 
