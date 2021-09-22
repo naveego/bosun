@@ -41,7 +41,6 @@ CLI documentation is here: [./docs/bosun.md](./docs/bosun.md)
 7. Add docker logins:
     - For our private repo: `sudo docker login docker.n5o.black`. Get username/password from your mentor.
     - For github: `sudo docker login docker.pkg.github.com` - The username is anything, the password is a github token with read:packages and write:packages.
-    - After adding docker logins, make the docker config readable by bosun using `sudo chmod 700 ~/.docker && sudo chmod 600 ~/.docker/config.json`
 8. Add aws login for CLI: `aws configure --profile black`. Get key/secret from your mentor.
 9. Run `mkcert --install` if you haven't already
 10. Run `bosun script up --verbose` to bring up minikube and deploy everything to it.
@@ -51,12 +50,6 @@ CLI documentation is here: [./docs/bosun.md](./docs/bosun.md)
    - You can browse to things routed through traefik using https if you install the certs in the ./dev/certs folder in the devops repo.
 
 ### Troubleshooting
-
-- **Docker Config Permission Denied**
-
-  - Error:
-    `error reading docker config from "/home/$USER/.docker/config.json": open /home/$USER/.docker/config.json: permission denied`
-  - Solution: `sudo chown "$USER":"$USER" /home/"$USER"/.docker -R && sudo chmod g+rwx "/home/$USER/.docker" -R` ( https://askubuntu.com/questions/747778/docker-warning-config-json-permission-denied )
 
 - **Logging Namespace Not Found**
 
