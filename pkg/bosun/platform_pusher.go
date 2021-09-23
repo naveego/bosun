@@ -15,13 +15,12 @@ type PlatformPusher struct {
 }
 
 type PlatformPushRequest struct {
-	BundleDir string
-	ManifestDir string
-	PushAllApps bool
-	PushApp string
+	BundleDir       string
+	ManifestDir     string
+	PushAllApps     bool
+	PushApp         string
 	EnvironmentPath string
-	Cluster string
-
+	Cluster         string
 }
 
 func NewPlatformPusher(bosun *Bosun, platform *Platform) PlatformPusher {
@@ -40,8 +39,6 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 		return fmt.Errorf("could not read release manifest file '%s': %w", relManifestFile, err)
 	}
 
-
-
 	var apps []string
 	if req.PushApp != "" {
 		apps = []string{req.PushApp}
@@ -50,17 +47,19 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 			apps = append(apps, appName)
 		}
 	} else {
-		for appName, upgrade := range relManifest.UpgradedApps {
-			if upgrade {
-				apps = append(apps, appName)
-			}
+		pinnedAppManifests, manifestErr := relManifest.GetAppManifestsPinnedToRelease()
+		if manifestErr != nil {
+			return manifestErr
+		}
+		for appName := range pinnedAppManifests {
+			apps = append(apps, appName)
 		}
 	}
 
 	planReq := CreateDeploymentPlanRequest{
-		Path: req.BundleDir,
+		Path:            req.BundleDir,
 		ManifestDirPath: req.ManifestDir,
-		Apps: apps,
+		Apps:            apps,
 	}
 
 	env := p.b.GetCurrentEnvironment()
@@ -81,4 +80,3 @@ func (p *PlatformPusher) Push(req PlatformPushRequest) error {
 
 	return err
 }
-

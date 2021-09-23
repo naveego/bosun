@@ -32,7 +32,6 @@ type ExecuteDeploymentPlanRequest struct {
 	RenderOnly     bool
 }
 
-
 type ExecuteDeploymentPlanResponse struct {
 	ValidationErrors map[string]string
 }
@@ -61,6 +60,8 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 	}
 	ctx := d.Bosun.NewContext()
 
+	ctx.Log().Infof("Deploying to stack %s in cluster %s of environment %s", ctx.Environment().Stack().Name, ctx.Environment().Cluster().Name, ctx.Environment().Name)
+
 	if req.Validate {
 		response.ValidationErrors, err = d.validateDeploymentPlan(req)
 	}
@@ -69,7 +70,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 		return response, errors.Errorf("one or more apps are invalid:\n%s", yaml.MustMarshalString(response.ValidationErrors))
 	}
 
-	if req.ValidateOnly  {
+	if req.ValidateOnly {
 		return response, nil
 	}
 
@@ -80,7 +81,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 			Recycle:        req.Recycle,
 			DumpValuesOnly: req.DumpValuesOnly,
 			DiffOnly:       req.DiffOnly,
-			RenderOnly: req.RenderOnly,
+			RenderOnly:     req.RenderOnly,
 		},
 		AppManifests:       map[string]*AppManifest{},
 		AppDeploySettings:  map[string]AppDeploySettings{},
@@ -91,23 +92,17 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 	env := ctx.Environment()
 
 	if deploymentPlan.FromPath != "" {
-		if deploymentPlan.EnvironmentDeployProgress == nil {
-			deploymentPlan.EnvironmentDeployProgress = map[string][]string{}
-		}
 
 		deploySettings.AfterDeploy = func(app *AppDeploy, err error) {
-			if err == nil {
-				afterLog := ctx.Log().WithFields(logrus.Fields{
-					"app":       app.Name,
-					"namespace": app.Namespace,
-				})
-				afterLog.Info("App deployed, saving progress in plan file.")
 
-				deploymentPlan.EnvironmentDeployProgress[env.Name] = stringsn.AppendIfNotPresent(deploymentPlan.EnvironmentDeployProgress[env.Name], app.Name)
-				saveErr := deploymentPlan.SavePlanFileOnly()
-				if saveErr != nil {
-					afterLog.WithError(saveErr).Error("Progress save failed: %s")
-				}
+			afterLog := ctx.Log().WithFields(logrus.Fields{
+				"app":       app.Name,
+			})
+			afterLog.Info("App deployed, saving progress in plan file.")
+			deploymentPlan.RecordProgress(app, ctx.Stack().Brn, err)
+			saveErr := deploymentPlan.SavePlanFileOnly()
+			if saveErr != nil {
+				afterLog.WithError(saveErr).Error("Progress save failed: %s")
 			}
 		}
 
@@ -117,14 +112,13 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 
 		appCtx := d.Bosun.NewContext().WithLogField("app", appPlan.Name).(BosunContext)
 
-		deployRequested := stringsn.Contains(appPlan.Name, req.IncludeApps)
-		deployDenied := len(req.IncludeApps) > 0 && !stringsn.Contains(appPlan.Name, req.IncludeApps)
+		deployRequested := stringsn.Contains(req.IncludeApps, appPlan.Name)
+		deployDenied := len(req.IncludeApps) > 0 && !stringsn.Contains(req.IncludeApps, appPlan.Name)
 
 		if deployDenied {
 			appCtx.Log().Infof("Skipping app because it is not included in the requested apps %v.", req.IncludeApps)
 			continue
 		}
-
 
 		if !deployRequested {
 			if len(deploymentPlan.DeployApps) > 0 && !deploymentPlan.DeployApps[appPlan.Name] {
@@ -132,8 +126,8 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 				continue
 			}
 
-			if stringsn.Contains(appPlan.Name, deploymentPlan.EnvironmentDeployProgress[env.Name]) {
-				appCtx.Log().Infof("Skipping app because it has already been deployed from this plan to this environment (delete from environmentDeployProgress list to reset).")
+			if deploymentPlan.FindDeploymentPlanProgress(appPlan.Manifest, env.Stack().Brn) != nil {
+				appCtx.Log().Infof("Skipping app because it has already been deployed from this plan to this environment (deploy it explicitly by name to force).")
 				continue
 			}
 
@@ -142,7 +136,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 					appCtx.Log().Infof("Skipping app because it is not included in the apps list for the environment (request it explicitly to force deployment) (environment apps: %v).", util.SortedKeys(env.Apps))
 					continue
 				}
-			} else if stringsn.Contains(appPlan.Name, env.AppBlacklist) {
+			} else if stringsn.Contains(env.AppBlacklist, appPlan.Name) {
 				appCtx.Log().Infof("Skipping app because it is in the blacklist for the environment (request it explicitly to force deployment).")
 				continue
 			}
@@ -157,7 +151,7 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 		if appPlan.Tag != "" {
 			appDeploySettings.ValueSets = []values.ValueSet{
 				values.ValueSet{
-					Source:"app plan",
+					Source: "app plan",
 					Static: values.Values{
 						"tag": appPlan.Tag,
 					},
@@ -195,7 +189,6 @@ func (d DeploymentPlanExecutor) Execute(req ExecuteDeploymentPlanRequest) (Execu
 	return response, nil
 }
 
-
 func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlanRequest) (map[string]string, error) {
 
 	plan := req.Plan
@@ -204,7 +197,7 @@ func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlan
 
 	apps := plan.Apps
 
-	response :=  map[string]string{}
+	response := map[string]string{}
 
 	t := new(tomb.Tomb)
 
@@ -214,7 +207,7 @@ func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlan
 
 		app := apps[appIndex]
 		included := len(req.IncludeApps) == 0
-		for _,  includedName := range req.IncludeApps {
+		for _, includedName := range req.IncludeApps {
 			if includedName == app.Name {
 				included = true
 			}
@@ -253,4 +246,3 @@ func (d DeploymentPlanExecutor) validateDeploymentPlan(req ExecuteDeploymentPlan
 
 	return response, nil
 }
-

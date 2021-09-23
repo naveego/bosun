@@ -425,7 +425,7 @@ var appAcceptActualCmd = &cobra.Command{
 				log.WithError(getErr).Error("Could not get actual state.")
 				return getErr
 			}
-			b.SetDesiredState(app.Name, appDeploy.ActualState)
+
 			log.Debug("Updated.")
 		}
 
@@ -614,8 +614,6 @@ var appDeleteCmd = &cobra.Command{
 			} else {
 				app.DesiredState.Status = workspace.StatusDeleted
 			}
-
-			b.SetDesiredState(app.Name, app.DesiredState)
 
 			app.DesiredState.Routing = workspace.RoutingNA
 			err := app.Reconcile(ctx)

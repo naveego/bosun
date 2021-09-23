@@ -155,15 +155,28 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, manifest := range appManifests {
-			if !settings.Manifest.UpgradedApps[manifest.Name] {
-				if !settings.ForceDeployApps[manifest.Name] {
-					ctx.Log().Debugf("Skipping %q because it is not default nor forced.", manifest.Name)
-					deploy.Filtered[manifest.Name] = true
-					continue
+
+		var appsToDeploy []*AppManifest
+
+		for appName, forced := range settings.ForceDeployApps {
+			if forced {
+				if appManifest, ok := appManifests[appName]; ok {
+					appsToDeploy = append(appsToDeploy, appManifest)
+				} else {
+					return nil, errors.Errorf("requested app %q not found among app manifests known by this release")
 				}
 			}
+		}
 
+		if len(appsToDeploy) == 0 {
+			for _, manifest := range appManifests {
+				if settings.Manifest.isAppPinnedToThisRelease(manifest.Name) {
+					appsToDeploy = append(appsToDeploy, manifest)
+				}
+			}
+		}
+
+		for _, manifest := range appsToDeploy {
 			appDeploy, newDeployErr := NewAppDeploy(ctx, settings, manifest)
 			if newDeployErr != nil {
 				return nil, errors.Wrapf(newDeployErr, "create app deploy from manifest for %q", manifest.Name)
@@ -192,7 +205,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			appDeployMap[appDeploy.Name] = appDeploy
 		}
 	} else {
-		return nil, errors.New("either settings.Manifest, settings.DeployedApps, or settings.AppManifests must be populated")
+		return nil, errors.New("either settings.Manifest, settings.AppDeploymentProgress, or settings.AppManifests must be populated")
 	}
 
 	if settings.Filter != nil {
@@ -275,7 +288,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			}
 		}
 
-		log = log.WithField("cluster", cluster.Name)
+		// log = log.WithField("cluster", cluster.Name)
 
 		appCtx = appCtx.WithMatchMapArgs(filter.MatchMapArgs{
 			core.KeyCluster: cluster.Name,
@@ -301,7 +314,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 				return nil, errors.Wrapf(err, "mapping namespace for %q", app.Name)
 			}
 
-			log = log.WithField("namespace", namespace.Name)
+			// log = log.WithField("namespace", namespace.Name)
 
 			if deployedForNamespaceRole, ok := deployedToNamespaceForRole[namespace.Name]; ok {
 				log.Infof("Already prepared deploy to namespace %q for role %q, skipping additional deploys.", namespace.Name, deployedForNamespaceRole)
@@ -444,7 +457,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 
 		appCtx := ctx.WithAppDeploy(app).WithMatchMapArgs(app.MatchArgs).(BosunContext)
 
-		appCtx = appCtx.WithLogField("namespace", app.Namespace).(BosunContext)
+		// appCtx = appCtx.WithLogField("namespace", app.Namespace).(BosunContext)
 
 		app.DesiredState.Status = workspace.StatusDeployed
 		if app.DesiredState.Routing == "" {
@@ -529,7 +542,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 // 	}
 // 	r.AppReleaseConfigs[app.Name] = config
 //
-// 	r.DeployedApps[app.Name], err = NewAppRelease(ctx, config)
+// 	r.AppDeploymentProgress[app.Name], err = NewAppRelease(ctx, config)
 //
 // 	return nil
 // }

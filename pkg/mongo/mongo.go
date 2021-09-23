@@ -343,7 +343,7 @@ func getVaultCredentials(log *logrus.Entry, c CredentialProvider) (username stri
 
 	log.Debugf("getting vault client at '%s' with token '%s'", vaultAddr, vaultToken)
 
-	vault, err := vault.NewVaultLowlevelClient(vaultToken, vaultAddr)
+	vault, err := vault.NewVaultLowlevelClient(vaultToken, vaultAddr, log)
 	if err != nil {
 		return
 	}

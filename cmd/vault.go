@@ -68,7 +68,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 		if err != nil {
 			return err
 		}
-		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr, core.Log)
 		if err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 		key := strings.Join(args, "-")
 		force := viper.GetBool(ArgGlobalForce)
-		err = vaultLayout.Apply(key, force, vaultClient)
+		err = vaultLayout.Apply(key, force, vaultClient, core.Log)
 
 		if err != nil {
 			ctx.Log().Warnf("Error applying layout. Vault URL was %s, token was %s...", vaultClient.Address(), vaultClient.Token()[0:3])
@@ -167,7 +167,7 @@ Otherwise, this will do nothing.
 
 		core.Log.Infof("Bootstrapping vault using address %s and token %s", g.vaultAddr, g.vaultToken)
 
-		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr, core.Log)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ var vaultUnsealCmd = &cobra.Command{
 			return err
 		}
 
-		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr, core.Log)
 		if err != nil {
 			return err
 		}
@@ -281,7 +281,7 @@ var vaultInstallJoseCmd = addCommand(vaultCmd, &cobra.Command{
 			return err
 		}
 
-		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr, core.Log)
 		if err != nil {
 			return err
 		}
@@ -310,7 +310,7 @@ var vaultSecretCmd = &cobra.Command{
 
 		_ = MustGetBosun()
 
-		vaultClient, err := vault.NewVaultLowlevelClient("", "")
+		vaultClient, err := vault.NewVaultLowlevelClient("", "", core.Log)
 		if err != nil {
 			return err
 		}
@@ -362,7 +362,7 @@ var vaultJWTCmd = &cobra.Command{
 			return err
 		}
 
-		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr)
+		vaultClient, err := vault.NewVaultLowlevelClient(g.vaultToken, g.vaultAddr, core.Log)
 		if err != nil {
 			return err
 		}

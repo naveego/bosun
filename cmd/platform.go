@@ -101,7 +101,13 @@ var _ = addCommand(platformCmd, &cobra.Command{
 			}
 		} else if viper.GetBool(argPlatformUpdateDeployed) {
 			args = []string{}
-			for name := range release.UpgradedApps {
+
+			pinnedApps, pinnedAppsErr := release.GetAppManifestsPinnedToRelease()
+			if pinnedAppsErr != nil {
+				return pinnedAppsErr
+			}
+
+			for name := range pinnedApps {
 				args = append(args, name)
 			}
 		}

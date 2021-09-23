@@ -183,7 +183,7 @@ func (v ValueSetCollection) ExtractValueSet(args ExtractValueSetArgs) ValueSet {
 
 	for _, candidate := range v.ValueSets {
 		if len(args.Names) > 0 {
-			if !stringsn.Contains(candidate.Name, args.Names) {
+			if !stringsn.Contains(args.Names, candidate.Name) {
 				core.Log.WithField("@value_set", candidate.Name).WithField("name", candidate.Name).WithField("requested_names", args.Names).Trace("ExtractValueSet: Skipping because name was not requested.")
 				continue
 			}

@@ -68,7 +68,7 @@ var gitAcceptPullRequestCmd = addCommand(gitCmd, &cobra.Command{
 		return nil
 	},
 }, func(cmd *cobra.Command) {
-	cmd.Flags().StringSlice(ArgGitAcceptPRAppVersion, []string{}, "DeployedApps to apply version bump to.")
+	cmd.Flags().StringSlice(ArgGitAcceptPRAppVersion, []string{}, "AppDeploymentProgress to apply version bump to.")
 })
 
 const ArgGitAcceptPRAppVersion = "app"

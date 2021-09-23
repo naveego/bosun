@@ -43,7 +43,7 @@ const (
 
 func deployAppFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(argDeployPlanProviderPriority, []string{bosun.WorkspaceProviderName, bosun.SlotUnstable, bosun.SlotStable}, "Providers in priority order to use to deploy apps (current, stable, unstable, or workspace).")
-	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "DeployedApps to include.")
+	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "AppDeploymentProgress to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps.")
 	cmd.Flags().String(argDeployAppTag, "", "Tag to use when deploying the app or apps.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, true, "Don't validate dependencies.")

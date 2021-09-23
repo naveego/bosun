@@ -13,7 +13,7 @@ import (
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -47,12 +47,9 @@ func (p releaseMetadataSorting) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 // not updated directly.
 type ReleaseManifest struct {
 	*ReleaseMetadata           `yaml:"metadata"`
-	DefaultDeployApps_OBSOLETE map[string]bool            `yaml:"defaultDeployApps,omitempty"`
-	UpgradedApps               map[string]bool            `yaml:"upgradedApps,omitempty"`
 	AppMetadata                map[string]*AppMetadata    `yaml:"apps"`
 	ValueSets                  *values.ValueSetCollection `yaml:"valueSets,omitempty"`
 	Platform                   *Platform                  `yaml:"-"`
-	plan                       *ReleasePlan               `yaml:"-"`
 	toDelete                   []string                   `yaml:"-"`
 	dirty                      bool                       `yaml:"-"`
 	dir                        string                     `yaml:"-"`
@@ -86,14 +83,66 @@ func (r *ReleaseManifest) UnmarshalYAML(unmarshal func(interface{}) error) error
 		*r = ReleaseManifest(p)
 	}
 
-	if r.DefaultDeployApps_OBSOLETE != nil && r.UpgradedApps == nil {
-		r.UpgradedApps = r.DefaultDeployApps_OBSOLETE
-		r.DefaultDeployApps_OBSOLETE = nil
-	}
-
 	r.init()
 
 	return err
+}
+
+func (r *ReleaseManifest) Save(ctx BosunContext) error {
+	slot := r.Slot
+	if slot != SlotStable && slot != SlotUnstable {
+		ctx.Log().Infof("Skipping save of slot %q", slot)
+		return nil
+	}
+
+	if !r.dirty {
+		ctx.Log().Debugf("Skipping save of manifest slot %q because it wasn't dirty.", slot)
+		return nil
+	}
+	ctx.Log().Infof("Saving manifest slot %q because it was dirty.", slot)
+	r.Slot = slot
+	dir := r.dir
+	err := os.RemoveAll(dir)
+	if err != nil {
+		return err
+	}
+
+	if r.deleted {
+		return nil
+	}
+
+	err = os.MkdirAll(dir, 0700)
+	if err != nil {
+		return errors.Wrapf(err, "create directory for release %q", slot)
+	}
+
+	err = writeYaml(filepath.Join(dir, ManifestFileName), r)
+	if err != nil {
+		return err
+	}
+
+	appManifests, err := r.GetAppManifests()
+	if err != nil {
+		return err
+	}
+
+	for _, appManifest := range appManifests {
+		r.AppMetadata[appManifest.Name] = appManifest.AppMetadata
+
+		appManifest.AppConfig.ProviderInfo = ""
+
+		_, err = appManifest.Save(dir)
+		if err != nil {
+			return errors.Wrapf(err, "write app %q", appManifest.Name)
+		}
+	}
+
+	for _, toDelete := range r.toDelete {
+		_ = os.Remove(filepath.Join(dir, toDelete+".yaml"))
+		_ = os.RemoveAll(filepath.Join(dir, toDelete))
+	}
+
+	return nil
 }
 
 func (r *ReleaseMetadata) GetBranchParts() git.BranchParts {
@@ -116,24 +165,6 @@ func (r *ReleaseManifest) MarkDeleted() *ReleaseManifest {
 	r.dirty = true
 	r.deleted = true
 	return r
-}
-
-func (r *ReleaseManifest) GetPlan() (*ReleasePlan, error) {
-	if r.plan == nil {
-
-		fromPath := filepath.Join(r.dir, PlanFileName)
-		b, err := ioutil.ReadFile(fromPath)
-		if err != nil {
-			return nil, err
-		}
-		err = yaml.Unmarshal(b, &r.plan)
-		if err != nil {
-			return nil, err
-		}
-		r.plan.FromPath = fromPath
-		return r.plan, err
-	}
-	return r.plan, nil
 }
 
 func (r *ReleaseManifest) GetAppManifests() (map[string]*AppManifest, error) {
@@ -169,27 +200,30 @@ func (r *ReleaseManifest) init() {
 }
 
 func (r *ReleaseManifest) Headers() []string {
-	return []string{"Name", "Deploying", "Version", "Previous Version", "Commit Hash"}
+	return []string{"Name", "Version", "Deploying", "Parent Release", "Commit Hash"}
 }
 
 func (r *ReleaseManifest) Rows() [][]string {
 	var out [][]string
-	for _, name := range util.SortedKeys(r.AppMetadata) {
-		deploy := r.UpgradedApps[name]
-		app := r.AppMetadata[name]
-		previousVersion := ""
-		if app.PreviousVersion != nil {
-			previousVersion = app.PreviousVersion.String()
-			if *app.PreviousVersion == app.Version {
-				previousVersion = previousVersion + " (unchanged)"
-			}
+	for _, name := range util.SortedKeys(r.appManifests) {
+		deploy := r.isAppPinnedToThisRelease(name)
+		app := r.appManifests[name]
+
+		parentRelease := ""
+		if app.PinnedReleaseVersion == nil {
+			parentRelease = "Unknown"
+		} else if app.PinnedReleaseVersion.Equal(r.Version) {
+			parentRelease = color.GreenString("%s *", r.Version)
+		} else {
+			parentRelease = app.PinnedReleaseVersion.String()
 		}
 
 		deploying := ""
 		if deploy {
 			deploying = color.GreenString("YES")
 		}
-		out = append(out, []string{app.Name, deploying, app.Version.String(), previousVersion, app.Hashes.Commit})
+
+		out = append(out, []string{app.Name, app.Version.String(), deploying, parentRelease, app.Hashes.Commit})
 	}
 	return out
 }
@@ -300,7 +334,7 @@ func (r *ReleaseManifest) IsMutable() error {
 	return nil
 }
 
-func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*App) error {
+func (r *ReleaseManifest) RefreshApps(ctx BosunContext, apps ...*App) error {
 
 	err := r.IsMutable()
 	if err != nil {
@@ -337,14 +371,9 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*
 			app := allAppManifests[k]
 			log := ctx.Log().WithField("app", app.Name)
 
-			appBranch := branch
-			if appBranch == "" {
-				appBranch = app.AppConfig.Branching.Develop
-			}
-
 			if _, ok := requestedApps[app.Name]; ok || len(requestedApps) == 0 {
 				queue.Dispatch(app.Repo, func() {
-					err = r.RefreshApp(ctx, app.Name, appBranch)
+					err = r.RefreshApp(ctx, app.Name, app.Branch)
 					if err != nil {
 						log.WithError(err).Errorf("Unable to refresh %q", app.Name)
 					}
@@ -355,31 +384,27 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*
 
 	case SlotStable:
 
-
 		for appName, app := range requestedApps {
-
 
 			currentAppManifest, isInRelease := allAppManifests[appName]
 			if !isInRelease {
 				return errors.Errorf("app %q is not known in the stable release; use `bosun release add %s` to add it", appName, appName)
 			}
 
-			var appErr error
-			appBranch := branch
-			if appBranch == "" {
-				appBranch, appErr = r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
-				if appErr != nil {
-					return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
-				}
+			appBranch, appErr := r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
+			if appErr != nil {
+				return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
 			}
 
 			if currentAppManifest.Branch != appBranch {
-				return errors.Errorf("app %q has not been added to the in the stable release (release is using version %s from branch %s and release %s); use `bosun release add %s` to add it", appName,
+				return errors.Errorf("app %q has not been added to the stable release (release is using version %s from branch %s and release %s); use `bosun release add stable %s` to add it", appName,
 					currentAppManifest.Version,
 					currentAppManifest.Branch,
 					currentAppManifest.PinnedReleaseVersion,
 					appName)
 			}
+
+			app.branch = appBranch
 		}
 
 		for _, app := range requestedApps {
@@ -388,19 +413,12 @@ func (r *ReleaseManifest) RefreshApps(ctx BosunContext, branch string, apps ...*
 			log := ctx.Log().WithField("app", app.Name)
 
 			var appErr error
-			appBranch := branch
-			if appBranch == "" {
-				appBranch, appErr = r.GetReleaseBranchName(app.Branching.WithDefaultsFrom(ctx.GetPlatform().Branching))
-				if appErr != nil {
-					return errors.Wrapf(appErr, "determine release branch name for app %q", app.Name)
-				}
-			}
 
-			log.Infof("Refreshing on stable slot from branch %q", appBranch)
+			log.Infof("Refreshing on stable slot from branch %q", app.branch)
 
 			queue.Dispatch(app.Repo.Name, func() {
 
-				appErr = r.RefreshApp(ctx, app.Name, appBranch)
+				appErr = r.RefreshApp(ctx, app.Name, app.branch)
 				if appErr != nil {
 					log.WithError(appErr).Errorf("Unable to refresh %q", app.Name)
 				}
@@ -527,7 +545,6 @@ func (r *ReleaseManifest) RemoveApp(appName string) {
 	r.init()
 	delete(r.AppMetadata, appName)
 	delete(r.appManifests, appName)
-	delete(r.UpgradedApps, appName)
 	r.toDelete = append(r.toDelete, appName)
 }
 
@@ -553,15 +570,11 @@ func (r *ReleaseManifest) AddOrReplaceApp(manifest *AppManifest, addToDefaultDep
 		return err
 	}
 
+	manifest.PinToRelease(r.ReleaseMetadata)
+
 	appManifests[manifest.Name] = manifest
 
 	r.AppMetadata[manifest.Name] = manifest.AppMetadata
-	if addToDefaultDeploys {
-		if r.UpgradedApps == nil {
-			r.UpgradedApps = map[string]bool{}
-		}
-		r.UpgradedApps[manifest.Name] = true
-	}
 	return nil
 }
 
@@ -685,4 +698,34 @@ func (r *ReleaseManifest) setReleaseBasedFields(app *AppConfig) {
 	if app.RepoName == r.repoRef.String() {
 		app.FilesOnly = true
 	}
+}
+
+// isAppPinnedToThisRelease returns true if the named app is pinned to this release
+func (r *ReleaseManifest) isAppPinnedToThisRelease(name string) bool {
+	for n, a := range r.AppMetadata {
+		if n == name {
+			if a.PinnedReleaseVersion.EqualSafe(r.Version) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *ReleaseManifest) GetAppManifestsPinnedToRelease() (map[string]*AppManifest, error) {
+
+	manifests, err := r.GetAppManifests()
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[string]*AppManifest{}
+
+	for name, manifest := range manifests {
+		if r.isAppPinnedToThisRelease(name) {
+			out[name] = manifest
+		}
+	}
+
+	return out, nil
 }

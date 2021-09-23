@@ -14,8 +14,9 @@ var releaseCommitCmd = addCommand(releaseCmd, &cobra.Command{
 })
 
 var releaseCommitPlanCmd = addCommand(releaseCommitCmd, &cobra.Command{
-	Use:           "plan",
+	Use:           "plan [apps...]",
 	Short:         "Plans the commit of the release branch back to master for each app in the release, and the platform repository.",
+	Long: "If no apps are provided, all apps are planned",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -32,7 +33,7 @@ var releaseCommitPlanCmd = addCommand(releaseCommitCmd, &cobra.Command{
 			return err
 		}
 
-		err = committer.Plan()
+		err = committer.Plan(bosun.PlanReleaseCommitRequest{Apps: args})
 
 		if err != nil {
 			return err

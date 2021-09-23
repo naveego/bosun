@@ -8,6 +8,7 @@ import (
 	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	yaml2 "github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -22,7 +23,7 @@ type ReleaseCommitterPlan struct {
 }
 
 func (r ReleaseCommitterPlan) Headers() []string {
-	return []string {
+	return []string{
 		"App",
 		"Repo",
 		"RepoPath",
@@ -53,7 +54,7 @@ func (r ReleaseCommitterPlan) Rows() [][]string {
 			completedAt = step.CompletedAt.String()
 		}
 
-		rows = append(rows, []string {
+		rows = append(rows, []string{
 			step.App,
 			step.Repo.String(),
 			step.RepoPath,
@@ -84,7 +85,7 @@ type ReleaseCommitBumpAction struct {
 	Branch  string         `yaml:"branch"`
 }
 
-func (a ReleaseCommitBumpAction) String() string  {
+func (a ReleaseCommitBumpAction) String() string {
 	return fmt.Sprintf("Bump to %s", a.Version)
 }
 
@@ -93,7 +94,7 @@ type ReleaseCommitMergeAction struct {
 	FromBranch string `yaml:"fromBranch"`
 }
 
-func (a ReleaseCommitMergeAction) String() string  {
+func (a ReleaseCommitMergeAction) String() string {
 	return fmt.Sprintf("Merge %s to %s", a.FromBranch, a.ToBranch)
 }
 
@@ -102,8 +103,8 @@ type ReleaseCommitTagAction struct {
 	Tags   []string `yaml:"tags"`
 }
 
-func (a ReleaseCommitTagAction) String() string  {
-	return fmt.Sprintf("Tag with %v", a.Tags )
+func (a ReleaseCommitTagAction) String() string {
+	return fmt.Sprintf("Tag with %v", a.Tags)
 }
 
 func (r ReleaseCommitterPlanStep) String() string {
@@ -185,7 +186,11 @@ func (r *ReleaseCommitter) addPlanSteps(steps ...ReleaseCommitterPlanStep) error
 	})
 }
 
-func (r *ReleaseCommitter) Plan() error {
+type PlanReleaseCommitRequest struct {
+	Apps []string
+}
+
+func (r *ReleaseCommitter) Plan(request PlanReleaseCommitRequest) error {
 
 	r.log.Info("Planning release commit")
 
@@ -197,36 +202,37 @@ func (r *ReleaseCommitter) Plan() error {
 	}
 
 	var preplan []*struct {
-		name string
+		name             string
 		appManifest      *AppManifest
 		localAppRepoPath string
 		error            string
 		message          string
-		include bool
+		include          bool
 	}
 
-	for _, appName := range util.SortedKeys(r.release.UpgradedApps) {
+	pinnedApps, err := r.release.GetAppManifestsPinnedToRelease()
+	if err != nil {
+		return err
+	}
 
+	for _, appName := range util.SortedKeys(pinnedApps) {
+
+		if !stringsn.ContainsOrIsEmpty(request.Apps, appName) {
+			continue
+		}
 
 		p := &struct {
-			name string
-			appManifest *AppManifest
+			name             string
+			appManifest      *AppManifest
 			localAppRepoPath string
-			error string
-			message string
-			include bool
+			error            string
+			message          string
+			include          bool
 		}{
 			name: appName,
 		}
 
 		preplan = append(preplan, p)
-
-		upgraded := r.release.UpgradedApps[appName]
-
-		if !upgraded {
-			p.message ="Skipping app because it wasn't marked as upgraded in the manifest."
-			continue
-		}
 
 		var ok bool
 		p.appManifest, ok = r.release.appManifests[appName]
@@ -236,38 +242,37 @@ func (r *ReleaseCommitter) Plan() error {
 		}
 
 		if p.appManifest.RepoRef() == r.platformRepo {
-			p.message ="Skipping planning for app because it is in the platform repo and will commit with the platform."
+			p.message = "Skipping planning for app because it is in the platform repo and will commit with the platform."
 			continue
 		}
 
-		localApp, err := r.bosun.GetApp(appName, WorkspaceProviderName)
-		if err != nil {
-			p.error = fmt.Sprintf("Skipping planning for app because it could not be found in local workspace: %s", err)
+		localApp, appErr := r.bosun.GetApp(appName, WorkspaceProviderName)
+		if appErr != nil {
+			p.error = fmt.Sprintf("Skipping planning for app because it could not be found in local workspace: %s", appErr)
 			continue
 		}
 
-		p.localAppRepoPath, err = git.GetRepoPath(localApp.FromPath)
-		if err != nil {
-			p.error = fmt.Sprintf("Skipping planning for app because it did not have a local repo path: %s", err)
+		p.localAppRepoPath, appErr = git.GetRepoPath(localApp.FromPath)
+		if appErr != nil {
+			p.error = fmt.Sprintf("Skipping planning for app because it did not have a local repo path: %s", appErr)
 			continue
 		}
 
 		g, _ := git.NewGitWrapper(p.localAppRepoPath)
+
+		if g.IsMerged(p.appManifest.Branch, localApp.Branching.Develop) && g.IsMerged(p.appManifest.Branch, localApp.Branching.Master) {
+			p.message = "Skipping because app has already been merged back"
+			continue
+		}
 
 		if g.IsDirty() {
 			p.error = fmt.Sprintf("Cannot merge because app repo is dirty. Make sure everything is committed before trying again.")
 			continue
 		}
 
-		branch := g.Branch()
-		if branch != p.appManifest.Branch {
-			p.error = fmt.Sprintf("Cannot merge because app is not on release branch. Check out the release branch before trying again.")
-		}
-
 		p.include = true
 
 	}
-
 
 	fmt.Println("Performed pre-planning analysis:")
 
@@ -276,7 +281,7 @@ func (r *ReleaseCommitter) Plan() error {
 		if p.error != "" {
 			color.Red("%s: %s", p.name, p.error)
 			blocked = true
-		} else  if p.include {
+		} else if p.include {
 			color.Green("%s", p.name)
 		} else {
 			color.White("%s: %s", p.name, p.message)
@@ -287,8 +292,11 @@ func (r *ReleaseCommitter) Plan() error {
 		return errors.New("errors found during pre-planning, fix before committing")
 	}
 
-
 	for _, data := range preplan {
+
+		if !data.include {
+			continue
+		}
 
 		appName := data.name
 		app := data.appManifest
@@ -296,7 +304,7 @@ func (r *ReleaseCommitter) Plan() error {
 
 		steps := []ReleaseCommitterPlanStep{
 			{
-				App: appName,
+				App:         appName,
 				Repo:        app.RepoRef(),
 				RepoPath:    localAppRepoPath,
 				Description: "Tag release commits",
@@ -316,7 +324,8 @@ func (r *ReleaseCommitter) Plan() error {
 					FromBranch: r.releaseBranch,
 					ToBranch:   app.AppConfig.Branching.Develop,
 				},
-			}, {
+			},
+			{
 				App:         appName,
 				Repo:        app.RepoRef(),
 				Description: "Bump develop",
@@ -337,15 +346,15 @@ func (r *ReleaseCommitter) Plan() error {
 			},
 		}
 
-		err := r.addPlanSteps(steps...)
+		err = r.addPlanSteps(steps...)
 		if err != nil {
 			return err
 		}
 	}
 
-	err := r.addPlanSteps(
+	err = r.addPlanSteps(
 		ReleaseCommitterPlanStep{
-			App: "platform",
+			App:         "platform",
 			Repo:        r.platformRepo,
 			RepoPath:    r.platformRepoPath,
 			Description: "Tag release commits",
@@ -358,7 +367,7 @@ func (r *ReleaseCommitter) Plan() error {
 		},
 
 		ReleaseCommitterPlanStep{
-			App: "platform",
+			App:         "platform",
 			Repo:        r.platformRepo,
 			RepoPath:    r.platformRepoPath,
 			Description: "Merge to develop",
@@ -367,7 +376,7 @@ func (r *ReleaseCommitter) Plan() error {
 				ToBranch:   r.platform.Branching.Develop,
 			},
 		}, ReleaseCommitterPlanStep{
-			App: "platform",
+			App:         "platform",
 			Repo:        r.platformRepo,
 			RepoPath:    r.platformRepoPath,
 			Description: "Merge to master",
@@ -383,7 +392,6 @@ func (r *ReleaseCommitter) Plan() error {
 	}
 
 	r.log.Infof("Plan stored at %s", r.planPath)
-
 
 	return nil
 }
@@ -413,7 +421,7 @@ func (r *ReleaseCommitter) Execute() error {
 				color.Red(err.Error())
 				fmt.Println()
 				fmt.Println("You can try to fix the issue in another terminal or you can abort.")
-				confirmed := cli.RequestConfirmFromUser(" Enter 'y' when you have completed or 'n' to abort.", )
+				confirmed := cli.RequestConfirmFromUser(" Enter 'y' when you have completed or 'n' to abort.")
 				if !confirmed {
 					updateErr := r.updatePlanStep(i, func(step *ReleaseCommitterPlanStep) {
 						step.Error = err.Error()
@@ -486,15 +494,21 @@ func (r *ReleaseCommitter) ExecuteStep(i int, step ReleaseCommitterPlanStep) err
 		}
 
 		var app *App
-		app, err = r.bosun.GetApp(step.App, WorkspaceProviderName)
+		app, err = r.bosun.ProvideApp(AppProviderRequest{
+			Name:             step.App,
+			ProviderPriority: []string{WorkspaceProviderName},
+			ForceReload:      true,
+		})
 		if err != nil {
 			return err
 		}
 
 		if app.Version == step.Bump.Version {
-			log.Infof("App is already on version %s", step.Bump.Version)
+			log.Infof("Skipping bump because branch %s is already on requested version %s", step.Bump.Branch, step.Bump.Version)
 			return nil
 		}
+
+		log.Infof("Bumping app from version %s to version %s", app.Version, step.Bump.Version)
 
 		err = app.BumpVersion(r.bosun.NewContext(), step.Bump.Version.String())
 
@@ -525,6 +539,7 @@ func (r *ReleaseCommitter) ExecuteStep(i int, step ReleaseCommitterPlanStep) err
 		for err != nil {
 
 			log.Warnf("Encountered a problem merging: %s", err)
+			fmt.Println()
 
 			confirmed := cli.RequestConfirmFromUser("Merge for %s from %s to %s in %s failed, you'll need to complete the merge yourself: %s\nEnter 'y' when you have completed the merge in another terminal, 'n' to abort release commit", r.release.Version, step.Merge.FromBranch, step.Merge.ToBranch, r.release.Version, step.RepoPath, err)
 			if !confirmed {

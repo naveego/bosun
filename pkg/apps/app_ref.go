@@ -2,12 +2,15 @@ package apps
 
 import (
 	"fmt"
+	"github.com/naveego/bosun/pkg/issues"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/yaml"
 )
 
+
 type AppRef struct {
 	Name             string                 `yaml:"name"`
+	Repo             issues.RepoRef         `yaml:"repo"`
 	Provider         string                 `yaml:"provider"`
 	Version          semver.Version         `yaml:"version"`
 	Platform         string                 `yaml:"platform"`

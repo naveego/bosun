@@ -92,7 +92,6 @@ var appToggleCmd = &cobra.Command{
 				appServiceChanged = true
 			}
 
-			b.SetDesiredState(app.Name, app.DesiredState)
 		}
 
 		if appServiceChanged {

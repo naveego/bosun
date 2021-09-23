@@ -9,7 +9,6 @@ import (
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/util"
-	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -18,6 +17,7 @@ import (
 	"github.com/vbauerster/mpb/v4/decor"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +79,7 @@ var releaseListCmd = addCommand(releaseCmd, &cobra.Command{
 			currentMark := ""
 			if current != nil && release.Version == current.Version {
 				currentMark = "*"
-				version = color.GreenString( version)
+				version = color.GreenString(version)
 			}
 
 			t.Append([]string{currentMark, version, release.Description})
@@ -107,13 +107,6 @@ var releaseShowCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 		rm := mustGetRelease(p, bosun.SlotStable)
-
-		previousRelease := mustGetRelease(p, bosun.SlotStable, bosun.SlotStable)
-		for _, app := range rm.AppMetadata {
-			if previousApp, ok := previousRelease.AppMetadata[app.Name]; ok {
-				app.PreviousVersion = &previousApp.Version
-			}
-		}
 
 		err = printOutput(rm)
 		return err
@@ -146,9 +139,9 @@ func getReleaseCmdDeps() (*bosun.Bosun, *bosun.Platform) {
 }
 
 var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "add {stable|unstable} [apps...]",
-	Args:  cobra.MinimumNArgs(1),
-	Short: "Adds an app to a release.",
+	Use:   "add {app}",
+	Args:  cobra.ExactArgs(1),
+	Short: "Adds an app to the current release.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b := MustGetBosunNoEnvironment()
 
@@ -157,81 +150,56 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotStable)
-
-		apps := mustGetKnownApps(b, args[1:])
-		bump := viper.GetString(ArgReleaseAddBump)
-		for _, app := range apps {
-
-			ctx := b.NewContext().WithApp(app)
-
-			ctx.Log().Info("Adding app to release...")
-
-			branch := viper.GetString(ArgReleaseAddBranch)
-
-			appManifest, prepareErr := r.PrepareAppForRelease(ctx, app, semver.Bump(bump), branch)
-			if prepareErr != nil {
-				return prepareErr
-			}
-
-			addErr := r.AddOrReplaceApp(appManifest, true)
-			if addErr != nil {
-				return addErr
-			}
-		}
-
-		err = p.Save(b.NewContext())
-		return err
-	},
-}, func(cmd *cobra.Command) {
-	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
-	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
-}, withFilteringFlags)
-
-var releaseReloadCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:   "reload {stable|unstable} [apps...]",
-	Args:  cobra.MinimumNArgs(1),
-	Short: "Reloads an app (or all apps) into a release from the location declared in the manifest.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
-
-		p, err := b.GetCurrentPlatform()
+		r, err := p.GetCurrentRelease()
 		if err != nil {
 			return err
 		}
 
-		r := mustGetRelease(p, args[0], bosun.SlotUnstable, bosun.SlotStable)
+		app, err := b.GetApp(args[0])
+		if err != nil {
+			return err
+		}
 
-		requestedApps := args[1:]
+		bump := viper.GetString(ArgReleaseAddBump)
 
-		ctx := b.NewContext()
+		if bump == "" {
+			bump = cli.RequestChoice("Choose a version bump for the app", "none", "patch", "minor", "major", "custom")
+		}
 
-		for appName, appMetadata := range r.AppMetadata {
+		if bump == "custom" {
+			bump = cli.RequestStringFromUser("Enter the version number to apply to the app")
+		}
 
-			if len(requestedApps) > 0 && !stringsn.Contains(appName, requestedApps) {
-				ctx.Log().Info("Skipping app %s because it wasn't requested.", appName)
-				continue
+		branchDescription := viper.GetString(ArgReleaseAddBranch)
+		if branchDescription == "" {
+			if r.Slot == bosun.SlotUnstable {
+				branchDescription = "the develop branch"
 			}
-			ctx.Log().Info("Reloading app %s.", appName)
+		} else {
+			branchDescription = "the branch " + branchDescription
+		}
 
-			app, appErr := b.ProvideApp(bosun.AppProviderRequest{
-				Name:   appName,
-				Branch: appMetadata.Branch,
-			})
+		confirmationMessage := fmt.Sprintf("You are adding app %s to the release %s, with a bump of %s and adding from %s. Do you want to continue?",
+			app.Name, r, bump, branchDescription)
+		confirmed := cli.RequestConfirmFromUser(confirmationMessage)
+		if !confirmed {
+			return nil
+		}
 
-			if appErr != nil {
-				ctx.Log().WithError(err).Warnf("Couldn't provide app %s from branch %s", appName, appMetadata.Branch)
-			}
+		ctx := b.NewContext().WithApp(app)
 
-			manifest, appErr := app.GetManifest(ctx)
-			if appErr != nil {
-				ctx.Log().WithError(err).Warnf("Couldn't get manifest from app %s from branch %s", appName, appMetadata.Branch)
-			}
+		ctx.Log().Info("Adding app to release...")
 
-			appErr = r.AddOrReplaceApp(manifest, false)
-			if appErr != nil {
-				ctx.Log().WithError(err).Warnf("Couldn't add app to release for app %s from branch %s", appName, appMetadata.Branch)
-			}
+		branch := viper.GetString(ArgReleaseAddBranch)
+
+		appManifest, prepareErr := r.PrepareAppForRelease(ctx, app, semver.Bump(bump), branch)
+		if prepareErr != nil {
+			return prepareErr
+		}
+
+		addErr := r.AddOrReplaceApp(appManifest, true)
+		if addErr != nil {
+			return addErr
 		}
 
 		err = p.Save(b.NewContext())
@@ -239,7 +207,7 @@ var releaseReloadCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(ArgReleaseAddBranch, "", "The branch to add the app from (defaults to the branch pattern for the slot).")
-	cmd.Flags().String(ArgReleaseAddBump, "none", "The version bump to apply to the app.")
+	cmd.Flags().String(ArgReleaseAddBump, "", "The version bump to apply to the app.")
 }, withFilteringFlags)
 
 const (
@@ -482,9 +450,8 @@ only those apps will be deployed. Otherwise, all apps in the release will be dep
 	withValueSetFlags)
 
 var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:           "update {stable|unstable} [apps...]",
-	Short:         "Updates the release with the correct values from the apps in it.",
-	Args:          cobra.MinimumNArgs(1),
+	Use:           "update [apps...]",
+	Short:         "Updates the current release by pulling in the manifests from the app repos.",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -497,7 +464,7 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 		if err != nil {
 			return err
 		}
-		release, err := p.GetReleaseManifestBySlot(args[0])
+		release, err := p.GetCurrentRelease()
 		if err != nil {
 			return err
 		}
@@ -507,7 +474,7 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 			return err
 		}
 
-		apps, err := getKnownApps(b, args[1:])
+		apps, err := getKnownApps(b, args)
 		if err != nil {
 			return err
 		}
@@ -526,11 +493,15 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 			confirm(confirmMsg)
 		}
 
-		fmt.Printf("Refreshing %d apps: %+v\n", len(apps), args[1:])
+		var appNames []string
+		for _, app := range apps {
+			appNames = append(appNames, app.Name)
+		}
+		sort.Strings(appNames)
 
-		fromBranch := viper.GetString(argReleaseUpdateBranch)
+		fmt.Printf("Refreshing %d apps: %+v\n", len(apps), appNames)
 
-		err = release.RefreshApps(ctx, fromBranch, apps...)
+		err = release.RefreshApps(ctx, apps...)
 		if err != nil {
 			return err
 		}
@@ -541,36 +512,6 @@ var releaseUpdateCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 }, withFilteringFlags)
 
-const (
-	argReleaseUpdateBranch = "branch"
-)
-
-var releaseChangelogCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:           "change-log",
-	Short:         "Outputs the changelog for the release.",
-	SilenceErrors: true,
-	SilenceUsage:  true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-
-		return errors.New("not implemented")
-		/*		viper.BindPFlags(cmd.Flags())
-
-				b := MustGetBosun()
-				ctx := b.NewContext()
-
-				p, err := b.GetCurrentPlatform()
-				if err != nil {
-					return err
-				}
-
-				err = p.CommitCurrentRelease(ctx)
-				if err != nil {
-					return err
-				}
-
-				return nil*/
-	},
-}, withFilteringFlags)
 
 const ArgReleaseSkipValidate = "skip-validation"
 const ArgReleaseRecycle = "recycle"

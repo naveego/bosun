@@ -5,5 +5,5 @@ func Truncate(s string, n int) string {
 		return s
 	}
 
-	return s[:n] + "..."
+	return s[:n]
 }

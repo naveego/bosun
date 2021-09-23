@@ -85,6 +85,11 @@ func (g GitWrapper) PullRebase() error {
 
 }
 
+func (g GitWrapper) IsMerged(fromBranch, toBranch string) bool {
+	_, err := g.Exec("merge-base", "--is-ancestor", fromBranch, toBranch)
+	return err == nil
+}
+
 var fetched = map[string]bool{}
 var fetchedMu = &sync.Mutex{}
 

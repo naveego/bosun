@@ -398,7 +398,7 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	}
 
 	for _, step := range plan {
-		log.WithField("step", step.Name).WithField("description", step.Description).Info("Planned step.")
+		log.WithField("step", step.Name).WithField("description", step.Description).Infof("Planned step %s", step.Name)
 	}
 
 	log.Info("Planning complete.")
@@ -407,13 +407,13 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	for _, step := range plan {
 		stepCtx := ctx.WithLog(log.WithField("step", step.Name))
-		stepCtx.Log().Info("Executing step...")
+		stepCtx.Log().Infof("Executing step %s...", step.Name)
 		err = step.Action(stepCtx)
 		if err != nil {
 			stepCtx.Log().WithError(err).Error("Deploy failed.")
 			return errors.Wrapf(err, "step %q failed", step.Name)
 		}
-		stepCtx.Log().Info("Step complete.")
+		stepCtx.Log().Infof("Completed step %s.", step.Name)
 	}
 
 	log.Debug("Plan executed.")

@@ -51,7 +51,7 @@ type AppConfig struct {
 	IsRef          bool         `yaml:"-" json:"-"`
 	IsFromManifest bool         `yaml:"-"` // Will be true if this config was embedded in an AppManifest.
 	manifest       *AppManifest // Will contain a pointer to the container if this AppConfig is contained in an AppManifest
-	ProviderInfo   string
+	ProviderInfo   string       `yaml:"providerInfo,omitempty"`
 }
 
 func (p *AppConfig) GetValueSetCollection() values.ValueSetCollection {

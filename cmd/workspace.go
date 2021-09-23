@@ -275,13 +275,13 @@ var wsTidyPathsCmd = addCommand(workspaceCmd, &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		b := MustGetBosunNoEnvironment()
-		b.TidyWorkspace()
 
 		if viper.GetBool(ArgGlobalDryRun) {
 			b.NewContext().Log().Warn("Detected dry run flag, no changes will be saved.")
-			return nil
 		}
 
-		return b.Save()
+		err := b.TidyWorkspace(viper.GetBool(ArgGlobalDryRun))
+
+		return err
 	},
 })

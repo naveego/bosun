@@ -23,7 +23,6 @@ import (
 	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/naveego/bosun/pkg/values"
 	"github.com/naveego/bosun/pkg/vcs"
-	"github.com/naveego/bosun/pkg/workspace"
 	"github.com/naveego/bosun/pkg/yaml"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -79,7 +78,7 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 	// 	b.apps[dep.Name] = NewAppFromDependency(dep)
 	// }
 	//
-	// for _, a := range b.file.DeployedApps {
+	// for _, a := range b.file.AppDeploymentProgress {
 	// 	if a != nil {
 	// 		_, err := b.addApp(a)
 	// 		if err != nil {
@@ -100,7 +99,7 @@ func New(params cli.Parameters, ws *Workspace) (*Bosun, error) {
 
 func (b *Bosun) initializeAppProviders() error {
 
-	b.workspaceAppProvider = NewAppConfigAppProvider(b.ws)
+	b.workspaceAppProvider = NewAppConfigAppProvider(b.ws, b.log)
 
 	b.appProviders = []AppProvider{
 		b.workspaceAppProvider,
@@ -188,7 +187,7 @@ func (b *Bosun) GetPlatformApps() AppMap {
 
 func (b *Bosun) GetAppRefs() apps.AppRefList {
 
-
+	return apps.AppRefList{}
 
 }
 
@@ -204,10 +203,6 @@ func (b *Bosun) removeNonPlatformAppsFromMap(in map[string]*App) map[string]*App
 		}
 	}
 	return out
-}
-
-func (b *Bosun) GetAppDesiredStates() map[string]workspace.AppState {
-	return b.ws.AppStates[b.env.Name]
 }
 
 func (b *Bosun) GetAppDependencyMap() map[string][]string {
@@ -255,7 +250,7 @@ func (b *Bosun) getAppDependencies(name string, visited map[string]bool) ([]stri
 
 func (b *Bosun) GetVaultClient() (*vaultapi.Client, error) {
 
-	vaultClient, err := vault.NewVaultLowlevelClient("", "")
+	vaultClient, err := vault.NewVaultLowlevelClient("", "", b.log)
 
 	return vaultClient, err
 }
@@ -497,19 +492,6 @@ func (b *Bosun) GetCurrentBrn() (stack brns.StackBrn, err error) {
 	}
 
 	return brns.NewStack(env.Name, clusterName, stackName), nil
-}
-
-func (b *Bosun) SetDesiredState(app string, state workspace.AppState) {
-	env := b.env
-	if b.ws.AppStates == nil {
-		b.ws.AppStates = workspace.AppStatesByEnvironment{}
-	}
-	m, ok := b.ws.AppStates[env.Name]
-	if !ok {
-		m = workspace.AppStateMap{}
-		b.ws.AppStates[env.Name] = m
-	}
-	m[app] = state
 }
 
 func (b *Bosun) Save() error {
@@ -900,7 +882,7 @@ func (b *Bosun) AddGitRoot(s string) {
 }
 
 // TidyWorkspace updates the ClonePaths in the workspace based on the apps found in the imported files.
-func (b *Bosun) TidyWorkspace() {
+func (b *Bosun) TidyWorkspace(dryRun bool) error {
 	ctx := b.NewContext()
 	log := ctx.Log()
 	var importMap = map[string]struct{}{}
@@ -1025,6 +1007,62 @@ func (b *Bosun) TidyWorkspace() {
 	}
 
 	b.ws.Imports = imports
+
+	p, err := b.GetCurrentPlatform()
+
+	if err != nil {
+		return err
+	}
+
+	release, err := p.GetStableRelease()
+	if err != nil {
+		return err
+	}
+
+	appManifests, err := release.GetAppManifests()
+	if err != nil {
+		return err
+	}
+
+	for appName, appManifest := range appManifests {
+
+		if appManifest.PinnedReleaseVersion == nil {
+
+			_, versionString, parseErr := p.Branching.GetReleaseNameAndVersion(git.BranchName(appManifest.Branch))
+			if parseErr != nil {
+				log.Warnf("Could not parse release version from branch %s for app %s", appManifest.Branch, appName)
+				continue
+			}
+
+			version, parseErr := semver.Parse(versionString)
+			if parseErr != nil {
+				log.Warnf("Could not parse release version from branch %s for app %s", appManifest.Branch, appName)
+				continue
+			}
+
+			log.Infof("Setting pinned release on %s to %s", appName, version)
+
+			appManifest.PinToReleaseVersion(version)
+			release.MarkDirty()
+		} else {
+			log.Infof("App %s pinned to release %s", appName, appManifest.PinnedReleaseVersion)
+
+		}
+	}
+
+	if dryRun {
+		return nil
+	}
+
+	err = p.Save(b.NewContext())
+	if err != nil {
+		return err
+	}
+
+	err = b.Save()
+
+	return err
+
 }
 
 func (b *Bosun) configureCurrentEnv() error {
@@ -1410,7 +1448,7 @@ func (b *Bosun) normalizeStackBrn(hint string) (brns.StackBrn, []string, error) 
 			c.Name == approxBrn.EnvironmentOrCluster ||
 			c.Name == approxBrn.Cluster ||
 			c.EnvironmentAlias == approxBrn.Cluster ||
-			stringsn.Contains(approxBrn.Cluster, c.Aliases) {
+			stringsn.Contains(c.Aliases, approxBrn.Cluster) {
 			candidateMatches = append(candidateMatches, c)
 		}
 	}

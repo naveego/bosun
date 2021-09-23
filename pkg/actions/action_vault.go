@@ -1,7 +1,9 @@
 package actions
 
 import (
+	"fmt"
 	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/naveego/bosun/pkg/util"
 	"github.com/naveego/bosun/pkg/vault"
 	"github.com/naveego/bosun/pkg/yaml"
 	"io/ioutil"
@@ -49,20 +51,15 @@ func (a *VaultAction) Execute(ctx ActionContext) error {
 		return nil
 	}
 
-	err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, vaultClient)
-	if err != nil {
-		ctx.Log().Info("Vault action failed... trying again with local vault client")
-
-		localClient, err := vaultapi.NewClient(&vaultapi.Config{
-			Address: "http://127.0.0.1:8200",
-		})
-		err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, localClient)
-		if err != nil {
-			return err
+	if a.CacheKey == "" {
+		for _,k := range util.SortedKeys(ctx.Log().Data) {
+			a.CacheKey += fmt.Sprintf("%s:%s/", k, ctx.Log().Data[k])
 		}
 	}
 
-	return nil
+	err = vaultLayout.Apply(a.CacheKey, ctx.GetParameters().Force, vaultClient, ctx.Log())
+
+	return err
 }
 
 func (a *VaultAction) MakeSelfContained(ctx ActionContext) error {

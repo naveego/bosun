@@ -38,7 +38,7 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		if len(args) > 0  {
+		if len(args) > 0 {
 			switch args[0] {
 			case "release", "current", "stable", "unstable":
 				return releaseDeployPlan(args[0])
@@ -104,8 +104,8 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 			return err
 		}
 
-		if update && previousPlan != nil {
-			plan.EnvironmentDeployProgress = previousPlan.EnvironmentDeployProgress
+		if previousPlan != nil {
+			plan.AppDeploymentProgress = previousPlan.AppDeploymentProgress
 		}
 
 		err = plan.Save()
@@ -137,7 +137,7 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployPlanPath, "", "Dir where plan should be stored.")
 	cmd.Flags().String(argDeployPlanProviderPriority, "", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
-	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "DeployedApps to include.")
+	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "AppDeploymentProgress to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps which target the current environment.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, false, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
@@ -164,7 +164,7 @@ var deployReleasePlanCmd = addCommand(deployPlanCmd, &cobra.Command{
 	},
 })
 
-func getReleaseAndPlanFolderName(b *bosun.Bosun, slotDescription string) (*bosun.ReleaseManifest, string, error){
+func getReleaseAndPlanFolderName(b *bosun.Bosun, slotDescription string) (*bosun.ReleaseManifest, string, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {
@@ -207,7 +207,6 @@ func releaseDeployPlan(slotDescription string) error {
 		return err
 	}
 
-
 	r, folder, err := getReleaseAndPlanFolderName(b, slotDescription)
 	if err != nil {
 		return err
@@ -229,10 +228,13 @@ func releaseDeployPlan(slotDescription string) error {
 		BasedOnHash:           basedOnHash,
 	}
 
-	for name, included := range r.UpgradedApps {
-		if included {
-			req.Apps = append(req.Apps, name)
-		}
+	pinnedApps, err := r.GetAppManifestsPinnedToRelease()
+	if err != nil {
+		return err
+	}
+
+	for name := range pinnedApps {
+		req.Apps = append(req.Apps, name)
 	}
 
 	planCreator := bosun.NewDeploymentPlanCreator(b, p)
@@ -244,7 +246,7 @@ func releaseDeployPlan(slotDescription string) error {
 	}
 
 	if previousPlan != nil {
-		plan.EnvironmentDeployProgress = previousPlan.EnvironmentDeployProgress
+		plan.AppDeploymentProgress = previousPlan.AppDeploymentProgress
 	}
 
 	err = plan.Save()

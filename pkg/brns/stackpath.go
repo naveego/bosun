@@ -12,7 +12,7 @@ type EnvironmentBrn struct {
 
 type ClusterBrn struct {
 	EnvironmentBrn
-	ClusterName     string
+	ClusterName string
 }
 
 func (s EnvironmentBrn) String() string {
@@ -27,6 +27,22 @@ func (s ClusterBrn) String() string {
 type StackBrn struct {
 	ClusterBrn
 	StackName string
+}
+
+func (s *StackBrn) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var u string
+	if err := unmarshal(&u); err != nil {
+		return err
+	}
+
+	unmarshaled, err := ParseStack(u)
+
+	s = &unmarshaled
+	return err
+}
+
+func (s StackBrn) MarshalYAML() (interface{}, error) {
+	return s.String(), nil
 }
 
 func (s StackBrn) IsEmpty() bool {
@@ -57,11 +73,11 @@ func NewStack(env string, cluster string, stack string) StackBrn {
 }
 
 type BrnParts struct {
-	Raw string
-	Environment string
+	Raw                  string
+	Environment          string
 	EnvironmentOrCluster string
-	Cluster string
-	Stack string
+	Cluster              string
+	Stack                string
 }
 
 func TryParseStack(raw string) BrnParts {
@@ -70,7 +86,7 @@ func TryParseStack(raw string) BrnParts {
 	}
 	var clusterStack string
 
-	if strings.Contains(raw, ":"){
+	if strings.Contains(raw, ":") {
 		parts := strings.Split(raw, ":")
 		brnParts.Environment = parts[0]
 		clusterStack = parts[1]
@@ -94,7 +110,6 @@ func TryParseStack(raw string) BrnParts {
 func ParseStack(raw string) (StackBrn, error) {
 
 	parts := TryParseStack(raw)
-
 
 	if parts.Environment == "" && parts.Cluster == "" && parts.Stack == "" {
 		return StackBrn{}, errors.Errorf("invalid stack brn %q, should be env:cluster/stack", raw)

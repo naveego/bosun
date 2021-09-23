@@ -136,7 +136,7 @@ func (c BosunContext) WithAppDeploy(a *AppDeploy) BosunContext {
 		return c
 	}
 	c.appRelease = a
-	c.log = c.Log().WithField("appDeploy", a.AppManifest.Name)
+	c.log = c.Log().WithField("app", a.AppManifest.Name)
 	c.LogLine(1, "[Context] Changed AppDeploy.")
 	return c.WithDir(a.FromPath)
 }
@@ -267,15 +267,15 @@ func (c BosunContext) GetTemplateHelper() (*templating.TemplateHelper, error) {
 
 func (c BosunContext) WithEnv(env *environment.Environment) interface{} {
 	c._env = env
-	c.log = c.Log().WithField("env", env.Name)
-	if env.HasCluster() {
-		cluster := env.Cluster()
-		c.log = c.log.WithField("cluster", cluster.Name)
-		stack := env.Stack()
-		if stack.Name != kube.DefaultStackName {
-			c.log = c.log.WithField("stack", stack.Name)
-		}
-	}
+	// c.log = c.Log().WithField("env", env.Name)
+	// if env.HasCluster() {
+	// 	cluster := env.Cluster()
+	// 	// c.log = c.log.WithField("cluster", cluster.Name)
+	// 	stack := env.Stack()
+	// 	if stack.Name != kube.DefaultStackName {
+	// 		c.log = c.log.WithField("stack", stack.Name)
+	// 	}
+	// }
 	return c
 }
 

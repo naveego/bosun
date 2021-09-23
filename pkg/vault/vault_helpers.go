@@ -137,11 +137,11 @@ func mergeMaps(left, right map[string]map[string]interface{}) map[string]map[str
 	return m
 }
 
-// ApplyToValues applies the vault layout to vault, first checking if
+// Apply applies the vault layout to vault, first checking if
 // it has changed since the last time it was applied based on the
 // hashKey. If hashKey is empty, or force is true, the change detection
 // step is skipped.
-func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error {
+func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client, logBase *logrus.Entry) error {
 
 	hadErrors := false
 
@@ -161,14 +161,14 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 		if err == nil && previousHashSecret != nil && previousHashSecret.Data != nil {
 			previousHash := previousHashSecret.Data["hash"].(string)
 			if previousHash == hash {
-				core.Log.Warnf("Hash of vault layout %q has not changed since last applied. Use the --force flag to force it to be applied again.", hashKey)
+				logBase.Infof("Hash of vault layout %q has not changed since last applied. Use the --force flag to force it to be applied again.", hashKey)
 				return nil
 			}
 		}
 	}
 
 	for path, data := range v.Auth {
-		log := core.Log.WithField("@type", "Auth").WithField("path", path)
+		log := logBase.WithField("@type", "Auth").WithField("path", path)
 		mounts, err := client.Sys().ListAuth()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -189,7 +189,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Mounts {
-		log := core.Log.WithField("@type", "Mount").WithField("Dir", path)
+		log := logBase.WithField("@type", "Mount").WithField("dir", path)
 		mounts, err := client.Sys().ListMounts()
 		if err != nil {
 			return errors.Errorf("could not list items: %s", err)
@@ -210,7 +210,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 	}
 
 	for path, data := range v.Resources {
-		log := core.Log.WithField("@type", "Resource").WithField("Dir", path)
+		log := logBase.WithField("@type", "Resource").WithField("dir", path)
 
 		u, err := url.Parse(path)
 		if err != nil {
@@ -250,11 +250,11 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 			recordError(log, data, err)
 			continue
 		}
-		log.Info("Resource updated.")
+		log.Infof("Updated resource %s", path)
 	}
 
 	for path, data := range v.Policies {
-		log := core.Log.WithField("@type", "Policy").WithField("Dir", path)
+		log := logBase.WithField("@type", "Policy").WithField("dir", path)
 		var policy string
 		switch d := data.(type) {
 		case string:
@@ -286,7 +286,7 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 			"hash": hash,
 		})
 		if err != nil {
-			core.Log.WithError(err).Warn("Could not store change detection hash in Vault.")
+			logBase.WithError(err).Warn("Could not store change detection hash in Vault.")
 		}
 	}
 
@@ -294,31 +294,31 @@ func (v VaultLayout) Apply(hashKey string, force bool, client *api.Client) error
 }
 
 func remap(m interface{}) map[string]interface{} {
-	x := ensureJsonMarshallable(m)
+	x := ensureJsonMarshallable(m, core.Log)
 	return x.(map[string]interface{})
 }
 
-func ensureJsonMarshallable(m interface{}) interface{} {
+func ensureJsonMarshallable(m interface{}, logBase *logrus.Entry) interface{} {
 
 	switch v := m.(type) {
 	case map[interface{}]interface{}:
 		mapsi := map[string]interface{}{}
 		for ki, vi := range v {
 			if ks, ok := ki.(string); ok {
-				mapsi[ks] = ensureJsonMarshallable(vi)
+				mapsi[ks] = ensureJsonMarshallable(vi, logBase)
 			} else {
-				core.Log.WithField("ki", ki).WithField("v", v).Panicf("could not convert child Key %v (of type %T) to string", ki, ki)
+				logBase.WithField("ki", ki).WithField("v", v).Panicf("could not convert child Key %v (of type %T) to string", ki, ki)
 			}
 		}
 		return mapsi
 	case map[string]interface{}:
 		for ki, vi := range v {
-			v[ki] = ensureJsonMarshallable(vi)
+			v[ki] = ensureJsonMarshallable(vi, logBase)
 		}
 		return v
 	case []interface{}:
 		for i := range v {
-			v[i] = ensureJsonMarshallable(v[i])
+			v[i] = ensureJsonMarshallable(v[i], logBase)
 		}
 		return v
 	default:
@@ -326,9 +326,9 @@ func ensureJsonMarshallable(m interface{}) interface{} {
 	}
 }
 
-func NewVaultLowlevelClient(token, vaultAddr string) (*api.Client, error) {
+func NewVaultLowlevelClient(token, vaultAddr string, logBase *logrus.Entry) (*api.Client, error) {
 
-	log := core.Log.WithField("method", "NewVaultLowLevelClient")
+	log := logBase.WithField("method", "NewVaultLowLevelClient")
 
 	vaultConfig := api.DefaultConfig()
 	vaultConfig.Address = vaultAddr

@@ -393,7 +393,7 @@ var stackRedeployCmd = addCommand(stackCmd, &cobra.Command{
 
 			appLog := ctx.Log().WithField("app", appName)
 
-			if len(args) > 0 && !stringsn.Contains(appName, args) {
+			if len(args) > 0 && !stringsn.Contains(args, appName) {
 				appLog.Info("Skipping deploy because it wasn't requested")
 				continue
 			}

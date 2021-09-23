@@ -144,7 +144,10 @@ func (a *AppAction) Execute(ctx ActionContext) error {
 			}
 		}
 
-		ctx.Log().WithField("description", a.Description).Infof("Executing action...")
+		ctx.Log().Infof("Executing action %s...", a.Name)
+		if a.Description != "" {
+			ctx.Log().WithField("description", a.Description).Info(a.Description)
+		}
 
 		attemptCtx := ctx.WithTimeout(timeout).(ActionContext)
 
@@ -169,7 +172,7 @@ func (a *AppAction) execute(ctx ActionContext) error {
 	}
 
 	for _, action := range a.GetActions() {
-		ctx = ctx.WithLogField("action_type", fmt.Sprintf("%T", action)).(ActionContext)
+		ctx = ctx.WithLogField("type", fmt.Sprintf("%T", action)).(ActionContext)
 		ctx.Log().Debugf("Executing %T action...", action)
 		err := action.Execute(ctx)
 		if err != nil {

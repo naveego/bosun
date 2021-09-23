@@ -34,15 +34,17 @@ type AppConfigAppProvider struct {
 	apps       map[string]*App
 	ws         *Workspace
 	mu         *sync.Mutex
+	log        *logrus.Entry
 }
 
-func NewAppConfigAppProvider(ws *Workspace) AppConfigAppProvider {
+func NewAppConfigAppProvider(ws *Workspace, log *logrus.Entry) AppConfigAppProvider {
 
 	p := AppConfigAppProvider{
 		ws:         ws,
 		appConfigs: map[string]*AppConfig{},
 		apps:       map[string]*App{},
 		mu:         new(sync.Mutex),
+		log:        log,
 	}
 
 	for _, appConfig := range ws.MergedBosunFile.Apps {
@@ -63,13 +65,25 @@ func (a AppConfigAppProvider) ProvideApp(req AppProviderRequest) (*App, error) {
 	a.mu.Lock()
 	app, ok = a.apps[req.Name]
 	a.mu.Unlock()
-	if ok {
+	if ok && !req.ForceReload {
 		return app, nil
 	}
 	appConfig, ok = a.appConfigs[req.Name]
 	if !ok {
 		return nil, ErrAppNotFound(req.Name)
 	}
+
+	if req.ForceReload {
+		provider := NewFilePathAppProvider(a.log)
+
+		reloadedApp, reloadErr := provider.ProvideApp(AppProviderRequest{Name: req.Name, Path: appConfig.FromPath})
+		if reloadErr != nil {
+			return nil, errors.Wrap(reloadErr, "failed to reload app from path")
+		}
+		appConfig = reloadedApp.AppConfig
+		a.appConfigs[req.Name] = reloadedApp.AppConfig
+	}
+
 	app = &App{
 		Provider:  a,
 		AppConfig: appConfig,

@@ -262,7 +262,7 @@ func (q *QAStory) deployStoryApps(appNameFilter []string) error {
 
 	for _, app := range q.Apps {
 
-		if len(appNameFilter) > 0 && !stringsn.Contains(app.App.Name, appNameFilter) {
+		if len(appNameFilter) > 0 && !stringsn.Contains(appNameFilter, app.App.Name) {
 			continue
 		}
 

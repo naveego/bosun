@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/naveego/bosun/pkg"
+	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/templating"
 	"github.com/naveego/bosun/pkg/vault"
 	"github.com/spf13/cobra"
@@ -39,7 +40,7 @@ var graylogConfigureCmd = &cobra.Command{
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		vaultClient, err := vault.NewVaultLowlevelClient("", "")
+		vaultClient, err := vault.NewVaultLowlevelClient("", "", core.Log)
 		if err != nil {
 			return err
 		}

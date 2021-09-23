@@ -25,10 +25,11 @@ import (
 )
 
 type AppProviderRequest struct {
-	Name string `json:"name,omitempty"`
+	Name             string   `json:"name,omitempty"`
 	ProviderPriority []string `json:"providerPriority,omitempty"`
-	Path string `json:"path,omitempty"`
-	Branch string `json:"branch,omitempty"`
+	Path             string   `json:"path,omitempty"`
+	Branch           string   `json:"branch,omitempty"`
+	ForceReload      bool     `json:"forceReload"`
 }
 
 func (r AppProviderRequest) String() string {
@@ -293,7 +294,7 @@ func (a *App) GetTaggedImageNames(versionAndRelease ...string) []string {
 
 type BuildImageRequest struct {
 	Pattern string
-	Ctx BosunContext
+	Ctx     BosunContext
 }
 
 func (a *App) BuildImages(req BuildImageRequest) error {
@@ -309,7 +310,6 @@ func (a *App) BuildImages(req BuildImageRequest) error {
 			return err
 		}
 	}
-
 
 	var report []string
 	for _, image := range a.GetImages() {
@@ -331,7 +331,7 @@ func (a *App) BuildImages(req BuildImageRequest) error {
 
 		fullName := image.GetFullName()
 
-		if re != nil && !re.MatchString(fullName){
+		if re != nil && !re.MatchString(fullName) {
 			ctx.Log().Infof("Skipping image %s because it did not match pattern %q", fullName, req.Pattern)
 			continue
 		}

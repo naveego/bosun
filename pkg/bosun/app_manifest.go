@@ -19,7 +19,6 @@ type AppMetadata struct {
 	Name                 string          `yaml:"name" json:"name"`
 	Repo                 string          `yaml:"repo" json:"repo"`
 	Version              semver.Version  `yaml:"version" json:"version"`
-	PreviousVersion      *semver.Version `yaml:"previousVersion,omitempty" json:"previousVersion,omitempty"`
 	PinnedReleaseVersion *semver.Version `yaml:"pinnedReleaseVersion,omitempty"`
 	Hashes               AppHashes       `yaml:"hashes"`
 	Branch               string          `yaml:"branch" json:"branch"`
@@ -33,6 +32,10 @@ func (a *AppMetadata) RepoRef() issues.RepoRef {
 
 func (a *AppMetadata) PinToRelease(release *ReleaseMetadata) {
 	a.PinnedReleaseVersion = &release.Version
+}
+
+func (a *AppMetadata) PinToReleaseVersion(version semver.Version) {
+	a.PinnedReleaseVersion = &version
 }
 
 //

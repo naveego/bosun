@@ -3,6 +3,7 @@ package bosun
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/naveego/bosun/pkg/apps"
 	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/command"
 	"github.com/naveego/bosun/pkg/core"
@@ -31,7 +32,6 @@ type Workspace struct {
 	ScratchDir             string                           `yaml:"scratchDir" json:"scratchDir"`
 	WorkspaceCommands      map[string]*command.CommandValue `yaml:"workspaceCommands"`
 	HostIPInMinikube       string                           `yaml:"hostIPInMinikube" json:"hostIpInMinikube"`
-	AppStates              workspace.AppStatesByEnvironment `yaml:"appStates" json:"appStates"`
 	ClonePaths             map[string]string                `yaml:"clonePaths,omitempty" json:"clonePaths,omitempty"`
 	MergedBosunFile        *File                            `yaml:"-" json:"merged"`
 	ImportedBosunFiles     map[string]*File                 `yaml:"-" json:"imported"`
@@ -40,6 +40,7 @@ type Workspace struct {
 	GithubCloneProtocol    string                           `yaml:"githubCloneProtocol"`
 	StoryHandlers          StoryHandlers                    `yaml:"storyHandlers"`
 	ClusterKubeconfigPaths map[string]string                `yaml:"clusterKubeconfigPaths"`
+	AppHints               []apps.AppHint                   `yaml:"appHints"`
 }
 
 type StoryHandlers map[string]values.Values
@@ -156,7 +157,6 @@ func LoadWorkspaceNoImports(path string) (*Workspace, error) {
 
 	c := &Workspace{
 		Path:               path,
-		AppStates:          workspace.AppStatesByEnvironment{},
 		ImportedBosunFiles: map[string]*File{},
 		MergedBosunFile:    new(File),
 	}
