@@ -28,7 +28,7 @@ func init() {
 
 }
 
-var _ = addCommand(deployCmd, &cobra.Command{
+var deployExecuteCmd = addCommand(deployCmd, &cobra.Command{
 	Use:          "execute {path | {release|stable|unstable}} [apps...]",
 	Args:         cobra.MinimumNArgs(1),
 	Short:        "Executes a deployment against the current environment.",
@@ -92,10 +92,12 @@ var _ = addCommand(deployCmd, &cobra.Command{
 
 		return err
 	},
-}, func(cmd *cobra.Command) {
+},applyDeployExecuteCmdFlags)
+
+func applyDeployExecuteCmdFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation")
 	cmd.Flags().Bool(argDeployExecuteValuesOnly, false, "Display the values which would be used for the deploy, but do not actually execute.")
-})
+}
 
 const (
 	argDeployExecuteSkipValidate = "skip-validation"

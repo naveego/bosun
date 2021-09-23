@@ -30,7 +30,7 @@ func init() {
 
 }
 
-var _ = addCommand(deployCmd, &cobra.Command{
+var deployValidateCmd = addCommand(deployCmd, &cobra.Command{
 	Use:          "validate {path | release}",
 	Args:         cobra.ExactArgs(1),
 	Short:        "Validates a deployment plan.",

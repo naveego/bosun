@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/naveego/bosun/pkg/bosun"
+	"github.com/naveego/bosun/pkg/cli"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -10,37 +11,45 @@ import (
 
 const (
 	argReleaseCreateBase = "base"
-	argReleaseCreateVersion = "version"
+	argReleaseBump       = "bump"
 )
 
 // releaseCmd represents the release command
 var releaseCreateCmd = addCommand(releaseCmd, &cobra.Command{
-	Use:     "create {release version}",
+	Use:     "create",
 	Short:   "Create a release.",
-	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		b, p := getReleaseCmdDeps()
 
-		version, err := semver.Parse(args[0])
-
-		if err != nil {
-			return err
-		}
 
 		req := bosun.ReleaseCreateSettings{
-			Version: version,
 		}
 
+		var err error
 		var baseVersion semver.Version
 		baseVersionFlag := viper.GetString(argReleaseCreateBase)
 		if baseVersionFlag != "" {
-
 			baseVersion, err = semver.Parse(baseVersionFlag)
 			if err != nil {
 				return err
 			}
 
 			req.Base = &baseVersion
+		} else {
+			currentRelease, releaseErr := p.GetStableRelease()
+			if releaseErr != nil {
+				return releaseErr
+			}
+			req.Base = &currentRelease.Version
+		}
+
+		bump := viper.GetString(argReleaseBump)
+
+		if bump == "" {
+			_, v := cli.RequestBump("What bump should be applied to the release version?", *req.Base)
+			req.Version = *v
+		} else {
+			req.Version, err = req.Base.Bump(bump)
 		}
 
 		r, err := p.CreateRelease(b.NewContext(), req)
@@ -60,5 +69,5 @@ var releaseCreateCmd = addCommand(releaseCmd, &cobra.Command{
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().String(argReleaseCreateBase, "", "The release to base the release on. Defaults to the current release.")
-	cmd.Flags().String(argReleaseCreateVersion, "", "The version for the new release.")
+	cmd.Flags().String(argReleaseBump, "", "The version for the new release.")
 })

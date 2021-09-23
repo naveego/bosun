@@ -134,7 +134,9 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 
 		return err
 	},
-}, func(cmd *cobra.Command) {
+}, applyDeployPlanFlags)
+
+func applyDeployPlanFlags(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployPlanPath, "", "Dir where plan should be stored.")
 	cmd.Flags().String(argDeployPlanProviderPriority, "", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
 	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "AppDeploymentProgress to include.")
@@ -142,7 +144,7 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, false, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
 	cmd.Flags().Bool(argDeployPlanUpdate, false, "Update an existing plan rather than creating a new one.")
-})
+}
 
 const (
 	argDeployPlanPath             = "path"

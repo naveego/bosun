@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/manifoldco/promptui"
+	"github.com/naveego/bosun/pkg/semver"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
@@ -106,6 +107,65 @@ func RequestChoice(message string, options ...string) string {
 	}
 	return response
 
+}
+
+func RequestBump(message string, currentVersion semver.Version) (semver.Bump, *semver.Version) {
+
+	if !IsInteractive() {
+		panic(fmt.Sprintf("Requested bump from user but no terminal is attached: %q, %v", message))
+	}
+
+	var bump semver.Bump
+	var version *semver.Version
+		var tempVersion semver.Version
+	var response string
+
+	message = fmt.Sprintf("%s (current version is %s)", message, currentVersion)
+
+	prompt := &survey.Select{
+		Message: message,
+		Options: []string {
+			string(semver.BumpMajor),
+			string(semver.BumpMinor),
+			string(semver.BumpPatch),
+			string(semver.BumpNone),
+			"custom",
+		},
+	}
+	err := survey.AskOne(prompt, &response)
+
+	if err != nil {
+		fmt.Printf("User quit %s\n", err)
+		os.Exit(0)
+	}
+	switch response {
+	case "custom":
+		versionPrompt := &survey.Input{
+		Message: "Enter the version number you want",
+		}
+		err = survey.AskOne(versionPrompt, &response)
+		if err != nil {
+			fmt.Printf("User quit %s\n", err)
+			os.Exit(0)
+		}
+		tempVersion, err = semver.Parse(response)
+		if err != nil {
+			fmt.Printf("Invalid version %s: %s\n", response, err)
+			os.Exit(1)
+		}
+		version = &tempVersion
+		bump = semver.Unknown
+	default:
+		tempVersion, err = currentVersion.Bump(response)
+		if err != nil {
+				fmt.Printf("Invalid bump %s: %s\n", response, err)
+				os.Exit(1)
+		}
+		version = &tempVersion
+		bump = semver.Bump(response)
+	}
+
+	return bump, version
 }
 
 func RequestMultiChoiceIfEmpty(defaultValue []string, message string, options []string) []string {

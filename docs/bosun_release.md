@@ -4,7 +4,36 @@ Contains sub-commands for releases.
 
 ### Synopsis
 
-Contains sub-commands for releases.
+The release command is the entry-point for interacting with releases, which are
+snapshots of apps that will be deployed together as an upgrade (or initial install) to a cluster.
+There are two release "slots", stable and unstable. These are both stored (by default) in the /releases
+folder in the folder where the platform file is located. The unstable slot is intended for sharing the latest
+development versions of apps, to facilitate deployment of those apps without needing to clone their repos. 
+The stable slot contains the versions of apps which are (or will shortly be) deployed to production. The
+files under the stable slot should never be modified except on a release branch of the platform repo.
+
+The lifecycle of a release is as follows:
+- `bosun release create` will create a new release. You be asked which release should be used as a base, and what 
+bump to apply to the release. Use a patch bump for hotfixes and a minor bump for releases, unless it`s a major change.
+When you run this command bosun will create and push a new branch for that release. The newly created release will
+contain the same app versions as the release it was based on.
+- `bosun release add {app}` will create a release branch for the given app and add it to the release. You can specify
+which branch to add the app from and what version bump to apply.
+- `bosun release update {app}` will update the release by copying the manifest from the release branch for that app.
+This is used to pull changes made during RC testing into the release.
+- `bosun release deploy plan` creates a deploy plan for the current release. This copies the app manifests which have 
+been specifically added to the release to a deployment plan location. You can include additional apps that aren`t owned
+by the release in the deployment plan by using flags. You should always run this command after you run 
+`bosun release update`; bosun will remind you if you forget.
+- `bosun release deploy validate` will check that the correct images exist for the release
+- `bosun release deploy execute [apps...]` will deploy the apps listed to the current cluster, or all apps if you don`t
+list any
+- `bosun release deploy show` will show the deploy progress to the current cluster
+- `bosun release commit plan` should be used after the release is fully deployed. It will prepare a plan for merging
+all the release branches back to develop and master, as well as tagging them.
+- `bosun release commit execute` will execute the commit plan. If you need to abort the commit plan to do a complicated
+merge resolution or something you can run this command again to pick up where you left off.
+
 
 ### Options
 
@@ -33,7 +62,7 @@ Contains sub-commands for releases.
 * [bosun release add](bosun_release_add.md)	 - Adds an app to the current release.
 * [bosun release commit](bosun_release_commit.md)	 - Commands for merging a release branch back to develop and master.
 * [bosun release create](bosun_release_create.md)	 - Create a release.
-* [bosun release deploy](bosun_release_deploy.md)	 - Deploys the release.
+* [bosun release deploy](bosun_release_deploy.md)	 - Deployment commands for releases.
 * [bosun release dot](bosun_release_dot.md)	 - Prints a dot diagram of the release.
 * [bosun release list](bosun_release_list.md)	 - Lists known releases.
 * [bosun release show](bosun_release_show.md)	 - Lists the apps in the current release.
