@@ -5,7 +5,7 @@ apps:
   - name: bosun
     branching: null
     repo: naveego/bosun
-    version: 3.2.0
+    version: 3.3.0
     labels:
       category: tool
       repo-kind: own
@@ -68,7 +68,7 @@ apps:
           rebuildDb: false
     files: []
     releaseHistory: []
-    providerinfo: workspace
+    providerInfo: workspace
 repos:
   - name: bosun
     branching:
