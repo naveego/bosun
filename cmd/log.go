@@ -17,11 +17,14 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/rs/xid"
 	"github.com/spf13/cobra"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,14 +37,14 @@ var logCmd = addCommand(rootCmd, &cobra.Command{
 })
 
 var logParseXids = addCommand(logCmd, &cobra.Command{
-	Use:   "humanize [log]",
-	Aliases:[]string{},
-	Short: "Takes text from or reads from stdin with various readability improvements.",
+	Use:     "humanize [log]",
+	Aliases: []string{},
+	Short:   "Takes text from or reads from stdin with various readability improvements.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		xidRE := regexp.MustCompile("[a-v0-9]{20}")
 		epochRE := regexp.MustCompile("[0-9]{10,13}")
-		colorRE := regexp.MustCompile("\\033" +`\[[0-9;]+m`)
+		colorRE := regexp.MustCompile("\\033" + `\[[0-9;]+m`)
 		var scanner *bufio.Scanner
 		if len(args) > 0 {
 			content := strings.Join(args, " ")
@@ -50,7 +53,6 @@ var logParseXids = addCommand(logCmd, &cobra.Command{
 		} else {
 			scanner = bufio.NewScanner(os.Stdin)
 		}
-
 
 		for scanner.Scan() {
 			text := scanner.Text()
@@ -71,17 +73,124 @@ var logParseXids = addCommand(logCmd, &cobra.Command{
 				if err != nil {
 					return s
 				}
-				switch len(s){
+				switch len(s) {
 				case 10:
 				case 13:
 					epoch = epoch / 1000
 				}
 
-				d := time.Unix( int64(epoch), 0)
+				d := time.Unix(int64(epoch), 0)
 				return d.Local().Format(time.RFC3339)
 			})
 
 			fmt.Println(parsed)
+		}
+
+		return nil
+	},
+})
+
+var logParseJson = addCommand(logCmd, &cobra.Command{
+	Use:     "unjson [log]",
+	Aliases: []string{},
+	Short:   "Reformats JSON logs into something easier to read",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		var decoder *json.Decoder
+		if len(args) > 0 {
+			content := strings.Join(args, " ")
+			b := bytes.NewBufferString(content)
+			decoder = json.NewDecoder(b)
+		} else {
+			decoder = json.NewDecoder(os.Stdin)
+		}
+
+		var data map[string]interface{}
+		var err error
+		for ; err == nil; err = decoder.Decode(&data) {
+
+			if len(data) == 0 {
+				continue
+			}
+
+			timestamp := "unknown"
+			category := "unknown"
+			levelString := "unknown"
+			message := "unknown"
+			var level float64
+			var ok bool
+
+			singleLineKeys := make([]string, 0, len(data))
+			multilineKeys := make([]string, 0, len(data))
+			for k, v := range data {
+				if k == "timestamp" {
+					timestamp = v.(string)
+				} else if k == "level" {
+					if level, ok = v.(float64); !ok {
+						levelString = "UNKN"
+					} else {
+						switch level {
+						case 3:
+							levelString = "FAIL"
+						case 4:
+							levelString = "WARN"
+						case 5:
+							levelString = "INFO"
+						case 6:
+							levelString = "DBUG"
+						default:
+							levelString = fmt.Sprintf("%30f", level)
+						}
+					}
+				} else if k == "category" {
+					category = v.(string)
+				} else if k == "message" {
+					message = v.(string)
+				} else {
+					var s string
+					if s, ok = v.(string); ok {
+						if strings.Count(s, "\n") > 0 {
+							multilineKeys = append(multilineKeys, k)
+						} else {
+							singleLineKeys = append(singleLineKeys, k)
+						}
+					} else {
+						singleLineKeys = append(singleLineKeys, k)
+					}
+				}
+			}
+
+			if true {
+				switch level {
+				case 3:
+
+					levelString = color.RedString(levelString)
+				case 4:
+					levelString = color.YellowString(levelString)
+				case 5:
+					levelString = color.BlueString(levelString)
+				case 6:
+					levelString = color.GreenString(levelString)
+				}
+			}
+
+			sort.Strings(singleLineKeys)
+			sort.Strings(multilineKeys)
+
+			_, _ = fmt.Printf("%s %s %s : ", levelString, timestamp, category)
+
+			message = " " + strings.ReplaceAll(message, "\\n", "\n ")
+			_, _ = fmt.Fprintln(os.Stdout, message)
+
+			for _, k := range singleLineKeys {
+				_, _ = fmt.Fprintf(os.Stdout, "%s=%v; ", k, data[k])
+			}
+			for _, k := range multilineKeys {
+				s := strings.ReplaceAll(data[k].(string), "\\n", "\n ")
+				_, _ = fmt.Fprintf(os.Stdout, "\n%s=%s; ", k, s)
+			}
+			_, _ = fmt.Fprintln(os.Stdout)
+
 		}
 
 		return nil
