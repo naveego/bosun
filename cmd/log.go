@@ -105,8 +105,8 @@ var logParseJson = addCommand(logCmd, &cobra.Command{
 			decoder = json.NewDecoder(os.Stdin)
 		}
 
-		var data map[string]interface{}
 		var err error
+		var data map[string]interface{}
 		for ; err == nil; err = decoder.Decode(&data) {
 
 			if len(data) == 0 {
@@ -190,6 +190,8 @@ var logParseJson = addCommand(logCmd, &cobra.Command{
 				_, _ = fmt.Fprintf(os.Stdout, "\n%s=%s; ", k, s)
 			}
 			_, _ = fmt.Fprintln(os.Stdout)
+
+			data = nil
 
 		}
 
