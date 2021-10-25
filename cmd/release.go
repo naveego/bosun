@@ -243,9 +243,7 @@ var releaseAddCmd = addCommand(releaseCmd, &cobra.Command{
 
 		branchDescription := viper.GetString(ArgReleaseAddBranch)
 		if branchDescription == "" {
-			if r.Slot == bosun.SlotUnstable {
-				branchDescription = "the develop branch"
-			}
+			branchDescription = "the develop branch"
 		} else {
 			branchDescription = "the branch " + branchDescription
 		}

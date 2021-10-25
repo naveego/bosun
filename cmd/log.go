@@ -96,18 +96,27 @@ var logParseJson = addCommand(logCmd, &cobra.Command{
 	Short:   "Reformats JSON logs into something easier to read",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		var decoder *json.Decoder
+		var scanner *bufio.Scanner
+
 		if len(args) > 0 {
 			content := strings.Join(args, " ")
 			b := bytes.NewBufferString(content)
-			decoder = json.NewDecoder(b)
+			scanner = bufio.NewScanner(b)
 		} else {
-			decoder = json.NewDecoder(os.Stdin)
+			scanner = bufio.NewScanner(os.Stdin)
 		}
 
 		var err error
 		var data map[string]interface{}
-		for ; err == nil; err = decoder.Decode(&data) {
+		for scanner.Scan() {
+
+			text := scanner.Text()
+			err = json.Unmarshal([]byte(text), &data)
+
+			if err != nil{
+				fmt.Printf("%s %s",color.BlueString("NOT JSON: "), text)
+				continue
+			}
 
 			if len(data) == 0 {
 				continue
