@@ -307,7 +307,6 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 		return nil
 	}
 
-
 	log.Debugf("Created release values for app:\n%s", valuesYaml)
 
 	_, err = resolvedValues.PersistValues()
@@ -351,7 +350,6 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 
 	plan, err := a.PlanReconciliation(ctx)
 
-
 	if err != nil {
 		return errors.Wrap(err, "planning reconciliation")
 	}
@@ -364,13 +362,18 @@ func (a *AppDeploy) Reconcile(ctx BosunContext) error {
 	if a.AppDeploySettings.DiffOnly {
 		log.Infof("Running in diff-only mode..")
 
-		log.Infof("Here are the steps that would have been run:")
+		var steps []string
+
 		for _, step := range plan {
-			fmt.Println(step.Name + ": " + step.Description)
+			steps = append(steps, fmt.Sprintf("%s: %s", step.Name, step.Description))
 		}
 
-		log.Infof("here are the changes that would have been inflicted:")
-		fmt.Println(a.ActualState.Diff)
+		log.Infof("Here are the steps that would have been run:\n- %s", strings.Join(steps, "\n- "))
+
+		if a.ActualState.Diff != "" {
+			log.Infof("here are the changes that would have been inflicted:")
+			fmt.Println(a.ActualState.Diff)
+		}
 		return nil
 	}
 
@@ -601,7 +604,7 @@ func (a *AppDeploy) Upgrade(ctx BosunContext) error {
 	return errors.Wrapf(a.wrapActionError(ctx, err, args), "upgrade using args %v", args)
 }
 
-func (a *AppDeploy) wrapActionError(ctx BosunContext, err error, args []string ) error {
+func (a *AppDeploy) wrapActionError(ctx BosunContext, err error, args []string) error {
 
 	if err == nil {
 		return err

@@ -335,16 +335,18 @@ var stackAppsCmd = addCommand(stackCmd, &cobra.Command{
 			ctx.Log().Infof("Omitted %d apps which are disabled for this cluster, use --%s flag to show them", skippedEnvApps, argStackIncludeEnvApps)
 		}
 
-		return printOutputWithDefaultFormat("table", stackState)
+		return printOutputWithDefaultFormat("table", stackState, viper.GetStringSlice(argStackAppsColumns)...)
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(argStackIncludeEnvApps, false, "Include apps enabled for this environment but disabled for this cluster.")
 	cmd.Flags().Bool(argStackIncludeAllApps, false, "Show all apps, even if not assigned to environment or cluster.")
+	cmd.Flags().StringSlice(argStackAppsColumns, []string{"name", "version", "provider", "deployedat", "details"}, fmt.Sprintf("Columns to include. Available columns: %v", kube.StackState{}.Headers()))
 })
 
 const (
 	argStackIncludeAllApps = "include-all"
 	argStackIncludeEnvApps = "include-env"
+	argStackAppsColumns = "columns"
 )
 
 var stackResetCmd = addCommand(stackCmd, &cobra.Command{

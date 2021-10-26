@@ -6,6 +6,7 @@ import (
 	"github.com/jedib0t/go-pretty/table"
 	"github.com/jedib0t/go-pretty/text"
 	"github.com/naveego/bosun/pkg/util"
+	"github.com/naveego/bosun/pkg/util/stringsn"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -49,22 +50,33 @@ func printOutputWithDefaultFormat(defaultFormat string, out interface{}, columns
 
 		t := table.NewWriter()
 
+		var requestedColumns []string
+		for _, c := range columns {
+			requestedColumns = append(requestedColumns, strings.ToLower(c))
+		}
+
 		switch ot := out.(type) {
 		case util.Tabler:
 			headerCols := ot.Headers()
-			for _, col := range headerCols {
-				header = append(header, col)
-				columnConfigs = append(columnConfigs, table.ColumnConfig{
-					Name:   col,
-					Align:  text.AlignLeft,
-					VAlign: text.VAlignTop,
-				})
+			var colIndexes []int
+			for i, col := range headerCols {
+				if stringsn.ContainsOrIsEmpty(requestedColumns, strings.ToLower(col)) {
+					header = append(header, col)
+					colIndexes = append(colIndexes, i)
+
+					columnConfigs = append(columnConfigs, table.ColumnConfig{
+						Name:   col,
+						Align:  text.AlignLeft,
+						VAlign: text.VAlignTop,
+					})
+				}
 			}
 
 			rowCols := ot.Rows()
 			for _, cols := range rowCols {
 				row := table.Row{}
-				for _, col := range cols {
+				for _, i := range colIndexes {
+					col := cols[i]
 					row = append(row, col)
 				}
 				rows = append(rows, row)

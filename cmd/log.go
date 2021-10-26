@@ -114,7 +114,7 @@ var logParseJson = addCommand(logCmd, &cobra.Command{
 			err = json.Unmarshal([]byte(text), &data)
 
 			if err != nil{
-				fmt.Printf("%s %s",color.BlueString("NOT JSON: "), text)
+				fmt.Printf("%s %s\n",color.BlueString("NOT JSON: "), text)
 				continue
 			}
 
