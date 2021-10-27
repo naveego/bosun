@@ -475,7 +475,7 @@ func (d *Deploy) Deploy(ctx BosunContext) error {
 		}
 
 		if d.DiffOnly || d.DumpValuesOnly || d.RenderOnly {
-			return nil
+			continue
 		}
 
 		stackApp := app.StackApp

@@ -51,8 +51,8 @@ var deployExecuteCmd = addCommand(deployCmd, &cobra.Command{
 		}
 
 		pathOrSlot := args[0]
-		switch pathOrSlot{
-		case "release","current", bosun.SlotStable, bosun.SlotUnstable:
+		switch pathOrSlot {
+		case "release", "current", bosun.SlotStable, bosun.SlotUnstable:
 			r, folder, resolveReleaseErr := getReleaseAndPlanFolderName(b, pathOrSlot)
 			if resolveReleaseErr != nil {
 				return resolveReleaseErr
@@ -92,7 +92,7 @@ var deployExecuteCmd = addCommand(deployCmd, &cobra.Command{
 
 		return err
 	},
-},applyDeployExecuteCmdFlags)
+}, applyDeployExecuteCmdFlags)
 
 func applyDeployExecuteCmdFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(argDeployExecuteSkipValidate, false, "Skip validation")
@@ -105,70 +105,71 @@ const (
 	argDeployExecuteValuesOnly   = "values-only"
 )
 
-var _ = addCommand(deployCmd, &cobra.Command{
+var deployDiffCmd = addCommand(deployCmd, &cobra.Command{
 	Use:          "diff {path | {release|stable|unstable}} [apps...]",
 	Args:         cobra.MinimumNArgs(1),
 	Short:        "Shows a diff of what would change if a deployment were executed",
 	Long:         "If apps are provided, only those apps will be deployed.",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		b := MustGetBosun()
-
-		check(b.ConfirmEnvironment())
-
-		p, err := b.GetCurrentPlatform()
-		if err != nil {
-			return err
-		}
-		req := bosun.ExecuteDeploymentPlanRequest{
-			Validate:       false,
-			DiffOnly:       true,
-			DumpValuesOnly: viper.GetBool(argDeployExecuteValuesOnly),
-			UseSudo:        viper.GetBool(ArgGlobalSudo),
-		}
-
-		pathOrSlot := args[0]
-		switch pathOrSlot{
-		case "release","current", bosun.SlotStable, bosun.SlotUnstable:
-			r, folder, resolveReleaseErr := getReleaseAndPlanFolderName(b, pathOrSlot)
-			if resolveReleaseErr != nil {
-				return resolveReleaseErr
-			}
-			expectedReleaseHash, hashErr := r.GetChangeDetectionHash()
-
-			if hashErr != nil {
-				return hashErr
-			}
-
-			req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", folder))
-			req.Plan, resolveReleaseErr = bosun.LoadDeploymentPlanFromFile(req.Path)
-			if resolveReleaseErr != nil {
-				return resolveReleaseErr
-			}
-
-			if req.Plan.BasedOnHash != "" && req.Plan.BasedOnHash != expectedReleaseHash {
-				confirmed := cli.RequestConfirmFromUser("The release has changed since this plan was created, are you sure you want to continue?")
-				if !confirmed {
-
-					color.Yellow("You may want to run `bosun deploy plan release` to update the deployment plan\n")
-					return nil
-				}
-			}
-			break
-		default:
-			req.Path = pathOrSlot
-		}
-
-		if len(args) > 1 {
-			req.IncludeApps = args[1:]
-		}
-
-		executor := bosun.NewDeploymentPlanExecutor(b, p)
-
-		_, err = executor.Execute(req)
-
-		return err
+		return diffDeploy(args[0], args[1:]...)
 	},
 }, func(cmd *cobra.Command) {
 	cmd.Flags().Bool(argDeployExecuteValuesOnly, false, "Display the values which would be used for the deploy.")
 })
+
+func diffDeploy(pathOrSlot string, apps ...string) error {
+	b := MustGetBosun()
+
+	check(b.ConfirmEnvironment())
+
+	p, err := b.GetCurrentPlatform()
+	if err != nil {
+		return err
+	}
+	req := bosun.ExecuteDeploymentPlanRequest{
+		Validate:       false,
+		DiffOnly:       true,
+		DumpValuesOnly: viper.GetBool(argDeployExecuteValuesOnly),
+		UseSudo:        viper.GetBool(ArgGlobalSudo),
+	}
+
+	switch pathOrSlot {
+	case "release", "current", bosun.SlotStable, bosun.SlotUnstable:
+		r, folder, resolveReleaseErr := getReleaseAndPlanFolderName(b, pathOrSlot)
+		if resolveReleaseErr != nil {
+			return resolveReleaseErr
+		}
+		expectedReleaseHash, hashErr := r.GetChangeDetectionHash()
+
+		if hashErr != nil {
+			return hashErr
+		}
+
+		req.Path = filepath.Join(p.GetDeploymentsDir(), fmt.Sprintf("%s/plan.yaml", folder))
+		req.Plan, resolveReleaseErr = bosun.LoadDeploymentPlanFromFile(req.Path)
+		if resolveReleaseErr != nil {
+			return resolveReleaseErr
+		}
+
+		if req.Plan.BasedOnHash != "" && req.Plan.BasedOnHash != expectedReleaseHash {
+			confirmed := cli.RequestConfirmFromUser("The release has changed since this plan was created, are you sure you want to continue?")
+			if !confirmed {
+
+				color.Yellow("You may want to run `bosun deploy plan release` to update the deployment plan\n")
+				return nil
+			}
+		}
+		break
+	default:
+		req.Path = pathOrSlot
+	}
+
+	req.IncludeApps = apps
+
+	executor := bosun.NewDeploymentPlanExecutor(b, p)
+
+	_, err = executor.Execute(req)
+
+	return err
+}

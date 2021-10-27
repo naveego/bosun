@@ -112,6 +112,13 @@ var _ = addCommand(releaseDeployCmd, &cobra.Command{
 		return deployShowCmd.RunE(cmd, []string{"release"})
 	},
 })
+var _ = addCommand(releaseDeployCmd, &cobra.Command{
+	Use:          "diff [apps...]",
+	Short:        "Shows the changes that will be inflicted when the deploy is executed",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return deployDiffCmd.RunE(cmd, append([]string{"release"}, args...))
+	},
+})
 
 var _ = addCommand(releaseDeployCmd, &cobra.Command{
 	Use:          "execute [apps...]",
