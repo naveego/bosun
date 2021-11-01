@@ -378,10 +378,14 @@ func (b *Bosun) UseStack(stack brns.StackBrn) error {
 	b.ws.CurrentCluster = b.env.Cluster().Name
 	b.ws.CurrentStack = b.env.Stack().Name
 
+
 	b.ws.CurrentKubeconfig = b.ws.ClusterKubeconfigPaths[b.ws.CurrentCluster]
 	if b.ws.CurrentKubeconfig == "" {
 		b.ws.CurrentKubeconfig = os.ExpandEnv("$HOME/.kube/config")
 	}
+
+	cluster := b.env.Cluster()
+	cluster.KubeconfigPath = b.ws.CurrentKubeconfig
 
 	err = b.ws.Save()
 	return err

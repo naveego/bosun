@@ -178,6 +178,8 @@ func (e *Environment) Render(ctx environmentvariables.Dependencies) (string, err
 		vars["BOSUN_STACK_BRN"] = e.Stack().Brn.String()
 	}
 
+	vars["KUBECONFIG"] = ctx.WorkspaceContext().CurrentKubeconfig
+
 	s := command.RenderEnvironmentSettingScript(vars, aliases)
 
 	return s, nil

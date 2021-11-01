@@ -47,6 +47,7 @@ func (c ClusterConfig) GetKubeconfigPath() string {
 	if c.KubeconfigPath == "" {
 		return os.ExpandEnv("$HOME/.kube/config")
 	}
+
 	return c.KubeconfigPath
 }
 
