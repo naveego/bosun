@@ -457,6 +457,10 @@ func (c *Stack) GetAppValueSetCollectionProvider(appName string) values.ValueSet
 }
 
 func (s Stack) IsAppDisabled(name string) bool {
+	if len(s.StackTemplate.Apps) == 0 {
+		// if the stack doesn't have an explicit list of apps then all environment apps are enabled
+		return false
+	}
 	app, ok := s.StackTemplate.Apps[name]
 
 	return !(ok && !app.Disabled)

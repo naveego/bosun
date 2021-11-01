@@ -5,6 +5,7 @@ import (
 	"github.com/naveego/bosun/pkg/brns"
 	"github.com/naveego/bosun/pkg/core"
 	"github.com/naveego/bosun/pkg/environment"
+	"github.com/naveego/bosun/pkg/kube"
 	"github.com/naveego/bosun/pkg/mirror"
 	"github.com/naveego/bosun/pkg/semver"
 	"github.com/naveego/bosun/pkg/values"
@@ -159,7 +160,7 @@ func (a AddDeploymentProgressReports) Rows() [][]string {
 	return rows
 }
 
-func (d *DeploymentPlan) GetDeploymentProgressReportForStack(brn brns.StackBrn) AddDeploymentProgressReports {
+func (d *DeploymentPlan) GetDeploymentProgressReportForStack(env *environment.Environment, stack *kube.Stack) AddDeploymentProgressReports {
 
 	var reports []AppDeploymentProgressReport
 
@@ -175,24 +176,33 @@ func (d *DeploymentPlan) GetDeploymentProgressReportForStack(brn brns.StackBrn) 
 				continue
 			}
 
-			if progress.Stack != brn.String() {
+			if progress.Stack != stack.Brn.String() {
 				continue
 			}
 
 			report.Progress = *progress
 		}
 
-		if report.Progress.Hash == plan.Manifest.Hashes.Summarize() {
-
-			report.Status = "Deployed"
-
-		} else {
+		if env.IsAppDisabled(plan.Name) {
+			report.Status = "Disabled (by environment)"
 			report.OutOfSync = true
+		} else if stack.IsAppDisabled(plan.Name) {
+			report.Status = "Disabled (by stack)"
+			report.OutOfSync = true
+		} else {
 
-			if report.Progress.Timestamp.IsZero() {
-				report.Status = "Never deployed"
+			if report.Progress.Hash == plan.Manifest.Hashes.Summarize() {
+
+				report.Status = "Deployed"
+
 			} else {
-				report.Status = "Changed since deployed"
+				report.OutOfSync = true
+
+				if report.Progress.Timestamp.IsZero() {
+					report.Status = "Never deployed"
+				} else {
+					report.Status = "Changed since deployed"
+				}
 			}
 		}
 

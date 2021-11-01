@@ -710,10 +710,11 @@ func (p *Platform) SetReleaseManifest(slot string, manifest *ReleaseManifest) {
 
 func (p *Platform) GetApps(ctx filter.MatchMapArgContainer) PlatformAppConfigs {
 
+	matchArgs := ctx.GetMatchMapArgs()
+
 	var out []*PlatformAppConfig
 	for _, app := range p.Apps {
-		if app.TargetFilters.Matches(ctx.GetMatchMapArgs()) {
-
+		if len(matchArgs) == 0 || app.TargetFilters.Matches(matchArgs) {
 			out = append(out, app)
 		}
 	}

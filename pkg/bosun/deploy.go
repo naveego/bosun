@@ -205,7 +205,7 @@ func NewDeploy(ctx BosunContext, settings DeploySettings) (*Deploy, error) {
 			appDeployMap[appDeploy.Name] = appDeploy
 		}
 	} else {
-		return nil, errors.New("either settings.Manifest, settings.AppDeploymentProgress, or settings.AppManifests must be populated")
+		return nil, errors.New("either settings.Manifest, settings.Apps, or settings.AppManifests must be populated")
 	}
 
 	if settings.Filter != nil {

@@ -64,18 +64,23 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 			IgnoreDependencies:    viper.GetBool(argDeployPlanIgnoreDeps),
 			AutomaticDependencies: viper.GetBool(argDeployPlanAutoDeps),
 		}
-		update := viper.GetBool(argDeployPlanUpdate)
+		replace := viper.GetBool(argDeployPlanReplace)
 		var previousPlan *bosun.DeploymentPlan
-		if update {
+
+		if !replace {
+
 			previousPlan, err = bosun.LoadDeploymentPlanFromFile(path)
-			if err != nil {
-				return errors.Wrap(err, "could not load existing plan")
+			if err == nil {
+
+				req.ProviderPriority = previousPlan.ProviderPriority
+				for _, app := range previousPlan.Apps {
+					req.Apps = append(req.Apps, app.Name)
+				}
 			}
-			req.ProviderPriority = previousPlan.ProviderPriority
-			for _, app := range previousPlan.Apps {
-				req.Apps = append(req.Apps, app.Name)
-			}
-		} else {
+		}
+
+		if len(req.Apps) == 0 {
+
 			provider := viper.GetString(argDeployPlanProviderPriority)
 			if provider == "" {
 				provider = userChooseProvider(provider)
@@ -94,6 +99,7 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 					req.Apps = userChooseApps("Choose apps to deploy", req.Apps)
 				}
 			}
+
 		}
 
 		planCreator := bosun.NewDeploymentPlanCreator(b, p)
@@ -139,11 +145,11 @@ var deployPlanCmd = addCommand(deployCmd, &cobra.Command{
 func applyDeployPlanFlags(cmd *cobra.Command) {
 	cmd.Flags().String(argDeployPlanPath, "", "Dir where plan should be stored.")
 	cmd.Flags().String(argDeployPlanProviderPriority, "", "Provider to use to deploy apps (current, stable, unstable, or workspace).")
-	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "AppDeploymentProgress to include.")
+	cmd.Flags().StringSlice(argDeployPlanApps, []string{}, "Apps to include.")
 	cmd.Flags().Bool(argDeployPlanAll, false, "Deploy all apps which target the current environment.")
 	cmd.Flags().Bool(argDeployPlanIgnoreDeps, false, "Don't validate dependencies.")
 	cmd.Flags().Bool(argDeployPlanAutoDeps, false, "Automatically include dependencies.")
-	cmd.Flags().Bool(argDeployPlanUpdate, false, "Update an existing plan rather than creating a new one.")
+	cmd.Flags().Bool(argDeployPlanReplace, false, "Replace an existing plan rather than updating it if it already exists.")
 }
 
 const (
@@ -153,7 +159,7 @@ const (
 	argDeployPlanProviderPriority = "providers"
 	argDeployPlanIgnoreDeps       = "ignore-deps"
 	argDeployPlanAutoDeps         = "auto-deps"
-	argDeployPlanUpdate           = "update"
+	argDeployPlanReplace          = "replace"
 )
 
 var deployReleasePlanCmd = addCommand(deployPlanCmd, &cobra.Command{
@@ -230,13 +236,26 @@ func releaseDeployPlan(slotDescription string) error {
 		BasedOnHash:           basedOnHash,
 	}
 
-	pinnedApps, err := r.GetAppManifestsPinnedToRelease()
-	if err != nil {
-		return err
-	}
+	knownApps, err := r.GetAppManifests()
+	ctx := b.NewContext()
 
-	for name := range pinnedApps {
-		req.Apps = append(req.Apps, name)
+	if viper.GetBool(argDeployPlanAll) {
+		ctx.Log().Info("Adding all apps in release to the plan...")
+
+		for _, app := range knownApps {
+			req.Apps = append(req.Apps, app.Name)
+			ctx.Log().Infof("Adding %s", app.Name)
+
+		}
+	} else {
+		pinnedApps, pinnedAppsErr := r.GetAppManifestsPinnedToRelease()
+		if pinnedAppsErr != nil {
+			return pinnedAppsErr
+		}
+
+		for name := range pinnedApps {
+			req.Apps = append(req.Apps, name)
+		}
 	}
 
 	planCreator := bosun.NewDeploymentPlanCreator(b, p)

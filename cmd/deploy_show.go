@@ -22,20 +22,19 @@ var deployShowCmd = addCommand(deployCmd, &cobra.Command{
 		}
 
 		stack, err := b.GetCurrentStack()
-		 if err != nil {
-		 	return err
-		 }
+		if err != nil {
+			return err
+		}
 
-		stackBrn := stack.Brn
+		env := b.GetCurrentEnvironment()
 
-
-		report := plan.GetDeploymentProgressReportForStack(stackBrn)
+		report := plan.GetDeploymentProgressReportForStack(env, stack)
 
 		return renderOutput(report)
 	},
 })
 
-func getPlan(b *bosun.Bosun, args []string)(*bosun.DeploymentPlan, error) {
+func getPlan(b *bosun.Bosun, args []string) (*bosun.DeploymentPlan, error) {
 
 	p, err := b.GetCurrentPlatform()
 	if err != nil {

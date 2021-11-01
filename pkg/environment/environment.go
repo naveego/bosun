@@ -50,7 +50,7 @@ func (e *Environment) GetValueSetCollection() values.ValueSetCollection {
 }
 
 // IsAppDisabled returns true if the app is disabled for the environment.
-// AppDeploymentProgress are assumed to be disabled for the environment unless they are in the app list and not marked as disabled
+// Apps are assumed to be disabled for the environment unless they are in the app list and not marked as disabled
 func (e Environment) IsAppDisabled(appName string) bool {
 	v, ok := e.Apps[appName]
 	return !ok || v.Disabled
