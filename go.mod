@@ -74,18 +74,18 @@ require (
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
+	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.8.1 // indirect
 	github.com/hashicorp/consul v1.4.0 // indirect
 	github.com/hashicorp/go-gcp-common v0.0.0-20180425173946-763e39302965 // indirect
-	github.com/hashicorp/go-getter v1.2.0
+	github.com/hashicorp/go-getter v1.6.1
 	github.com/hashicorp/go-hclog v0.0.0-20181001195459-61d530d6c27f // indirect
 	github.com/hashicorp/go-memdb v0.0.0-20181108192425-032f93b25bec // indirect
 	github.com/hashicorp/go-plugin v0.0.0-20181212150838-f444068e8f5a // indirect
 	github.com/hashicorp/go-retryablehttp v0.5.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.1
-	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/hashicorp/nomad/api v0.0.0-20190624121514-72b9b879e521 // indirect
 	github.com/hashicorp/serf v0.8.3 // indirect
 	github.com/hashicorp/vault v1.0.1
@@ -146,6 +146,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/pquerna/cachecontrol v0.0.0-20180517163645-1555304b9b35 // indirect
 	github.com/pquerna/otp v1.1.0 // indirect
+	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829 // indirect
 	github.com/prometheus/common v0.2.0
 	github.com/pterm/pterm v0.12.13
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
@@ -172,17 +173,14 @@ require (
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.etcd.io/bbolt v1.3.2 // indirect
 	go.mongodb.org/mongo-driver v1.0.0
-	go.opencensus.io v0.19.1 // indirect
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1 // indirect
 	go4.org v0.0.0-20180809161055-417644f6feb5
 	golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8
 	golang.org/x/net v0.0.0-20190812203447-cdfb69ac37fc // indirect
-	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890
+	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/tools v0.0.0-20190621195816-6e04913cbbac // indirect
-	google.golang.org/genproto v0.0.0-20190502173448-54afdca5d873 // indirect
 	google.golang.org/grpc v1.23.0 // indirect
 	gopkg.in/alecthomas/kingpin.v3-unstable v3.0.0-20180810215634-df19058c872c // indirect
 	gopkg.in/asn1-ber.v1 v1.0.0-20181015200546-f715ec2f112d // indirect
