@@ -143,11 +143,8 @@ Any values provided using --values will be in {{ .Values.xxx }}
 })
 
 const argVaultApplyDumpValues = "dump-values"
-const argVaultForceGenerateRootToken = "generate-root"
 
-func vaultInitFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool(argVaultForceGenerateRootToken, false, "Generate a root token named 'root'.")
-}
+const argVaultForceGenerateRootToken = "generate-token-root"
 
 var vaultInitCmd = &cobra.Command{
 	Use:          "init [namespace]",
@@ -494,7 +491,8 @@ func init() {
 	vaultCmd.AddCommand(vaultJWTCmd)
 
 	addVaultFlags(vaultInitCmd)
-	vaultCmd.AddCommand(vaultInitCmd, initFlags)
+	vaultCmd.AddCommand(vaultInitCmd)
+	vaultInitCmd.Flags().Bool(argVaultForceGenerateRootToken, false, "Generate a root token with id 'root'")
 
 	addVaultFlags(vaultUnsealCmd)
 	vaultCmd.AddCommand(vaultUnsealCmd)
