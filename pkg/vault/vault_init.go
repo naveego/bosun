@@ -22,7 +22,7 @@ type VaultInitializer struct {
 	VaultNamespace string
 }
 
-func (v VaultInitializer) Init() error {
+func (v VaultInitializer) Init(forceGenerateTokenRoot bool) error {
 	vaultClient := v.Client
 	initialized, err := vaultClient.Sys().InitStatus()
 	if err != nil {
@@ -30,7 +30,7 @@ func (v VaultInitializer) Init() error {
 	}
 
 	if !initialized {
-		err = v.initialize()
+		err = v.initialize(forceGenerateTokenRoot)
 		if err != nil {
 			return err
 		}
@@ -134,7 +134,7 @@ func (v VaultInitializer) Unseal() error {
 	return nil
 }
 
-func (v VaultInitializer) initialize() error {
+func (v VaultInitializer) initialize(forceGenerateTokenRoot bool) error {
 	vaultClient := v.Client
 
 	var initResp *api.InitResponse
@@ -196,7 +196,7 @@ func (v VaultInitializer) initialize() error {
 
 		vaultRootTokenSecret, err := secretsClient.Get("vault-root-token", metav1.GetOptions{})
 		if kerrors.IsNotFound(err) {
-			unsealKeysSecret, err = secretsClient.Create(&v1.Secret{
+			vaultRootTokenSecret, err = secretsClient.Create(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vault-root-token",
 				},
@@ -238,7 +238,7 @@ func (v VaultInitializer) initialize() error {
 
 	createRootToken := cli.RequestConfirmFromUser("Should we create a root token named `root`")
 
-	if createRootToken {
+	if createRootToken || forceGenerateTokenRoot {
 		log.Info("Creating token `root` (DELETE THIS TOKEN IN PRODUCTION!)")
 
 		_, err = vaultClient.Auth().Token().Create(&api.TokenCreateRequest{
