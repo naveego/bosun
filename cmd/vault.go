@@ -144,6 +144,8 @@ Any values provided using --values will be in {{ .Values.xxx }}
 
 const argVaultApplyDumpValues = "dump-values"
 
+const argVaultForceGenerateRootToken = "generate-token-root"
+
 var vaultInitCmd = &cobra.Command{
 	Use:          "init [namespace]",
 	Aliases:      []string{"bootstrap-dev"},
@@ -214,7 +216,7 @@ Otherwise, this will do nothing.
 			VaultNamespace: namespace,
 		}
 
-		err = initializer.Init()
+		err = initializer.Init(viper.GetBool(argVaultForceGenerateRootToken))
 		if err != nil {
 			return err
 		}
@@ -490,6 +492,7 @@ func init() {
 
 	addVaultFlags(vaultInitCmd)
 	vaultCmd.AddCommand(vaultInitCmd)
+	vaultInitCmd.Flags().Bool(argVaultForceGenerateRootToken, false, "Generate a root token with id 'root'")
 
 	addVaultFlags(vaultUnsealCmd)
 	vaultCmd.AddCommand(vaultUnsealCmd)
